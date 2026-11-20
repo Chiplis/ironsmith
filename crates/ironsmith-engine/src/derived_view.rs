@@ -1436,6 +1436,7 @@ impl<'a> DerivedGameView<'a> {
                     source_id: grant.source.source_id(),
                     zone: grant.zone,
                     usage_limit: grant.usage_limit,
+                    shared_usage_id: grant.shared_usage_id,
                     constraints: grant.play_from_constraints.clone(),
                     cast_this_way_grants: grant.cast_this_way_grants.clone(),
                     permanent_this_way_grants: grant.permanent_this_way_grants.clone(),
@@ -1450,6 +1451,7 @@ impl<'a> DerivedGameView<'a> {
                             source_id: grant.source.source_id(),
                             zone: grant.zone,
                             usage_limit: spec.usage_limit().or(grant.usage_limit),
+                            shared_usage_id: grant.shared_usage_id,
                             constraints: grant.play_from_constraints.clone(),
                             cast_this_way_grants: grant.cast_this_way_grants.clone(),
                             permanent_this_way_grants: grant.permanent_this_way_grants.clone(),
@@ -1463,6 +1465,7 @@ impl<'a> DerivedGameView<'a> {
                 | Grantable::AlternativePrice { .. } => None,
             })
             .chain(self.game.plotted_cast_permission(card_id, zone, player))
+            .chain(self.game.foretold_face_cast_permission(card, zone, player))
             .collect();
         self.granted_alternative_casts
             .borrow_mut()
@@ -1497,6 +1500,7 @@ impl<'a> DerivedGameView<'a> {
                     source_id: grant.source.source_id(),
                     zone: grant.zone,
                     usage_limit: grant.usage_limit,
+                    shared_usage_id: grant.shared_usage_id,
                     constraints: grant.play_from_constraints.clone(),
                 }),
                 Grantable::Ability(_)
@@ -1531,6 +1535,10 @@ impl<'a> DerivedGameView<'a> {
         } else {
             card
         };
+        // A permission to cast *spells* from the graveyard ("you may cast an
+        // instant or sorcery spell from your graveyard", Kess) is checked
+        // against the spell as cast, so an Adventure sorcery qualifies (CR
+        // 715.3a, 601.3e); only grants to *cards* see the normal face.
         self.active_grants()
             .iter()
             .filter(|grant| {
@@ -1538,14 +1546,31 @@ impl<'a> DerivedGameView<'a> {
                     && grant.zone == crate::grant_registry::alternative_cast_grant_zone(zone)
             })
             .filter(|grant| {
+                let from_card_mana_cost = matches!(
+                    &grant.grantable,
+                    Grantable::DerivedAlternativeCast(
+                        DerivedAlternativeCast::GraveyardCastFromCardManaCost { .. }
+                    )
+                );
                 grant_applies_to_card_non_recursive(
                     grant,
                     card_id,
                     card,
-                    filter_card,
+                    if from_card_mana_cost { card } else { filter_card },
                     &ctx,
                     self.game,
                 )
+                    // CR 601.3e / 715.3a: the card must have the granted
+                    // ability in its zone (normal characteristics), and when
+                    // a face is proposed only that face's characteristics
+                    // decide legality, so the grant must also still apply to
+                    // the face (Six's retrace reaches Bonecrusher Giant but
+                    // not its Stomp Adventure).
+                    && (from_card_mana_cost
+                        || std::ptr::eq(filter_card, card)
+                        || grant_applies_to_card_non_recursive(
+                            grant, card_id, card, card, &ctx, self.game,
+                        ))
             })
             .filter_map(|grant| match &grant.grantable {
                 Grantable::AlternativeCast(method) => Some(GrantedAlternativeCast {
@@ -1554,6 +1579,7 @@ impl<'a> DerivedGameView<'a> {
                     source_id: grant.source.source_id(),
                     zone: grant.zone,
                     usage_limit: grant.usage_limit,
+                    shared_usage_id: grant.shared_usage_id,
                     constraints: grant.play_from_constraints.clone(),
                     cast_this_way_grants: grant.cast_this_way_grants.clone(),
                     permanent_this_way_grants: grant.permanent_this_way_grants.clone(),
@@ -1568,6 +1594,7 @@ impl<'a> DerivedGameView<'a> {
                             source_id: grant.source.source_id(),
                             zone: grant.zone,
                             usage_limit: spec.usage_limit().or(grant.usage_limit),
+                            shared_usage_id: grant.shared_usage_id,
                             constraints: grant.play_from_constraints.clone(),
                             cast_this_way_grants: grant.cast_this_way_grants.clone(),
                             permanent_this_way_grants: grant.permanent_this_way_grants.clone(),
@@ -1580,6 +1607,11 @@ impl<'a> DerivedGameView<'a> {
                 | Grantable::PlayFrom
                 | Grantable::AlternativePrice { .. } => None,
             })
+            // CR 702.170d: the plot permission belongs to the physical card,
+            // so it authorizes each of its spell faces (listed last, matching
+            // `granted_alternative_casts_for_card`).
+            .chain(self.game.plotted_cast_permission(card_id, zone, player))
+            .chain(self.game.foretold_face_cast_permission(card, zone, player))
             .collect()
     }
 
@@ -1604,6 +1636,7 @@ impl<'a> DerivedGameView<'a> {
                     source_id: grant.source.source_id(),
                     zone: grant.zone,
                     usage_limit: grant.usage_limit,
+                    shared_usage_id: grant.shared_usage_id,
                     constraints: grant.play_from_constraints.clone(),
                 }),
                 Grantable::Ability(_)

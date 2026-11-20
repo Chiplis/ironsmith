@@ -1147,10 +1147,15 @@ impl AnthemValueRuntimeExt for AnthemValue {
                         | AnthemCountExpression::TotalUnspentMana(_)
                         | AnthemCountExpression::PlayerCounters(_, _)
                 ) {
-                    i32::try_from(i128::from(*multiplier) * i128::from(resolved))
-                        .expect("checked scalar anthem modifier domain")
+                    // Game quantities saturate at the signed P/T range.
+                    i32::try_from(i128::from(*multiplier).saturating_mul(i128::from(resolved)))
+                        .unwrap_or(if (*multiplier < 0) == (resolved < 0) {
+                            i32::MAX
+                        } else {
+                            i32::MIN
+                        })
                 } else {
-                    multiplier * resolved
+                    multiplier.saturating_mul(resolved)
                 }
             }
             Self::CappedPerCount {
@@ -1165,11 +1170,14 @@ impl AnthemValueRuntimeExt for AnthemValue {
                         | AnthemCountExpression::TotalUnspentMana(_)
                         | AnthemCountExpression::PlayerCounters(_, _)
                 ) {
-                    let exact =
-                        (i128::from(*multiplier) * i128::from(resolved)).min(i128::from(*maximum));
-                    i32::try_from(exact).expect("checked scalar anthem modifier domain")
+                    let exact = i128::from(*multiplier)
+                        .saturating_mul(i128::from(resolved))
+                        .min(i128::from(*maximum));
+                    ironsmith_core::quantity::clamp_i32(
+                        ironsmith_core::quantity::clamp_i64_from_i128(exact),
+                    )
                 } else {
-                    (multiplier * resolved).min(*maximum)
+                    multiplier.saturating_mul(resolved).min(*maximum)
                 }
             }
         }
@@ -3973,10 +3981,15 @@ pub(crate) fn resolve_anthem_count_expression_checked_in_context(
     base: Option<&crate::filter::FilterContext>,
 ) -> Result<i32, crate::effects::ExecutionError> {
     if let AnthemCountExpression::PlayerCounters(player, counter_type) = count {
-        return crate::events::damage::checked_scalar_count(
-            player_counter_anthem_count(player, *counter_type, game, source, controller),
-            "player-counter anthem count",
-        );
+        // Game quantities saturate at the signed scalar range.
+        return Ok(i32::try_from(player_counter_anthem_count(
+            player,
+            *counter_type,
+            game,
+            source,
+            controller,
+        ))
+        .unwrap_or(i32::MAX));
     }
     let (player_filter, symbol) = match count {
         AnthemCountExpression::TotalUnspentMana(player) => (player, None),
@@ -3990,7 +4003,7 @@ pub(crate) fn resolve_anthem_count_expression_checked_in_context(
     let context = base
         .cloned()
         .unwrap_or_else(|| game.filter_context_for(controller, Some(source)));
-    let exact = game
+    let exact: u128 = game
         .players
         .iter()
         .filter(|player| {
@@ -4010,7 +4023,7 @@ pub(crate) fn resolve_anthem_count_expression_checked_in_context(
             )
         })
         .sum();
-    crate::events::damage::checked_scalar_count(exact, "unspent mana count")
+    Ok(i32::try_from(exact).unwrap_or(i32::MAX))
 }
 
 /// CR 702.45a/b: an object's total bushido is the sum of N over its
@@ -4170,13 +4183,13 @@ pub(crate) fn resolve_anthem_count_expression_in_context(
             game.creature_attack_count_this_turn(source) as i32
         }
         AnthemCountExpression::CountersOnSource(counter_type) => {
-            game.counter_count(source, *counter_type) as i32
+            ironsmith_core::quantity::clamp_i32_from_u32(game.counter_count(source, *counter_type))
         }
         AnthemCountExpression::CountersOnSourceWithSurface { counter_type, .. } => {
-            game.counter_count(source, *counter_type) as i32
+            ironsmith_core::quantity::clamp_i32_from_u32(game.counter_count(source, *counter_type))
         }
         AnthemCountExpression::CountersOnSourceWithPronoun { counter_type, .. } => {
-            game.counter_count(source, *counter_type) as i32
+            ironsmith_core::quantity::clamp_i32_from_u32(game.counter_count(source, *counter_type))
         }
         AnthemCountExpression::StickersOnSource {
             action,
@@ -4190,14 +4203,18 @@ pub(crate) fn resolve_anthem_count_expression_in_context(
             *max_name_letters,
         ) as i32,
         AnthemCountExpression::CountersOnAffected(counter_type) => {
-            game.counter_count(source, *counter_type) as i32
+            ironsmith_core::quantity::clamp_i32_from_u32(game.counter_count(source, *counter_type))
         }
         AnthemCountExpression::CountersAmong(filter, counter_type) => all_game_object_ids(game)
             .into_iter()
             .filter_map(|id| game.object(id))
             .filter(|obj| filter.matches_non_recursive(obj, &filter_ctx, game))
-            .map(|obj| obj.counters.get(counter_type).copied().unwrap_or(0) as i32)
-            .sum(),
+            .map(|obj| {
+                ironsmith_core::quantity::clamp_i32_from_u32(
+                    obj.counters.get(counter_type).copied().unwrap_or(0),
+                )
+            })
+            .fold(0i32, i32::saturating_add),
         AnthemCountExpression::DistinctCounterTypesAmong(filter) => {
             use std::collections::HashSet;
 
@@ -4272,8 +4289,12 @@ pub(crate) fn resolve_anthem_count_expression_in_context(
             .filter(|player| {
                 player.is_in_game() && player_filter.matches_player(player.id, &filter_ctx)
             })
-            .map(|player| game.commander_cast_count_for_player(player.id) as i32)
-            .sum(),
+            .map(|player| {
+                ironsmith_core::quantity::clamp_i32_from_u32(
+                    game.commander_cast_count_for_player(player.id),
+                )
+            })
+            .fold(0i32, i32::saturating_add),
         AnthemCountExpression::PlayerCounters(player_filter, counter_type) => {
             i32::try_from(player_counter_anthem_count(
                 player_filter,
@@ -4282,7 +4303,7 @@ pub(crate) fn resolve_anthem_count_expression_in_context(
                 source,
                 controller,
             ))
-            .expect("checked player-counter anthem count domain")
+            .unwrap_or(i32::MAX)
         }
         AnthemCountExpression::PlayerSpeed(player_filter) => game
             .players
@@ -4314,7 +4335,7 @@ pub(crate) fn resolve_anthem_count_expression_in_context(
                 .map(|pool| u128::from(pool.total_wide()))
                 .sum::<u128>(),
         )
-        .expect("checked mana scalar domain"),
+        .unwrap_or(i32::MAX),
         AnthemCountExpression::UnspentMana {
             player: player_filter,
             symbol,
@@ -4334,7 +4355,7 @@ pub(crate) fn resolve_anthem_count_expression_in_context(
                 .map(|pool| u128::from(pool.amount(*symbol)))
                 .sum::<u128>(),
         )
-        .expect("checked mana scalar domain"),
+        .unwrap_or(i32::MAX),
     }
 }
 
@@ -5127,74 +5148,27 @@ impl StaticAbilityKind for Anthem {
 
     fn validate_mana_scalar_ranges(
         &self,
-        game: &GameState,
-        source: ObjectId,
-        controller: PlayerId,
+        _game: &GameState,
+        _source: ObjectId,
+        _controller: PlayerId,
     ) -> Result<bool, crate::static_ability_processor::StaticEffectDiscoveryError> {
         let mut needs_pt = false;
         for value in [&self.power, &self.toughness] {
-            let (multiplier, count, cap) = match value {
-                AnthemValue::PerCount { multiplier, count } => (*multiplier, count, None),
-                AnthemValue::CappedPerCount {
-                    multiplier,
-                    count,
-                    maximum,
-                } => (*multiplier, count, Some(*maximum)),
-                _ => continue,
-            };
-            // This existing scalar admission hook also protects the appended
-            // player-counter family before any infallible effect generation.
-            if let AnthemCountExpression::PlayerCounters(player, counter_type) = count {
-                needs_pt = true;
-                let exact_count = player_counter_anthem_count(
-                    player,
-                    *counter_type,
-                    game,
-                    source,
-                    controller,
-                );
-                let exact_count = i128::try_from(exact_count)
-                    .expect("player count bounded by addressable game storage");
-                if i32::try_from(exact_count).is_err() {
-                    return Err(
-                        crate::static_ability_processor::StaticEffectDiscoveryError::ScalarRange {
-                            resource: "player-counter anthem count",
-                            value: exact_count,
-                        },
-                    );
-                }
-                let exact = exact_count * i128::from(multiplier);
-                let exact = cap.map_or(exact, |cap| exact.min(i128::from(cap)));
-                if i32::try_from(exact).is_err() {
-                    return Err(
-                        crate::static_ability_processor::StaticEffectDiscoveryError::ScalarRange {
-                            resource: "player-counter anthem modifier",
-                            value: exact,
-                        },
-                    );
-                }
+            let (AnthemValue::PerCount { count, .. } | AnthemValue::CappedPerCount { count, .. }) =
+                value
+            else {
                 continue;
-            }
-            if !matches!(
+            };
+            // Game quantities saturate: these counts and modifiers clamp to
+            // the signed P/T range when generated, so admission never fails.
+            // The families still mark that final P/T must be checked.
+            if matches!(
                 count,
-                AnthemCountExpression::UnspentMana { .. }
+                AnthemCountExpression::PlayerCounters(..)
+                    | AnthemCountExpression::UnspentMana { .. }
                     | AnthemCountExpression::TotalUnspentMana(_)
             ) {
-                continue;
-            }
-            needs_pt = true;
-            let count = i128::from(resolve_anthem_count_expression(
-                count, game, source, controller,
-            ));
-            let exact = count * i128::from(multiplier);
-            let exact = cap.map_or(exact, |cap| exact.min(i128::from(cap)));
-            if i32::try_from(exact).is_err() {
-                return Err(
-                    crate::static_ability_processor::StaticEffectDiscoveryError::ScalarRange {
-                        resource: "mana anthem modifier",
-                        value: exact,
-                    },
-                );
+                needs_pt = true;
             }
         }
         Ok(needs_pt)
@@ -6239,6 +6213,8 @@ pub struct CopyStaticAbilityVariants {
     pub exclude_source_id: bool,
     pub condition: Option<crate::ConditionExpr>,
     pub display: String,
+    /// The inheriting objects; `None` is the source itself.
+    pub recipient: Option<ObjectFilter>,
 }
 
 impl CopyStaticAbilityVariants {
@@ -6255,6 +6231,7 @@ impl CopyStaticAbilityVariants {
             exclude_source_id: true,
             condition: None,
             display,
+            recipient: None,
         }
     }
 
@@ -6292,7 +6269,9 @@ impl StaticAbilityKind for CopyStaticAbilityVariants {
             ContinuousEffect::new(
                 source,
                 controller,
-                EffectTarget::Source,
+                self.recipient
+                    .as_ref()
+                    .map_or(EffectTarget::Source, |filter| effect_target_for_filter(source, filter)),
                 Modification::CopyStaticAbilityVariants {
                     excluded_ability_designations: self.excluded_ability_designations.clone(),
                     copy_all: self.copy_all,
@@ -7331,18 +7310,29 @@ impl StaticAbilityKind for SetLandSubtypesForFilter {
         controller: PlayerId,
         _game: &GameState,
     ) -> Vec<ContinuousEffect> {
-        vec![
-            effect_with_optional_static_condition(
-                ContinuousEffect::new(
-                    source,
-                    controller,
-                    effect_target_for_filter(source, &self.filter),
-                    Modification::SetSubtypes(self.subtypes.clone()),
-                )
-                .with_source_type(EffectSourceType::StaticAbility),
-                &self.condition,
-            ),
-            effect_with_optional_static_condition(
+        // "Lose all land types" (Alpine Moon) names no replacement types, so
+        // it removes the whole land-type family; setting an empty list would
+        // leave every land type in place (CR 205.1a).
+        let type_change = if self.subtypes.is_empty() {
+            Modification::RemoveAllSubtypesOfFamily(SubtypeFamily::Land)
+        } else {
+            Modification::SetSubtypes(self.subtypes.clone())
+        };
+        let mut effects = vec![effect_with_optional_static_condition(
+            ContinuousEffect::new(
+                source,
+                controller,
+                effect_target_for_filter(source, &self.filter),
+                type_change,
+            )
+            .with_source_type(EffectSourceType::StaticAbility),
+            &self.condition,
+        )];
+        // CR 305.7: only setting a land's subtype to basic land types removes
+        // the abilities from its rules text in layer 4. Losing all land types
+        // does not; a printed "and abilities" is its own layer-6 effect.
+        if self.subtypes.iter().any(|subtype| subtype.is_basic_land_type()) {
+            effects.push(effect_with_optional_static_condition(
                 ContinuousEffect::new(
                     source,
                     controller,
@@ -7351,8 +7341,9 @@ impl StaticAbilityKind for SetLandSubtypesForFilter {
                 )
                 .with_source_type(EffectSourceType::StaticAbility),
                 &self.condition,
-            ),
-        ]
+            ));
+        }
+        effects
     }
 }
 

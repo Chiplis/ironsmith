@@ -171,6 +171,10 @@ const TRIGGER_ZONE_HINT_PHRASES: &[(&[&str], Zone)] = &[
     (&["if", "this", "is", "in", "exile"], Zone::Exile),
     (&["if", "this", "card", "is", "in", "exile"], Zone::Exile),
     (&["if", "this", "card", "is", "exiled"], Zone::Exile),
+    // CR 702.62b: a suspended card is in exile, so "if this card is
+    // suspended" (Deep-Sea Kraken, Nihilith) triggers from exile.
+    (&["if", "this", "card", "is", "suspended"], Zone::Exile),
+    (&["if", "this", "is", "suspended"], Zone::Exile),
     (
         &["if", "this", "is", "in", "the", "command", "zone"],
         Zone::Command,

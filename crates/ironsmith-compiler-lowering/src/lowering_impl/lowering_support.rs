@@ -3131,12 +3131,41 @@ fn correlate_result_gated_creation_followups(effects: &mut Vec<EffectAst>) -> bo
             continue;
         }
         let followup = effects.remove(index + 1);
+        // "You may pay {1}{G}. If you do, create a token that's a copy of
+        // that creature. If you didn't create a token this way, create a 1/1
+        // Insect" (Springheart Nantuko): no token was created this way when
+        // the gate itself did not happen either, so the negated follow-up is
+        // also the gate's fallback.
+        let gate_fallback = match (&effects[index], &followup) {
+            (
+                EffectAst::Conditionals(ConditionalEffectAst::IfResult {
+                    predicate: crate::cards::builders::IfResultPredicate::Did,
+                    ..
+                }),
+                EffectAst::Conditionals(ConditionalEffectAst::IfResult {
+                    predicate:
+                        crate::cards::builders::IfResultPredicate::ResultObjectsMatch {
+                            negated: true,
+                            ..
+                        },
+                    effects: fallback,
+                }),
+            ) => Some(EffectAst::Conditionals(ConditionalEffectAst::IfResult {
+                predicate: crate::cards::builders::IfResultPredicate::ExplicitDidNot,
+                effects: fallback.clone(),
+            })),
+            _ => None,
+        };
         let EffectAst::Conditionals(ConditionalEffectAst::IfResult { effects: branch, .. }) =
             &mut effects[index]
         else {
             unreachable!("the result-gated branch was checked above")
         };
         branch.push(followup);
+        if let Some(fallback) = gate_fallback {
+            effects.insert(index + 1, fallback);
+            index += 1;
+        }
         changed = true;
         index += 1;
     }

@@ -105,7 +105,8 @@ fn identical_token_doublers_apply_without_an_order_choice() {
     assert_eq!(token_count(&mut game, &mut dm, alice), 3 << 20);
     assert_eq!(dm.prompts, 0);
 
-    // Unrepresentable totals fail fast instead of after one prompt per doubler.
+    // Unrepresentable totals saturate without one prompt per doubler, and the
+    // creation budget bounds what is actually created.
     for _ in 0..20 {
         register(
             &mut game,
@@ -114,10 +115,30 @@ fn identical_token_doublers_apply_without_an_order_choice() {
             ReplacementAction::Double,
         );
     }
-    let proposal = crate::events::CreateTokensEvent::with_cause(alice, 1, EventCause::effect());
-    let result = process_with_dm(&mut game, Event::new_with_provenance(proposal, Default::default()), &mut dm);
-    assert!(result.is_err(), "2^40 * 3 tokens exceeds the token count representation");
+    assert_eq!(
+        token_count(&mut game, &mut dm, alice),
+        u128::from(u32::MAX),
+        "2^40 * 3 tokens saturates the token count representation"
+    );
     assert_eq!(dm.prompts, 0);
+    game.set_token_creation_limits(crate::effects::tokens::TokenCreationLimits {
+        max_created_tokens: 5,
+        ..Default::default()
+    });
+    let token = crate::cards::CardDefinitionBuilder::new(crate::ids::CardId::new(), "Doubled token")
+        .token()
+        .card_types(vec![crate::types::CardType::Artifact])
+        .build();
+    let source = game.new_object_id();
+    let before = game.battlefield.len();
+    let mut ctx = crate::effects::ExecutionContext::new_default(source, alice);
+    crate::effects::EffectExecutor::execute(
+        &crate::effects::CreateTokenEffect::you(token, 1),
+        &mut game,
+        &mut ctx,
+    )
+    .expect("creation past the budget creates what fits");
+    assert_eq!(game.battlefield.len() - before, 5, "the doubled count clamps to the budget");
 }
 
 #[test]

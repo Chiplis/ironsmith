@@ -273,7 +273,7 @@ fn scaled_basic_land_type_count(value: &Value) -> Option<(i32, &ObjectFilter)> {
             if left_filter != right_filter {
                 return None;
             }
-            Some((left_factor + right_factor, left_filter))
+            Some((left_factor.checked_add(right_factor)?, left_filter))
         }
         _ => None,
     }
@@ -283,7 +283,7 @@ fn scaled_creatures_died_this_turn(value: &Value) -> Option<i32> {
     match value {
         Value::CreaturesDiedThisTurn => Some(1),
         Value::Add(left, right) => {
-            Some(scaled_creatures_died_this_turn(left)? + scaled_creatures_died_this_turn(right)?)
+            scaled_creatures_died_this_turn(left)?.checked_add(scaled_creatures_died_this_turn(right)?)
         }
         _ => None,
     }
@@ -3104,9 +3104,23 @@ fn chosen_targets_match(
     });
     let matches_object = object_filter.is_none_or(|filter| {
         chosen_targets.iter().any(|target| match target {
-            crate::game_state::Target::Object(object_id) => game
-                .object(*object_id)
-                .is_some_and(|object| filter.matches(object, &filter_ctx, game)),
+            crate::game_state::Target::Object(object_id) => {
+                // An ability on the stack is named by its own id; the filter
+                // reads its source's characteristics for that particular stack
+                // object (Not of This World targeting a triggered ability).
+                if let Some(entry) = game.stack_ability_entry(*object_id) {
+                    let mut entry_ctx = filter_ctx.clone();
+                    entry_ctx.stack_entry = Some(*object_id);
+                    return match game.object(entry.object_id) {
+                        Some(source) => filter.matches(source, &entry_ctx, game),
+                        None => entry.source_snapshot.as_ref().is_some_and(|snapshot| {
+                            filter.matches_snapshot(snapshot, &entry_ctx, game)
+                        }),
+                    };
+                }
+                game.object(*object_id)
+                    .is_some_and(|object| filter.matches(object, &filter_ctx, game))
+            }
             _ => false,
         })
     });
@@ -3309,7 +3323,7 @@ pub fn this_spell_cost_condition_is_active_for_player_with_optional_costs_paid(
         ThisSpellCostCondition::YouWereDealtDamageByCreaturesThisTurnOrMore(n) => {
             game.turn_store
                 .turn_history
-                .total_creature_damage_to_player(controller)
+                .distinct_creatures_that_dealt_damage_to_player(controller)
                 >= *n
         }
         ThisSpellCostCondition::ConditionExpr {

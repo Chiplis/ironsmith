@@ -1628,6 +1628,73 @@ fn restrict_choice_among_targets_to_battlefield(effects: &mut [crate::effect::Ef
     }
 }
 
+/// "Choose up to three Doctors. You may exile all other creatures." (The Day
+/// of the Doctor): after a non-target choice of permanents, "all other"
+/// excludes the chosen permanents, not the source. A later mass exile or
+/// destroy whose filter says `other` is rebound to the choice's complement.
+fn exclude_chosen_permanents_from_other_mass_action(effects: &mut [crate::effect::Effect]) {
+    use crate::filter::{TaggedObjectConstraint, TaggedOpbjectRelation};
+    fn rebind(filter: &mut ObjectFilter, tag: &TagKey) -> bool {
+        if !filter.other
+            || filter
+                .tagged_constraints
+                .iter()
+                .any(|constraint| &constraint.tag == tag)
+        {
+            return false;
+        }
+        filter.other = false;
+        filter.tagged_constraints.push(TaggedObjectConstraint {
+            tag: tag.clone(),
+            relation: TaggedOpbjectRelation::IsNotTaggedObject,
+        });
+        true
+    }
+    for index in 0..effects.len() {
+        let Some(choose) = effects[index].downcast_ref::<crate::effects::ChooseObjectsEffect>()
+        else {
+            continue;
+        };
+        if choose.is_search
+            || !choose.additional_zones.is_empty()
+            || choose.filter.zone.or(choose.zone) != Some(Zone::Battlefield)
+        {
+            continue;
+        }
+        let tag = choose.tag.clone();
+        for later in index + 1..effects.len() {
+            effects[later] = map_effect_tree(&effects[later], &mut |effect| {
+                if let Some(exile) = effect.downcast_ref::<crate::effects::ExileEffect>()
+                    && matches!(exile.spec, ChooseSpec::All(_))
+                {
+                    let mut exile = exile.clone();
+                    if let ChooseSpec::All(filter) = &mut exile.spec
+                        && rebind(filter, &tag)
+                    {
+                        return Some(crate::effect::Effect::new(exile));
+                    }
+                }
+                if let Some(destroy) = effect.downcast_ref::<crate::effects::DestroyEffect>()
+                    && matches!(destroy.spec, ChooseSpec::All(_))
+                {
+                    let mut destroy = destroy.clone();
+                    let mut changed = false;
+                    if let ChooseSpec::All(filter) = &mut destroy.spec {
+                        changed = rebind(filter, &tag);
+                    }
+                    if let ChooseSpec::All(filter) = &mut destroy.target {
+                        changed |= rebind(filter, &tag);
+                    }
+                    if changed {
+                        return Some(crate::effect::Effect::new(destroy));
+                    }
+                }
+                None
+            });
+        }
+    }
+}
+
 /// Card-level dataflow repairs applied to every resolution program.
 fn finalize_program_references(program: &mut crate::resolution::ResolutionProgram) {
     let mut pass = |program: &mut crate::resolution::ResolutionProgram| {
@@ -1640,6 +1707,7 @@ fn finalize_program_references(program: &mut crate::resolution::ResolutionProgra
         }
         bind_bare_for_each_to_looked_cards(&mut flat);
         restrict_choice_among_targets_to_battlefield(&mut flat);
+        exclude_chosen_permanents_from_other_mass_action(&mut flat);
         let mut rest = flat.into_iter();
         for (segment, length) in program.segments.iter_mut().zip(lengths) {
             segment.default_effects = rest.by_ref().take(length).collect();

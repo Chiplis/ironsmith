@@ -1450,6 +1450,8 @@ fn compile_effect_inner(
             },
             Selection::RandomMatching {filter,independent}=>(vec![ironsmith_core::CardCreationSelection::RandomMatching{filter:resolve_it_tag(filter,&current_reference_env(ctx))?,independent:*independent}],Vec::new()),
             Selection::Duplicate(target)=>{let (target,choices)=resolve_target_spec_with_choices(target,&current_reference_env(ctx))?;(vec![ironsmith_core::CardCreationSelection::Duplicate(target)],choices)},
+            // Conjure names a catalog card; the engine resolves it at runtime.
+            Selection::Catalog(name)=>(vec![ironsmith_core::CardCreationSelection::Catalog(name.clone())],Vec::new()),
         };
         let count=resolve_value_it_tag(count,&current_reference_env(ctx))?;
         let (player,player_choices)=LoweredSubject::resolve_actor(*player,ctx,true,true,true)?.into_parts();

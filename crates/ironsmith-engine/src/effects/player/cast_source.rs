@@ -93,6 +93,72 @@ impl EffectExecutor for CastSourceEffect {
             ));
         };
 
+        // CR 702.62a: suspend's last-counter trigger lets its owner *play*
+        // the card. A modal DFC with a land back face may instead be played
+        // as that land (CR 712.12) during this resolution, if it's their turn
+        // and they have a land play available (CR 305.2a, 305.3).
+        if self.cast_as_suspend
+            && !self.cast_other_face
+            && source_obj.zone == Zone::Exile
+            && game.is_active_player(ctx.controller)
+            && game
+                .player(ctx.controller)
+                .is_some_and(|player| player.can_play_land())
+            && let Some(land_face) =
+                crate::decision::linked_other_face_land_definition(game, source_obj)
+        {
+            let options = vec![
+                crate::decisions::context::SelectableOption::new(
+                    0,
+                    format!("Cast {}", source_obj.name),
+                ),
+                crate::decisions::context::SelectableOption::new(
+                    1,
+                    format!("Play {}", land_face.card.name),
+                ),
+            ];
+            let question = crate::decisions::context::SelectOptionsContext::new(
+                ctx.controller,
+                Some(source_id),
+                "Choose how to play this card",
+                options,
+                1,
+                1,
+            );
+            let choice = ctx.decision_maker.decide_options(game, &question);
+            if ctx.decision_maker.awaiting_choice() {
+                return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
+                    EffectOutcome::count(0),
+                ));
+            }
+            if choice.first() == Some(&1) {
+                let controller = ctx.controller;
+                let outputs = crate::effects::zones::play_land_face_from_resolving_effect_with_outputs(
+                    game,
+                    ctx,
+                    source_id,
+                    controller,
+                    Zone::Exile,
+                    false,
+                    true,
+                )?;
+                // An illegal play leaves the card exiled, showing its front face.
+                if !ctx.decision_maker.awaiting_choice()
+                    && game
+                        .object(source_id)
+                        .is_some_and(|object| object.zone == Zone::Exile)
+                {
+                    restore_other_face_after_failed_cast(game, source_id, &original_source, None);
+                }
+                return Ok(outputs);
+            }
+        }
+        let Some(source_obj) = game.object(source_id) else {
+            return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
+                EffectOutcome::target_invalid(),
+            ));
+        };
+
         if source_obj.is_land() {
             if self.cast_other_face {
                 restore_other_face_after_failed_cast(

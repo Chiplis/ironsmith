@@ -919,6 +919,10 @@ pub struct GrantedAlternativeCast {
     pub source_id: ObjectId,
     pub zone: Zone,
     pub usage_limit: Option<GrantUsageLimit>,
+    /// The deferred-use budget this price shares with its paired play
+    /// permission ("until end of turn, you may cast a spell ... without
+    /// paying its mana cost", Court of Locthwain), if any.
+    pub shared_usage_id: Option<SharedGrantUsageId>,
     /// Riders belonging to this exact indexed permission, not every equal-cost method.
     pub cast_this_way_grants: Vec<crate::static_abilities::StaticAbility>,
     pub permanent_this_way_grants: Vec<crate::static_abilities::StaticAbility>,
@@ -933,13 +937,18 @@ pub struct GrantedPlayFrom {
     pub source_id: ObjectId,
     pub zone: Zone,
     pub usage_limit: Option<GrantUsageLimit>,
+    pub shared_usage_id: Option<SharedGrantUsageId>,
     pub constraints: PlayFromConstraints,
 }
 
 impl GrantedPlayFrom {
     /// Separate static abilities on the same permanent can supply independent prices.
+    /// A price bound to another permission's use budget belongs to that
+    /// permission only, so it never replaces this one's ordinary cost
+    /// (Court of Locthwain's paid play permission beside its free cast).
     pub(crate) fn requires_alternative(&self, alternatives: &[GrantedAlternativeCast]) -> bool {
         alternatives.iter().any(|alt| alt.source_id == self.source_id
+            && (alt.shared_usage_id.is_none() || alt.shared_usage_id == self.shared_usage_id)
             && !matches!((&self.permission_identity, &alt.permission_identity),
                 (Some(GrantPermissionIdentity::Static { .. }), Some(GrantPermissionIdentity::Static { .. }))
                 if self.permission_identity != alt.permission_identity))
@@ -1922,6 +1931,7 @@ impl GrantRegistry {
             .into_iter()
             .filter_map(|grant| materialize_granted_alternative_cast(game, card_id, grant))
             .chain(game.plotted_cast_permission(card_id, zone, player))
+            .chain(game.object(card_id).and_then(|card| game.foretold_face_cast_permission(card, zone, player)))
             .collect()
     }
 
@@ -1941,6 +1951,7 @@ impl GrantRegistry {
                     source_id: grant.source.source_id(),
                     zone: grant.zone,
                     usage_limit: grant.usage_limit,
+                    shared_usage_id: grant.shared_usage_id,
                     constraints: grant.play_from_constraints.clone(),
                 }),
                 _ => None,
@@ -2613,8 +2624,25 @@ impl GrantRegistry {
                                 permission_identity: Some(permission_identity.clone()),
                                 target_id,
                                 target_stable_id: None,
-                                filter: (spec.filter != ObjectFilter::source())
-                                    .then(|| normalize_grant_filter(spec.filter.clone())),
+                                filter: (spec.filter != ObjectFilter::source()).then(|| {
+                                    let mut filter = normalize_grant_filter(spec.filter.clone());
+                                    // "Cast spells from your hand" (Omniscience,
+                                    // Omnipresence) compiles to a Hand-zone card filter
+                                    // without an owner. "Your hand" is the beneficiary's
+                                    // own, so another player's hand opened by Sen Triplets
+                                    // is not covered (CR 402.1, 601.3). Zone-less "spells
+                                    // you cast" permissions (Jodah, Dracogenesis) still
+                                    // cover a spell cast from any hand.
+                                    if spec.zone == Zone::Hand
+                                        && !is_source_self_grant
+                                        && filter.zone == Some(Zone::Hand)
+                                        && filter.owner.is_none()
+                                    {
+                                        filter.owner =
+                                            Some(crate::target::PlayerFilter::Specific(player.id));
+                                    }
+                                    filter
+                                }),
                                 zone: spec.zone,
                                 player: player.id,
                                 grantable: spec.grantable.clone(),
@@ -2710,6 +2738,7 @@ fn materialize_granted_alternative_cast(
         source_id: grant.source.source_id(),
         zone: grant.zone,
         usage_limit: usage_limit.or(grant.usage_limit),
+        shared_usage_id: grant.shared_usage_id,
         constraints: grant.play_from_constraints,
         cast_this_way_grants: grant.cast_this_way_grants,
         permanent_this_way_grants: grant.permanent_this_way_grants,

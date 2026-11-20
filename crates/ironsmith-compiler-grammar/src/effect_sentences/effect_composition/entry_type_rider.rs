@@ -45,6 +45,25 @@ pub(crate) fn parse_entry_type_rider(
     Ok(Some(effects))
 }
 
+/// The program reader's exact-type sentence ("It's a Treasure artifact with
+/// "..." and it loses all other card types", Vraska, the Silencer) describes
+/// the arrival printed just before it (CR 611.2e): fold it into that move's
+/// entry characteristics so the object never enters with its old types.
+/// Leaves `effects` untouched and returns false when no arrival owns it.
+pub(crate) fn attach_described_entry(effects: &mut Vec<EffectAst>, description: &[EffectAst]) -> bool {
+    let mut changes = BattlefieldEntryTypeChanges::default();
+    let mut grants = Vec::new();
+    if !collect_descriptions(description, &mut changes, &mut grants) {
+        return false;
+    }
+    let mut attached = effects.clone();
+    if !attach_to_arrival(&mut attached, &changes, &grants) {
+        return false;
+    }
+    *effects = attached;
+    true
+}
+
 fn attach_to_arrival(effects: &mut [EffectAst], changes: &BattlefieldEntryTypeChanges, grants: &[GrantedAbilityAst]) -> bool {
     for effect in effects.iter_mut().rev() {
         // Inline counters already belong to this arrival and are fused by the
@@ -121,6 +140,17 @@ fn attach_to_arrival(effects: &mut [EffectAst], changes: &BattlefieldEntryTypeCh
                 entry
                     .added_subtypes
                     .extend(changes.added_subtypes.iter().copied());
+                if let Some(types) = &changes.set_card_types {
+                    if entry.set_card_types.is_some() {
+                        return false;
+                    }
+                    entry.set_card_types = Some(types.clone());
+                }
+                for family in &changes.removed_subtype_families {
+                    if !entry.removed_subtype_families.contains(family) {
+                        entry.removed_subtype_families.push(*family);
+                    }
+                }
                 true
             }
             EffectAst::Permissions(
@@ -135,6 +165,14 @@ fn attach_to_arrival(effects: &mut [EffectAst], changes: &BattlefieldEntryTypeCh
                 if_false,
                 ..
             }) if if_false.is_empty() => attach_to_arrival(if_true, changes, grants),
+            // "You may pay {1}. If you do, return that card to the
+            // battlefield ... It's a Treasure artifact" (Vraska, the
+            // Silencer): the gated arrival still owns the description.
+            EffectAst::Conditionals(
+                ConditionalEffectAst::IfResult { effects, .. }
+                | ConditionalEffectAst::ResolvedIfResult { effects, .. }
+                | ConditionalEffectAst::IfEffectResult { if_true: effects, .. },
+            ) => attach_to_arrival(effects, changes, grants),
             _ => false,
         };
     }
@@ -152,6 +190,27 @@ fn collect_descriptions(effects: &[EffectAst], changes: &mut BattlefieldEntryTyp
             EffectAst::SubjectVerb(SubjectVerbEffectAst { action: SubjectVerbActionAst::Characteristics(CharacteristicActionAst::AddSubtypes {
                 target, subtypes, duration: ironsmith_core::Until::Forever,
             }), .. }) if is_arrival_reference(target) => changes.added_subtypes.extend_from_slice(subtypes),
+            // "It's a Treasure artifact ... and it loses all other card
+            // types": the arrival's replacement card types (CR 205.1a). A
+            // subtype must correspond to one of its types (CR 205.3d).
+            EffectAst::SubjectVerb(SubjectVerbEffectAst { action: SubjectVerbActionAst::Characteristics(CharacteristicActionAst::SetCardTypes {
+                target, card_types, duration: ironsmith_core::Until::Forever,
+            }), .. }) if is_arrival_reference(target) && !card_types.is_empty() && changes.set_card_types.is_none() => {
+                use crate::types::{CardType, SubtypeFamily};
+                for (card_type, family) in [
+                    (CardType::Creature, SubtypeFamily::Creature),
+                    (CardType::Land, SubtypeFamily::Land),
+                    (CardType::Artifact, SubtypeFamily::Artifact),
+                    (CardType::Enchantment, SubtypeFamily::Enchantment),
+                    (CardType::Planeswalker, SubtypeFamily::Planeswalker),
+                    (CardType::Battle, SubtypeFamily::Battle),
+                ] {
+                    if !card_types.contains(&card_type) && !changes.removed_subtype_families.contains(&family) {
+                        changes.removed_subtype_families.push(family);
+                    }
+                }
+                changes.set_card_types = Some(card_types.clone());
+            }
             EffectAst::Sequence { effects } | EffectAst::Coordinated { effects, .. } | EffectAst::CommaThen { effects } => {
                 if !collect_descriptions(effects, changes, grants) { return false; }
             }

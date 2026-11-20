@@ -68,8 +68,8 @@ fn test_card(name: &str, card_types: Vec<CardType>) -> CardDefinition {
 }
 
 fn resolve_river_grasp(
-    blue: u32,
-    black: u32,
+    blue: u64,
+    black: u64,
 ) -> (
     crate::GameState,
     PlayerId,

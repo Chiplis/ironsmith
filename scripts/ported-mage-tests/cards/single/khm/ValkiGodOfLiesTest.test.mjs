@@ -59,15 +59,6 @@ registerPortedMageTests({
           "abilityKind": "Triggered"
         },
         {
-          "op": "setObjectChoices",
-          "player": 0,
-          "choices": [
-            {
-              "alias": "@kraken"
-            }
-          ]
-        },
-        {
           "op": "waitStackResolved",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN"
@@ -102,6 +93,8 @@ registerPortedMageTests({
         {
           "op": "setObjectChoices",
           "player": 0,
+          "description": "Choose exactly 1 creature card",
+          "note": "The enter trigger's exile of the only revealed creature card is a forced one-of-one choice (CR 608.2d) and is not prompted, so only the activated ability's choice is scripted.",
           "choices": [
             {
               "alias": "@kraken"

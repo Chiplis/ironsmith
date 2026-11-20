@@ -55,7 +55,14 @@ pub(crate) fn resolving_source_stack_entry(ctx: &ExecutionContext) -> StackEntry
         .collect();
     entry.target_assignments = ctx.target_assignments.clone();
     entry.target_distributions = ctx.target_distributions.clone();
-    entry.iteration = ctx.iteration;
+    // A copy keeps the stack object's own bindings (CR 707.10), never the
+    // resolution-time player a nested "may"/"for each" bound: Chain of
+    // Vapor's copy is made while "they" names the sacrificing player, and
+    // that binding must not become the copy's "that player" / chooser.
+    // Only the trigger-bound player belongs to the ability itself.
+    entry.iteration.iterated_player = ctx.iteration.trigger_bound_player;
+    entry.iteration.iterated_object = None;
+    entry.iteration.trigger_bound_player = ctx.iteration.trigger_bound_player;
     entry.x_value = ctx.x_value;
     entry.mana_spent_on_activation = ctx.mana.activation_payment.clone();
     entry.activation_mana_budget = ctx.mana.activation_mana_budget.clone();
@@ -94,13 +101,22 @@ pub(crate) fn stack_entry_for_copy_target(
         // Several activations can share one permanent's object ID. The event
         // identifies the activation that triggered this copy, including when
         // that entry has since left the stack and no copy can be made.
+        // A countered activation is still copied as it last existed on the
+        // stack (CR 608.2h).
         return Ok(game
             .stack
             .iter()
             .find(|entry| {
                 entry.is_ability && entry.object_id == target_id && entry.provenance == provenance
             })
-            .cloned());
+            .cloned()
+            .or_else(|| {
+                game.turn_store
+                    .departed_ability_entries
+                    .get(&provenance)
+                    .filter(|entry| entry.is_ability && entry.object_id == target_id)
+                    .map(|entry| entry.as_ref().clone())
+            }));
     }
     if let Some(triggered) = ctx
         .triggering_event
@@ -147,7 +163,13 @@ pub(crate) fn stack_entry_for_copy_target(
         .object(target_id)
         .ok_or(ExecutionError::ObjectNotFound(target_id))?;
     if target_id == ctx.source && target_obj.zone == Zone::Stack {
-        return Ok(Some(resolving_source_stack_entry(ctx)));
+        let mut entry = resolving_source_stack_entry(ctx);
+        // CR 707.10: the copy keeps the choices made when the spell was cast,
+        // not the objects this resolution has tagged so far. Chain of Vapor's
+        // copy otherwise inherits "the land sacrificed this way" from the
+        // original's resolution, and its own sacrificing player never decides.
+        entry.tagged_objects = target_obj.cast_tagged_objects.clone();
+        return Ok(Some(entry));
     }
 
     Ok(None)
@@ -178,6 +200,64 @@ pub(crate) fn departed_source_spell_lki(
     let mut object = object.clone();
     object.zone = Zone::Stack;
     Some((object, entry.clone()))
+}
+
+/// "Each other player copies that spell" (Hive Mind) and "copy that spell"
+/// (Krark, the Thumbless) name the triggering spell without targeting it. If
+/// it left the stack before the instruction resolved (countered by Chalice of
+/// the Void, or returned to hand by another trigger), the copy is still made
+/// from the spell as it last existed on the stack (CR 608.2h). Returns `None`
+/// while any referenced spell is still on the stack.
+fn departed_tagged_spell_lki(
+    game: &GameState,
+    ctx: &ExecutionContext,
+    spec: &ChooseSpec,
+) -> Option<Vec<(crate::ids::ObjectId, Object, StackEntry)>> {
+    if spec.is_target() {
+        return None;
+    }
+    let ChooseSpec::Tagged(tag) = spec.base() else {
+        return None;
+    };
+    let snapshots = ctx.get_tagged_all(tag)?;
+    let mut ids = snapshots
+        .iter()
+        .filter(|snapshot| snapshot.zone == Zone::Stack)
+        .map(|snapshot| snapshot.object_id)
+        .collect::<Vec<_>>();
+    if let Some(cast) = ctx
+        .triggering_event
+        .as_ref()
+        .and_then(|event| event.downcast::<crate::events::SpellCastEvent>())
+        && !ids.contains(&cast.spell)
+        && cast.snapshot.as_ref().is_some_and(|cast_snapshot| {
+            snapshots
+                .iter()
+                .any(|snapshot| snapshot.stable_id == cast_snapshot.stable_id)
+        })
+    {
+        ids.push(cast.spell);
+    }
+    if ids.is_empty() {
+        return None;
+    }
+    let mut departed = Vec::with_capacity(ids.len());
+    for id in ids {
+        if game.object(id).is_some_and(|object| object.zone == Zone::Stack)
+            || game
+                .stack
+                .iter()
+                .any(|entry| !entry.is_ability && entry.object_id == id)
+        {
+            return None;
+        }
+        let lki = game.turn_store.cast_spell_lki.get(&id)?;
+        let (object, entry) = lki.as_ref();
+        let mut object = object.clone();
+        object.zone = Zone::Stack;
+        departed.push((id, object, entry.clone()));
+    }
+    Some(departed)
 }
 
 /// The copy instruction keeps its actor/modifiers/context while a replacement
@@ -409,6 +489,17 @@ pub(crate) fn create_stack_copy_from_object(
 /// this the object would linger for the rest of the game. The object is kept
 /// while any stack entry still uses it (an ability of a spell copy, such as
 /// a copied Lightning Storm, uses the spell copy itself).
+/// Retain an ability entry removed from the stack without resolving
+/// (countered, exiled), so a pending "copy that ability" still copies it.
+pub(crate) fn record_departed_ability_entry(game: &mut GameState, entry: &StackEntry) {
+    if !entry.is_ability {
+        return;
+    }
+    game.turn_store
+        .departed_ability_entries
+        .insert(entry.provenance, std::sync::Arc::new(entry.clone()));
+}
+
 pub(crate) fn discard_departed_ability_copy_object(game: &mut GameState, entry: &StackEntry) {
     if !entry.is_ability
         || entry
@@ -561,7 +652,7 @@ impl CopyCharacteristicModifiers for CopySpellEffect {
 
 /// Propose the number of spell copies so replacements may change it. `None`
 /// while a replacement-order choice is pending.
-fn proposed_spell_copy_count(
+pub(crate) fn proposed_spell_copy_count(
     game: &mut GameState,
     ctx: &mut ExecutionContext,
     copier: crate::ids::PlayerId,
@@ -640,10 +731,15 @@ impl EffectExecutor for CopySpellEffect {
             });
         let source_spell_departed = matches!(self.target, ChooseSpec::Source)
             && departed_source_spell_lki(game, ctx, ctx.source).is_some();
+        let departed_tagged = (referenced_activation.is_none() && !source_spell_departed)
+            .then(|| departed_tagged_spell_lki(game, ctx, &self.target))
+            .flatten();
         let target_ids = if let Some(activation) = referenced_activation {
             vec![activation.source]
         } else if source_spell_departed {
             vec![ctx.source]
+        } else if let Some(departed) = departed_tagged.as_ref() {
+            departed.iter().map(|(id, _, _)| *id).collect()
         } else {
             match resolve_objects_for_effect(game, ctx, &self.target) {
                 Ok(targets) => targets,
@@ -697,6 +793,13 @@ impl EffectExecutor for CopySpellEffect {
                 }
                 continue;
             }
+            let departed_lki = departed_tagged
+                .as_ref()
+                .and_then(|departed| departed.iter().find(|(id, _, _)| *id == target_id))
+                .map(|(_, object, entry)| (object.clone(), entry.clone()));
+            let (target, original_entry) = if let Some(lki) = departed_lki {
+                lki
+            } else {
             let Some(original_entry) = stack_entry_for_copy_target(
                 game,
                 target_id,
@@ -731,6 +834,8 @@ impl EffectExecutor for CopySpellEffect {
                         .flatten()
                 })
                 .ok_or(ExecutionError::ObjectNotFound(target_id))?;
+            (target, original_entry)
+            };
             let this_count = if original_entry.is_ability {
                 copy_count
             } else {

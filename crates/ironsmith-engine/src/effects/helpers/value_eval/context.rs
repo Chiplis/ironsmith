@@ -313,7 +313,7 @@ impl<'a, 'game> EvaluationContext<'a, 'game> {
                     false
                 };
                 if matched {
-                    count += 1;
+                    count = count.saturating_add(1);
                 }
             }
             return count;
@@ -325,9 +325,16 @@ impl<'a, 'game> EvaluationContext<'a, 'game> {
             .filter(|object| filter.matches(object, &filter_ctx, self.game));
         // Set-level constraints ("with different powers") limit the counted
         // collection, not each object.
-        (crate::static_abilities::set_constrained_count(filter, matching, self.game)
-            + count_as_card_named_for_spell_effect_bonus(self.game, filter, ctx, &filter_ctx))
-            as i32
+        i32::try_from(
+            crate::static_abilities::set_constrained_count(filter, matching, self.game)
+                .saturating_add(count_as_card_named_for_spell_effect_bonus(
+                    self.game,
+                    filter,
+                    ctx,
+                    &filter_ctx,
+                )),
+        )
+        .unwrap_or(i32::MAX)
     }
 
     /// Size of the largest group of matching objects sharing one name.
@@ -350,7 +357,8 @@ impl<'a, 'game> EvaluationContext<'a, 'game> {
         }
         let mut counts: std::collections::HashMap<String, i32> = std::collections::HashMap::new();
         for name in names {
-            *counts.entry(name).or_default() += 1;
+            let count = counts.entry(name).or_default();
+            *count = count.saturating_add(1);
         }
         counts.into_values().max().unwrap_or(0)
     }
@@ -457,7 +465,7 @@ impl<'a, 'game> EvaluationContext<'a, 'game> {
             };
             let number = i64::from(number);
             result = Some(match (result, reduction) {
-                (Some(total), Reduction::Sum) => total + number,
+                (Some(total), Reduction::Sum) => total.saturating_add(number),
                 (Some(min), Reduction::Min) => min.min(number),
                 (Some(max), Reduction::Max) => max.max(number),
                 (None, _) => number,
@@ -626,11 +634,7 @@ impl<'a, 'game> EvaluationContext<'a, 'game> {
                 }
             }),
         }
-        i64::try_from(names.len()).map_err(|_| {
-            ExecutionError::UnresolvableValue(
-                "distinct current names exceed the scalar range".into(),
-            )
-        })
+        Ok(i64::try_from(names.len()).unwrap_or(i64::MAX))
     }
 
     pub(super) fn visit_property_objects(
@@ -741,7 +745,8 @@ fn checked_kicker_count(paid: &crate::cost::OptionalCostsPaid) -> Option<i32> {
             )
         })
         .try_fold(0i32, |total, (_, count)| {
-            total.checked_add(i32::try_from(*count).ok()?)
+            // Game quantities saturate at the signed characteristic range.
+            Some(total.saturating_add(ironsmith_core::quantity::clamp_i32_from_u32(*count)))
         })
 }
 
@@ -921,13 +926,7 @@ impl EvaluationContext<'_, '_> {
                 if snapshot.zone != crate::zone::Zone::Battlefield {
                     return Err(missing());
                 }
-                total
-                    .checked_add(i64::from(property.snapshot(snapshot).unwrap_or(0)))
-                    .ok_or_else(|| {
-                        ExecutionError::UnresolvableValue(
-                            "sacrificed-object characteristic sum exceeds the scalar range".into(),
-                        )
-                    })
+                Ok(total.saturating_add(i64::from(property.snapshot(snapshot).unwrap_or(0))))
             });
         }
         if matches!(property, NumericProperty::Power | NumericProperty::BasePower
@@ -984,16 +983,20 @@ impl EvaluationContext<'_, '_> {
                 "linked exile quantity requires the original source identity",
             ));
         }
-        let owner = ctx.linked_exile_owner.as_ref().ok_or_else(|| {
-            missing("linked exile quantity requires explicit pair and acquisition metadata")
-        })?;
-        let members = self
-            .game
-            .linked_exile_pair_members(owner)
-            .map_err(|error| {
-                self.game.record_token_resource_failure(&error);
-                error
-            })?;
+        // A program without a stamped pair (an unpaired imprint reader such as
+        // Soul Foundry's "{X}, {T}: ... X is the mana value of that card")
+        // reads the source's exiled-with links, exactly as its resolution
+        // binds the source-exiled tag (CR 607.2a).
+        let members = match ctx.linked_exile_owner.as_ref() {
+            Some(owner) => self
+                .game
+                .linked_exile_pair_members(owner)
+                .map_err(|error| {
+                    self.game.record_token_resource_failure(&error);
+                    error
+                })?,
+            None => self.game.get_exiled_with_source_links(ctx.source),
+        };
         members.iter().try_fold(0i64, |total, id| {
             let object = self.game.object(*id).ok_or_else(|| {
                 missing("linked exile quantity has an unavailable linked object")
@@ -1013,11 +1016,7 @@ impl EvaluationContext<'_, '_> {
             // Checked absence is zero (CR 107.2); failed discovery and
             // range validation never fall back to a printed card value.
             let number = read(&chars);
-            total.checked_add(number).ok_or_else(|| {
-                ExecutionError::UnresolvableValue(
-                    "linked exile characteristic sum exceeds the scalar range".into(),
-                )
-            })
+            Ok(total.saturating_add(number))
         }).map(Some)
     }
 
@@ -1093,6 +1092,73 @@ impl EvaluationContext<'_, '_> {
             && ctx.get_tagged_all(tag).is_some_and(Vec::is_empty)
         {
             return Ok(0);
+        }
+        // "Exile target creature. Draw cards equal to its power": this
+        // instruction's own move took the referenced permanent off the
+        // battlefield, where the reference expects it, so its power is its
+        // last known information there (CR 608.2h), not the new card's. A
+        // melded permanent splits into several cards (CR 713.8c); its
+        // departure memory leads to the first of them.
+        if property.is_power_or_toughness()
+            && let ChooseSpec::Tagged(tag) = spec.base()
+            && ironsmith_core::tag::pre_move_history_base_tag(tag).is_none()
+            && let Some(current) = ctx.get_tagged(tag)
+            && current.zone != crate::zone::Zone::Battlefield
+            && self
+                .game
+                .object(current.object_id)
+                .is_some_and(|object| object.zone == current.zone)
+            && let Some(departed) = ctx
+                .get_tagged_all(ironsmith_core::tag::pre_move_history_tag(tag))
+                .and_then(|history| {
+                    history.iter().find(|before| {
+                        before.zone == crate::zone::Zone::Battlefield
+                            && (before.stable_id == current.stable_id
+                                || self
+                                    .game
+                                    .current_object_id_after_zone_change(before.object_id)
+                                    == Some(current.object_id)
+                                || self
+                                    .game
+                                    .zone_change_result_ids(before.object_id)
+                                    .contains(&current.object_id))
+                    })
+                })
+        {
+            return property.snapshot(departed).ok_or_else(|| missing("had"));
+        }
+        // "Put target creature card from a graveyard onto the battlefield.
+        // You lose life equal to its mana value" (Reanimate): the reference
+        // expects the card in the zone it was chosen in, and this
+        // instruction's own move took it out of that zone, so the effect uses
+        // its last known information there (CR 608.2h), not the new
+        // permanent's (which may have entered as a copy, CR 707.2).
+        if matches!(property, NumericProperty::ManaValue)
+            && let ChooseSpec::Tagged(tag) = spec.base()
+            && ironsmith_core::tag::pre_move_history_base_tag(tag).is_none()
+            && let Some(current) = ctx.get_tagged(tag)
+            && self
+                .game
+                .object(current.object_id)
+                .is_some_and(|object| object.zone == current.zone)
+            && let Some(departed) = ctx
+                .get_tagged_all(ironsmith_core::tag::pre_move_history_tag(tag))
+                .and_then(|history| {
+                    history.iter().find(|before| {
+                        before.zone != current.zone
+                            && (before.stable_id == current.stable_id
+                                || self
+                                    .game
+                                    .current_object_id_after_zone_change(before.object_id)
+                                    == Some(current.object_id)
+                                || self
+                                    .game
+                                    .zone_change_result_ids(before.object_id)
+                                    .contains(&current.object_id))
+                    })
+                })
+        {
+            return property.snapshot(departed).ok_or_else(|| missing("had"));
         }
         // A tagged object that left its zone is read from its last known
         // information before any live lookup, which can no longer find it
@@ -1171,11 +1237,7 @@ impl EvaluationContext<'_, '_> {
         }
     }
     pub(super) fn add_spell_metric(&self, total: i64, value: i64) -> Result<i64, ExecutionError> {
-        total.checked_add(value).ok_or_else(|| {
-            ExecutionError::UnresolvableValue(
-                "spell metric total exceeds the wide value range".into(),
-            )
-        })
+        Ok(total.saturating_add(value))
     }
     pub(super) fn tagged_spell_id(
         &self,
@@ -1202,9 +1264,9 @@ mod referenced_kicker_count_tests {
         ];
         assert_eq!(checked_kicker_count(&paid), Some(4));
         paid.costs[1].1 = i32::MAX as u32;
-        assert_eq!(checked_kicker_count(&paid), None);
+        assert_eq!(checked_kicker_count(&paid), Some(i32::MAX));
         paid.costs[1].1 = u32::MAX;
-        assert_eq!(checked_kicker_count(&paid), None);
+        assert_eq!(checked_kicker_count(&paid), Some(i32::MAX));
     }
 }
 

@@ -330,6 +330,10 @@ pub(crate) fn tagged_object_follow_permitted(
             | crate::events::EventKind::ObjectBecameUnattached
             | crate::events::EventKind::PermanentPhasedIn
             | crate::events::EventKind::PermanentPhasedOut
+            // "Whenever a land is tapped for mana, return it" (Storm
+            // Cauldron): a land sacrificed to pay that mana ability's cost
+            // is a new object in the graveyard (CR 400.7).
+            | crate::events::EventKind::ManaAdded
     ) {
         return false;
     }
@@ -516,6 +520,20 @@ pub(crate) fn resolve_source_object_id(
 ) -> Option<ObjectId> {
     if game.object(ctx.source).is_some() {
         return Some(ctx.source);
+    }
+    // CR 400.7j: a spell or activated ability whose cost moved its own
+    // source to a public zone can find the exact object that payment made
+    // ("{6}, Exile Tatsumasa: ... Return Tatsumasa to the battlefield when
+    // that token dies"). Only the recorded receipt counts; a card that has
+    // moved again since is a new object.
+    if ctx.triggering_event.is_none()
+        && let Some(arrivals) = ctx.get_tagged_all(crate::tag::SOURCE_COST_PUBLIC_ARRIVAL_TAG)
+        && let [arrival] = arrivals.as_slice()
+        && game.object(arrival.object_id).is_some_and(|object| {
+            object.zone == arrival.zone && object.stable_id == arrival.stable_id
+        })
+    {
+        return Some(arrival.object_id);
     }
     // Self-discard triggers can find exactly the public arrival made by
     // that discard, including when scheduling a later return. Never follow a
@@ -1004,13 +1022,7 @@ fn counters_put_by_outcome(
                 .is_some_and(|object| filter.matches(object, filter_ctx, game)),
             (crate::marker::MarkerLocation::Player(_), Some(_)) => false,
         })
-        .try_fold(0i64, |sum, event| {
-            sum.checked_add(i64::from(event.amount)).ok_or_else(|| {
-                ExecutionError::UnresolvableValue(
-                    "counter placement metric exceeds supported range".into(),
-                )
-            })
-        })
+        .try_fold(0i64, |sum, event| Ok(sum.saturating_add(i64::from(event.amount))))
 }
 
 fn resolve_capped_damage_result(
@@ -1100,8 +1112,7 @@ fn resolve_capped_damage_result(
             }
         }
     }
-    crate::events::damage::checked_damage_count(amount, "recipient-capped damage result")
-        .map(i64::from)
+    Ok(i64::try_from(amount).unwrap_or(i64::MAX))
 }
 
 fn resolve_prior_effect_metric(
@@ -1250,15 +1261,13 @@ fn resolve_prior_effect_metric(
             };
             (*cards).clone()
         };
-        return i64::try_from(
+        return Ok(i64::try_from(
             cards
                 .iter()
                 .filter(|card| card.colors.contains(*color))
                 .count(),
         )
-        .map_err(|_| {
-            ExecutionError::UnresolvableValue("revealed card count exceeds supported range".into())
-        });
+        .unwrap_or(i64::MAX));
     }
     if query.action == Some(ironsmith_core::PriorEffectAction::ChosenNumber) {
         if query.source != EffectMetricSource::Outcome
@@ -1304,15 +1313,14 @@ fn resolve_prior_effect_metric(
         let players = query.player.as_ref()
             .map(|player| resolve_player_filter_to_list(game, player, &filter_ctx, ctx))
             .transpose()?;
-        let mut events = outcome.instruction_result().events_of_type::<crate::events::KeywordActionEvent>()
+        let events = outcome.instruction_result().events_of_type::<crate::events::KeywordActionEvent>()
             .filter(|event| event.action == crate::events::KeywordActionKind::Investigate
                 && event.amount > 0
                 && players.as_ref().is_none_or(|players| players.contains(&event.player)));
         return if query.metric == EffectMetric::PlayersWithPositiveCount {
             Ok(events.map(|event| event.player).collect::<HashSet<_>>().len() as i64)
         } else {
-            events.try_fold(0i64, |sum, event| sum.checked_add(i64::from(event.amount))
-                .ok_or_else(|| ExecutionError::UnresolvableValue("investigate count exceeds supported range".into())))
+            Ok(events.fold(0i64, |sum, event| sum.saturating_add(i64::from(event.amount))))
         };
     }
     if query.action == Some(ironsmith_core::PriorEffectAction::ManaLost) {
@@ -1341,11 +1349,7 @@ fn resolve_prior_effect_metric(
             .events_of_type::<crate::events::ManaLostEvent>()
             .filter(|loss| loss.converted_to.is_none())
             .filter(|loss| players.as_ref().is_none_or(|players| players.contains(&loss.player)))
-            .try_fold(0i64, |sum, loss| {
-                sum.checked_add(i64::from(loss.mana.total())).ok_or_else(|| {
-                    ExecutionError::UnresolvableValue("mana lost exceeds supported range".into())
-                })
-            });
+            .try_fold(0i64, |sum, loss| Ok(sum.saturating_add(i64::from(loss.mana.total()))));
     }
     if query.metric == EffectMetric::CountersPut {
         if query.player.is_some() || destination_memory.is_some() {
@@ -1387,31 +1391,54 @@ fn resolve_prior_effect_metric(
         .transpose()?;
 
     if query.action == Some(ironsmith_core::PriorEffectAction::Drawn)
-        && query.filter.is_none()
+        && destination_memory.is_none()
         && matches!(
             query.metric,
             EffectMetric::Count | EffectMetric::AffectedCount
         )
     {
-        if let Some(objects) = crate::effects::outcome_recording::action_objects(
-            outcome,
-            ironsmith_core::PriorEffectAction::Drawn,
-            selected_players.as_deref(),
-        ) {
-            return Ok(objects.len() as i64);
+        // "for each card drawn this way" counts the cards the instructed
+        // player actually drew, including cards a replacement had that
+        // player draw instead (Thought Reflection) and excluding draws a
+        // replacement skipped or gave to another player (Notion Thief, Alms
+        // Collector's other draw) — Ancient Excavation ruling, CR 614.11.
+        // CR 121.6c's original-card rule governs actions performed on a drawn
+        // card, not this count. The aggregate outcome keeps every draw event.
+        let drawers = selected_players.clone().unwrap_or_else(|| {
+            vec![ctx.iteration.iterated_player.unwrap_or(ctx.controller)]
+        });
+        let aggregate = ctx.get_outcome(effect_id).unwrap_or(outcome);
+        let mut filter = query.filter.clone();
+        if let Some(filter) = filter.as_mut() {
+            filter.zone = None;
+            for branch in &mut filter.any_of {
+                branch.zone = None;
+            }
         }
-        return outcome
-            .events_of_type::<crate::events::CardsDrawnEvent>()
-            .filter(|event| {
-                selected_players
-                    .as_ref()
-                    .is_none_or(|players| players.contains(&event.player))
-            })
-            .try_fold(0i64, |sum, event| {
-                sum.checked_add(i64::from(event.amount())).ok_or_else(|| {
-                    ExecutionError::UnresolvableValue("draw metric exceeds supported range".into())
-                })
-            });
+        let mut count = 0i64;
+        for event in aggregate.events_of_type::<crate::events::CardsDrawnEvent>() {
+            if !drawers.contains(&event.player) {
+                continue;
+            }
+            for (index, card) in event.cards.iter().enumerate() {
+                let matches = match filter.as_ref() {
+                    None => true,
+                    Some(filter) => event
+                        .snapshots
+                        .get(index)
+                        .filter(|snapshot| snapshot.object_id == *card)
+                        .cloned()
+                        .or_else(|| ObjectSnapshot::from_object_id(game, *card))
+                        .is_some_and(|snapshot| {
+                            filter.matches_snapshot(&snapshot, &filter_ctx, game)
+                        }),
+                };
+                if matches {
+                    count = count.saturating_add(1);
+                }
+            }
+        }
+        return Ok(count);
     }
 
     if query.source == EffectMetricSource::Outcome
@@ -1430,7 +1457,7 @@ fn resolve_prior_effect_metric(
                 .as_ref()
                 .is_none_or(|players| players.contains(&player))
         };
-        let mut amounts = outcome.events.iter().filter_map(|event| {
+        let amounts = outcome.events.iter().filter_map(|event| {
             if query.metric == EffectMetric::LifeGained {
                 event
                     .downcast::<LifeGainEvent>()
@@ -1443,13 +1470,7 @@ fn resolve_prior_effect_metric(
                     .map(|life| life.amount)
             }
         });
-        return amounts.try_fold(0i64, |sum, amount| {
-            Some(i64::from(amount))
-                .and_then(|amount| sum.checked_add(amount))
-                .ok_or_else(|| {
-                    ExecutionError::UnresolvableValue("life metric exceeds supported range".into())
-                })
-        });
+        return Ok(amounts.fold(0i64, |sum, amount| sum.saturating_add(i64::from(amount))));
     }
 
     let action_memory = if query.source == EffectMetricSource::AffectedObjects {
@@ -1659,7 +1680,8 @@ where
         let mut types_on_object = HashSet::new();
         for subtype in subtypes {
             if subtype.is_creature_type() && types_on_object.insert(subtype) {
-                *counts.entry(subtype).or_default() += 1;
+                let count = counts.entry(subtype).or_default();
+                *count = count.saturating_add(1);
             }
         }
     }
@@ -1695,6 +1717,10 @@ fn greatest_shared_creature_type_count_for_filter(
 /// Unlocked doors on a Room (CR 709.5): none until a door unlocks, two once
 /// fully unlocked, otherwise one. Non-Rooms have no doors.
 pub(crate) fn room_unlocked_door_count(game: &GameState, object: &crate::object::Object) -> i32 {
+    if game.copied_room_halves(object.id).is_some() {
+        let (first, second) = game.copied_room_unlocked_halves(object.id);
+        return i32::from(first) + i32::from(second);
+    }
     if !object.subtypes.contains(&crate::types::Subtype::Room)
         || game.room_has_no_unlocked_door(object.id)
     {
@@ -1725,11 +1751,8 @@ pub fn resolve_nonnegative_u32(
     value: &Value,
     ctx: &ExecutionContext,
 ) -> Result<u32, ExecutionError> {
-    u32::try_from(resolve_value_wide(game, value, ctx)?.max(0)).map_err(|_| {
-        ExecutionError::UnresolvableValue(
-            "resolved quantity exceeds the unsigned event range".into(),
-        )
-    })
+    // Game quantities saturate at the unsigned event range.
+    Ok(ironsmith_core::quantity::clamp_u32(resolve_value_wide(game, value, ctx)?))
 }
 
 /// Resolve a requested quantity for an operation bounded by available resources.
@@ -1743,11 +1766,7 @@ pub fn resolve_bounded_nonnegative_u32(
     let quantity = resolve_value_wide(game, value, ctx)?
         .max(0)
         .min(i64::from(available));
-    u32::try_from(quantity).map_err(|_| {
-        ExecutionError::InternalError(
-            "bounded quantity exceeded its unsigned resource range".into(),
-        )
-    })
+    Ok(ironsmith_core::quantity::clamp_u32(quantity))
 }
 
 pub fn resolve_value(
@@ -3153,6 +3172,22 @@ pub fn normalize_object_selection(
     selected
 }
 
+/// "Up to N target ..." whose own announced slot holds no targets (none were
+/// chosen, or every chosen one became illegal) affects nothing, even when
+/// other slots of the same ability hold targets (CR 601.2c, 608.2b). A
+/// per-player slot ("for each player, ... that player controls") belongs to
+/// the iteration whose player it was announced for.
+fn announced_up_to_slot_is_empty(spec: &ChooseSpec, ctx: &ExecutionContext) -> bool {
+    let mut own = ctx.target_assignments.iter().filter(|assignment| {
+        assignment.spec == *spec
+            || (crate::targeting::target_spec_matches_chooser_assignment(spec, &assignment.spec)
+                && matches!(assignment.spec.base(), ChooseSpec::Object(filter)
+                    if matches!(filter.controller, Some(PlayerFilter::Specific(player))
+                        if ctx.iteration.iterated_player == Some(player))))
+    }).peekable();
+    own.peek().is_some() && own.all(|assignment| assignment.range.is_empty())
+}
+
 fn matching_object_targets_for_spec(
     game: &GameState,
     spec: &ChooseSpec,
@@ -3475,8 +3510,31 @@ pub(super) fn candidate_object_ids_for_filter(
     ctx: &ExecutionContext,
 ) -> Vec<ObjectId> {
     let filter_ctx = ctx.filter_context(game);
-    candidate_ids_for_filter(game, filter)
-        .iter()
+    let mut ids = candidate_ids_for_filter(game, filter);
+    // "exile a creature card they revealed this way" (Valki): a zone-less
+    // filter that names members of a tagged set locates them where the set
+    // recorded them (a revealed hand), not only on the battlefield default.
+    // Only the exact tagged incarnation qualifies.
+    if filter.zone.is_none() && filter.any_of.is_empty() {
+        for constraint in &filter.tagged_constraints {
+            if constraint.relation != crate::filter::TaggedOpbjectRelation::IsTaggedObject {
+                continue;
+            }
+            let Some(snapshots) = ctx.get_tagged_all(&constraint.tag) else {
+                continue;
+            };
+            for snapshot in snapshots {
+                if game
+                    .object(snapshot.object_id)
+                    .is_some_and(|object| object.zone == snapshot.zone)
+                    && !ids.contains(&snapshot.object_id)
+                {
+                    ids.push(snapshot.object_id);
+                }
+            }
+        }
+    }
+    ids.iter()
         .filter_map(|&id| game.object(id).map(|obj| (id, obj)))
         .filter(|(_, obj)| filter.matches(obj, &filter_ctx, game))
         .map(|(id, _)| id)
@@ -3890,7 +3948,10 @@ fn resolve_objects_for_effect_choice(
         let candidates = resolve_objects_from_spec(game, inner, ctx)?;
         let min = count.min.min(candidates.len());
         let max = count.max.unwrap_or(candidates.len()).min(candidates.len());
-        if candidates.len() < count.min || max < min {
+        // CR 609.3: "return two cards exiled with this Saga" with only one
+        // such card returns that one (do as much as possible); the clamped
+        // minimum above already expresses that, so only an empty pool fails.
+        if candidates.is_empty() && count.min > 0 || max < min {
             return Err(ExecutionError::InvalidTarget);
         }
         if candidates.len() == min && min == max {
@@ -4059,6 +4120,15 @@ fn retain_effect_source_lki(
             let lki = departed.unwrap_or(snapshot);
             Some((lki.object_id, Some(lki)))
         }
+        // CR 113.7a, 608.2h: an ability whose source left the battlefield
+        // after it was put on the stack (Huatli dying to her own -X loyalty
+        // cost) still deals its damage, using the source's last known
+        // information.
+        (None, None) if matches!(spec.base(), ChooseSpec::Source) => ctx
+            .source_snapshot
+            .as_ref()
+            .filter(|snapshot| snapshot.object_id == ctx.source)
+            .map(|snapshot| (snapshot.object_id, Some(snapshot.clone()))),
         (None, None) => None,
     }
 }
@@ -4351,12 +4421,14 @@ pub(crate) fn apply_to_selected_objects_with_prepared(
                 });
             }
             if applied {
-                applied_count += 1;
+                applied_count = applied_count.saturating_add(1);
             }
         }
 
         let outcome = match result_policy {
-            ObjectApplyResultPolicy::CountApplied => EffectOutcome::count(applied_count as i32),
+            ObjectApplyResultPolicy::CountApplied => {
+                EffectOutcome::count(i32::try_from(applied_count).unwrap_or(i32::MAX))
+            }
             ObjectApplyResultPolicy::SingleTargetResolvedOrInvalid => {
                 if selected_count > 0 {
                     EffectOutcome::resolved()
@@ -4505,7 +4577,9 @@ pub fn resolve_objects_from_spec(
                 let objects = match resolve_objects_from_spec(game, inner, ctx) {
                     Ok(objects) => objects,
                     Err(ExecutionError::InvalidTarget) => {
-                        if count.min == 0 && ctx.targets.is_empty() {
+                        if count.min == 0
+                            && (ctx.targets.is_empty() || announced_up_to_slot_is_empty(spec, ctx))
+                        {
                             Vec::new()
                         } else {
                             return Err(ExecutionError::InvalidTarget);

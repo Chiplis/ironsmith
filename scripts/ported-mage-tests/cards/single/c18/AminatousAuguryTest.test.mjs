@@ -121,7 +121,9 @@ registerPortedMageTests({
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
           "name": "Adarkar Sentinel",
-          "resolve": true
+          "resolve": true,
+          "useAlternative": 1,
+          "note": "XMage asks which card type to consume (setChoice Artifact). Ironsmith offers one free-cast action per matching type permission, in grant order (Creature, then Artifact), so the Artifact permission is the second offered alternative."
         },
         {
           "op": "setChoice",
@@ -142,7 +144,9 @@ registerPortedMageTests({
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
           "name": "Aegis of the Gods",
-          "resolve": true
+          "resolve": true,
+          "useAlternative": 1,
+          "note": "XMage setChoice Enchantment: of Aegis's two offered type permissions (Creature, Enchantment), the Enchantment one is second."
         },
         {
           "op": "setChoice",

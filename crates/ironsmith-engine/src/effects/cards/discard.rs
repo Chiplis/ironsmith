@@ -1118,10 +1118,7 @@ impl DiscardBatchProjection {
                     "completed discard has no resolved event".into(),
                 ));
             }
-            self.discarded = self
-                .discarded
-                .checked_add(1)
-                .ok_or_else(|| ExecutionError::InternalError("discard count overflow".into()))?;
+            self.discarded = self.discarded.saturating_add(1);
             self.discarded_cards.push(card_id);
             if let Some(memory) = pre_memory {
                 self.affected_memory.push(memory);

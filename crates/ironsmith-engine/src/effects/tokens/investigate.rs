@@ -105,7 +105,7 @@ impl EffectExecutor for InvestigateEffect {
                 for _ in 0..count {
                     let effect = self.body_program(PlayerFilter::Specific(player_id));
                     let child = effect.execute_child_with_outputs(game, ctx)?;
-                    created_clues += child.outcome.output_objects().len() as i64;
+                    created_clues = created_clues.saturating_add(i64::try_from(child.outcome.output_objects().len()).unwrap_or(i64::MAX));
                     if ctx.decision_maker.awaiting_choice() {
                         return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
                             EffectOutcome::resolved(),

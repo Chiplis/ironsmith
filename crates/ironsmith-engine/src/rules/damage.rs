@@ -401,7 +401,7 @@ pub fn calculate_trample_excess(
     for blocker in blockers {
         if has_deathtouch {
             // With deathtouch, only need 1 damage to each blocker
-            damage_needed += 1;
+            damage_needed = damage_needed.saturating_add(1);
         } else {
             // Need to deal lethal damage (toughness - existing damage)
             if let Some(toughness) = game
@@ -410,7 +410,7 @@ pub fn calculate_trample_excess(
             {
                 let existing_damage = game.damage_on(blocker.id);
                 let remaining = (i64::from(toughness) - i64::from(existing_damage)).max(0) as u32;
-                damage_needed += remaining;
+                damage_needed = damage_needed.saturating_add(remaining);
             }
         }
     }

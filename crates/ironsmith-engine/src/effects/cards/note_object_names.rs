@@ -69,6 +69,6 @@ impl EffectExecutor for NoteObjectNamesEffect {
             .collect::<Result<Vec<_>,_>>()?;
         let mut count=0;
         for owner in owners{for name in &names{count+=u32::from(game.note_card_name_for_owner(owner.clone(),name.clone()));}}
-        Ok(EffectOutcome::count(count as i32))
+        Ok(EffectOutcome::count(ironsmith_core::quantity::clamp_i32_from_u32(count)))
     }
 }

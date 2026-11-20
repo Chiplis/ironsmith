@@ -2563,8 +2563,42 @@ fn dedupe_adjacent_target_only_effects(lowered: &mut LoweredEffects) {
         return;
     }
 
+    // A declaration wrapped in its reference tag ("targeted_1") or opening a
+    // coordinated sentence re-declares the same target a bare prelude just
+    // announced (Desertion, Essence Harvest). One authored "target" makes one
+    // target (CR 115.1, 601.2c): the wrapped declaration subsumes the bare one.
+    fn subsuming_target_only(effect: &Effect) -> Option<&crate::effects::TargetOnlyEffect> {
+        if let Some(tagged) = effect.downcast_ref::<crate::effects::TaggedEffect>() {
+            return tagged
+                .effect
+                .downcast_ref::<crate::effects::TargetOnlyEffect>()
+                .filter(|target| !target.explicit_declaration);
+        }
+        effect
+            .downcast_ref::<crate::effects::SequenceEffect>()?
+            .effects
+            .first()?
+            .downcast_ref::<crate::effects::TargetOnlyEffect>()
+            .filter(|target| !target.explicit_declaration)
+    }
+
     let mut rewritten = Vec::with_capacity(flattened.len());
     for effect in flattened {
+        let subsumes_previous = rewritten.last().is_some_and(|previous: &Effect| {
+            let Some(previous_target) =
+                previous.downcast_ref::<crate::effects::TargetOnlyEffect>()
+            else {
+                return false;
+            };
+            subsuming_target_only(&effect).is_some_and(|current_target| {
+                current_target.chooser == previous_target.chooser
+                    && same_target_domain(&previous_target.target, &current_target.target)
+            })
+        });
+        if subsumes_previous {
+            *rewritten.last_mut().expect("checked above") = effect.clone();
+            continue;
+        }
         let duplicate_target_only = rewritten.last().and_then(|previous: &Effect| {
             let previous_target = previous.downcast_ref::<crate::effects::TargetOnlyEffect>()?;
             let current_target = effect.downcast_ref::<crate::effects::TargetOnlyEffect>()?;

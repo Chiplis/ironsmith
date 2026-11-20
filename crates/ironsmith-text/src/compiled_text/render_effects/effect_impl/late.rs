@@ -804,11 +804,21 @@
         return format!("{} creates {} copies of the supplied card named {}",capitalize_first(&describe_player_filter(&copy.player)),describe_value(&copy.count),copy.definition.card.name);
     }
     if let Some(create)=effect.downcast_ref::<crate::effects::CreateCardsEffect>() {
+        if let ironsmith_core::CardCreationSelection::Catalog(name)=&create.selection {
+            // Arena conjure keeps its printed verb and destination wording.
+            let cards=if matches!(create.count,ironsmith_core::Value::Fixed(1)){format!("a {name} card")}else{format!("{} {name} cards",describe_value(&create.count))};
+            let destination=if create.zone==Zone::Library {format!("on {} of their library",if create.library_position==ironsmith_core::CardCreationLibraryPosition::Top{"top"}else{"the bottom"})}else if create.zone==Zone::Battlefield{"onto the battlefield".to_string()}else if create.zone==Zone::Exile{"into exile".to_string()}else{format!("into their {}",create.zone)};
+            if matches!(create.player,ironsmith_core::PlayerFilter::You) {
+                return format!("Conjure {cards} {}",destination.replace("their","your"));
+            }
+            return format!("{} conjures {cards} {destination}",capitalize_first(&describe_player_filter(&create.player)));
+        }
         let selection=match &create.selection {
             ironsmith_core::CardCreationSelection::Named(name)=>format!("named {name}"),
             ironsmith_core::CardCreationSelection::ChosenName{..}=>"with the chosen name".to_string(),
             ironsmith_core::CardCreationSelection::RandomMatching{filter,independent}=>format!("matching {} chosen at random{}",filter.description(),if *independent{" independently for each card"}else{" once for the batch"}),
             ironsmith_core::CardCreationSelection::Duplicate(target)=>format!("duplicating {}",describe_choose_spec(target)),
+            ironsmith_core::CardCreationSelection::Catalog(name)=>format!("named {name}"),
         };
         let destination=if create.zone==Zone::Library {format!("on {} of their library",if create.library_position==ironsmith_core::CardCreationLibraryPosition::Top{"top"}else{"the bottom"})}else{format!("in {}",create.zone)};
         return format!("{} creates {} real cards {selection} {destination}",capitalize_first(&describe_player_filter(&create.player)),describe_value(&create.count));

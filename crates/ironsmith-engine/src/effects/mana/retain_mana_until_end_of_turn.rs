@@ -18,8 +18,16 @@ impl EffectExecutor for RetainManaUntilEndOfTurnEffect {
                 Until::EndOfTurn
             },
         );
-        registration.iterated_player = ctx.iteration.iterated_player;
-        registration.register(game, ctx);
+        // "that player" in a trigger (Shizuko, Caller of Autumn) binds the
+        // event's player through the `__it__` tag, exactly as the mana
+        // addition beside it resolves `IteratedPlayer`.
+        registration.iterated_player = ctx.iteration.iterated_player.or_else(|| {
+            ctx.get_tagged_players("__it__")
+                .and_then(|players| players.first().copied())
+        });
+        // Refresh the restriction tracker now: the step's mana emptying reads
+        // `retained_mana_scopes` without recomputing it (CR 500.4).
+        registration.apply(game, ctx);
         Ok(EffectOutcome::resolved())
     }
 }

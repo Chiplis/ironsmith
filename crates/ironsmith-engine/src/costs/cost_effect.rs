@@ -377,7 +377,11 @@ fn tagged_unattach_cost_precheck(
         game.find_object_by_stable_id(snapshot.stable_id)
             .and_then(|id| game.object(id))
             .is_some_and(|object| {
+                // "Unattach this Equipment" (Sunforger) unattaches the source
+                // itself from whatever it is attached to; other forms
+                // unattach an object from the source (CR 701.3d).
                 object.attached_to.and_then(|target| target.object_id()) == Some(ctx.source)
+                    || (object.id == ctx.source && object.attached_to.is_some())
             })
     });
     if valid {

@@ -52,6 +52,25 @@ pub fn base_trigger_functional_zones(trigger: &TriggerSpec) -> Vec<Zone> {
         {
             vec![Zone::Graveyard]
         }
+        // CR 603.10a: a move out of a hidden library doesn't look back, so
+        // "When this card is put into your graveyard from your library"
+        // (Narcomoeba, Gaea's Blessing) is checked where the card arrived.
+        TriggerSpec::ZoneChange(change)
+            if change.to == Some(Zone::Graveyard)
+                && change.from == Some(Zone::Library)
+                && (change.this || change.filter.as_ref().is_some_and(|filter| filter.source)) =>
+        {
+            vec![Zone::Graveyard]
+        }
+        // The parser's typed form of the same self move ("When this card is
+        // put into your graveyard from your library"): only a departure from
+        // the battlefield looks back (CR 603.10a); otherwise the ability
+        // functions where the card arrived (CR 603.6d).
+        TriggerSpec::PutIntoGraveyardFromZone { filter, from, .. }
+            if filter.source && *from != Zone::Battlefield =>
+        {
+            vec![Zone::Graveyard]
+        }
         TriggerSpec::ZoneChange(ironsmith_core::trigger_model::ZoneChangeTrigger {
             this: true, from: Some(origin), ..
         }) => vec![*origin],
@@ -62,6 +81,11 @@ pub fn base_trigger_functional_zones(trigger: &TriggerSpec) -> Vec<Zone> {
         TriggerSpec::KeywordActionFromSource {
             action: ironsmith_core::event_model::KeywordActionKind::Cycle, ..
         } => vec![Zone::Hand],
+        // CR 702.170a/c: a card becomes plotted as it is exiled, so "When this
+        // card becomes plotted" is observed from exile.
+        TriggerSpec::KeywordActionFromSource {
+            action: ironsmith_core::event_model::KeywordActionKind::Plot, ..
+        } => vec![Zone::Exile],
         _ => vec![Zone::Battlefield],
     }
 }
@@ -91,8 +115,33 @@ pub fn derive_triggered_ability_functional_zones_from_facts(
         .collect();
     }
     // A self-discard is observed in hand even if the ability returns the card.
+    // Other alternatives keep their own zones ("When this creature dies and
+    // when you discard this card" -- Bartered Cow -- also looks back from the
+    // battlefield).
     if facts.discards_this_card {
-        return vec![Zone::Hand];
+        fn self_discard(trigger: &TriggerSpec) -> bool {
+            match trigger {
+                TriggerSpec::WithIntro { trigger, .. } => self_discard(trigger),
+                TriggerSpec::PlayerDiscardsCard { filter, .. } => {
+                    filter.as_ref().is_some_and(|filter| filter.source)
+                }
+                _ => false,
+            }
+        }
+        let branches: Vec<&TriggerSpec> = match trigger {
+            TriggerSpec::Either(left, right) => vec![left.as_ref(), right.as_ref()],
+            TriggerSpec::AnyOf(branches) => branches.iter().collect(),
+            _ => Vec::new(),
+        };
+        let mut zones = vec![Zone::Hand];
+        if branches.iter().any(|branch| self_discard(branch)) {
+            for branch in branches.into_iter().filter(|branch| !self_discard(branch)) {
+                for zone in base_trigger_functional_zones(branch) {
+                    if !zones.contains(&zone) { zones.push(zone); }
+                }
+            }
+        }
+        return zones;
     }
     if facts.returns_self_from_graveyard && !trigger_references_attached_object(trigger) {
         return vec![Zone::Graveyard];

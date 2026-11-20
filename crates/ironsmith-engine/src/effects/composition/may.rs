@@ -181,6 +181,8 @@ pub(crate) struct PreparedOptionalExecution {
     pub(crate) previous_iterated_player: Option<PlayerId>,
     // The offer's decider pays; an inherited "that player" can be someone else.
     pub(crate) payment_player: PlayerId,
+    /// The "Do this only once each turn" limit this acceptance recorded.
+    pub(crate) limit: Option<crate::effects::DoThisLimit>,
 }
 
 #[derive(Debug, Clone)]
@@ -372,6 +374,7 @@ impl MayEffect {
         Ok(Some(PreparedOptionalExecution {
             previous_iterated_player,
             payment_player: accepted.payment_player,
+            limit: accepted.limit,
         }))
     }
 
@@ -803,6 +806,20 @@ fn execute_may_with_outputs(
             };
             let result = execute_optional_effects_with_outputs(&effect.effects, effect.pay_as_cost, prepared.payment_player, game, ctx, purpose);
             ctx.iteration.iterated_player = prepared.previous_iterated_player;
+            // CR 603.2h: an accepted instruction that could not be performed
+            // at all (an unaffordable "you may cast target card") was not
+            // taken, so it stays available for a later trigger this turn.
+            if let (Some(limit), Ok(outputs)) = (prepared.limit, &result)
+                && !ctx.decision_maker.awaiting_choice()
+                && matches!(
+                    outputs.outcome.status,
+                    crate::effect::OutcomeStatus::Impossible
+                        | crate::effect::OutcomeStatus::Declined
+                        | crate::effect::OutcomeStatus::TargetInvalid
+                )
+            {
+                game.unrecord_do_this_action(limit.source, limit.trigger_identity);
+            }
             result
         },
     );
@@ -997,6 +1014,49 @@ impl MayEffect {
                 }
             }
         }
+        // CR 701.26a: only an untapped permanent can become tapped. "They may
+        // tap that permanent. If they don't, ..." (Charismatic Conqueror)
+        // offers nothing once the permanent is tapped or gone, so the player
+        // doesn't tap it and the consequence follows.
+        if let [only] = self.effects.as_slice() {
+            let mut effect = only;
+            while let Some(child) = effect.transparent_child_effect() {
+                effect = child;
+            }
+            if let Some(tap) = effect.downcast_ref::<crate::effects::TapEffect>()
+                && !tap.target.is_target()
+            {
+                use crate::filter::ObjectFilterExt as _;
+                let untapped_on_battlefield = |id: ObjectId| {
+                    game.object(id).is_some_and(|object| {
+                        object.zone == crate::zone::Zone::Battlefield && !game.is_tapped(id)
+                    })
+                };
+                let available = match tap.target.base() {
+                    crate::target::ChooseSpec::All(filter) => {
+                        let filter_ctx = ctx.filter_context(game);
+                        Some(game.battlefield.iter().any(|id| {
+                            untapped_on_battlefield(*id)
+                                && game
+                                    .object(*id)
+                                    .is_some_and(|object| filter.matches(object, &filter_ctx, game))
+                        }))
+                    }
+                    crate::target::ChooseSpec::Tagged(tag) => ctx.get_tagged_all(tag.as_str()).map(|snapshots| {
+                        snapshots.iter().any(|snapshot| {
+                            game.find_object_by_stable_id(snapshot.stable_id)
+                                .is_some_and(untapped_on_battlefield)
+                        })
+                    }),
+                    crate::target::ChooseSpec::Source => Some(untapped_on_battlefield(ctx.source)),
+                    _ => None,
+                };
+                if available == Some(false) {
+                    return Ok(true);
+                }
+            }
+        }
+
         if self.effects.len() != 1 {
             return Ok(false);
         }

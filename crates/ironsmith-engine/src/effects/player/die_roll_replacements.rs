@@ -14,6 +14,10 @@ struct ExtraDiceReplacement {
     display: String,
 }
 
+/// Physical dice one batch may roll. Dice are per-unit physical work: a larger
+/// request rolls as many dice as this budget allows, then stops.
+pub(super) const MAX_PHYSICAL_DICE: u32 = 4_096;
+
 pub(super) fn roll_replacement_batch(
     game: &mut GameState,
     ctx: &mut ExecutionContext,
@@ -21,6 +25,7 @@ pub(super) fn roll_replacement_batch(
     count: u32,
     sides: u32,
 ) -> Result<Option<Vec<ResolvedDieRoll>>, ExecutionError> {
+    let count = count.min(MAX_PHYSICAL_DICE);
     if count == 0 || sides == 0 {
         return Ok(Some(Vec::new()));
     }
@@ -107,14 +112,13 @@ pub(super) fn roll_replacement_batch(
                 ExecutionError::UnresolvableValue("a die-roll replacement must be selected".into())
             })?
         };
-        let replacement = remaining.remove(index);
-        total = total.checked_add(replacement.additional).ok_or(
-            ExecutionError::ResourceLimitExceeded {
-                resource: "physical replacement dice",
-                requested: u128::from(total) + u128::from(replacement.additional),
-                maximum: u32::MAX as u128,
-            },
-        )?;
+        let mut replacement = remaining.remove(index);
+        // Extra dice share the physical budget; a replacement past it adds
+        // (and later ignores) only the dice the budget still allows.
+        replacement.additional = replacement
+            .additional
+            .min(MAX_PHYSICAL_DICE.saturating_sub(total));
+        total = total.saturating_add(replacement.additional);
         remaining.retain(|other| {
             (other.source, other.ability, other.occurrence)
                 != (

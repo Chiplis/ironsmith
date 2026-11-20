@@ -10,6 +10,10 @@ use ironsmith_core::{CoinFace, CoinFlipKind, StaticAbilityPayload};
 
 use super::FlipCoinEffect;
 
+/// Physical coins one batch may flip. Coin counts are per-unit physical work:
+/// a larger request flips as many coins as this budget allows, then stops.
+pub(super) const MAX_PHYSICAL_COINS: u32 = 4_096;
+
 pub(super) fn flip_batch(
     game: &mut GameState,
     ctx: &mut ExecutionContext,
@@ -18,6 +22,7 @@ pub(super) fn flip_batch(
     count: u32,
     instruction_start: u32,
 ) -> Result<Option<Vec<CoinFlipResult>>, ExecutionError> {
+    let count = count.min(MAX_PHYSICAL_COINS);
     if count == 0 {
         return Ok(Some(Vec::new()));
     }
@@ -40,13 +45,11 @@ pub(super) fn flip_batch(
             match &model.payload {
                 StaticAbilityPayload::ExtraCoinIgnoreOne { player: filter }
                     if filter.matches_player(player, &filter_context) => {
-                    multiplicity = multiplicity.checked_mul(2).ok_or(
-                        ExecutionError::ResourceLimitExceeded {
-                            resource: "physical replacement coins per original flip",
-                            requested: u128::from(multiplicity) * 2,
-                            maximum: u32::MAX as u128,
-                        },
-                    )?;
+                    // Keep the multiplicity a power of two within the
+                    // physical budget; further doublings are not performed.
+                    if multiplicity <= MAX_PHYSICAL_COINS / 2 {
+                        multiplicity = multiplicity.saturating_mul(2);
+                    }
                 }
                 StaticAbilityPayload::FirstCoinBatchHeadsWin { player: filter }
                     if filter.matches_player(player, &filter_context) => {
@@ -56,13 +59,9 @@ pub(super) fn flip_batch(
             }
         }
     }
-    let physical = count.checked_mul(multiplicity).ok_or(
-        ExecutionError::ResourceLimitExceeded {
-            resource: "physical replacement coin batch",
-            requested: u128::from(count) * u128::from(multiplicity),
-            maximum: u32::MAX as u128,
-        },
-    )?;
+    // Flip as many original coins as the physical budget allows.
+    let count = count.min(MAX_PHYSICAL_COINS / multiplicity).max(1);
+    let physical = count.saturating_mul(multiplicity);
     let mut flips = Vec::new();
     flips.try_reserve_exact(physical as usize).map_err(|_| ExecutionError::ResourceAllocationFailed {
         resource: "physical replacement coin batch", requested: physical as usize,
@@ -122,8 +121,9 @@ pub(super) fn flip_batch(
     }
     let first = game.turn_store.turn_history.record_completed_coin_flips(player, flips.len())?;
     for (index, flip) in flips.iter_mut().enumerate() {
-        flip.turn_ordinal = first + index as u32;
-        flip.instruction_ordinal = instruction_start + index as u32;
+        let index = u32::try_from(index).unwrap_or(u32::MAX);
+        flip.turn_ordinal = first.saturating_add(index);
+        flip.instruction_ordinal = instruction_start.saturating_add(index);
     }
     game.mark_continuous_state_dirty();
     Ok(Some(flips))

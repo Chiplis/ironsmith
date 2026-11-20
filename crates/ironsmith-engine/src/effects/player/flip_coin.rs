@@ -147,16 +147,14 @@ impl EffectExecutor for FlipCoinEffect {
                 let authored_count = if let Some(value) = &self.count_value {
                     crate::effects::helpers::resolve_nonnegative_u32(game, value, ctx)?
                 } else if let Some(players) = &associated {
-                    u32::try_from(players.len()).map_err(|_| {
-                        ExecutionError::ResourceLimitExceeded {
-                            resource: "opponent coin count",
-                            requested: players.len() as u128,
-                            maximum: u32::MAX as u128,
-                        }
-                    })?
+                    u32::try_from(players.len()).unwrap_or(u32::MAX)
                 } else {
                     self.count
                 };
+                // Coins are per-unit physical work: flip at most the physical
+                // budget, then stop.
+                let authored_count =
+                    authored_count.min(coin_flip_transaction::MAX_PHYSICAL_COINS);
                 let mut results = Vec::new();
                 let mut events = Vec::new();
                 let mut facts = Vec::new();
@@ -166,18 +164,20 @@ impl EffectExecutor for FlipCoinEffect {
                     {
                         break;
                     }
+                    // Successive flips share the same physical budget.
+                    if results.len()
+                        >= coin_flip_transaction::MAX_PHYSICAL_COINS as usize
+                    {
+                        break;
+                    }
                     let count = if self.repeat_until_loss {
                         1
                     } else {
                         authored_count
                     };
-                    let start = u32::try_from(results.len()).map_err(|_| {
-                        ExecutionError::ResourceLimitExceeded {
-                            resource: "instruction coin-flip ordinal",
-                            requested: results.len() as u128,
-                            maximum: i32::MAX as u128,
-                        }
-                    })? + 1;
+                    let start = u32::try_from(results.len())
+                        .unwrap_or(u32::MAX)
+                        .saturating_add(1);
                     let Some(mut batch) =
                         coin_flip_transaction::flip_batch(game, ctx, self, player, count, start)?
                     else {

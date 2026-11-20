@@ -69,11 +69,7 @@ pub(crate) fn resolve_damage_history_for_comparison(
     query: &DamageHistoryQuery,
     ctx: &ExecutionContext,
 ) -> Result<i64, ExecutionError> {
-    i64::try_from(resolve_history_amount(game, query, ctx)?).map_err(|_| {
-        ExecutionError::UnresolvableValue(
-            "damage history comparison is outside the supported integer range".into(),
-        )
-    })
+    Ok(i64::try_from(resolve_history_amount(game, query, ctx)?).unwrap_or(i64::MAX))
 }
 
 fn resolve_history_in_context(
@@ -81,11 +77,8 @@ fn resolve_history_in_context(
     query: &DamageHistoryQuery,
     ctx: &ExecutionContext,
 ) -> Result<i32, ExecutionError> {
-    i32::try_from(resolve_history_amount(game, query, ctx)?).map_err(|_| {
-        ExecutionError::UnresolvableValue(
-            "damage history amount is outside the supported integer range".into(),
-        )
-    })
+    // Game quantities saturate at the signed characteristic range.
+    Ok(i32::try_from(resolve_history_amount(game, query, ctx)?).unwrap_or(i32::MAX))
 }
 
 /// In a historical source/recipient class, "other" excludes the exact
@@ -133,11 +126,6 @@ fn resolve_history_amount(
     let recipient_ids = match &query.recipients {
         DamageHistoryRecipients::Reference(spec) => Some(referenced_objects(game, ctx, spec)?),
         _ => None,
-    };
-    let overflow = || {
-        ExecutionError::UnresolvableValue(
-            "damage history amount is outside the supported integer range".into(),
-        )
     };
     let mut total = 0u64;
     let mut largest_occurrence = 0u64;
@@ -216,19 +204,19 @@ fn resolve_history_amount(
                 }
             };
             largest_occurrence =
-                largest_occurrence.max(u64::try_from(amount).map_err(|_| overflow())?);
+                largest_occurrence.max(u64::try_from(amount).unwrap_or(u64::MAX));
         }
         let amount = u64::from(damage.amount);
-        total = total.checked_add(amount).ok_or_else(overflow)?;
+        total = total.saturating_add(amount);
         let source_total = sources.entry(damage.source).or_default();
-        *source_total = source_total.checked_add(amount).ok_or_else(overflow)?;
+        *source_total = source_total.saturating_add(amount);
     }
     let amount = match query.reduction {
         DamageHistoryReduction::LargestSourceRecipientOccurrence => largest_occurrence,
         DamageHistoryReduction::Total => total,
         DamageHistoryReduction::LargestSourceTotal => sources.values().copied().max().unwrap_or(0),
         DamageHistoryReduction::DistinctSources => {
-            u64::try_from(sources.len()).map_err(|_| overflow())?
+            u64::try_from(sources.len()).unwrap_or(u64::MAX)
         }
     };
     Ok(amount)
@@ -403,7 +391,7 @@ mod tests {
         assert_eq!(resolve_history_in_context(&game, &query, &ctx).unwrap(), 3);
     }
     #[test]
-    fn comparison_widens_actual_totals_but_scalar_overflow_is_explicit() {
+    fn comparison_widens_actual_totals_and_scalar_saturates() {
         let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
         let alice = game.players[0].id;
         let bob = game.players[1].id;
@@ -417,7 +405,7 @@ mod tests {
             resolve_damage_history_for_comparison(&game, &query, &ctx).unwrap(),
             i64::from(i32::MAX) + 1
         );
-        assert!(resolve_history_in_context(&game, &query, &ctx).is_err());
+        assert_eq!(resolve_history_in_context(&game, &query, &ctx).unwrap(), i32::MAX);
         let condition = crate::effect::Condition::ValueComparison {
             left: Value::DamageHistory(Box::new(query)),
             operator: crate::effect::ValueComparisonOperator::GreaterThanOrEqual,
@@ -510,7 +498,7 @@ mod tests {
         );
     }
     #[test]
-    fn history_arithmetic_rejects_final_unsigned_overflow_before_applying_damage() {
+    fn history_arithmetic_saturates_before_applying_damage() {
         for received in [i32::MAX - 2, i32::MAX - 1, i32::MAX] {
             let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
             let alice = game.players[0].id;
@@ -527,19 +515,18 @@ mod tests {
                 )),
             );
             let mut ctx = ExecutionContext::new_default(source, alice);
-            assert!(crate::effects::helpers::resolve_value(&game, &value, &ctx).is_err());
-            let records = game.turn_store.turn_history.projected_records().count();
+            assert_eq!(
+                crate::effects::helpers::resolve_value(&game, &value, &ctx).unwrap(),
+                i32::MAX
+            );
             let effect = crate::effect::Effect::new(crate::effects::DealDamageEffect::new(
                 value,
                 ChooseSpec::SpecificObject(future_recipient),
             ));
             let result = crate::effects::execute_effect(&mut game, &effect, &mut ctx);
-            assert!(matches!(result, Err(ExecutionError::UnresolvableValue(_))));
-            assert_eq!(game.damage_on(future_recipient), 0);
-            assert_eq!(
-                game.turn_store.turn_history.projected_records().count(),
-                records
-            );
+            assert!(result.is_ok(), "{result:?}");
+            // Damage is evaluated wide and saturates at its unsigned storage bound.
+            assert_eq!(game.damage_on(future_recipient), u32::MAX);
         }
     }
     #[test]

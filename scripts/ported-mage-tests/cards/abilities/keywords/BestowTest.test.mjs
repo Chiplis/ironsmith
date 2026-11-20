@@ -1817,7 +1817,8 @@ registerPortedMageTests({
           "op": "assertTokenCount",
           "player": 0,
           "name": "Hopeful Eidolon",
-          "count": 2
+          "count": 3,
+          "note": "CR 111.13: a copy of a permanent spell becomes a token as it resolves, so both Overloaded Mage-Ring copies of the bestow spell are tokens alongside the Mythos of Illuna token (6 Eidolons minus the 2 cards and Copy Enchantment). XMage expected 2."
         },
         {
           "op": "assertEachObject",

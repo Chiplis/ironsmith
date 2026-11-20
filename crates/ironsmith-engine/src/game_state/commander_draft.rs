@@ -132,9 +132,10 @@ impl CommanderDraftState {
 
         let mut available = HashMap::<String, usize>::new();
         for definition in card_pool {
-            *available
+            let tally = available
                 .entry(definition.name().trim().to_ascii_lowercase())
-                .or_default() += 1;
+                .or_default();
+            *tally = tally.saturating_add(1);
         }
         for definition in main_deck {
             let card = &definition.card;

@@ -366,7 +366,11 @@ impl EffectExecutor for PreventNextTimeDamageEffect {
         } else if !self.follow_up_effects.is_empty() {
             ReplacementAction::PreventDamageThen(self.follow_up_effects.clone())
         } else {
-            ReplacementAction::Prevent
+            // A damage prevention, unlike a generic event prevention, records
+            // the prevented damage (CR 615.5) so "when damage is prevented
+            // this way" (New Way Forward) and "whenever damage ... is
+            // prevented" abilities see it.
+            ReplacementAction::PreventDamage
         };
         let replacement = if self.combat_only {
             ReplacementEffect::with_matcher(

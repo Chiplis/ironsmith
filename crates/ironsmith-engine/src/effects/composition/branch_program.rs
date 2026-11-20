@@ -158,6 +158,35 @@ impl ActionProgramCursor for SelectedBranchCursor {
                     scope = inner;
                 }
             }
+            // "You may put an Aura card ... onto the battlefield attached to
+            // it" (Liberated Livestock): a selected branch pairs its move with
+            // the following attachment exactly as a sequence does, so the
+            // Aura enters attached to the named host instead of asking what
+            // to enchant (CR 303.4f).
+            let index = self.next;
+            let names_entry_host = crate::effects::permanents::entry_attachment_for_move(
+                effect,
+                branch.effects.get(index + 1),
+            );
+            let follows_entry = index > 0
+                && crate::effects::permanents::entry_attachment_for_move(
+                    &branch.effects[index - 1],
+                    Some(effect),
+                )
+                .is_some();
+            if names_entry_host.is_some() || follows_entry {
+                let mut hints = ProgramActionScope {
+                    pending_entry_attachment: Some(names_entry_host),
+                    entry_attachment_receipts: Some(if follows_entry {
+                        self.outcomes.last().and_then(EffectOutcome::entry_attachments)
+                    } else {
+                        None
+                    }),
+                    ..Default::default()
+                };
+                hints.prepend_outer(Some(Box::new(scope)));
+                scope = hints;
+            }
             let mut identity = branch.identity.clone();
             identity.extend([self.repetition, self.next]);
             self.ends_unit = self.unit_ends[self.branch].contains(&self.next);

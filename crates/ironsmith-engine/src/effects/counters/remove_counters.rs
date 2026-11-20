@@ -796,17 +796,11 @@ fn project_selected_counter_removal(
 ) -> Result<EffectOutcome, ExecutionError> {
     let mut removed_total = 0u64;
     for outcome in &outcomes {
-        let removed = u32::try_from(outcome.count_or_zero())
+        let removed = u64::try_from(outcome.count_or_zero())
             .map_err(|_| ExecutionError::InternalError("invalid counter-removal count".into()))?;
-        removed_total = removed_total
-            .checked_add(u64::from(removed))
-            .ok_or_else(|| {
-                ExecutionError::InternalError("counter-removal total overflow".into())
-            })?;
+        removed_total = removed_total.saturating_add(removed);
     }
-    let count = i64::try_from(removed_total).map_err(|_| {
-        ExecutionError::InternalError("counter-removal total exceeds outcome range".into())
-    })?;
+    let count = i64::try_from(removed_total).unwrap_or(i64::MAX);
     let mut outcome = EffectOutcome::aggregate(outcomes);
     outcome.set_value(crate::effect::OutcomeValue::Count(count));
     Ok(outcome.with_requested_amount(requested))
@@ -1087,11 +1081,7 @@ pub(crate) fn counter_cost_x_from_outcome(
             "counter cost has no original quantity receipt".into(),
         )
     })?;
-    u32::try_from(requested).map(Some).map_err(|_| {
-        crate::effects::CostValidationError::Other(
-            "counter cost X exceeds the supported range".into(),
-        )
-    })
+    Ok(Some(u32::try_from(requested).unwrap_or(u32::MAX)))
 }
 
 /// Both validation and captured payment bind the same exact object and kind.
@@ -1133,11 +1123,7 @@ fn counter_removal_cost_input(
                     .into(),
             )
         })?;
-        u32::try_from(quantity.max(0)).map_err(|_| ExecutionError::ResourceLimitExceeded {
-            resource: "counter-cost quantity",
-            requested: quantity.max(0) as u128,
-            maximum: u32::MAX as u128,
-        })?
+        ironsmith_core::quantity::clamp_u32(quantity)
     };
     if available < count {
         return Err(ExecutionError::Impossible("not enough counters".into()));
@@ -1161,7 +1147,7 @@ impl CostExecutableEffect for RemoveCountersEffect {
         ) && (self
             .count
             .constant_integer()
-            .is_some_and(|quantity| u32::try_from(quantity.max(0)).is_ok())
+            .is_some()
             || matches!(self.count.unhinted(), Value::CountersOn(spec, Some(kind))
                     if *kind == self.counter_type && spec.base() == self.target.base()))
     }
@@ -1209,6 +1195,37 @@ impl CostExecutableEffect for RemoveCountersEffect {
         ctx: &mut ExecutionContext,
         _reason: crate::costs::PaymentReason,
     ) -> Result<(), crate::effects::CostValidationError> {
+        // CR 118.3: "you may remove a hit counter from a card that player
+        // owns in exile. If you do, ..." (Mari) pays with an object chosen
+        // on payment. The cost is payable when some object matching the
+        // authored filter, read in this execution's context (the damaged
+        // player, the source), has enough counters of the named kind.
+        if !self.target.is_target()
+            && let ChooseSpec::Object(filter) = self.target.base()
+        {
+            use crate::filter::ObjectFilterExt as _;
+            let filter_ctx = ctx.filter_context(game);
+            let required = self
+                .count
+                .constant_integer()
+                .map(ironsmith_core::quantity::clamp_u32)
+                .unwrap_or(1)
+                .max(1);
+            let payable = crate::object_query::candidate_ids_for_filter(game, filter)
+                .into_iter()
+                .any(|id| {
+                    game.object(id)
+                        .is_some_and(|object| filter.matches(object, &filter_ctx, game))
+                        && game.counter_count(id, self.counter_type) >= required
+                });
+            return if payable {
+                Ok(())
+            } else {
+                Err(crate::effects::CostValidationError::Other(
+                    "no matching object has enough counters to remove".into(),
+                ))
+            };
+        }
         let ChooseSpec::Tagged(tag) = self.target.base() else {
             return CostExecutableEffect::can_execute_as_cost(self, game, ctx.source, ctx.controller);
         };

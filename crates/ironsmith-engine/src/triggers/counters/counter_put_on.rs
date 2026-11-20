@@ -101,10 +101,16 @@ impl TriggerMatcher for CounterPutOnTrigger {
                 };
                 // CR 122.7: the event's own before/after counts decide an
                 // Nth-counter crossing, not the counts at match time.
+                // A bare placement names no putter. CR 122.6a / 714.3a: a
+                // counter given without a specified player (a Saga's entry
+                // lore counter) is put by the object's controller, so "you
+                // put a lore counter" (Sigurd) sees it.
                 (
                     e.permanent,
                     e.counter_type,
-                    None,
+                    ctx.game
+                        .object(e.permanent)
+                        .map(|object| ctx.game.controller_of(object)),
                     e.amount,
                     e.previous_count.map(|previous| previous.saturating_add(e.amount)),
                 )

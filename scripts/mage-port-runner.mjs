@@ -342,9 +342,17 @@ async function applyOperation(context, operation) {
       return;
     case "skipInitShuffling":
       return;
-    case "setChoice":
-      enqueueTimedValue(context, context.choices, context.deferredChoices, operation.value);
+    case "setChoice": {
+      // XMage scripts a player choice as `setChoice(playerA, playerB.getName())`;
+      // the port keeps the Java expression, which names that seat's player.
+      const playerNameChoice = typeof operation.value === "string"
+        && operation.value.trim().match(/^player([A-D])\.getName\(\)$/);
+      const value = playerNameChoice
+        ? PLAYER_NAMES["ABCD".indexOf(playerNameChoice[1])] ?? operation.value
+        : operation.value;
+      enqueueTimedValue(context, context.choices, context.deferredChoices, value);
       return;
+    }
     case "setCounterChoice":
       enqueueTimedValue(context, context.counterChoices, context.deferredCounterChoices, operation);
       return;
@@ -732,19 +740,19 @@ export async function applySupportedJavaHelper(context, operation) {
   }
 
   const checkedColor = source.match(
-    /^checkColor\((?:"[^"]*"|[^,]+),\s*(\d+),\s*PhaseStep\.([A-Z_]+),\s*([^,]+),\s*(.+),\s*"([WUBRGC]+)",\s*(true|false)\)$/,
+    /^checkColor\((?:"[^"]*"|[^,]+),\s*(\d+),\s*PhaseStep\.([A-Z_]+),\s*([^,]+),\s*(.+),\s*"((?:\{[WUBRGC]\})+|[WUBRGC]+)",\s*(true|false)\)$/,
   );
   if (checkedColor) {
     const [, turn, phase, player, name, codes, mustHave] = checkedColor;
-    return assertColors(context, { turn: Number(turn), phase, player, name, codes, expected: mustHave === "true" });
+    return assertColors(context, { turn: Number(turn), phase, player, name, codes: codes.replace(/[{}]/g, ""), expected: mustHave === "true" });
   }
   const directColor = source.match(
-    /^assertColor\(([^,]+),\s*(.+),\s*(?:"([WUBRGC]+)"|ObjectColor\.(WHITE|BLUE|BLACK|RED|GREEN|COLORLESS)),\s*(true|false)\)$/,
+    /^assertColor\(([^,]+),\s*(.+),\s*(?:"((?:\{[WUBRGC]\})+|[WUBRGC]+)"|ObjectColor\.(WHITE|BLUE|BLACK|RED|GREEN|COLORLESS)),\s*(true|false)\)$/,
   );
   if (directColor) {
     const [, player, name, codes, color, expected] = directColor;
     const symbols = { WHITE: "W", BLUE: "U", BLACK: "B", RED: "R", GREEN: "G", COLORLESS: "C" };
-    return assertColors(context, { player, name, codes: codes ?? symbols[color], expected: expected === "true" });
+    return assertColors(context, { player, name, codes: codes?.replace(/[{}]/g, "") ?? symbols[color], expected: expected === "true" });
   }
 
   const commandCount = source.match(
@@ -1583,8 +1591,10 @@ export async function castSpell(context, operation) {
         return false;
       }
       if (operation.actionLabel !== undefined && candidate.label !== operation.actionLabel) return false;
+      if (operation.useAlternative !== undefined &&
+        candidate.action_ref?.casting_method?.use_alternative !== operation.useAlternative) return false;
     if (permissionSourceIds.length &&
-        !permissionSourceIds.includes(Number(candidate.action_ref?.casting_method?.source))) return false;
+        !permissionSourceIds.includes(Number(castingMethodSource(candidate.action_ref?.casting_method)))) return false;
       if (priceSource && Number(castingPriceSupplier(candidate.action_ref?.casting_method)) !== Number(priceSource.id)) return false;
       const actionObjectId =
         candidate.object_id ?? candidate.action_ref?.spell_id ?? candidate.action_ref?.object_id;
@@ -1592,10 +1602,17 @@ export async function castSpell(context, operation) {
         (cardId !== null && Number(actionObjectId) === Number(cardId)) ||
         (!alias && actionLabelMatches(candidate, name));
     return objectMatches && (operation.castingMethod !== undefined
-      ? candidate.action_ref?.casting_method?.kind === operation.castingMethod
+      ? castingMethodKind(candidate.action_ref?.casting_method) === operation.castingMethod
       : actionCastingMethodMatches(candidate, castingMethod));
   };
-  let action = (state.decision?.actions || []).find(matchesCast);
+  // An aliased card can offer several faces through the same method (a
+  // foretold split card or MDFC, CR 709.3, 712.12): prefer the face named.
+  const findCast = (actions) => {
+    const matching = (actions || []).filter(matchesCast);
+    return (alias && matching.length > 1 ? matching.find(candidate => actionLabelMatches(candidate, name)) : null) ??
+      matching[0];
+  };
+  let action = findCast(state.decision?.actions);
   if (
     !action &&
     !operation.holdStack &&
@@ -1609,11 +1626,11 @@ export async function castSpell(context, operation) {
       await advanceToPriorityPlayer(context, player);
       state = context.game.uiState();
     }
-    action = (state.decision?.actions || []).find(matchesCast);
+    action = findCast(state.decision?.actions);
   }
   if (!action && operation.target) {
     state = await activateAvailableManaAndRetryPredicate(context, player, matchesCast);
-    action = (state.decision?.actions || []).find(matchesCast);
+    action = findCast(state.decision?.actions);
   }
   if (!action && !operation.holdStack && stackObjectIds(context.game).length > 0) {
     await settleStack(context);
@@ -1622,7 +1639,7 @@ export async function castSpell(context, operation) {
       await advanceToPriorityPlayer(context, player);
       state = context.game.uiState();
     }
-    action = (state.decision?.actions || []).find(matchesCast);
+    action = findCast(state.decision?.actions);
   }
 
   action = action ?? actionByPredicate(
@@ -1632,6 +1649,9 @@ export async function castSpell(context, operation) {
   );
   makeCurrentScheduledChoicesAvailable(context);
   if (castingMethod) context.castingMethods.unshift(castingMethod);
+  if (process.env.MAGE_PORT_PAY_TRACE) {
+    console.error(`[mage-port-cast] ${name} ${JSON.stringify(action.action_ref)} of ${JSON.stringify((state.decision?.actions || []).filter(matchesCast).map(candidate => candidate.action_ref?.casting_method))}`);
+  }
   state = context.game.dispatch(priorityCommand(action));
   await answerPendingDecisions(context, operation.target);
   if (castingMethod && context.castingMethods[0] === castingMethod) {
@@ -1656,6 +1676,19 @@ function applyDayNightCastSideEffects(context, operation) {
   }
 }
 
+
+// A permission the engine must track by identity ("When you play a card
+// this way", CR 607.2) is offered as `exact_permission` wrapping the
+// ordinary origin; XMage names the origin.
+function castingMethodKind(method) {
+  return method?.kind === "exact_permission" ? method.origin?.kind : method?.kind;
+}
+
+function castingMethodSource(method) {
+  return method?.kind === "exact_permission"
+    ? (method.origin?.source ?? method.permission?.source)
+    : method?.source;
+}
 
 function castingMethodChoice(name) {
   const text = String(name ?? "").toLowerCase();
@@ -1766,13 +1799,16 @@ async function activateManaAbility(context, operation) {
       await advanceToPriorityPlayer(context, player);
       state = context.game.uiState();
     }
+    // An aliased card that changed zones (a land played from hand) is a new
+    // object with the same stable id.
+    const sourceCheckpoint = source ? getInspectionState(context.game) : null;
     const action = actionByPredicate(
       state,
       (candidate) =>
         candidate.kind === "activate_mana_ability" &&
         (operation.actionLabel === undefined || candidate.label === operation.actionLabel) &&
         (!operation.source || (source
-          ? Number(candidate.action_ref?.source) === source.objectId
+          ? targetMatchesAliasEntry({ id: candidate.action_ref?.source }, source, sourceCheckpoint)
           : normalizeActionSearch(candidate.label).includes(normalizeActionSearch(operation.source)))) &&
         actionLabelMatches(candidate, operation.ability),
       `mana ability ${operation.actionLabel ?? operation.ability}`,
@@ -1998,6 +2034,16 @@ function typeLineParts(typeLine) {
 function preferredActivatedAbilityAction(context, state, predicate, label) {
   const matches = (state.decision?.actions || []).filter(predicate);
   if (matches.length <= 1) return matches[0] ?? null;
+
+  // Several instances of one keyword action differ only by cost ("Plot {1}{G}"
+  // and a granted "Plot {2}{G}", CR 702.170a): prefer the exact cost.
+  const wantedSymbols = manaSymbolTokens(label);
+  if (wantedSymbols.length > 0) {
+    const exact = matches.find((action) =>
+      containsManaSymbolSequence(manaSymbolTokens(action.label || ""), wantedSymbols),
+    );
+    if (exact) return exact;
+  }
 
   const loyaltyCost = String(label || "").match(/^\s*-(\d+)\s*:/);
   if (!loyaltyCost) return matches[0];
@@ -2249,7 +2295,7 @@ function playableActionMatches(action, operation) {
     const method = name !== raw.replace(/^cast\s+/i, "") ? castingMethodChoice(raw) : null;
     const nativeMethod = operation.castingMethod ?? (fused ? "fuse" : undefined);
     const displayName = fused ? name.replace(/^fused\s+/i, "").split(" // ")[0] : name;
-    return (nativeMethod === undefined || ref.casting_method?.kind === nativeMethod) &&
+    return (nativeMethod === undefined || castingMethodKind(ref.casting_method) === nativeMethod) &&
       actionCastingMethodMatches(action, method) &&
       normalizeActionSearch(action.label).startsWith(`cast ${normalizeActionSearch(displayName)}`);
   }
@@ -2308,6 +2354,9 @@ function completePriorityAnalysis(game, decision) {
   try {
     for (let step = 0; step < 1024; step++) {
       const next = game.stepPriorityAnalysis(token, 8);
+      if (process.env.MAGE_PORT_ANALYSIS_TRACE) {
+        console.error(`[mage-port-analysis] step=${step} nodes=${game.lastAnalysisSliceNodes()} progress=${JSON.stringify(game.priorityAnalysisProgress())} work=${JSON.stringify(game.lastWorkCounters())}`.slice(0, 4000));
+      }
       assert(next !== false, "engine priority analysis became stale or inconclusive");
       if (next?.analysis_complete) return next;
     }
@@ -3281,6 +3330,7 @@ async function answerPendingDecisions(context, immediateTarget = undefined, stat
         state = scriptManaPayment(context, state, operation);
         continue;
       }
+      const payTraceBefore = process.env.MAGE_PORT_PAY_TRACE ? state.mana_payment : null;
       state = context.game.dispatch({
         type: "mana_payment",
         response: {
@@ -3289,6 +3339,9 @@ async function answerPendingDecisions(context, immediateTarget = undefined, stat
           request_hash: String(decision.request_hash),
         },
       });
+      if (process.env.MAGE_PORT_PAY_TRACE) {
+        console.error(`[mage-port-pay] ${JSON.stringify({ before: decision, payment: payTraceBefore, after: state.decision?.kind, error: state.error ?? state.last_error ?? null, stack: stackObjectIds(context.game) })}`.slice(0, 6000));
+      }
       continue;
     }
     if (decision.kind === "select_options") {
@@ -3342,6 +3395,14 @@ async function answerPendingDecisions(context, immediateTarget = undefined, stat
       if (Number(decision.min) === 0 &&
           (Number(decision.max) === 0 || !(decision.candidates || []).some((candidate) => candidate.legal !== false))) {
         state = context.game.dispatch(selectObjectsCommand(decision, []));
+        continue;
+      }
+      const distributionSelection = untargetedDistributionSelection(context, decision);
+      if (distributionSelection) {
+        if (process.env.MAGE_PORT_DECISION_TRACE) {
+          console.error(`[decision] select_objects distribution selected=${JSON.stringify(distributionSelection)}`);
+        }
+        state = context.game.dispatch(selectObjectsCommand(decision, distributionSelection));
         continue;
       }
       const target = nextSelectObjectsChoice(context, decision);
@@ -3432,7 +3493,9 @@ function scriptedObjectSelection(context, decision, choices) {
     const checkpoint = alias && getInspectionState(context.game);
     const index = available.findIndex(candidate => alias
       ? targetMatchesAliasEntry({ id: objectChoiceId(candidate) }, alias, checkpoint)
-      : candidate.name === name);
+      // XMage names a split card by both halves; off the stack the engine
+      // labels it with its first half (CR 709.4).
+      : matchesMageZoneCardName(candidate, name));
     assert(index >= 0, `scripted object ${name} is unavailable for ${decision.description}`, decision);
     return objectChoiceId(available.splice(index, 1)[0]);
   });
@@ -3533,6 +3596,31 @@ function checkChoiceMenu(context, decision) {
     assert(Number(decision.max) === check.max,
       `expected ${check.description} to allow at most ${check.max} choices, got ${decision.max}`, decision);
   }
+}
+
+// CR 601.2d / 608.2d: an untargeted "distribute ... among one, two, or three
+// creatures" chooses its recipients on resolution, so the engine asks for the
+// objects first and the amounts second. XMage scripts both with
+// addTargetAmount(..., selectTarget: false); the distinct recipients answer
+// the object choice and the queued amounts answer the following split.
+function untargetedDistributionSelection(context, decision) {
+  if (context.distributionChoices.length === 0) return null;
+  const names = [...new Set(context.distributionChoices)];
+  const min = Number(decision.min ?? 1);
+  const max = decision.max === null || decision.max === undefined ? Infinity : Number(decision.max);
+  if (names.length < min || names.length > max) return null;
+  const candidates = (decision.candidates || []).filter(candidate => candidate.legal !== false);
+  const selected = [];
+  for (const name of names) {
+    const wanted = cardName(name).toLowerCase();
+    const match = candidates.find(candidate =>
+      !selected.includes(objectChoiceId(candidate)) && objectChoiceTextMatches(candidate, wanted));
+    if (!match) return null;
+    selected.push(objectChoiceId(match));
+  }
+  // A single recipient gets every counter without a split prompt.
+  if (names.length === 1) context.distributionChoices.length = 0;
+  return selected;
 }
 
 function nextSelectObjectsChoice(context, decision) {
@@ -4237,6 +4325,15 @@ function chooseOption(context, decision, wanted) {
       ? (applyOptions[applyOptions.length - 1] ?? legalOptions[0] ?? options[0])
       : (declineOption ?? legalOptions[0] ?? options[0]);
   }
+  const optionText = (option) => String(option.label ?? option.text ?? option.name ?? option.description ?? "").trim();
+  const declineCopy = typeof wanted === "boolean" && legalOptions.find((option) => /^don't copy$/i.test(optionText(option)));
+  if (declineCopy) {
+    // XMage scripts an enters-as-copy as setChoice(true) then the donor name;
+    // the engine asks both in one "Choose what to copy" menu.
+    if (!wanted) return declineCopy;
+    const copyOptions = legalOptions.filter((option) => option !== declineCopy);
+    return copyOptions[0] ?? declineCopy;
+  }
   if (typeof wanted === "boolean") {
     const booleanPattern = wanted ? /^(yes|true)$/i : /^(no|false)$/i;
     return options.find((option) =>
@@ -4250,9 +4347,7 @@ function chooseOption(context, decision, wanted) {
     if (numberedMode && numberedMode.legal !== false) return numberedMode;
     return legalOptions.find((option) => optionIndex(option) === modeNumber - 1) ?? legalOptions[0] ?? options[0];
   }
-  const matchingOptions = options.filter((option) =>
-    String(option.label ?? option.text ?? option.name ?? option.description ?? "").toLowerCase().includes(text),
-  );
+  const matchingOptions = options.filter((option) => optionMatchesWanted(option, wanted));
   if (isReplacementDecision(decision) && matchingOptions.length > 1) {
     const isAttachedOption = (option) => {
       const objectIds = [
@@ -4508,7 +4603,12 @@ function findMatchingUnchosenOption(decision, wanted, excludedIndices) {
 
 function optionMatchesWanted(option, wanted) {
   const text = String(wanted).toLowerCase();
-  return String(option.label ?? option.text ?? option.name ?? option.description ?? "").toLowerCase().includes(text);
+  const label = String(option.label ?? option.text ?? option.name ?? option.description ?? "").toLowerCase();
+  if (label.includes(text)) return true;
+  // XMage names a spell-face choice "Cast <face>"; the engine's face chooser
+  // ("Choose which spell to cast") lists the bare face name.
+  const face = text.match(/^cast\s+(.+)$/)?.[1]?.trim();
+  return Boolean(face) && label.trim() === face;
 }
 
 function addOptionSelection(selected, counts, option) {
@@ -4685,10 +4785,25 @@ function nextOptionChoice(context, decision) {
     }
     return null;
   }
+  if (isBooleanChoiceValue(queued) && isEntersAsCopyChoiceDecision(decision)) {
+    // XMage: setChoice(true/false) answers "copy?", then the donor's name.
+    context.choices.shift();
+    const wantsCopy = queued === true || /^(yes|true)$/i.test(String(queued).trim());
+    const next = context.choices[0];
+    if (wantsCopy && typeof next === "string" && !isBooleanChoiceValue(next) && findMatchingOption(decision, next)) {
+      return context.choices.shift();
+    }
+    return wantsCopy;
+  }
   if (isBooleanChoiceValue(queued) && !findMatchingOption(decision, queued)) {
     return null;
   }
   return context.choices.shift();
+}
+
+function isEntersAsCopyChoiceDecision(decision) {
+  return (decision.options || []).some((option) =>
+    /^don't copy$/i.test(String(option.label ?? option.text ?? option.name ?? option.description ?? "").trim()));
 }
 
 function isReplacementChoiceDecision(decision) {

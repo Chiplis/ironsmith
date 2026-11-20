@@ -797,7 +797,9 @@ impl CombatExcessCapacities {
                     game.calculated_toughness(target)
                         .or_else(|| object.toughness())
                         .map(|toughness| {
-                            (i64::from(toughness) - i64::from(game.damage_on(target))).max(0) as u32
+                            ironsmith_core::quantity::clamp_u32(
+                                i64::from(toughness).saturating_sub(i64::from(game.damage_on(target))),
+                            )
                         })
                 })
                 .flatten();
@@ -839,7 +841,7 @@ impl CombatExcessCapacities {
             let mut dealt = 0u128;
             for event in events.iter_mut().filter(|event| dealt_to_target(event)) {
                 let before = dealt.max(u128::from(capacity));
-                dealt += u128::from(event.amount);
+                dealt = dealt.saturating_add(u128::from(event.amount));
                 // One contribution's excess never exceeds its u32 amount.
                 event.result.excess_damage = dealt.saturating_sub(before) as u32;
             }
@@ -1324,7 +1326,7 @@ fn prepare_combat_toxic(
             }
         })
         .map(u128::from)
-        .sum();
+        .fold(0u128, u128::saturating_add);
     let toxic = crate::events::damage::checked_damage_amount(toxic, "combat toxic total")?;
     if toxic == 0 {
         return Ok(None);
@@ -1365,7 +1367,7 @@ impl CombatLifelinkTotals {
         }
         if let Some(entry) = self.sources.iter_mut().find(|entry| entry.0 == source) {
             entry.2 = crate::events::damage::checked_damage_amount(
-                u128::from(entry.2) + u128::from(damage_dealt),
+                u128::from(entry.2).saturating_add(u128::from(damage_dealt)),
                 "combat lifelink total",
             )?;
         } else {
@@ -1637,7 +1639,7 @@ fn validate_attacker_damage_assignment(
         distribution.push((damage_to_blocker, damage_to_blocker >= lethal && lethal > 0));
     }
 
-    Ok((distribution, total_damage - assigned_total))
+    Ok((distribution, total_damage.saturating_sub(assigned_total)))
 }
 
 // ============================================================================
@@ -1684,8 +1686,11 @@ fn remaining_lethal_damage(
         return 0;
     };
     let remaining =
-        (i64::from(threshold) - i64::from(game.damage_on(recipient)) - i64::from(others.amount))
-            .max(0) as u32;
+        ironsmith_core::quantity::clamp_u32(
+            i64::from(threshold)
+                .saturating_sub(i64::from(game.damage_on(recipient)))
+                .saturating_sub(i64::from(others.amount)),
+        );
     if source_has_deathtouch {
         remaining.min(1)
     } else {
@@ -1887,7 +1892,7 @@ impl CombatDamageDivision {
             .zip(self.lethal_amounts(game, others))
             .map(|(creature, lethal)| {
                 let amount = remaining.min(lethal);
-                remaining -= amount;
+                remaining = remaining.saturating_sub(amount);
                 (Target::Object(*creature), amount)
             })
             .collect::<Vec<_>>();
@@ -1897,7 +1902,7 @@ impl CombatDamageDivision {
             } else {
                 remaining
             };
-            remaining -= amount;
+            remaining = remaining.saturating_sub(amount);
             allocation.push((Target::Object(planeswalker), amount));
         }
         if let Some(target) = self.excess_target {
@@ -1907,7 +1912,7 @@ impl CombatDamageDivision {
         if remaining > 0
             && let Some(first) = allocation.first_mut()
         {
-            first.1 += remaining;
+            first.1 = first.1.saturating_add(remaining);
         }
         allocation.retain(|(_, amount)| *amount > 0);
         allocation
@@ -1932,11 +1937,11 @@ impl CombatDamageDivision {
         let assigned = assignment_total(record);
         if assigned < total {
             if let Some(target) = self.excess_target {
-                allocations.push((target, total - assigned));
+                allocations.push((target, total.saturating_sub(assigned)));
             } else if let Some(planeswalker) = self.planeswalker {
-                allocations.push((Target::Object(planeswalker), total - assigned));
+                allocations.push((Target::Object(planeswalker), total.saturating_sub(assigned)));
             } else if let Some(target) = self.unblocked_alternative {
-                allocations.push((target, total - assigned));
+                allocations.push((target, total.saturating_sub(assigned)));
             }
         }
         allocations

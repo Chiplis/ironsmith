@@ -281,6 +281,11 @@ pub(crate) fn draw_cards_with_miracle_window(
         miracle: None,
         automatic_reveals: Vec::new(),
     };
+    // Draw counts saturate. Once the library is exhausted every further
+    // physical draw only repeats the empty-library observation, so a
+    // saturated count does at most library size + 1 units of work.
+    let library_len = game.player(player).map_or(0, |player| player.library.len());
+    let count = count.min(library_len.saturating_add(1));
     for _ in 0..count {
         let drawn = game.draw_cards_with_dm(player, 1, decision_maker);
         if decision_maker.awaiting_choice() {

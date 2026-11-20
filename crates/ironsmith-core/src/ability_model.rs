@@ -133,6 +133,11 @@ pub enum ManaSpendBonusCondition {
 pub enum ManaSpendAbilityGrantDuration {
     UntilEndOfTurn,
     UntilYourNextTurn,
+    /// No stated duration ("If that mana is spent on a creature spell, it
+    /// gains haste", Hall of the Bandit Lord): the grant lasts for that
+    /// object's incarnation, through its Stack -> Battlefield move (CR 611.2a
+    /// limits only effects from resolving spells and abilities).
+    Indefinitely,
 }
 
 /// A keyword ability that can be granted to a spell by mana used to cast it.

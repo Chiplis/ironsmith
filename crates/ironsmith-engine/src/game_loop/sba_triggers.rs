@@ -595,7 +595,8 @@ fn drain_ability_triggered_events(
                         };
                         if already_fired.saturating_add(announced) >= maximum { return None; }
                     }
-                    *announced_counts.entry(key).or_default() += 1;
+                    let tally = announced_counts.entry(key).or_default();
+                    *tally = tally.saturating_add(1);
                 }
                 Some(event)
             })
@@ -1020,7 +1021,8 @@ fn describe_trigger_for_ordering(game: &GameState, trigger: &TriggeredAbilityEnt
 fn uniquify_trigger_labels(labels: &mut [String]) {
     let mut totals = std::collections::HashMap::<String, usize>::new();
     for label in labels.iter() {
-        *totals.entry(label.clone()).or_insert(0) += 1;
+        let tally = totals.entry(label.clone()).or_insert(0);
+        *tally = tally.saturating_add(1);
     }
 
     let mut seen = std::collections::HashMap::<String, usize>::new();
@@ -1474,9 +1476,9 @@ fn resolve_trigger_modal_count(
 ) -> usize {
     match value {
         crate::effect::Value::Fixed(n) => (*n).max(0) as usize,
-        crate::effect::Value::X => x_value.map(|x| x as usize).unwrap_or(fallback),
+        crate::effect::Value::X => x_value.map(|x| usize::try_from(x).unwrap_or(usize::MAX)).unwrap_or(fallback),
         crate::effect::Value::XTimes(multiplier) => x_value
-            .map(|x| ((x as i32) * *multiplier).max(0) as usize)
+            .map(|x| ironsmith_core::quantity::clamp_usize(i64::from(x).saturating_mul(i64::from(*multiplier))))
             .unwrap_or(fallback),
         _ => fallback,
     }
@@ -1506,21 +1508,59 @@ fn selected_trigger_effects(trigger: &TriggeredAbilityEntry) -> Vec<Effect> {
 fn mode_is_legal_for_trigger(
     game: &GameState,
     trigger: &TriggeredAbilityEntry,
+    entry: &StackEntry,
     effects: &[Effect],
     mode_idx: usize,
 ) -> bool {
-    spell_has_legal_targets_with_mode_preview(
+    if spell_has_legal_targets_with_mode_preview(
         game,
         effects,
         trigger.controller,
         Some(trigger.source),
         &[mode_idx],
-    )
+    ) {
+        return true;
+    }
+    // CR 603.3c, 700.2a: a mode is chosen as the trigger is put on the stack,
+    // with the targets it would then announce. Those targets may name the
+    // trigger's own context ("Destroy target artifact that opponent
+    // controls", Parapet Thrasher): judge them as the announcement does, with
+    // the stack entry's bound player and triggering event.
+    modes_have_legal_trigger_targets(game, trigger, entry, std::slice::from_ref(&mode_idx))
+}
+
+/// The chosen modes' targets, judged with the trigger's own context (the
+/// triggering event's player, the damaged player) as they are announced.
+fn modes_have_legal_trigger_targets(
+    game: &GameState,
+    trigger: &TriggeredAbilityEntry,
+    entry: &StackEntry,
+    modes: &[usize],
+) -> bool {
+    let mut requirements = super::targeting::with_trigger_context_target_requirements(
+        entry.triggering_event.as_ref(),
+        || {
+        extract_target_requirements_from_program_with_modes(
+            game,
+            &trigger.ability.effects,
+            trigger.controller,
+            Some(trigger.source),
+            Some(modes),
+        )
+    });
+    if requirements.is_empty() {
+        return false;
+    }
+    refresh_trigger_program_target_requirements(game, trigger, entry, &mut requirements);
+    requirements
+        .iter()
+        .all(|requirement| requirement.legal_targets.len() >= requirement.min_targets)
 }
 
 fn choose_trigger_modes(
     game: &GameState,
     trigger: &TriggeredAbilityEntry,
+    entry: &StackEntry,
     decision_maker: &mut dyn DecisionMaker,
 ) -> Option<Option<Vec<usize>>> {
     let Some(modal_spec) = triggered_modal_spec(game, trigger) else {
@@ -1554,7 +1594,7 @@ fn choose_trigger_modes(
             trigger.source,
             restriction,
             i,
-        ) && mode_is_legal_for_trigger(game, trigger, &effects, i)
+        ) && mode_is_legal_for_trigger(game, trigger, entry, &effects, i)
     };
 
     let mode_options: Vec<crate::decisions::specs::ModeOption> = modal_spec
@@ -1646,7 +1686,8 @@ fn choose_trigger_modes(
         trigger.controller,
         Some(trigger.source),
         Some(&valid),
-    ) {
+    ) && !modes_have_legal_trigger_targets(game, trigger, entry, &valid)
+    {
         return None;
     }
 
@@ -1743,7 +1784,7 @@ fn target_requirements_from_explicit_choices(
                     target_spec,
                     entry.triggering_event.as_ref(),
                 );
-            let legal_targets = compute_legal_targets_with_tagged_objects_combat_context_and_view(
+            let mut legal_targets = compute_legal_targets_with_tagged_objects_combat_context_and_view(
                 game,
                 &resolved_target_spec,
                 trigger.controller,
@@ -1767,6 +1808,10 @@ fn target_requirements_from_explicit_choices(
                 trigger.controller,
                 Some(trigger.source),
                 &legal_targets,
+            );
+            crate::targeting::retain_targets_admissible_under_aggregate(
+                &mut legal_targets,
+                aggregate_constraint.as_ref(),
             );
 
             TargetRequirement {
@@ -1915,6 +1960,10 @@ fn refresh_trigger_program_target_requirements(
             trigger.controller,
             Some(trigger.source),
             &requirement.legal_targets,
+        );
+        crate::targeting::retain_targets_admissible_under_aggregate(
+            &mut requirement.legal_targets,
+            requirement.aggregate_constraint.as_ref(),
         );
         requirement.spec = spec;
     }
@@ -2272,7 +2321,7 @@ pub(super) fn create_triggered_stack_entry_with_targets(
         entry.triggering_event = Some(triggering_event.with_provenance(matched_node));
     }
 
-    if let Some(mut chosen_modes) = choose_trigger_modes(game, trigger, decision_maker)? {
+    if let Some(mut chosen_modes) = choose_trigger_modes(game, trigger, &entry, decision_maker)? {
         // CR 608.2c: chosen modes are followed in their printed order.
         chosen_modes.sort_unstable();
         entry = entry.with_chosen_modes(Some(chosen_modes));
@@ -2283,13 +2332,17 @@ pub(super) fn create_triggered_stack_entry_with_targets(
 
     let mut explicit_requirements =
         target_requirements_from_explicit_choices(game, trigger, &entry);
-    let mut program_requirements = extract_target_requirements_from_program_with_modes(
-        game,
-        &trigger.ability.effects,
-        trigger.controller,
-        Some(trigger.source),
-        entry.chosen_modes.as_deref(),
-    );
+    let mut program_requirements = super::targeting::with_trigger_context_target_requirements(
+        entry.triggering_event.as_ref(),
+        || {
+        extract_target_requirements_from_program_with_modes(
+            game,
+            &trigger.ability.effects,
+            trigger.controller,
+            Some(trigger.source),
+            entry.chosen_modes.as_deref(),
+        )
+    });
     let needs_defender = explicit_requirements
         .iter()
         .chain(&program_requirements)
@@ -2479,7 +2532,7 @@ fn default_target_distribution(requirement: &PendingTargetDistribution) -> Vec<(
         .enumerate()
         .map(|(index, target)| {
             let extra = if index == 0 { remainder } else { 0 };
-            (*target, requirement.min_per_target + extra)
+            (*target, requirement.min_per_target.saturating_add(extra))
         })
         .collect()
 }

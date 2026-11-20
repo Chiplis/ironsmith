@@ -127,8 +127,10 @@ fn manual_mana_trigger_resource_failure_preserves_source_and_production() {
             1,
         )),
     ]);
+    // Token counts clamp to the creation budget; the instruction work guard
+    // still fails the trigger's token instruction.
     game.set_token_creation_limits(crate::effects::tokens::TokenCreationLimits {
-        max_created_tokens: 0,
+        max_instructions: 0,
         ..Default::default()
     });
     let mut dm = ColorChoice {

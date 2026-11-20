@@ -19,7 +19,7 @@ mod land_play;
 pub(crate) use land_play::{
     LandPlayAuthorization, LandPlayObservationKind, LandPlayObservationTiming,
     execute_land_play_program, land_play_restriction_applies,
-    play_land_from_resolving_effect_with_outputs,
+    play_land_face_from_resolving_effect_with_outputs, play_land_from_resolving_effect_with_outputs,
 };
 mod entry_observation;
 pub(crate) mod movement_instruction;

@@ -249,6 +249,16 @@ fn copy_then_cast(sentence: &SentenceInput) -> Option<MayCastTaggedSpec> {
 
 /// "Copy it." / "Copy that card." over the exiled card.
 fn separate_copy(sentence: &SentenceInput, exiled: &TagKey) -> Option<CopyInstructionSurface> {
+    // "Exile target ... card from an opponent's graveyard. Copy the exiled
+    // card." (Saruman of Many Colors): the definite description names the
+    // card this procedure's opening exile just tagged. Read generically it
+    // bound an unrelated earlier referent (the triggering spell).
+    if matches!(
+        crate::lexer::parser_token_word_refs(sentence.lowered()).as_slice(),
+        ["copy", "the", "exiled", "card"]
+    ) {
+        return Some(CopyInstructionSurface::SeparateThatCard);
+    }
     let effects = crate::grammar::primitives::probe_shape(super::parse_effect_sentence_lexed(
         sentence.lowered(),
     ))?;
@@ -459,6 +469,37 @@ pub(super) fn open(
         consumed: 1,
     };
 
+    // "When one or more cards are milled this way, exile target ... card from
+    // an opponent's graveyard. Copy the exiled card. You may cast the copy
+    // without paying its mana cost." (Saruman of Many Colors): the exile
+    // opens a reflexive trigger's body (CR 603.12), and the copy and cast
+    // statements continue that same body.
+    if let [EffectAst::Conditionals(ConditionalEffectAst::WhenResult {
+        predicate,
+        effects: inner,
+    })] = effects.as_slice()
+        && let [exile] = inner.as_slice()
+    {
+        let mut exile = exile.clone();
+        if let Some(tag) = tag_card_exile(&mut exile, sentence) {
+            let continues = match copy_statement(next, &tag) {
+                Some(CopyStatement::ThenCast | CopyStatement::EachThenCast) => true,
+                Some(statement) if is_plural_copy(&statement) => {
+                    following.is_some_and(|third| plural_cast_statement(third).is_some())
+                }
+                Some(_) => following.is_some_and(|third| cast_statement(third).is_some()),
+                None => false,
+            };
+            if continues {
+                let reflexive = EffectAst::Conditionals(ConditionalEffectAst::WhenResult {
+                    predicate: predicate.clone(),
+                    effects: vec![exile],
+                });
+                return Ok(Some(group(vec![reflexive], tag, Exiled::Card { copy: None })));
+            }
+        }
+    }
+
     // One card exiled, its copy stated by the next sentence.
     if let [exile] = effects.as_slice() {
         let mut exile = exile.clone();
@@ -620,7 +661,24 @@ pub(super) fn feature_tag(group: &CopyCastGroup) -> &'static str {
 
 /// Close the procedure: the tagged exile, then the cast of the copy, spelled
 /// with the copy statement's surface and gated when the copy was.
-pub(super) fn finish(group: CopyCastGroup) -> Vec<EffectAst> {
+pub(super) fn finish(mut group: CopyCastGroup) -> Vec<EffectAst> {
+    // A procedure opened inside a reflexive trigger's body closes inside it.
+    if let [EffectAst::Conditionals(ConditionalEffectAst::WhenResult { .. })] =
+        group.exile.as_slice()
+    {
+        let Some(EffectAst::Conditionals(ConditionalEffectAst::WhenResult {
+            predicate,
+            effects,
+        })) = group.exile.pop()
+        else {
+            unreachable!("the reflexive body was matched above")
+        };
+        group.exile = effects;
+        return vec![EffectAst::Conditionals(ConditionalEffectAst::WhenResult {
+            predicate,
+            effects: finish(group),
+        })];
+    }
     let mut effects = group.exile;
     let Some(mut cast) = group.cast else {
         // The opener saw the cast statement ahead; a group closes without one

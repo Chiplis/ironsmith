@@ -1054,7 +1054,12 @@ fn commit_sacrifices(
                     );
                     sacrifice_events.push(TriggerEvent::new_with_provenance(
                         SacrificeEvent::new(id, Some(ctx.source))
-                            .with_snapshot(pre_snapshot, sacrificing_player),
+                            .with_snapshot(pre_snapshot, sacrificing_player)
+                            .with_destination(
+                                result
+                                    .new_object_id
+                                    .or_else(|| result.new_object_ids.first().copied()),
+                            ),
                         occurrence,
                     ));
                 }
@@ -1072,6 +1077,29 @@ fn commit_sacrifices(
             }
         }
         let sacrifice_events = with_sacrifice_batch_lookback(sacrifice_events, batch_lookback);
+        // One instruction's sacrifices ("Sacrifice two artifacts") happen
+        // simultaneously, so a "whenever you sacrifice one or more" observer
+        // sees one occurrence (Camellia, the Seedmiser; CR 603.2c, 701.21a).
+        let sacrifice_events = if sacrifice_events.len() > 1 {
+            let batch = game.simultaneous_action_batch().unwrap_or_else(|| {
+                game.alloc_child_event_provenance(
+                    ctx.provenance,
+                    crate::events::EventKind::Sacrifice,
+                )
+            });
+            sacrifice_events
+                .into_iter()
+                .map(|event| {
+                    if event.simultaneous_batch().is_some() {
+                        event
+                    } else {
+                        event.with_simultaneous_batch(batch)
+                    }
+                })
+                .collect::<Vec<_>>()
+        } else {
+            sacrifice_events
+        };
 
         let mut outcome = EffectOutcome::count(sacrificed_count)
             .with_events(sacrifice_events)
@@ -2211,7 +2239,13 @@ mod original_result_quantity_tests {
             let source = game.create_object_from_card(&creature, player, Zone::Battlefield);
             let selected = game.create_object_from_card(&creature, player, Zone::Battlefield);
             let invalid = if invalid_source { source } else { selected };
-            game.object_mut(invalid).unwrap().counters.insert(crate::CounterType::PlusOnePlusOne, u32::MAX);
+            // Counter overflow saturates now; induce incomplete characteristics
+            // through missing numeric-choice evidence (a CDA reading a chosen
+            // number with no linked pair) instead.
+            let chosen = crate::effect::Value::SourceChosenNumber { if_unset: Some(0), pair: None };
+            game.object_mut(invalid).unwrap().abilities_mut().push(crate::ability::Ability::static_ability(
+                crate::static_abilities::StaticAbility::characteristic_defining_pt(chosen.clone(), chosen)));
+            game.mark_continuous_state_dirty();
             let effect = match variant {
                 0 => crate::effect::Effect::new(SacrificeEffect::you_creature(1)),
                 1 => crate::effect::Effect::new(SacrificeTargetEffect::new(ChooseSpec::SpecificObject(selected))),

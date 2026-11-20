@@ -632,7 +632,8 @@ pub(crate) fn rewrite_condition_words(condition: &Condition, change: TextChange)
         | Condition::PlayerHasMoreCardsInHandThanYou { player } | Condition::PlayerHasMoreCardsInHandThanEachOtherPlayer { player }
         | Condition::PlayerHasPoisonCountersOrMore { player, .. } | Condition::PlayerHasCountersOrMore { player, .. }
         | Condition::PlayerCastSpellsThisTurnOrMore { player, .. } | Condition::PlayerTappedLandForManaThisTurn { player }
-        | Condition::PlayerGainedLifeThisTurnOrMore { player, .. } | Condition::PlayerHadLandEnterBattlefieldThisTurn { player }
+        | Condition::PlayerGainedLifeThisTurnOrMore { player, .. } | Condition::PlayerPaidOrLostEnergyThisTurnOrMore { player, .. }
+        | Condition::PlayerHadLandEnterBattlefieldThisTurn { player }
         | Condition::PlayerDescendedThisTurn { player } | Condition::PlayerHasCardTypesInGraveyardOrMore { player, .. }
         | Condition::TaggedObjectIsTopOfLibrary { player, .. } | Condition::PlayerTaggedObjectEnteredBattlefieldThisTurn { player, .. }
         | Condition::PlayerOwnsCardNamedInZones { player, .. } | Condition::PlayerWasMonarchAtTurnStart { player }

@@ -340,7 +340,9 @@ impl crate::effects::SimultaneousEffectProposal for TokenProposal {
         if ctx.pending_entry_attachment.is_some()
             && let crate::events::processing::PreparedTokenCreation::Proceed { event, provenance, .. } = &mut prepared
         {
-            game.reserve_token_creation(event.total_count())?;
+            // Past the creation budget, create as many tokens as fit.
+            let granted = super::resources::reserve_token_creation_up_to(game, event.total_count())?;
+            if granted < event.total_count() { *event = event.truncated_to(granted); }
             let registration_id = event.token.as_ref().map(|object| object.id).unwrap_or(ctx.source);
             let _ = game.object_from_token_definition(registration_id, &self.resolved_token, event.controller);
             if let Some(preview) = &mut event.token {
@@ -420,8 +422,7 @@ fn prepare_multiplied_token_proposal(
     ctx: &ExecutionContext,
 ) -> Result<TokenProposal, ExecutionError> {
     let mut proposal = prepare_token_proposal(effect, game, ctx)?;
-    proposal.count =
-        super::resources::checked_token_count(u128::from(proposal.count) * u128::from(multiplier))?;
+    proposal.count = proposal.count.saturating_mul(multiplier);
     Ok(proposal)
 }
 
@@ -585,7 +586,7 @@ fn commit_token_original(
     token_preview: crate::object::Object,
     game: &mut GameState,
     ctx: &mut ExecutionContext,
-    replacement: crate::events::CreateTokensEvent,
+    mut replacement: crate::events::CreateTokensEvent,
     programs: Vec<crate::events::processing::PreparedReplacementProgram>,
     instruction: Option<super::resources::TokenInstructionPermit>,
     mut entry_attachment_plan: Option<super::lifecycle::TokenEntryAttachmentPlan>,
@@ -598,7 +599,11 @@ fn commit_token_original(
     if ctx.pending_entry_attachment.is_some() && entry_attachment_plan.is_none() {
         return Err(ExecutionError::IncompleteEvidence("authored token attachment lost its prepared entry owner".into()));
     }
-    if entry_attachment_plan.is_none() { game.reserve_token_creation(replacement.total_count())?; }
+    if entry_attachment_plan.is_none() {
+        // Past the creation budget, create as many tokens as fit and stop.
+        let granted = super::resources::reserve_token_creation_up_to(game, replacement.total_count())?;
+        if granted < replacement.total_count() { replacement = replacement.truncated_to(granted); }
+    }
     let count = replacement.count as usize;
     let cleanup_options = TokenCleanupOptions::new(
         effect.exile_at_end_of_combat,
@@ -699,7 +704,7 @@ fn commit_token_original(
             }
             let token_is_creature = token_obj.is_creature();
     
-            game.commit_token_resource_slot()?;
+            if !super::resources::commit_token_slot_within_budget(game)? { break; }
             game.add_object(token_obj);
             let attachment = None;
             let entry_result = game.move_created_token_with_entry_instructions(
@@ -1063,7 +1068,12 @@ mod tests {
             let alice = PlayerId::from_index(0);
             let source =
                 game.create_object_from_definition(&soldier_token(), alice, Zone::Battlefield);
-            for _ in 0..2 {
+            // A doubler and an adder do not commute, so their order is a
+            // real choice; identical doublers would apply without one.
+            for action in [
+                ReplacementAction::Double,
+                ReplacementAction::Modify(crate::replacement::EventModification::Add(1)),
+            ] {
                 let replacement_source =
                     game.create_object_from_definition(&soldier_token(), alice, Zone::Battlefield);
                 game.effect_store.replacement_effects.add_resolution_effect(
@@ -1071,7 +1081,7 @@ mod tests {
                         replacement_source,
                         alice,
                         WouldCreateTokensUnderControlMatcher::new(PlayerFilter::You),
-                        ReplacementAction::Double,
+                        action,
                     ),
                 );
             }
@@ -1112,7 +1122,7 @@ mod tests {
             assert_eq!(
                 game.battlefield.len(),
                 initial + 4,
-                "both doublers apply once; case={case}"
+                "(1 + 1) * 2 after choosing the adder first; case={case}"
             );
         }
     }

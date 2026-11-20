@@ -646,6 +646,12 @@ pub(super) fn matches_subject(
                 game.turn_store
                     .turn_history
                     .spell_caster_this_turn(subject.object_id())
+                    .or_else(|| {
+                        crate::turn_history::spell_resolved_into(game, subject.object_id())
+                            .and_then(|spell| {
+                                game.turn_store.turn_history.spell_caster_this_turn(spell)
+                            })
+                    })
             } else {
                 None
             }
@@ -659,6 +665,9 @@ pub(super) fn matches_subject(
         resolved_cast_player = subject.is_live().then_some(cast_player);
     }
 
+    // "permanents that were cast this turn" (Emrakul, the World Anew): a
+    // resolved permanent is a new object (CR 400.7), so its cast record is
+    // the one of the spell that resolved into it this turn.
     if filter.cast_this_turn
         && !subject.has_recorded_cast_order()
         && game
@@ -666,6 +675,10 @@ pub(super) fn matches_subject(
             .turn_history
             .spell_cast_order(subject.object_id())
             .is_none()
+        && !(subject.zone() == Zone::Battlefield
+            && crate::turn_history::spell_resolved_into(game, subject.object_id()).is_some_and(
+                |spell| game.turn_store.turn_history.spell_cast_order(spell).is_some(),
+            ))
     {
         return false;
     }
@@ -829,9 +842,18 @@ pub(super) fn matches_subject(
                 return false;
             }
         } else if let Some(chosen_type) = game.chosen_subtype(source).or_else(|| {
+            // A delayed ability follows its source card by stable identity
+            // after the source left (Long List of the Ents sacrificed after
+            // its last chapter); the type chosen as it was created is the one
+            // captured on the scheduling snapshot (CR 603.7c).
             ctx.source_snapshot
                 .as_ref()
-                .filter(|snapshot| snapshot.object_id == source)
+                .filter(|snapshot| {
+                    snapshot.object_id == source
+                        || game
+                            .object(source)
+                            .is_some_and(|object| object.stable_id == snapshot.stable_id)
+                })
                 .and_then(|snapshot| snapshot.chosen_subtype)
         }) {
             if !object_subtypes.contains(&chosen_type) {
@@ -1648,7 +1670,7 @@ pub(super) fn matches_subject(
         ) else {
             return false;
         };
-        if !total_cmp.satisfies_with_context(power + toughness, game, ctx, stack_entry) {
+        if !total_cmp.satisfies_with_context(power.saturating_add(toughness), game, ctx, stack_entry) {
             return false;
         }
     }
@@ -1684,10 +1706,31 @@ pub(super) fn matches_subject(
         let Some(source_id) = ctx.source else {
             return false;
         };
-        let Some(source) = game.object(source_id) else {
+        // CR 608.2h/113.7a: a source sacrificed to pay its own cost
+        // (Engineered Explosives) is read from last known information; the
+        // card in the graveyard is a new object without its counters.
+        let live = game
+            .object(source_id)
+            .filter(|source| source.zone == Zone::Battlefield)
+            .map(|source| source.counters.get(&counter_type).copied().unwrap_or(0));
+        let Some(required) = live
+            .or_else(|| {
+                ctx.source_snapshot
+                    .as_ref()
+                    .map(|snapshot| snapshot.counters.get(&counter_type).copied().unwrap_or(0))
+            })
+            .or_else(|| {
+                game.source_last_known_snapshot(source_id)
+                    .map(|snapshot| snapshot.counters.get(&counter_type).copied().unwrap_or(0))
+            })
+            .or_else(|| {
+                game.object(source_id)
+                    .map(|source| source.counters.get(&counter_type).copied().unwrap_or(0))
+            })
+        else {
             return false;
         };
-        let required = source.counters.get(&counter_type).copied().unwrap_or(0) as i32;
+        let required = required as i32;
         let mv = subject.mana_value(game);
         if mv != required {
             return false;

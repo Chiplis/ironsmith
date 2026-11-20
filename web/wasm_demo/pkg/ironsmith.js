@@ -1,15 +1,14 @@
-import initEngine, {
-  WasmGame,
-  manabrewPrintedDefense,
-  manabrewPrintedLoyalty,
-} from "./engine.js";
+// The engine reads a Manabrew deck card into a card source; the facade never
+// keeps a second reading of its own.
+import initEngine, { WasmGame, manabrewDeckSources } from "./engine.js";
 // Retain the engine's current source compiler before compatibility methods
 // replace these entry points with artifact-first registration.
 const registerSourceInEngine = WasmGame.prototype.registerExternalCardSources;
-import initCompiler, {
-  compileCardArtifact,
-  validateCompiledCardArtifact,
-} from "./compiler.js";
+import initCompiler, * as compilerModule from "./compiler.js";
+const { compileCardArtifact, validateCompiledCardArtifact } = compilerModule;
+// The npm package replaces the standalone compiler with a stub and compiles
+// card source in the engine module instead.
+const compilerAvailable = compilerModule.available !== false;
 import initVerifier, {
   ziffleBuildRevealToken,
   ziffleBuildRevealTokens,
@@ -79,10 +78,9 @@ function sourceArtifacts(source) {
       localId: index + 1,
       otherFaceId: otherIndex + 1,
       otherFaceName: other?.name,
-      linkedFaceLayout:
-        group.layout === "split" || group.layout === "prepare"
-          ? group.layout
-          : "transform_like",
+      linkedFaceLayout: ["split", "prepare", "flip", "transform"].includes(group.layout)
+        ? group.layout
+        : "transform_like",
     });
   });
 }
@@ -138,120 +136,6 @@ export function compileAndRegisterCardSources(game, input) {
   return summary;
 }
 
-function manabrewCardName(card) {
-  return String(card?.identity?.name ?? card?.name ?? "").trim();
-}
-
-function manabrewTypeLine(card) {
-  const explicit = String(card?.typeLine ?? card?.type_line ?? "").trim();
-  if (explicit) return explicit;
-  const front = [...(card?.supertypes ?? []), ...(card?.types ?? [])]
-    .map(String).filter(Boolean).join(" ");
-  const subtypes = (card?.subtypes ?? []).map(String).filter(Boolean).join(" ");
-  if (front && subtypes) return `${front} — ${subtypes}`;
-  return front || subtypes || "Card";
-}
-
-function manabrewCardBlock(card) {
-  const lines = [];
-  const manaCost = String(card?.manaCost ?? card?.mana_cost ?? "").trim();
-  if (manaCost) lines.push(`Mana cost: ${manaCost}`);
-  lines.push(`Type: ${manabrewTypeLine(card)}`);
-  if (card?.power != null && card?.toughness != null) {
-    lines.push(`Power/Toughness: ${card.power}/${card.toughness}`);
-  }
-  // The deck protocol has no field for printed loyalty or defense; the engine
-  // ships a table for the faces a host leaves without one.
-  const typeWords = manabrewTypeLine(card).split(/[^A-Za-z]+/).map((word) => word.toLowerCase());
-  const loyalty = card?.loyalty
-    ?? (typeWords.includes("planeswalker") ? manabrewPrintedLoyalty(manabrewCardName(card)) : null);
-  const defense = card?.defense
-    ?? (typeWords.includes("battle") ? manabrewPrintedDefense(manabrewCardName(card)) : null);
-  if (loyalty != null) lines.push(`Loyalty: ${loyalty}`);
-  if (defense != null) lines.push(`Defense: ${defense}`);
-  const text = String(card?.text ?? card?.oracleText ?? card?.oracle_text ?? "").trim();
-  if (text) lines.push(text);
-  return lines.join("\n");
-}
-
-function manabrewCardSource(card) {
-  const deckName = manabrewCardName(card);
-  if (!deckName) return null;
-  const rawFaces = card?.cardFaces ?? card?.card_faces ?? card?.faces ?? [];
-  let faces = Array.isArray(rawFaces)
-    ? rawFaces.slice(0, 2).map((face) => ({
-        name: manabrewCardName(face),
-        block: manabrewCardBlock(face),
-        score: 1,
-      })).filter((face) => face.name)
-    : [];
-  // Protocol `CardRulesSummary.backFace`: a transform or modal double-faced
-  // card whose front face is the deck card itself.
-  const backFace = card?.backFace ?? card?.back_face;
-  if (faces.length < 2 && backFace && manabrewCardName(backFace)) {
-    faces = [
-      { name: deckName.split(" // ")[0].trim(), block: manabrewCardBlock(card), score: 1 },
-      { name: manabrewCardName(backFace), block: manabrewCardBlock(backFace), score: 1 },
-    ];
-  }
-  if (faces.length === 2) {
-    const combinedName = String(
-      card?.combinedName ?? card?.combined_name
-      ?? (deckName.includes(" // ") ? deckName : `${faces[0].name} // ${faces[1].name}`)
-    ).trim();
-    const aliases = [deckName, combinedName]
-      .filter((alias, index, values) =>
-        alias && alias.toLowerCase() !== faces[0].name.toLowerCase()
-        && values.findIndex((candidate) => candidate.toLowerCase() === alias.toLowerCase()) === index)
-      .map((alias) => ({ alias, canonical: faces[0].name }));
-    return {
-      canonicalName: faces[0].name,
-      aliases,
-      group: {
-        kind: "linked",
-        layout: String(card?.layout ?? "").toLowerCase() === "split" ? "split" : "transform_like",
-        combinedName,
-        hasFuse: Boolean(card?.hasFuse ?? card?.has_fuse),
-        faces,
-      },
-    };
-  }
-  return {
-    canonicalName: deckName,
-    aliases: [],
-    group: {
-      kind: "single",
-      name: deckName,
-      block: manabrewCardBlock(card),
-      score: 1,
-    },
-  };
-}
-
-function manabrewDeckSources(decks) {
-  const sections = [
-    "cards", "sideboard", "commanders", "attractions", "contraptions",
-    "schemes", "planes", "maybeboard", "tokens",
-  ];
-  const seen = new Set();
-  const sources = [];
-  for (const deck of Array.isArray(decks) ? decks : []) {
-    const cards = sections.flatMap((section) => Array.isArray(deck?.[section]) ? deck[section] : []);
-    if (deck?.companion) cards.push(deck.companion);
-    for (const card of cards) {
-      const source = manabrewCardSource(card);
-      if (!source) continue;
-      const names = source.group.kind === "linked"
-        ? source.group.faces.map((face) => face.name)
-        : [source.group.name];
-      if (names.some((name) => seen.has(name.toLowerCase()))) continue;
-      names.forEach((name) => seen.add(name.toLowerCase()));
-      sources.push(source);
-    }
-  }
-  return sources;
-}
-
 const verifierMethods = {
   ziffleBuildRevealToken,
   ziffleBuildRevealTokens,
@@ -270,6 +154,7 @@ let initialized;
 let compilerInitialization;
 let verifierInitialization;
 export function initCompilerRuntime(input) {
+  if (!compilerAvailable) return Promise.resolve(null);
   compilerInitialization ||= initCompiler(wasmInitOptions(input)).catch(error => { compilerInitialization = null; throw error; });
   return compilerInitialization;
 }

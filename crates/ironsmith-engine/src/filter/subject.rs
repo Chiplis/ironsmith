@@ -490,10 +490,15 @@ impl<'a> ObjectSubject<'a> {
             None
         };
         if has_stack_subject && wants_stack {
+            // CR 601.2a: a card moved to the stack while being cast is
+            // already a spell, before its entry is pushed at 601.2i. Layer
+            // filters ("creature spells you control", Maskwood Nexus) have
+            // no caster in context, so a live stack object needs none.
+            let mid_cast_spell = self.is_live() && self.zone() == Zone::Stack;
             let prospective_spell = (self.zone() == Zone::Stack
                 || ctx.prospective_cast == Some(self.object_id()))
                 && filter.stack_kind == Some(StackObjectKind::Spell)
-                && ctx.caster.is_some()
+                && (ctx.caster.is_some() || mid_cast_spell)
                 && filter.target_count.is_none()
                 && filter.targets_only_player.is_none()
                 && filter.targets_only_object.is_none()
@@ -555,7 +560,7 @@ impl<'a> ObjectSubject<'a> {
             } else if !((self.zone() == Zone::Stack
                 || ctx.prospective_cast == Some(self.object_id()))
                 && kind == StackObjectKind::Spell
-                && ctx.caster.is_some())
+                && (ctx.caster.is_some() || (self.is_live() && self.zone() == Zone::Stack)))
             {
                 return None;
             }

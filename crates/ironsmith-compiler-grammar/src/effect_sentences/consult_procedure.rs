@@ -739,6 +739,22 @@ pub(super) fn continue_with(
                     attached_to_tokens,
                     order,
                 } => {
+                    // CR 110.2a: "The player puts that card onto the
+                    // battlefield" (Proteus Staff) -- the consulting player
+                    // named as the subject puts it there under their control.
+                    let named_actor = zone == Zone::Battlefield
+                        && stripped
+                            .first()
+                            .is_some_and(|token| token.is_any_word(&["the", "that", "they"]));
+                    let actor = if named_actor {
+                        match player.clone() {
+                            PlayerAst::ItsController | PlayerAst::ItsOwner => PlayerAst::That,
+                            PlayerAst::You => PlayerAst::Implicit,
+                            other => other,
+                        }
+                    } else {
+                        PlayerAst::Implicit
+                    };
                     group.followups.push(EffectAst::subject_verb_move_to_zone_with_attacking(
                         TargetAst::Tagged(crate::tag::TagRef::of(match_tag.clone()), None),
                         zone,
@@ -752,7 +768,7 @@ pub(super) fn continue_with(
                                 crate::util::parse_target_phrase(&tokens[start..end])
                             })
                             .transpose()?,
-                    ));
+                    ).with_move_to_zone_actor_surface(actor));
                     group.followups.push(
                         EffectAst::subject_verb_put_tagged_remainder_on_bottom_of_library(
                             crate::tag::TagRef::of(all_tag),

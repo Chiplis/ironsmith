@@ -139,7 +139,8 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "source": "Vampire Scrivener",
-          "count": 1,
+          "note": "CR 120.3a, 119.9 and 702.15e: damage from each creature is a separate life-loss event (Wizards ruling on Vampire Scrivener: it triggers once per life-losing event; each damage source makes its own event), so four creatures dealing 1 damage each yield four triggers and four counters; XMage batches them into one.",
+          "count": 4,
           "abilityKind": "Triggered"
         },
         {
@@ -164,8 +165,9 @@ registerPortedMageTests({
           "op": "assertCounterCount",
           "player": 0,
           "name": "Vampire Scrivener",
+          "note": "CR 120.3a, 119.9 and 702.15e: damage from each creature is a separate life-loss event (Wizards ruling on Vampire Scrivener: it triggers once per life-losing event; each damage source makes its own event), so four creatures dealing 1 damage each yield four triggers and four counters; XMage batches them into one.",
           "counter": "P1P1",
-          "count": 1
+          "count": 4
         }
       ]
     },

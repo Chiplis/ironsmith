@@ -1359,29 +1359,26 @@ impl CardDefinitionBuilder {
         self.with_ability(crate::ability::Ability {
             kind: crate::ability::AbilityKind::Triggered(crate::ability::TriggeredAbility {
                 trigger,
+                // CR 113.7a / Recover rulings (Time Spiral): a recover trigger
+                // whose card already left the graveyard still resolves; its
+                // controller may still pay, but nothing else happens. The
+                // Source moves below find no object then (CR 400.7).
                 effects: crate::resolution::ResolutionProgram::from_effects(vec![
-                    crate::effect::Effect::conditional_only(
-                        crate::effect::Condition::SourceIsInZone(crate::zone::Zone::Graveyard),
-                        vec![
-                            crate::effect::Effect::with_id(
-                                payment_id.0,
-                                crate::effect::Effect::may(payment_effects),
-                            ),
-                            crate::effect::Effect::if_then(
-                                payment_id,
-                                crate::effect::EffectPredicate::Happened,
-                                vec![crate::effect::Effect::return_from_graveyard_to_hand(
-                                    crate::target::ChooseSpec::Source,
-                                )],
-                            ),
-                            crate::effect::Effect::if_then(
-                                payment_id,
-                                crate::effect::EffectPredicate::DidNotHappen,
-                                vec![crate::effect::Effect::exile(
-                                    crate::target::ChooseSpec::Source,
-                                )],
-                            ),
-                        ],
+                    crate::effect::Effect::with_id(
+                        payment_id.0,
+                        crate::effect::Effect::may(payment_effects),
+                    ),
+                    crate::effect::Effect::if_then(
+                        payment_id,
+                        crate::effect::EffectPredicate::Happened,
+                        vec![crate::effect::Effect::return_from_graveyard_to_hand(
+                            crate::target::ChooseSpec::Source,
+                        )],
+                    ),
+                    crate::effect::Effect::if_then(
+                        payment_id,
+                        crate::effect::EffectPredicate::DidNotHappen,
+                        vec![crate::effect::Effect::exile(crate::target::ChooseSpec::Source)],
                     ),
                 ]),
                 choices: vec![],

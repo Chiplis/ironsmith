@@ -30,8 +30,10 @@ impl DiesDamagedByFilteredSourceThisTurnTrigger {
         event: &ZoneChangeEvent,
         ctx: &TriggerContext,
     ) -> bool {
-        if let Some(snapshot) = event.snapshot.as_ref()
-            && snapshot.object_id == victim_id
+        if let Some(snapshot) = event
+            .snapshots()
+            .iter()
+            .find(|snapshot| snapshot.object_id == victim_id)
         {
             return self
                 .victim
@@ -101,9 +103,11 @@ impl DiesDamagedByFilteredSourceThisTurnTrigger {
             .objects
             .iter()
             .filter(|&&victim_id| {
-                let victim_stable_id = zone_change.snapshot.as_ref().and_then(|snapshot| {
-                    (snapshot.object_id == victim_id).then_some(snapshot.stable_id)
-                });
+                let victim_stable_id = zone_change
+                    .snapshots()
+                    .iter()
+                    .find(|snapshot| snapshot.object_id == victim_id)
+                    .map(|snapshot| snapshot.stable_id);
                 self.victim_matches(victim_id, zone_change, ctx)
                     && self.was_damaged_by_matching_source(victim_id, victim_stable_id, ctx)
             })
@@ -140,6 +144,16 @@ impl TriggerMatcher for DiesDamagedByFilteredSourceThisTurnTrigger {
 
     fn uses_snapshot(&self) -> bool {
         true
+    }
+
+    /// CR 603.6c/603.10a: a "dies" trigger is a leaves-the-battlefield
+    /// ability that looks back in time, so it triggers even when its own
+    /// source dies simultaneously with the victim (Shelob fighting a
+    /// deathtouch creature).
+    fn looks_back_for_source(&self, event: &TriggerEvent) -> bool {
+        event
+            .downcast::<ZoneChangeEvent>()
+            .is_some_and(|zone_change| zone_change.is_dies())
     }
 
     fn display(&self) -> String {

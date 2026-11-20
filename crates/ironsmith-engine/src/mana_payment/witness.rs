@@ -53,6 +53,8 @@ pub struct ManaReplacementWitness {
     pub controller: PlayerId,
     pub player: PlayerId,
     pub input: Vec<ManaSymbol>,
+    /// `ManaAddedEvent::mana_multiplier` of the recorded input.
+    pub input_multiplier: u64,
     pub provenance: crate::events::mana::ManaProductionProvenance,
     pub decisions: Vec<ManaReplacementDecision>,
 }
@@ -67,6 +69,7 @@ impl ManaReplacementWitness {
             controller: event.controller,
             player: event.player,
             input: event.mana.clone(),
+            input_multiplier: event.mana_multiplier,
             provenance: event.provenance,
             decisions,
         }
@@ -77,6 +80,7 @@ impl ManaReplacementWitness {
             && self.controller == event.controller
             && self.player == event.player
             && self.input == event.mana
+            && self.input_multiplier == event.mana_multiplier
             && self.provenance == event.provenance
     }
 }

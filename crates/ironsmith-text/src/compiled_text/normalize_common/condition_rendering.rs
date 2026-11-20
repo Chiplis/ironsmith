@@ -3630,6 +3630,11 @@ pub(crate) fn describe_condition(condition: &Condition) -> String {
                 describe_player_filter(player)
             )
         }
+        Condition::PlayerPaidOrLostEnergyThisTurnOrMore { player, count } => {
+            let subject = describe_player_filter(player);
+            let subject = if subject == "you" { "you've".to_string() } else { format!("{subject} has") };
+            format!("{subject} paid or lost {count} or more {{E}} this turn")
+        }
         Condition::PlayerGainedLifeThisTurnOrMore { player, count } => {
             if *count <= 1 {
                 format!("{} gained life this turn", describe_player_filter(player))

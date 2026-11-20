@@ -96,12 +96,12 @@ impl EffectExecutor for CreateCardsEffect {
                 if game.player(player).is_none() {
                     return Err(ExecutionError::PlayerNotFound(player));
                 }
-                let count = usize::try_from(resolve_value(game, &self.count, ctx)?.max(0))
-                    .map_err(|_| {
-                        ExecutionError::InternalError(
-                            "card generation count exceeds address space".into(),
-                        )
-                    })?;
+                // Generated cards are objects: clamp the count to the shared
+                // generated-object budget instead of failing.
+                let count = ironsmith_core::quantity::clamp_usize(i64::from(resolve_value(
+                    game, &self.count, ctx,
+                )?))
+                .min(game.token_creation_limits().max_created_tokens as usize);
                 let (duplicate,retained_duplicate) = match &self.selection {
                     CardCreationSelection::Duplicate(target) => {
                         let ids=resolve_objects_for_effect(game,ctx,target)?;
@@ -159,6 +159,8 @@ impl EffectExecutor for CreateCardsEffect {
                             })
                         }
                         CardCreationSelection::Duplicate(_) => duplicate.as_ref().is_some_and(|object|definition_matches_current_names(definition,object)),
+                        // Catalog identities never come from a supplied pool.
+                        CardCreationSelection::Catalog(_) => false,
                         CardCreationSelection::RandomMatching { filter, .. } => {
                             let mut admitted = (*definition).clone();
                             admitted.card.is_token = false;
@@ -180,6 +182,19 @@ impl EffectExecutor for CreateCardsEffect {
                     }
                 }
                 if let Some(definition)=retained_duplicate.as_ref(){
+                    candidates.clear();candidates.push(definition);
+                }
+                // Arena conjure: the named card comes from the game's card
+                // catalog (registered printed definitions), never a token.
+                let catalog_definition=match &self.selection {
+                    CardCreationSelection::Catalog(name)=>game.printed_definition_for_noted_name(name)
+                        .filter(|definition|!definition.card.is_token),
+                    _=>None,
+                };
+                if let CardCreationSelection::Catalog(name)=&self.selection && count>0 && catalog_definition.is_none() {
+                    return Err(ExecutionError::IncompleteEvidence(format!("conjured card {name} has no catalog definition")));
+                }
+                if let Some(definition)=catalog_definition.as_ref(){
                     candidates.clear();candidates.push(definition);
                 }
                 if candidates.is_empty() && count>0 && matches!(self.selection,CardCreationSelection::Duplicate(_))
@@ -216,11 +231,7 @@ impl EffectExecutor for CreateCardsEffect {
                 let amount = if independent {
                     1
                 } else {
-                    u32::try_from(count).map_err(|_| {
-                        ExecutionError::InternalError(
-                            "card generation exceeds event quantity".into(),
-                        )
-                    })?
+                    u32::try_from(count).unwrap_or(u32::MAX)
                 };
                 let mut outputs = CompletedEffectOutputs::aggregate_only(EffectOutcome::resolved());
                 let mut children = Vec::new();
@@ -230,7 +241,7 @@ impl EffectExecutor for CreateCardsEffect {
                     if random && independent {
                         game.shuffle_slice(&mut candidates);
                     }
-                    let selected_definition=if retained_duplicate.is_some(){
+                    let selected_definition=if retained_duplicate.is_some()||catalog_definition.is_some(){
                         let definition=(*candidates[0]).clone();
                         super::definition_scope::validate_native_definition(&definition)
                             .map_err(ExecutionError::IncompleteEvidence)?;
@@ -328,7 +339,14 @@ fn execute_creation_batch(
                 }).ok_or_else(||ExecutionError::IncompleteEvidence(format!("card creation changed to an unproven identity named {}",event.card_name)))?;
                 let mut definition=definition.clone();
                 definition.card.is_token = false;
-                game.reserve_token_creation(u128::from(event.amount))?;
+                // Past the generated-object budget, create as many cards as fit.
+                let granted = crate::effects::tokens::resources::reserve_token_creation_up_to(
+                    game,
+                    u128::from(event.amount),
+                )?;
+                let mut event = event.clone();
+                event.amount = u32::try_from(granted).unwrap_or(u32::MAX).min(event.amount);
+                let event = &event;
                 if event.zone == Zone::Battlefield {
                     let mut creation = event.clone();
                     creation.selection_finalized = true;
@@ -344,7 +362,9 @@ fn execute_creation_batch(
                     ExecutionError::InternalError("cannot reserve generated-card batch".into())
                 })?;
                 for _ in 0..event.amount {
-                    game.commit_token_resource_slot()?;
+                    if !crate::effects::tokens::resources::commit_token_slot_within_budget(game)? {
+                        break;
+                    }
                     let id =
                         game.create_object_from_definition(&definition, event.player, event.zone);
                     if event.zone == Zone::Library {

@@ -3015,13 +3015,18 @@ fn every_characteristic_setting_route_preserves_range_and_missing_player_errors(
                     if missing_player {
                         assert!(matches!(result, Err(StaticEffectDiscoveryError::NumericChoiceEvidence { .. })));
                     } else {
-                        assert!(matches!(result, Err(StaticEffectDiscoveryError::ScalarRange {
-                            value: 2_147_483_648, ..
-                        })));
+                        // Game quantities saturate: life i32::MAX + 1 clamps to i32::MAX.
+                        result.unwrap();
+                        let expected = match axis {
+                            0 => (Some(i32::MAX), Some(3)),
+                            1 => (Some(2), Some(i32::MAX)),
+                            _ => (Some(i32::MAX), Some(i32::MAX)),
+                        };
+                        assert_eq!((chars.power, chars.toughness), expected);
                     }
                 }
-                assert!(game.try_current_characteristics(object).is_err(),
-                    "a provisional scalar must never be a successful checked view");
+                assert_eq!(game.try_current_characteristics(object).is_err(), missing_player,
+                    "missing evidence fails closed; an oversized scalar saturates");
             }
         }
     }
@@ -3061,13 +3066,16 @@ fn dynamic_modifiers_preserve_signed_values_and_checked_failures_on_every_route(
                     assert_eq!((chars.power, chars.toughness), (Some(-15), Some(9)));
                     assert_eq!((chars.base_power, chars.base_toughness), (Some(5), Some(7)));
                 }
-                1 => assert!(matches!(chars.validate_numeric_range(),
-                    Err(StaticEffectDiscoveryError::ScalarRange { value: 2_147_483_667, .. }))),
+                1 => {
+                    // i32::MAX + 20 saturates, and so does 5 + i32::MAX.
+                    chars.validate_numeric_range().unwrap();
+                    assert_eq!((chars.power, chars.toughness), (Some(i32::MAX), Some(9)));
+                }
                 _ => assert!(matches!(chars.validate_numeric_range(),
                     Err(StaticEffectDiscoveryError::NumericChoiceEvidence { .. }))),
             }
         }
-        assert_eq!(game.try_current_characteristics(object).is_ok(), case == 0);
+        assert_eq!(game.try_current_characteristics(object).is_ok(), case != 2);
     }
 }
 
@@ -3098,13 +3106,17 @@ fn failing_dynamic_modifier_rolls_back_prior_effects_history_and_registered_laye
         let effects_before = game.effect_store.continuous_effects.effects().len();
         let mut context = ExecutionContext::new_default(source, alice);
         let result = execute_effect(&mut game, &sequence, &mut context);
-        if missing {
-            assert!(matches!(result, Err(ExecutionError::ContinuousDiscovery(
-                StaticEffectDiscoveryError::NumericChoiceEvidence { .. }))));
-        } else {
-            assert!(matches!(result, Err(ExecutionError::ContinuousDiscovery(
-                StaticEffectDiscoveryError::ScalarRange { .. }))));
+        if !missing {
+            // An oversized modifier saturates instead of failing; the missing-evidence
+            // branch below keeps exercising the rollback contract.
+            result.unwrap();
+            assert_eq!(game.player(alice).unwrap().life, 25);
+            let saturated = game.try_current_characteristics(source).unwrap().unwrap();
+            assert_eq!((saturated.power, saturated.toughness), (Some(i32::MAX), Some(i32::MAX)));
+            continue;
         }
+        assert!(matches!(result, Err(ExecutionError::ContinuousDiscovery(
+            StaticEffectDiscoveryError::NumericChoiceEvidence { .. }))));
         assert_eq!(game.player(alice).unwrap().life, 20, "the earlier gain is part of the rollback");
         assert_eq!(game.turn_store.turn_history.event_records.len(), history_before);
         assert_eq!(game.effect_store.continuous_effects.effects().len(), effects_before);

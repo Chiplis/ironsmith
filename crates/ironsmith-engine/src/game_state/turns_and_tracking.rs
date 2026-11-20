@@ -278,11 +278,12 @@ impl GameState {
     /// Schedule one independently consumable skip of `player`'s next `step`.
     pub fn skip_next_step(&mut self, player: PlayerId, step: Step) {
         let player = self.team_turn_representative(player);
-        *self
+        let tally = self
             .turn_store
             .skipped_steps
             .entry((player, step))
-            .or_default() += 1;
+            .or_default();
+        *tally = tally.saturating_add(1);
     }
 
     pub fn pending_step_skips(&self, player: PlayerId, step: Step) -> u32 {
@@ -643,11 +644,9 @@ impl GameState {
             if label.is_empty() { continue; }
             let key = (player, label.clone());
             let combat_key = (self.turn_store.combat_phases_started_this_turn, player, label);
-            let total = turn_updates.get(&key).copied().or_else(||history.player_named_actions.get(&key).copied()).unwrap_or(0u32).checked_add(1)
-                .ok_or_else(|| crate::effects::ExecutionError::Impossible("player action history overflow".into()))?;
+            let total = turn_updates.get(&key).copied().or_else(||history.player_named_actions.get(&key).copied()).unwrap_or(0u32).saturating_add(1);
             if matches!(self.turn.phase, crate::game_state::Phase::Combat) {
-                let combat_total = combat_updates.get(&combat_key).copied().or_else(||history.player_named_actions_by_combat.get(&combat_key).copied()).unwrap_or(0u32).checked_add(1)
-                    .ok_or_else(|| crate::effects::ExecutionError::Impossible("player combat action history overflow".into()))?;
+                let combat_total = combat_updates.get(&combat_key).copied().or_else(||history.player_named_actions_by_combat.get(&combat_key).copied()).unwrap_or(0u32).saturating_add(1);
                 combat_updates.insert(combat_key, combat_total);
             }
             turn_updates.insert(key, total);
@@ -678,7 +677,7 @@ impl GameState {
                 // Authoritative producers stamp None for a noncombat operation.
                 if action.combat_phase != Some(self.turn_store.combat_phases_started_this_turn) { continue; }
             }
-            count = count.checked_add(1).ok_or_else(||crate::effects::ExecutionError::Impossible("completed player action count overflow".into()))?;
+            count = count.saturating_add(1);
         }
         Ok(count)
     }
@@ -1632,7 +1631,7 @@ impl GameState {
         if self.turn_players().contains(&player) {
             turn_number.div_ceil(seats)
         } else {
-            (turn_number - 1).div_ceil(seats)
+            turn_number.saturating_sub(1).div_ceil(seats)
         }
     }
 
@@ -1840,14 +1839,15 @@ impl GameState {
         {
             // "Skip the untap step of that turn": this is that turn.
             self.turn_store.extra_turn_untap_skips.remove(position);
-            *self
+            let tally = self
                 .turn_store
                 .skipped_steps
                 .entry((next_player, Step::Untap))
-                .or_default() += 1;
+                .or_default();
+            *tally = tally.saturating_add(1);
         }
         if let Some(slot) = selected_extra_turn_slot {
-            let turn_number = self.turn.turn_number + 1;
+            let turn_number = self.turn.turn_number.saturating_add(1);
             for effect in self.effect_store.restriction_effects.iter_mut()
                 .filter(|effect| effect.bound_extra_turn_index == Some(slot))
             {
@@ -1882,17 +1882,19 @@ impl GameState {
                 .position(|bound| *bound == next_player)
         {
             self.turn_store.extra_turn_untap_skip_players.remove(position);
-            *self
+            let tally = self
                 .turn_store
                 .skipped_steps
                 .entry((next_player, Step::Untap))
-                .or_default() += 1;
+                .or_default();
+            *tally = tally.saturating_add(1);
         }
         self.turn.active_player = next_player;
         self.turn.priority_player = Some(next_player);
-        self.turn.turn_number += 1;
+        self.turn.turn_number = self.turn.turn_number.saturating_add(1);
         for player in self.turn_players() {
-            *self.turn_store.turns_taken.entry(player).or_insert(0) += 1;
+            let tally = self.turn_store.turns_taken.entry(player).or_insert(0);
+            *tally = tally.saturating_add(1);
         }
         // CR 723.1: controlling a turn lasts through every cleanup step.
         // Expire it only when the next actual (non-skipped) turn begins.
@@ -1991,6 +1993,7 @@ impl GameState {
         self.auxiliary_tracking_mut().simultaneous_library_placements.clear();
         self.turn_store.grant_cast_uses_this_turn.clear();
         self.turn_store.cast_spell_lki.clear();
+        self.turn_store.departed_ability_entries.clear();
         self.cleanup_custom_statuses_end_of_turn();
         self.battlefield_flags_mut()
             .saddled_until_end_of_turn
@@ -2105,7 +2108,8 @@ impl GameState {
                     .then(|| self.controller_of(object))
             })
             .fold(im::HashMap::new(), |mut counts, controller| {
-                *counts.entry(controller).or_insert(0) += 1;
+                let tally = counts.entry(controller).or_insert(0u32);
+                *tally = tally.saturating_add(1);
                 counts
             });
     }
@@ -2897,12 +2901,13 @@ impl GameState {
                 .or_default()
                 .insert(creature);
         }
-        *self
+        let tally = self
             .turn_store
             .turn_history
             .creature_attack_counts_this_turn
             .entry(creature)
-            .or_insert(0) += 1;
+            .or_insert(0);
+        *tally = tally.saturating_add(1);
         self.mark_continuous_state_dirty();
     }
 
@@ -3058,13 +3063,15 @@ impl GameState {
         source_object_id: ObjectId,
         trigger_id: TriggerIdentity,
     ) {
-        *self.turn_store.triggers_fired_per_object.entry((source_object_id, trigger_id)).or_default() += 1;
-        *self
+        let tally = self.turn_store.triggers_fired_per_object.entry((source_object_id, trigger_id)).or_default();
+        *tally = tally.saturating_add(1);
+        let tally = self
             .turn_store
             .turn_history
             .triggers_fired_this_turn
             .entry((source_object_id, trigger_id))
-            .or_insert(0) += 1;
+            .or_insert(0);
+        *tally = tally.saturating_add(1);
         self.turn_store
             .turn_history
             .turn_counters
@@ -3096,12 +3103,33 @@ impl GameState {
         source_object_id: ObjectId,
         trigger_id: TriggerIdentity,
     ) {
-        *self
+        let tally = self
             .turn_store
             .turn_history
             .do_this_actions_this_turn
             .entry((source_object_id, trigger_id))
-            .or_insert(0) += 1;
+            .or_insert(0);
+        *tally = tally.saturating_add(1);
+    }
+
+    /// Withdraw one recorded performance of a limited instruction that was
+    /// accepted but could not be carried out (CR 603.2h).
+    pub fn unrecord_do_this_action(
+        &mut self,
+        source_object_id: ObjectId,
+        trigger_id: TriggerIdentity,
+    ) {
+        let key = (source_object_id, trigger_id);
+        let history = &mut self.turn_store.turn_history.do_this_actions_this_turn;
+        match history.get(&key).copied() {
+            Some(count) if count > 1 => {
+                history.insert(key, count - 1);
+            }
+            Some(_) => {
+                history.remove(&key);
+            }
+            None => {}
+        }
     }
 
     /// How many times a triggered ability's limited instruction was performed this turn.
@@ -3124,12 +3152,13 @@ impl GameState {
         source_object_id: ObjectId,
         trigger_id: TriggerIdentity,
     ) {
-        *self
+        let tally = self
             .turn_store
             .turn_history
             .triggered_abilities_resolved_this_turn
             .entry((source_object_id, trigger_id))
-            .or_insert(0) += 1;
+            .or_insert(0);
+        *tally = tally.saturating_add(1);
         self.turn_store.turn_history.turn_counters.increment_named(
             triggered_ability_resolution_turn_counter_name(source_object_id, trigger_id),
         );
@@ -3763,12 +3792,13 @@ impl GameState {
 
     /// Record that a specific activated ability resolved this turn.
     pub fn record_activated_ability_resolved(&mut self, source: ObjectId, ability_index: usize) {
-        *self
+        let tally = self
             .turn_store
             .turn_history
             .activated_abilities_resolved_this_turn
             .entry((source, ability_index))
-            .or_insert(0) += 1;
+            .or_insert(0);
+        *tally = tally.saturating_add(1);
         self.turn_store.turn_history.turn_counters.increment_named(
             activated_ability_resolution_turn_counter_name(source, ability_index),
         );
@@ -4163,6 +4193,12 @@ impl GameState {
     /// CR 103.8a applies to every two-player game, including two-player
     /// Commander; only other multiplayer games are exempt (CR 103.8c).
     pub fn should_skip_first_turn_draw(&self, player_id: PlayerId) -> bool {
+        // CR 103.8a skips the draw step of the turn's own beginning phase.
+        // An additional beginning phase (CR 500.8, Sphinx of the Second Sun)
+        // comes after a main phase and has a draw step of its own.
+        if self.turn_store.main_phases_started_this_turn > 0 {
+            return false;
+        }
         if self.turn.turn_number == 1
             && let Some(profile) = self.two_headed_giant()
         {
@@ -4576,6 +4612,24 @@ impl GameState {
             }
         }
         None
+    }
+
+    /// A card's color identity (CR 903.4): its own mana cost, color
+    /// indicator and rules-text mana symbols plus those of its linked face
+    /// (the back face of a double-faced card, the other half of a split or
+    /// Adventure card; CR 903.4c-d). A face-down object shows only what its
+    /// overlay shows.
+    pub fn object_color_identity(&self, object: &crate::object::Object) -> crate::color::ColorSet {
+        let mut identity = object.color_identity();
+        if !self.is_face_down(object.id)
+            && let Some(other_face) = self.linked_face_definition_by_name_or_id(
+                object.other_face_name.as_deref(),
+                object.other_face,
+            )
+        {
+            identity = identity.union(other_face.card.color_identity());
+        }
+        identity
     }
 
     pub(crate) fn commander_object_color_identity(

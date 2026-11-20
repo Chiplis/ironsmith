@@ -72,16 +72,9 @@ pub(super) fn counter_quantity_payment_x(
     if !accepts_counter_quantity_payment(proposal, restriction) {
         return Ok(None);
     }
-    proposal
+    Ok(proposal
         .nominal_payment_quantity()
-        .map(|quantity| {
-            u32::try_from(quantity).map_err(|_| {
-                crate::effects::CostValidationError::Other(
-                    "counter cost X exceeds the supported range".into(),
-                )
-            })
-        })
-        .transpose()
+        .map(ironsmith_core::quantity::clamp_u32_from_u64))
 }
 
 pub(super) fn validate_counter_quantity_payment(
@@ -113,13 +106,7 @@ pub(super) fn counter_payment_resources(
             counter_type: removal.counter_type(),
             count: removal.count(),
         });
-        quantity = quantity
-            .checked_add(u64::from(removal.count()))
-            .ok_or_else(|| {
-                ExecutionError::Impossible(
-                    "counter cost exceeds the supported quantity range".into(),
-                )
-            })?;
+        quantity = quantity.saturating_add(u64::from(removal.count()));
     }
     Ok((resources, quantity))
 }

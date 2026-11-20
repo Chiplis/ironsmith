@@ -267,6 +267,18 @@ pub fn resolve_non_target_player_filter(
             "triggering_source",
         ))),
         PlayerAst::ItsController => {
+            // "Whenever this creature attacks, if defending player has more
+            // cards in hand than you, exile the top card of their library"
+            // (Robber of the Rich): a bare "their" whose only object
+            // antecedent is the attacking trigger object names the attack's
+            // player role, not the attacker's controller (that would be
+            // "your library").
+            if let Some(tag) = controller_antecedent_tag(refs)
+                && tag.as_str() == crate::tag::CompilerReferenceTag::Triggering.as_str()
+                && matches!(refs.known_last_player_filter(), Some(PlayerFilter::Defending))
+            {
+                return Ok(PlayerFilter::Defending);
+            }
             if let Some(tag) = controller_antecedent_tag(refs) {
                 Ok(PlayerFilter::ControllerOf(ObjectRef::tagged(tag.clone())))
             } else {
@@ -473,6 +485,46 @@ fn controller_antecedent_tag(refs: &ReferenceEnv) -> Option<&TagKey> {
     refs.snapshot_bindings
         .lookup(crate::tag::CompilerReferenceTag::PriorObjectAntecedent.as_str())
         .or(Some(last))
+}
+
+/// "Exile target creature. ... Return that card to the battlefield. ...
+/// discard cards equal to that creature's toughness" (Vanish into Memory):
+/// the returned card is the prior antecedent itself, and the demonstrative
+/// repeats the noun that named it before it left the battlefield, so its
+/// characteristic is that departure's last known information (CR 608.2h),
+/// not the new permanent's (a melded pair returns as separate cards, CR
+/// 712.4c). "Its toughness" keeps naming the returned permanent.
+fn returned_object_demonstrative_lki(spec: &ChooseSpec, refs: &ReferenceEnv) -> Option<ChooseSpec> {
+    let ChooseSpec::SurfaceHinted { spec: inner, hints } = spec else {
+        return None;
+    };
+    if !matches!(inner.as_ref(), ChooseSpec::Tagged(tag)
+        if tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str())
+        || !hints.iter().any(|hint| {
+            matches!(
+                hint,
+                ChooseSpecSurfaceHint::SourceReference(SourceReferenceSurface::ThisPermanentType(text))
+                    if demonstrative_permanent_noun_types(text).is_some()
+            )
+        })
+    {
+        return None;
+    }
+    let last = refs.known_last_object_tag()?;
+    if !refs.snapshot_bindings.aliases().any(|(alias, concrete)| {
+        concrete == last
+            && alias.as_str() == crate::tag::CompilerReferenceTag::ReturnedObjectAntecedent.as_str()
+    }) {
+        return None;
+    }
+    let prior = refs
+        .snapshot_bindings
+        .lookup(crate::tag::CompilerReferenceTag::PriorObjectAntecedent.as_str())
+        .filter(|prior| *prior != last && ironsmith_core::tag::pre_move_history_base_tag(prior).is_none())?;
+    Some(ChooseSpec::SurfaceHinted {
+        spec: Box::new(ChooseSpec::Tagged(ironsmith_core::tag::pre_move_history_tag(prior))),
+        hints: hints.clone(),
+    })
 }
 
 fn resolve_object_ref(reference: &ObjectRef, refs: &ReferenceEnv) -> ObjectRef {
@@ -886,6 +938,15 @@ fn bind_off_battlefield_other_to_antecedent(filter: &mut ObjectFilter, refs: &Re
     } else {
         tag.clone()
     };
+    // "Whenever this creature or another creature you control with flying
+    // dies, return another target creature card ... than it" (Jackdaw
+    // Savior): the contrast is with the triggering creature. The source
+    // exclusion is not inert there, because the source can die with that
+    // creature and be a legal target. When the source itself triggered, the
+    // triggering exclusion below still excludes it.
+    if tag.as_str() == crate::tag::CompilerReferenceTag::Triggering.as_str() {
+        filter.other = false;
+    }
     if !filter.tagged_constraints.iter().any(|constraint| {
         constraint.tag == exclusion
             && constraint.relation == TaggedOpbjectRelation::IsNotTaggedObject
@@ -2873,18 +2934,20 @@ pub fn resolve_value_it_tag(value: &Value, refs: &ReferenceEnv) -> Result<Value,
         Value::DevotionToChosenColor(player) => Ok(Value::DevotionToChosenColor(
             resolve_contextual_player_filter(player, refs)?,
         )),
-        Value::PowerOf(spec) => Ok(Value::PowerOf(Box::new(resolve_choose_spec_it_tag(
-            spec, refs,
-        )?))),
+        Value::PowerOf(spec) => Ok(Value::PowerOf(Box::new(
+            returned_object_demonstrative_lki(spec, refs)
+                .map_or_else(|| resolve_choose_spec_it_tag(spec, refs), Ok)?,
+        ))),
         Value::BasePowerOf(spec) => Ok(Value::BasePowerOf(Box::new(resolve_choose_spec_it_tag(
             spec, refs,
         )?))),
         Value::StationContributionOf(spec) => Ok(Value::StationContributionOf(Box::new(
             resolve_choose_spec_it_tag(spec, refs)?,
         ))),
-        Value::ToughnessOf(spec) => Ok(Value::ToughnessOf(Box::new(resolve_choose_spec_it_tag(
-            spec, refs,
-        )?))),
+        Value::ToughnessOf(spec) => Ok(Value::ToughnessOf(Box::new(
+            returned_object_demonstrative_lki(spec, refs)
+                .map_or_else(|| resolve_choose_spec_it_tag(spec, refs), Ok)?,
+        ))),
         Value::ColorsOf(spec) => Ok(Value::ColorsOf(Box::new(resolve_choose_spec_it_tag(
             spec, refs,
         )?))),

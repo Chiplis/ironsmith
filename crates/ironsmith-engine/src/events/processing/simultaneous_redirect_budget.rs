@@ -298,7 +298,7 @@ fn allocate(
             chosen
         };
         quotas.push(chosen);
-        remaining -= u128::from(chosen);
+        remaining = remaining.saturating_sub(u128::from(chosen));
     }
     Ok(Some(quotas))
 }

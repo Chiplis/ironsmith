@@ -225,6 +225,38 @@ impl ScheduleDelayedTriggerEffect {
     }
 }
 
+/// "At the beginning of the end step on your next turn" / "... declare
+/// attackers step on your next turn" / "the next turn's end step": the
+/// registration names one specific turn (CR 603.7). If that turn passes
+/// without the step (Time Stop ends the turn), the ability never triggers
+/// and must not wait for a later turn's step. Returns
+/// `(expires_at_turn, expires_after_controller_turn_after)` bindings.
+/// "Your next upkeep" / "the next draw step" name the next occurrence of a
+/// step rather than a turn, so they are left unbound.
+fn next_turn_step_binding(trigger: &Trigger, current_turn: u32) -> (Option<u32>, Option<u32>) {
+    let player = if let Some(t) = trigger.downcast_ref::<crate::triggers::BeginningOfEndStepTrigger>() {
+        &t.player
+    } else if let Some(t) =
+        trigger.downcast_ref::<crate::triggers::BeginningOfDeclareAttackersStepTrigger>()
+    {
+        &t.player
+    } else if let Some(t) = trigger.downcast_ref::<crate::triggers::BeginningOfCombatTrigger>() {
+        &t.player
+    } else if let Some(t) = trigger.downcast_ref::<crate::triggers::BeginningOfMainPhaseTrigger>() {
+        &t.player
+    } else if let Some(t) = trigger.downcast_ref::<crate::triggers::BeginningOfCleanupStepTrigger>()
+    {
+        &t.player
+    } else {
+        return (None, None);
+    };
+    match player {
+        PlayerFilter::You => (None, Some(current_turn)),
+        PlayerFilter::Any => (Some(current_turn.saturating_add(1)), None),
+        _ => (None, None),
+    }
+}
+
 /// "When they lose the game" (Miss Highwater): the player the resolving
 /// ability names ("they") is fixed when the registration is created, so the
 /// delayed ability watches that exact player rather than whoever the loop
@@ -244,6 +276,93 @@ fn bind_lose_game_player(trigger: &Trigger, ctx: &ExecutionContext) -> Option<Tr
         qualified.surface.clone(),
         qualified.stun_counter_reminder_surface,
     ))
+}
+
+/// "If you do, at the beginning of the next end step, create a token that's a
+/// copy of that artifact" (Esoteric Duplicator, after a sacrifice): the
+/// delayed instruction names the object as it last existed on the
+/// battlefield (CR 400.7, 608.2h, 707.2). Pinning re-points a live tag at the
+/// card's new-zone incarnation, so keep the departed battlefield snapshot as
+/// the tag's pre-move history, which LKI readers consult first.
+fn retain_departed_battlefield_history(
+    game: &GameState,
+    ctx: &ExecutionContext,
+    tagged_objects: &mut std::collections::HashMap<TagKey, Vec<crate::snapshot::ObjectSnapshot>>,
+) {
+    let event_snapshot = ctx
+        .triggering_event
+        .as_ref()
+        .and_then(|event| event.snapshot())
+        .filter(|snapshot| snapshot.zone == crate::zone::Zone::Battlefield);
+    let mut histories = Vec::new();
+    for (tag, snapshots) in tagged_objects.iter() {
+        if tag.as_str().starts_with("__") || snapshots.is_empty() {
+            continue;
+        }
+        let history_tag = TagKey::from(format!("__pre_move_history__{}", tag.as_str()));
+        if tagged_objects.contains_key(&history_tag) {
+            continue;
+        }
+        let departed = snapshots
+            .iter()
+            .filter_map(|snapshot| {
+                let battlefield = if snapshot.zone == crate::zone::Zone::Battlefield {
+                    snapshot
+                } else {
+                    event_snapshot.filter(|event| event.stable_id == snapshot.stable_id)?
+                };
+                game.object(battlefield.object_id)
+                    .is_none_or(|object| object.zone != crate::zone::Zone::Battlefield)
+                    .then(|| battlefield.clone())
+            })
+            .collect::<Vec<_>>();
+        if departed.len() == snapshots.len() {
+            histories.push((history_tag, departed));
+        }
+    }
+    tagged_objects.extend(histories);
+}
+
+/// "Choose a card name. Whenever a creature with the chosen name deals combat
+/// damage to a player this turn, ..." (The Clone Saga): the name is this
+/// resolution's choice, recorded on its source. The source may leave (a
+/// Saga is sacrificed after its last chapter), so the registration binds the
+/// literal name now rather than reading the departed source later (CR 607.2d).
+fn bind_chosen_name_trigger(
+    trigger: &Trigger,
+    ctx: &ExecutionContext,
+    game: &GameState,
+) -> Option<Trigger> {
+    const CHOSEN_NAME: &str = "{chosen name}";
+    let names = game.chosen_named_option(ctx.source)?;
+    let names: Vec<&str> = names.lines().map(str::trim).filter(|name| !name.is_empty()).collect();
+    let [name] = names.as_slice() else { return None };
+    fn bind(filter: &mut ObjectFilter, name: &str) -> bool {
+        let mut changed = false;
+        if filter.name.as_deref() == Some(CHOSEN_NAME) {
+            filter.name = Some(name.to_string());
+            changed = true;
+        }
+        for branch in &mut filter.any_of {
+            changed |= bind(branch, name);
+        }
+        changed
+    }
+    let rebuilt = if let Some(native) =
+        trigger.downcast_ref::<crate::triggers::DealsCombatDamageToPlayerTrigger>()
+    {
+        let mut native = native.clone();
+        if !bind(&mut native.filter, name) {
+            return None;
+        }
+        Trigger::new(native)
+    } else {
+        return None;
+    };
+    Some(match trigger.intro_surface() {
+        Some(intro) => rebuilt.with_intro_surface(intro),
+        None => rebuilt,
+    })
 }
 
 impl EffectExecutor for ScheduleDelayedTriggerEffect {
@@ -285,6 +404,8 @@ impl EffectExecutor for ScheduleDelayedTriggerEffect {
             };
             Trigger::new(crate::triggers::BeginningOfAddedCombatTrigger { order: Some(order) })
         } else if let Some(bound) = bind_lose_game_player(&self.trigger, ctx) {
+            bound
+        } else if let Some(bound) = bind_chosen_name_trigger(&self.trigger, ctx, game) {
             bound
         } else { self.trigger.clone() };
         let new_combat_observation = self.trigger.subscribed_kinds().is_some_and(|kinds|
@@ -459,6 +580,14 @@ impl EffectExecutor for ScheduleDelayedTriggerEffect {
             return Ok(EffectOutcome::count(0));
         }
 
+        let (next_turn_expires_at, next_turn_anchor) = if self.start_next_turn
+            && ctx.created_extra_turn_index.is_none()
+            && self.duration_player.is_none()
+        {
+            next_turn_step_binding(&bound_trigger, game.turn.turn_number)
+        } else {
+            (None, None)
+        };
         if let Some(tag) = &self.target_tag {
             let Some(tagged) = tagged_objects.get(tag) else {
                 return Ok(EffectOutcome::count(0));
@@ -500,7 +629,7 @@ impl EffectExecutor for ScheduleDelayedTriggerEffect {
                 .with_expires_at_turn(if self.until_end_of_turn {
                     Some(game.turn.turn_number)
                 } else {
-                    None
+                    next_turn_expires_at
                 })
                 .with_expires_before_controller_turn_after(
                     (self.duration
@@ -509,7 +638,8 @@ impl EffectExecutor for ScheduleDelayedTriggerEffect {
                 )
                 .with_expires_after_controller_turn_after(
             (self.duration == ironsmith_core::DelayedTriggerDuration::UntilControllerNextTurnEnd)
-                .then_some(game.turn.turn_number),
+                .then_some(game.turn.turn_number)
+                .or(next_turn_anchor),
         )
         .with_expires_at_end_of_combat(self.until_end_of_combat)
                 .with_bound_extra_turn_index(
@@ -540,6 +670,7 @@ impl EffectExecutor for ScheduleDelayedTriggerEffect {
         }
 
         let mut tagged_objects = tagged_objects;
+        retain_departed_battlefield_history(game, ctx, &mut tagged_objects);
         crate::effects::helpers::pin_tagged_objects_to_current(game, ctx, &mut tagged_objects);
         // CR 603.8: "When <this> is no longer on the battlefield" is a state.
         // If the watched source has already left (a phased-out permanent is
@@ -581,7 +712,7 @@ impl EffectExecutor for ScheduleDelayedTriggerEffect {
         .with_expires_at_turn(if self.until_end_of_turn {
             Some(game.turn.turn_number)
         } else {
-            None
+            next_turn_expires_at
         })
         .with_expires_before_controller_turn_after(
             (self.duration == ironsmith_core::DelayedTriggerDuration::UntilControllerNextTurn)
@@ -589,7 +720,8 @@ impl EffectExecutor for ScheduleDelayedTriggerEffect {
         )
         .with_expires_after_controller_turn_after(
             (self.duration == ironsmith_core::DelayedTriggerDuration::UntilControllerNextTurnEnd)
-                .then_some(game.turn.turn_number),
+                .then_some(game.turn.turn_number)
+                .or(next_turn_anchor),
         )
         .with_expires_at_end_of_combat(self.until_end_of_combat)
         // "At the beginning of that turn's end step" after "take an extra turn

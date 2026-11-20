@@ -268,7 +268,7 @@ fn with_referenced_mana_cost(
         } else {
             0
         };
-        resolved.x_value = Some(crate::effect::Value::Fixed(x as i32));
+        resolved.x_value = Some(crate::effect::Value::Fixed(ironsmith_core::quantity::clamp_i32_from_u32(x)));
         resolved.independent_x_choice = false;
     }
     resolved.cost = effect.cost.combined_with(&referenced);
@@ -364,7 +364,7 @@ impl EffectExecutor for PayManaEffect {
                         .as_ref()
                         .map(|value| resolve_value(game, value, ctx))
                         .transpose()?
-                        .unwrap_or(ctx.x_value.unwrap_or(0) as i32)
+                        .unwrap_or(ironsmith_core::quantity::clamp_i32_from_u32(ctx.x_value.unwrap_or(0)))
                         .max(0) as u32
                 };
 
@@ -375,7 +375,7 @@ impl EffectExecutor for PayManaEffect {
                     ));
                 };
                 let primary = if let Some(chosen) = bounded_x {
-                    EffectOutcome::count(chosen as i32)
+                    EffectOutcome::count(ironsmith_core::quantity::clamp_i32_from_u32(chosen))
                         .with_execution_fact(ExecutionFact::ChosenNumber(chosen))
                         .with_execution_fact(ExecutionFact::ManaPaid { x_value: chosen })
                 } else {

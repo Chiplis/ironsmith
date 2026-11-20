@@ -418,7 +418,39 @@ fn bind_other_damage_target_to_tagged_source(target: &mut ChooseSpec, source: &C
     bind(target, source_tag);
 }
 
+/// "+1: Put a loyalty counter on Gideon for each creature target opponent
+/// controls." (Gideon, Champion of Justice; Sting, Bilbo's Sword): a player
+/// named only inside the counter amount is still a target the ability must
+/// announce (CR 115.1, 601.2c / 602.2b), exactly as the token-count and
+/// player-effect amount readers declare it.
 pub(super) fn compile_put_counters_action(
+    subject_verb: &SubjectVerbEffectAst,
+    ctx: &mut EffectLoweringContext,
+) -> Result<EffectCompileOutcome, CardTextError> {
+    let mut value_choices = Vec::new();
+    if let SubjectVerbActionAst::Counters(CounterActionAst::PutCounters { count, .. }) =
+        &subject_verb.action
+    {
+        let resolved = resolve_value_it_tag(count, &current_reference_env(ctx))?;
+        super::collect_value_player_target_choices(&resolved, &mut value_choices);
+    }
+    let (mut effects, mut choices) = compile_put_counters_action_inner(subject_verb, ctx)?;
+    let mut prelude = Vec::new();
+    for choice in value_choices {
+        let reuses_prior_player_target = ctx
+            .last_player_filter
+            .as_ref()
+            .is_some_and(|player| super::player_target_choice_matches_filter(&choice, player));
+        if !choices.iter().any(|existing| existing == &choice) && !reuses_prior_player_target {
+            prelude.push(Effect::new(crate::effects::TargetOnlyEffect::new(choice.clone())));
+            push_choice(&mut choices, choice);
+        }
+    }
+    prelude.append(&mut effects);
+    Ok((prelude, choices))
+}
+
+fn compile_put_counters_action_inner(
     subject_verb: &SubjectVerbEffectAst,
     ctx: &mut EffectLoweringContext,
 ) -> Result<EffectCompileOutcome, CardTextError> {
@@ -2406,8 +2438,12 @@ pub(super) fn compile_subject_verb_late(
                 } else {
                     Effect::remove_counters(*counter_type, resolved_amount, iterated.clone())
                 }
-            } else {
+            } else if *up_to {
                 Effect::remove_up_to_any_counters(resolved_amount, iterated.clone())
+            } else {
+                // "Remove all counters from all permanents" (Aether Snap):
+                // every counter is removed; the holder doesn't choose fewer.
+                Effect::remove_any_counters(resolved_amount, iterated.clone())
             };
             let effect = Effect::for_each(resolved_filter, vec![inner]);
             Ok((vec![effect], Vec::new()))
@@ -3821,7 +3857,17 @@ pub(super) fn compile_subject_verb_late(
             let chooser = subject.clone_player_filter();
             let resolved_filter = subject.bind_sacrifice_filter(filter, ctx)?;
             let count = Value::Count(resolved_filter.clone());
-            let effect = Effect::sacrifice_player(resolved_filter, count, chooser.clone());
+            let mut effect = Effect::sacrifice_player(resolved_filter, count, chooser.clone());
+            // "Sacrifice any number of creatures. This creature's power
+            // becomes the total power of those creatures" (Dracoplasm): a
+            // later "those" was annotated against this sacrifice's result
+            // tag, so retain exactly the sacrificed set under it.
+            if let Some(tag) = ctx.take_reserved_object_result_tag("sacrificed") {
+                ctx.last_object_tag = Some(tag.clone());
+                let mut tagged = crate::effects::TaggedEffect::new(tag, effect);
+                tagged.action = Some(ironsmith_core::PriorEffectAction::Sacrificed);
+                effect = Effect::new(tagged);
+            }
             let mut effects = subject.target_prelude();
             effects.push(effect);
             Ok((effects, subject.into_choices()))

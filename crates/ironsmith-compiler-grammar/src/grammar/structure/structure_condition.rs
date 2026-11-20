@@ -29,11 +29,23 @@ pub(super) fn split_trailing_predicate_clause_lexed<'a>(
     if predicate_tokens.is_empty() {
         return None;
     }
-    let predicate = parse_predicate_with_grammar_entrypoint_lexed(predicate_tokens).ok()?;
+    let mut predicate = parse_predicate_with_grammar_entrypoint_lexed(predicate_tokens).ok()?;
 
     let leading_tokens = trim_lexed_commas(&tokens[..split_idx]);
     if leading_tokens.is_empty() {
         return None;
+    }
+    // "Counter target spell if it was kicked." (Ertai's Trickery): the
+    // pronoun's antecedent is the target spell the leading instruction just
+    // named, not the resolving spell (CR 702.33d: "kicked" describes the
+    // spell that paid its kicker). The bare predicate reader cannot see it.
+    if matches!(predicate, PredicateAst::ThisSpellWasKicked)
+        && crate::lexer::token_word_refs(predicate_tokens).first() == Some(&"it")
+        && crate::lexer::token_word_refs(leading_tokens)
+            .windows(2)
+            .any(|pair| pair == ["target", "spell"])
+    {
+        predicate = PredicateAst::TargetWasKicked;
     }
 
     Some(TrailingIfClauseSpec {

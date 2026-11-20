@@ -143,11 +143,7 @@ pub(super) fn select_up_to_any_counter_removal(
     // Count total counters available
     let total_counters: u64 = available_counters
         .iter()
-        .try_fold(0u64, |total, (_, count)| {
-            total.checked_add(u64::from(*count)).ok_or_else(|| {
-                ExecutionError::InternalError("available counter total overflow".into())
-            })
-        })?;
+        .fold(0u64, |total, (_, count)| total.saturating_add(u64::from(*count)));
 
     // The actual maximum we can remove is the lesser of max_count and total available
     let actual_max = max_count.min(total_counters);
@@ -186,11 +182,10 @@ pub(super) fn select_up_to_any_counter_removal(
             CompletedEffectOutputs::aggregate_only(EffectOutcome::count(0)),
         ));
     }
-    if selections.iter().try_fold(0u64, |total, (_, count)| {
-        total
-            .checked_add(u64::from(*count))
-            .ok_or_else(|| ExecutionError::InternalError("selected counter total overflow".into()))
-    })? < min_count
+    if selections
+        .iter()
+        .fold(0u64, |total, (_, count)| total.saturating_add(u64::from(*count)))
+        < min_count
     {
         selections = mandatory_fallback;
     }

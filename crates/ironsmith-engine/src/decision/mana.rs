@@ -302,6 +302,10 @@ fn shared_spell_characteristic_count(
 
 /// How many times a mana-symbol reduction applies: once, or once per unit
 /// of its "for each" count (Eluge), counted as the total cost is determined.
+/// Per-unit symbol reductions are materialized one step each; past this many
+/// applications every payable pip is already reduced, so further units are inert.
+const MAX_MANA_REDUCTION_APPLICATIONS: usize = 4_096;
+
 fn mana_cost_reduction_for_each(
     game: &GameState,
     spell: &crate::object::Object,
@@ -650,6 +654,23 @@ pub(crate) fn calculate_effective_activation_total_cost_without_grants(
         return crate::cost::TotalCost::from_costs(components);
     };
     let modifiers = activation_modifier_sources(game, ability_source_object, view);
+    // "You may pay {0} rather than pay the equip cost of ..." (Bruenor
+    // Battlehammer, Puresteel Paladin): the alternative replaces the whole
+    // printed cost, including non-mana parts such as Demonmail Hauberk's
+    // "Sacrifice a creature" (CR 118.9). Increases below still apply.
+    if !modifiers.is_empty()
+        && activation_mana_reductions(
+            game,
+            ability_source_object,
+            chosen_targets,
+            ability,
+            &modifiers,
+        )
+        .replacement
+        .is_some()
+    {
+        components = vec![crate::costs::Cost::mana(crate::mana::ManaCost::new())];
+    }
     for source in &modifiers {
         for increase in source
             .abilities
@@ -828,6 +849,47 @@ fn merge_loyalty_cost_components(cost: crate::cost::TotalCost) -> crate::cost::T
         .enumerate()
         .filter_map(|(index, component)| loyalty_delta(component).map(|delta| (index, delta)))
         .collect::<Vec<_>>();
+    // "[-X]" with an additional "[+1]" (Carth the Lion): the total cost
+    // removes X-1 counters, so X may exceed the current loyalty by the added
+    // amount. Pay the fixed additions first (CR 601.2h lets costs be paid in
+    // any order) so the X removal can be paid from the increased loyalty.
+    let x_removal = components.iter().position(|component| {
+        component
+            .effect_ref()
+            .map(|effect| {
+                effect
+                    .downcast_ref::<crate::effects::WithIdEffect>()
+                    .map_or(effect, |observed| &observed.effect)
+            })
+            .and_then(|effect| {
+                effect.downcast_ref::<crate::effects::RemoveAnyCountersFromSourceEffect>()
+            })
+            .is_some_and(|remove| {
+                remove.display_x
+                    && !remove.remove_all
+                    && remove.counter_type == Some(CounterType::Loyalty)
+            })
+    });
+    if let Some(x_index) = x_removal
+        && !loyalty.is_empty()
+        && loyalty.iter().all(|(_, delta)| *delta > 0)
+    {
+        let net: i64 = loyalty.iter().map(|(_, delta)| delta).sum();
+        let added = crate::costs::Cost::add_counters(
+            CounterType::Loyalty,
+            u32::try_from(net).unwrap_or(u32::MAX),
+        );
+        let mut reordered = Vec::with_capacity(components.len());
+        for (index, component) in components.iter().enumerate() {
+            if index == x_index {
+                reordered.push(added.clone());
+            }
+            if !loyalty.iter().any(|(loyalty_index, _)| *loyalty_index == index) {
+                reordered.push(component.clone());
+            }
+        }
+        return crate::cost::TotalCost::from_costs(reordered);
+    }
     if loyalty.len() < 2 {
         return cost;
     }
@@ -1220,7 +1282,12 @@ pub(crate) fn resolve_play_from_alternative_grant(
     }
 
     let adventure_idx = granted_idx.checked_sub(granted.len())?;
-    let adventure_view = spell_view_for_split_other_half_cast(game, spell)?;
+    // Callers may pass the selected other-half view itself; turning it again
+    // would select the normal face and lose its face-keyed permission.
+    let adventure_view = match game.object(spell.id) {
+        Some(physical) if physical.zone != Zone::Stack && physical.name != spell.name => spell.clone(),
+        _ => spell_view_for_split_other_half_cast(game, spell)?,
+    };
     let view = DerivedGameView::new(game);
     let adventure_granted =
         view.granted_alternative_casts_for_card_view(spell.id, &adventure_view, zone, player);
@@ -1372,7 +1439,25 @@ fn spell_view_for_cost_filter_match(
         _ => None,
     } };
     let mut changed = selected_price_face.is_some();
-    let mut view = selected_price_face.unwrap_or_else(|| spell.clone());
+    // CR 709.3a: casting the other half of a split card, the modifiers see
+    // only that half. A caller may supply the physical card (its front half)
+    // rather than the selected-half view; select the half here.
+    let split_other_half_face = (!changed
+        && spell.zone != Zone::Stack
+        && matches!(
+            casting_method.origin_method(),
+            CastingMethod::SplitOtherHalf | CastingMethod::SplitOtherHalfPlayFrom { .. }
+        )
+        && spell.linked_face_layout == crate::card::LinkedFaceLayout::Split
+        && game.object(spell.id).is_some_and(|physical| {
+            physical.name == spell.name && physical.other_face_name == spell.other_face_name
+        }))
+    .then(|| spell_view_for_split_other_half_cast(game, spell))
+    .flatten();
+    changed |= split_other_half_face.is_some();
+    let mut view = selected_price_face
+        .or(split_other_half_face)
+        .unwrap_or_else(|| spell.clone());
 
     if matches!(casting_method.origin_method(), CastingMethod::FaceDown | CastingMethod::FaceDownPlayFrom { .. }) {
         // Cost modifiers inspect the selected spell characteristics before
@@ -1710,6 +1795,10 @@ pub(crate) fn violates_any_cant_cast_restriction_from_other_sources(
                 || live.color_override != spell.color_override
                 || live.base_power != spell.base_power
                 || live.base_toughness != spell.base_toughness
+                // A split card in hand also has its other half's name (CR
+                // 709.4a); the live card's characteristics would match a
+                // name prohibition aimed only at the half not being cast.
+                || live.split_other_half_name() != spell.split_other_half_name()
         })
         .then(|| crate::snapshot::ObjectSnapshot::from_object(spell, game));
     filters.iter().any(|restriction| {
@@ -1899,13 +1988,13 @@ where
                 && let Some(method) = alternative_method_for_casting_method(game, player, spell, casting_method)
             {
                 if method.can_tap_creature_for_power_reduction() {
-                    reduction += get_convoke_creatures(game, player)
+                    reduction = reduction.saturating_add(get_convoke_creatures(game, player)
                         .iter()
                         .map(|(id, _)| game.current_power(*id).unwrap_or(0).max(0) as u32)
                         .max()
-                        .unwrap_or(0);
+                        .unwrap_or(0));
                 } else {
-                    reduction += maximum_emerge_reduction(game, player, spell.id, &method);
+                    reduction = reduction.saturating_add(maximum_emerge_reduction(game, player, spell.id, &method));
                 }
             }
             apply_minimum_spell_total_mana_with_view(
@@ -1947,6 +2036,21 @@ where
                     &hypothetical_view,
                     Some((&proposal, casting_method)),
                 ))
+                    // CR 601.2c, 601.2f: targets are chosen before the total
+                    // cost is locked, so a legal target that earns a "spells
+                    // that target <X> cost less" reduction (Accursed Witch)
+                    // witnesses this proposal's affordability as well.
+                    && !(!cost.has_x()
+                        && combined_cost.as_ref().is_some_and(|base| {
+                            affordable_with_target_dependent_reduction(
+                                hypothetical,
+                                player,
+                                &proposal,
+                                base,
+                                casting_method,
+                                &hypothetical_view,
+                            )
+                        }))
             }) {
                 continue;
             }
@@ -3867,6 +3971,13 @@ fn mana_cost_can_be_paid_with_view_at_x(
         )
         .with_spend_policy(game.mana_spend_policy_for_cast(player, Some(spell_id)));
         request.x_value = x_value;
+        // K'rrik's "pay 2 life rather than {B}" applies to this proof as it
+        // does to the real cast request (priority_cast).
+        request.allow_black_life = mana_cost_has_black_symbol(cost)
+            && view.player_can_pay_black_with_life_for_reason(
+                player,
+                crate::costs::PaymentReason::CastSpell,
+            );
         // A menu bound overestimates spending permissions anyway, so it needs
         // no proposal on the stack and therefore no copy of the game. Not
         // when a source's mana is restricted ("Spend this mana only to cast
@@ -4355,6 +4466,16 @@ pub(crate) fn can_cast_spell_with_context(
     {
         return false;
     }
+    // CR 702.170d / 702.143a: the plotted and foretold casting windows bind
+    // every route, including the selected other half or face of the card.
+    // An announced spell already on the stack keeps its accepted proposal.
+    if spell.zone != Zone::Stack
+        && (!selected_preparation_cast_method_allows(game, player, spell, casting_method)
+            || !plotted_cast_method_allows(game, player, spell, casting_method)
+            || !foretold_cast_method_allows(game, player, spell, casting_method))
+    {
+        return false;
+    }
     if game.is_planar_card(spell.id) {
         return false;
     }
@@ -4539,6 +4660,18 @@ pub(crate) fn can_cast_spell_with_context(
 
     let commander_tax_life = commander_tax_life_payment_amount(game, spell, spell.zone);
     let mut additional_costs = spell_for_checks.additional_non_mana_costs();
+    // CR 601.2f-h / 119.4: a zone permission's selected price ("pay life
+    // equal to its mana value rather than pay its mana cost" — Valgavoth,
+    // Bolas's Citadel) is part of the total cost; its non-mana components
+    // must be payable now, not only its (empty) mana component.
+    if matches!(
+        casting_method.without_exact_permission(),
+        CastingMethod::PlayFrom { use_alternative: Some(_), .. }
+            | CastingMethod::SplitOtherHalfPlayFrom { use_alternative: Some(_), .. }
+    ) && let Some(method) = selected_alternative.as_ref()
+    {
+        additional_costs.extend(method.non_mana_costs());
+    }
     if matches!(casting_method.without_exact_permission(), CastingMethod::AlternativePrice { .. }) {
         let Some(price) = crate::alternative_cast::price_routes::receipt_or_latch(
             game,
@@ -4633,12 +4766,22 @@ pub(crate) fn can_cast_spell_with_context(
         ctx.add_cost_adjustment_ms(cost_started_at.elapsed_ms());
 
         let affordability_started_at = PerfTimer::start();
+        // CR 601.2c, 601.2f: targets precede the locked total, so a required
+        // target whose every choice carries a surcharge (Boreal Elemental)
+        // vetoes the target-free price.
         let can_pay_effective = mana_cost_can_be_paid_by_caster_or_assist_with_view(
             game,
             player,
             spell_for_checks,
             casting_method,
             &effective_cost,
+            view,
+        ) && !target_dependent_increase_vetoes(
+            game,
+            player,
+            spell_for_checks,
+            base_cost,
+            casting_method,
             view,
         );
         let can_pay_with_optional_reduction = !can_pay_effective
@@ -4665,9 +4808,24 @@ pub(crate) fn can_cast_spell_with_context(
                 &effective_cost,
                 view,
             );
+        // CR 601.2f: a "spells that target <X> cost less" reduction (Accursed
+        // Witch, Battlefield Thaumaturge) counts once some legal targets
+        // would satisfy it.
+        let can_pay_with_target_reduction = !can_pay_effective
+            && !can_pay_with_optional_reduction
+            && !can_pay_with_sacrifice_reduction
+            && affordable_with_target_dependent_reduction(
+                game,
+                player,
+                spell_for_checks,
+                base_cost,
+                casting_method,
+                view,
+            );
         if !can_pay_effective
             && !can_pay_with_optional_reduction
             && !can_pay_with_sacrifice_reduction
+            && !can_pay_with_target_reduction
         {
             ctx.add_affordability_ms(affordability_started_at.elapsed_ms());
             ctx.add_total_ms(total_started_at.elapsed_ms());
@@ -5191,6 +5349,15 @@ pub(crate) fn can_cast_with_cost_with_context(
                 game, player, spell_for_checks, casting_method, &adjusted, view,
             )
         };
+        let can_pay_adjusted = can_pay_adjusted
+            && !target_dependent_increase_vetoes(
+                game,
+                player,
+                spell_for_checks,
+                cost,
+                casting_method,
+                view,
+            );
         let can_pay_with_optional_reduction = !can_pay_adjusted
             && effective_cost_with_affordable_optional_cost_hypothesis(
                 game,
@@ -5220,9 +5387,24 @@ pub(crate) fn can_cast_with_cost_with_context(
                 &adjusted,
                 view,
             );
+        // CR 601.2f: the total cost is locked after targets are chosen, so a
+        // reduction for "spells that target <X>" (Accursed Witch, Infectious
+        // Curse) is available whenever some legal target would satisfy it.
+        let can_pay_with_target_reduction = !can_pay_adjusted
+            && !can_pay_with_optional_reduction
+            && !can_pay_with_sacrifice_reduction
+            && affordable_with_target_dependent_reduction(
+                game,
+                player,
+                spell_for_checks,
+                cost,
+                casting_method,
+                view,
+            );
         if !can_pay_adjusted
             && !can_pay_with_optional_reduction
             && !can_pay_with_sacrifice_reduction
+            && !can_pay_with_target_reduction
         {
             ctx.add_affordability_ms(affordability_started_at.elapsed_ms());
             return false;
@@ -5231,6 +5413,164 @@ pub(crate) fn can_cast_with_cost_with_context(
     }
 
     true
+}
+
+/// CR 601.2c, 601.2f: targets are chosen before the total cost is locked, so
+/// "spells your opponents cast that target this cost {2} more" (Boreal
+/// Elemental) binds every cast whose legal targets all carry a surcharge. The
+/// target-free price proves nothing when each legal target of a required
+/// target makes the spell unaffordable.
+fn target_dependent_increase_vetoes(
+    game: &GameState,
+    player: PlayerId,
+    spell: &crate::object::Object,
+    cost: &crate::mana::ManaCost,
+    casting_method: &CastingMethod,
+    view: &DerivedGameView<'_>,
+) -> bool {
+    if view.battlefield_spell_cost_modifier_sources().is_empty() {
+        return false;
+    }
+    let Some(program) = spell.spell_effect.as_deref() else {
+        return false;
+    };
+    let requirements = crate::game_loop::extract_target_requirements_from_program_with_modes(
+        game,
+        program,
+        player,
+        Some(spell.id),
+        None,
+    );
+    if requirements.is_empty() {
+        return false;
+    }
+    let target_count = requirements
+        .iter()
+        .map(|requirement| requirement.min_targets.max(1))
+        .sum::<usize>()
+        .max(1);
+    let witness_cost = |targets: &[Target]| {
+        calculate_effective_mana_cost_with_targets_internal(
+            game,
+            player,
+            spell,
+            cost,
+            target_count,
+            targets,
+            true,
+            casting_method,
+            None,
+            view,
+        )
+    };
+    let baseline = witness_cost(&[]);
+    requirements.iter().any(|requirement| {
+        if requirement.min_targets == 0
+            || requirement.legal_targets.is_empty()
+            || !requirement.legal_target_sets.is_empty()
+            || requirement.aggregate_constraint.is_some()
+        {
+            return false;
+        }
+        !requirement.legal_targets.iter().any(|target| {
+            let witnessed = witness_cost(std::slice::from_ref(target));
+            witnessed == baseline
+                || mana_cost_can_be_paid_by_caster_or_assist_with_view(
+                    game,
+                    player,
+                    spell,
+                    casting_method,
+                    &witnessed,
+                    view,
+                )
+        })
+    })
+}
+
+/// Whether one legal target witness makes the spell affordable through a
+/// target-dependent cost reduction (CR 601.2c-f). Only consulted after the
+/// target-free total was unpayable, and only when some battlefield source
+/// modifies spell costs at all.
+fn affordable_with_target_dependent_reduction(
+    game: &GameState,
+    player: PlayerId,
+    spell: &crate::object::Object,
+    cost: &crate::mana::ManaCost,
+    casting_method: &CastingMethod,
+    view: &DerivedGameView<'_>,
+) -> bool {
+    if view.battlefield_spell_cost_modifier_sources().is_empty() {
+        return false;
+    }
+    let Some(program) = spell.spell_effect.as_deref() else {
+        return false;
+    };
+    let requirements = crate::game_loop::extract_target_requirements_from_program_with_modes(
+        game,
+        program,
+        player,
+        Some(spell.id),
+        None,
+    );
+    let target_count = requirements
+        .iter()
+        .map(|requirement| requirement.min_targets.max(1))
+        .sum::<usize>()
+        .max(1);
+    let witness_cost = |targets: &[Target], count: usize| {
+        calculate_effective_mana_cost_with_targets_internal(
+            game,
+            player,
+            spell,
+            cost,
+            count,
+            targets,
+            true,
+            casting_method,
+            None,
+            view,
+        )
+    };
+    let payable = |witnessed: &crate::mana::ManaCost| {
+        mana_cost_can_be_paid_by_caster_or_assist_with_view(
+            game,
+            player,
+            spell,
+            casting_method,
+            witnessed,
+            view,
+        )
+    };
+    requirements.iter().any(|requirement| {
+        let mut reducing = Vec::new();
+        for target in &requirement.legal_targets {
+            let witnessed = witness_cost(std::slice::from_ref(target), target_count);
+            if witnessed != *cost {
+                if payable(&witnessed) {
+                    return true;
+                }
+                reducing.push(*target);
+            }
+        }
+        // "costs {1} less for each creature it targets" (Battlefield
+        // Thaumaturge): a multi-target requirement may choose several
+        // reducing targets at once. Unconstrained sets only; set-constrained
+        // requirements keep the single-target witness above.
+        let max = requirement.max_targets.unwrap_or(reducing.len());
+        if reducing.len() < 2
+            || max < 2
+            || !requirement.legal_target_sets.is_empty()
+            || requirement.aggregate_constraint.is_some()
+        {
+            return false;
+        }
+        reducing.truncate(max);
+        let count = target_count
+            .saturating_sub(requirement.min_targets.max(1))
+            .saturating_add(reducing.len());
+        let witnessed = witness_cost(&reducing, count);
+        witnessed != *cost && payable(&witnessed)
+    })
 }
 
 pub(crate) fn provisional_casting_method_for_alternative(
@@ -5882,10 +6222,13 @@ pub(crate) fn is_trap_condition_met(
             })
         }
         TrapCondition::CreatureDealtDamageToYou => {
-            // Check if any creature dealt damage to the player this turn
+            // The only printed shape is "if you've been dealt damage by two
+            // or more creatures this turn" (Inferno Trap): two different
+            // creatures, not two damage events from one double striker.
             game.turn_store
                 .turn_history
-                .player_was_dealt_damage_by_creature_this_turn(player)
+                .distinct_creatures_that_dealt_damage_to_player(player)
+                >= 2
         }
     }
 }
@@ -6758,6 +7101,17 @@ pub(crate) fn affinity_for_artifacts_reduction_with_view(
             ability.id() == crate::static_abilities::StaticAbilityId::AffinityForArtifacts
         })
         .count();
+    // A cast-this-way rider ("If you do, it has affinity for artifacts")
+    // attaches to the spell for the turn as it is put on the stack, before
+    // the total cost is determined (CR 601.2a, 601.2f).
+    let current_turn = game.turn.turn_number;
+    let rider = spell
+        .temporary_static_ability_grants
+        .iter()
+        .filter(|grant| grant.expires_end_of_turn.is_some() && !grant.is_expired(current_turn))
+        .filter(|grant| grant.ability == crate::static_abilities::StaticAbilityId::AffinityForArtifacts)
+        .count();
+    let granted = granted + rider;
     // Affinity is cumulative; unlike Convoke each instance reduces the total.
     count_artifacts_controlled_with_view(game, player, view)
         .saturating_mul((intrinsic + granted) as u32)
@@ -6928,7 +7282,10 @@ impl SpellCostQuery<'_> {
                 self.caster,
                 reduction,
             );
-            for _ in 0..repetitions(&reduction.filter, reduction.per_target) * for_each {
+            let applications = repetitions(&reduction.filter, reduction.per_target)
+                .saturating_mul(for_each)
+                .min(MAX_MANA_REDUCTION_APPLICATIONS);
+            for _ in 0..applications {
                 totals.record_mana_reduction(
                     &reduction.reduction,
                     reduction.one_mana_of_any_color,
@@ -6938,7 +7295,8 @@ impl SpellCostQuery<'_> {
         }
         let additional_targets = self.chosen_target_count.saturating_sub(1);
         if let Some(per_target) = ability.cost_increase_per_additional_target() {
-            let extra = (per_target as i32).saturating_mul(additional_targets as i32);
+            let extra = ironsmith_core::quantity::clamp_i32_from_u32(per_target)
+                .saturating_mul(i32::try_from(additional_targets).unwrap_or(i32::MAX));
             totals.total_increase = totals.total_increase.saturating_add(extra);
         }
         if let Some(per_target) = ability.cost_increase_mana_cost_per_additional_target() {
@@ -7036,13 +7394,34 @@ pub(crate) fn collect_spell_cost_modifiers(
     // their this-spell reductions; their zone-functioning generic modifiers
     // belong to the granting permanent (CR 601.2f).
     let granted_cost_abilities = spell_granted_cost_static_abilities(game, spell);
+    // "You may cast this card from your graveyard if you pay {1} more ..."
+    // (Risen Executioner): the surcharge belongs to the card's own permission.
+    // It still applies once the spell is on the stack (CR 601.2a, 601.2f),
+    // and never to a cast through another permission from that zone.
+    let (own_permission_zone, other_permission_zone) = match casting_method {
+        CastingMethod::PlayFrom { source, zone, .. }
+            if *source == spell.id
+                || game
+                    .cast_origin_snapshot(spell.id)
+                    .is_some_and(|origin| origin.object_id == *source) =>
+        {
+            (Some(*zone), None)
+        }
+        CastingMethod::PlayFrom { zone, .. } => (None, Some(*zone)),
+        _ => (None, None),
+    };
     let own_statics = spell
         .abilities
         .iter()
         .filter_map(|ability| match &ability.kind {
-            AbilityKind::Static(static_ability) => {
-                Some((static_ability, ability.functions_in(&spell.zone)))
-            }
+            AbilityKind::Static(static_ability) => Some((
+                static_ability,
+                (ability.functions_in(&spell.zone)
+                    && !(other_permission_zone == Some(spell.zone)
+                        && !ability.functions_in(&Zone::Battlefield)))
+                    || (spell.zone == Zone::Stack
+                        && own_permission_zone.is_some_and(|zone| ability.functions_in(&zone))),
+            )),
             _ => None,
         });
     for (static_ability, functions_in_current_zone) in own_statics.chain(
@@ -7304,8 +7683,25 @@ fn spell_matches_cost_modifier_filter(
     cast_filter.targets_only_any_of = false;
     cast_filter.target_count = None;
     cast_filter.alternative_cast = None;
-    let overlaid_spell =
+    let mut overlaid_spell =
         spell_view_for_cost_filter_match(game, caster, spell, casting_method, cast_from_zone);
+    // CR 601.2f, 613.1d: the total cost is determined for the spell as it is
+    // on the stack, including subtypes continuous effects give it ("creature
+    // spells you control are every creature type", Maskwood Nexus). The
+    // matcher below reads printed subtypes, so add the layer-granted ones.
+    if filter_reads_subtypes(&cast_filter)
+        && let Some(added) = layer_added_subtypes_for_cost_filter(game, spell)
+    {
+        let mut view = overlaid_spell.take().unwrap_or_else(|| spell.clone());
+        let mut subtypes = view.subtypes.to_vec();
+        for subtype in added {
+            if !subtypes.contains(&subtype) {
+                subtypes.push(subtype);
+            }
+        }
+        view.subtypes = subtypes.into();
+        overlaid_spell = Some(view);
+    }
     let spell_for_match = overlaid_spell.as_ref().unwrap_or(spell);
     let matches =
         cast_filter.matches_non_recursive(
@@ -7320,6 +7716,33 @@ fn spell_matches_cost_modifier_filter(
         && alternative_cast.is_none_or(|kind| {
             casting_method_matches_alternative_kind(game, caster, spell, casting_method, kind)
         })
+}
+
+fn filter_reads_subtypes(filter: &crate::target::ObjectFilter) -> bool {
+    !filter.subtypes.is_empty()
+        || !filter.all_subtypes.is_empty()
+        || filter.any_of.iter().any(filter_reads_subtypes)
+}
+
+/// Subtypes continuous effects add to the card `spell` (in its current zone)
+/// beyond its printed ones; `None` when there are none.
+fn layer_added_subtypes_for_cost_filter(
+    game: &GameState,
+    spell: &crate::object::Object,
+) -> Option<Vec<crate::types::Subtype>> {
+    let physical = game.object(spell.id)?;
+    if crate::continuous::characteristics_calculation_in_progress(game, spell.id) {
+        return None;
+    }
+    let chars = game.current_characteristics(spell.id)?;
+    let printed = physical.zone_subtypes();
+    let added: Vec<_> = chars
+        .subtypes
+        .iter()
+        .filter(|subtype| !printed.contains(*subtype))
+        .cloned()
+        .collect();
+    (!added.is_empty()).then_some(added)
 }
 
 pub(crate) fn collect_battlefield_spell_cost_modifiers(
@@ -7349,7 +7772,7 @@ pub(crate) fn collect_battlefield_spell_cost_modifiers(
             continue;
         };
         let controller = game.controller_of(perm);
-        let ctx = with_source_exiled_tagged_objects(
+        let mut ctx = with_source_exiled_tagged_objects(
             game,
             FilterContext::new(controller)
                 .with_source(perm_id)
@@ -7357,6 +7780,25 @@ pub(crate) fn collect_battlefield_spell_cost_modifiers(
                 .with_opponents(other_players_in_turn_order(game, controller)),
             perm_id,
         );
+        // "Spells you cast that target enchanted player cost {1} less"
+        // (Infectious Curse): the modifier's filter names its host through
+        // the same "enchanted"/"equipped" tags `filter_context_for` supplies.
+        match perm.attached_to {
+            Some(crate::object::AttachmentTarget::Player(attached_player)) => {
+                ctx.tagged_players
+                    .insert(crate::tag::TagKey::from("enchanted"), vec![attached_player]);
+            }
+            Some(crate::object::AttachmentTarget::Object(attached_id)) => {
+                if let Some(attached) = game.object(attached_id) {
+                    let snapshot = crate::snapshot::ObjectSnapshot::from_object(attached, game);
+                    for tag in ["enchanted", "equipped"] {
+                        ctx.tagged_objects
+                            .insert(crate::tag::TagKey::from(tag), vec![snapshot.clone()]);
+                    }
+                }
+            }
+            None => {}
+        }
 
         let mut collect = |ability: &crate::static_abilities::StaticAbility,
                            ctx: &FilterContext| {
@@ -7858,7 +8300,7 @@ pub(crate) fn reduce_offering_mana_cost(
     let mut generic = 0u32;
     for pip in reduction.pips() {
         if let Some(ManaSymbol::Generic(amount)) = pip.first() {
-            generic += *amount as u32;
+            generic = generic.saturating_add(u32::from(*amount));
             continue;
         }
         if let Some(index) = result
@@ -7870,7 +8312,7 @@ pub(crate) fn reduce_offering_mana_cost(
             remaining.remove(index);
             result = result.with_pips(remaining);
         } else if pip.iter().any(|symbol| !matches!(symbol, ManaSymbol::X)) {
-            generic += 1;
+            generic = generic.saturating_add(1);
         }
     }
     result.reduce_generic(generic)
@@ -8265,18 +8707,18 @@ pub(crate) struct AvailableManaSource {
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 struct ManaPaymentSearchKey {
     pip_index: usize,
-    white: u32,
-    blue: u32,
-    black: u32,
-    red: u32,
-    green: u32,
-    colorless: u32,
-    snow_white: u32,
-    snow_blue: u32,
-    snow_black: u32,
-    snow_red: u32,
-    snow_green: u32,
-    snow_colorless: u32,
+    white: u64,
+    blue: u64,
+    black: u64,
+    red: u64,
+    green: u64,
+    colorless: u64,
+    snow_white: u64,
+    snow_blue: u64,
+    snow_black: u64,
+    snow_red: u64,
+    snow_green: u64,
+    snow_colorless: u64,
     life_to_pay: u32,
     used_sources_mask: u128,
 }
@@ -8572,9 +9014,11 @@ fn snow_mana_pool(
                 snapshot.supertypes.contains(&crate::types::Supertype::Snow)
             }) || (unit.snapshot.is_none()
                 && game.current_has_supertype(unit.source, crate::types::Supertype::Snow));
-        if !from_snow_source
-            || snow_pool.amount(unit.symbol) >= player_obj.mana_pool.amount(unit.symbol)
-        {
+        let available = player_obj
+            .mana_pool
+            .amount_wide(unit.symbol)
+            .saturating_sub(snow_pool.amount_wide(unit.symbol));
+        if !from_snow_source || available == 0 {
             continue;
         }
         if unit.restricted {
@@ -8600,7 +9044,7 @@ fn snow_mana_pool(
                 continue;
             }
         }
-        snow_pool.add(unit.symbol, 1);
+        snow_pool.add_wide(unit.symbol, unit.count.min(available));
     }
     snow_pool
 }

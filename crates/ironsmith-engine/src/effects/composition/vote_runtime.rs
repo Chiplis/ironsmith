@@ -108,7 +108,7 @@ fn vote_instances_for_player(
 ) -> usize {
     let mut num_votes = 1usize;
     if player_id == ctx.controller {
-        num_votes += effect.controller_extra_votes as usize;
+        num_votes = num_votes.saturating_add(effect.controller_extra_votes as usize);
         for _ in 0..effect.controller_optional_extra_votes {
             let wants_extra = make_boolean_decision(
                 game,
@@ -126,7 +126,7 @@ fn vote_instances_for_player(
 
     let (battlefield_mandatory, battlefield_optional) =
         additional_vote_modifiers_from_static_abilities(game, player_id);
-    num_votes += battlefield_mandatory as usize;
+    num_votes = num_votes.saturating_add(battlefield_mandatory as usize);
     for _ in 0..battlefield_optional {
         let wants_extra = make_boolean_decision(
             game,

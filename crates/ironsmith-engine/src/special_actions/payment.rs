@@ -23,7 +23,8 @@ impl SpecialAction {
             | Self::DiscardFromHand { .. }
             // Mana abilities already own a nested, interactive cost transaction.
             | Self::ActivateManaAbility { .. } => return Ok(None),
-            Self::Plot { card_id } => (card_id, TotalCost::mana(plot_special_action_cost(game, player, card_id)?), PaymentReason::Other),
+            Self::Plot { card_id } => (card_id, TotalCost::mana(plot_special_action_cost(game, player, card_id, false)?), PaymentReason::Other),
+            Self::PlotGranted { card_id } => (card_id, TotalCost::mana(plot_special_action_cost(game, player, card_id, true)?), PaymentReason::Other),
             Self::Suspend { card_id } => (card_id, TotalCost::mana(suspend_spec(game.object(card_id).ok_or(ActionError::ObjectNotFound)?).ok_or(ActionError::NoSuchAbility)?.1), PaymentReason::Other),
             Self::PrepareExile { card_id, method_index, ref preparation } => {
                 // A public preparation with a source-derived price cannot be

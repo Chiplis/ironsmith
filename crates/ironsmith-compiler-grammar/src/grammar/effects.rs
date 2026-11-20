@@ -1187,6 +1187,67 @@ fn parse_prevent_damage_source_excluding_target(
     Ok(Some((source_filter, excluded_target)))
 }
 
+/// "creatures other than Werewolves and Wolves" (Moonmist): an "other than"
+/// list made only of type words names a class of sources to leave out, not
+/// one specific object. Folding it into the source filter's exclusions keeps
+/// the spell untargeted (CR 115.1: only "target" makes a target) instead of
+/// binding a single excluded object.
+fn parse_prevent_damage_source_excluding_class(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<crate::target::ObjectFilter>, CardTextError> {
+    let clause = LexedClause::new(tokens);
+    let words = clause.word_refs();
+    let Some(marker) = primitives::parse_word_sequence_span(&words, &["other", "than"]) else {
+        return Ok(None);
+    };
+    let excluded_words = &words[marker.start + marker.len..];
+    let mut subtypes = Vec::new();
+    let mut card_types = Vec::new();
+    let mut supertypes = Vec::new();
+    for word in excluded_words {
+        if matches!(*word, "a" | "an" | "and" | "or" | "and/or") {
+            continue;
+        }
+        if let Some(subtype) = crate::util::parse_subtype_flexible(word) {
+            subtypes.push(subtype);
+        } else if let Some(card_type) = crate::util::parse_card_type(word) {
+            card_types.push(card_type);
+        } else if let Some(supertype) = crate::util::parse_supertype_word(word) {
+            supertypes.push(supertype);
+        } else {
+            return Ok(None);
+        }
+    }
+    if subtypes.is_empty() && card_types.is_empty() && supertypes.is_empty() {
+        return Ok(None);
+    }
+    let Some(source_clause) = clause.between_word_range(0, marker.start) else {
+        return Ok(None);
+    };
+    if source_clause.trimmed().tokens().is_empty() {
+        return Ok(None);
+    }
+    let Ok(mut source_filter) = parse_object_filter(source_clause.trimmed().tokens(), false) else {
+        return Ok(None);
+    };
+    for subtype in subtypes {
+        if !source_filter.excluded_subtypes.contains(&subtype) {
+            source_filter.excluded_subtypes.push(subtype);
+        }
+    }
+    for card_type in card_types {
+        if !source_filter.excluded_card_types.contains(&card_type) {
+            source_filter.excluded_card_types.push(card_type);
+        }
+    }
+    for supertype in supertypes {
+        if !source_filter.excluded_supertypes.contains(&supertype) {
+            source_filter.excluded_supertypes.push(supertype);
+        }
+    }
+    Ok(Some(source_filter))
+}
+
 /// The creatures outside "<set> creatures and <set> creatures", where each
 /// set is "enchanted" or a card type ("enchantment creatures"). Other set
 /// shapes are declined.
@@ -1376,6 +1437,14 @@ pub fn parse_prevent_damage_sentence_lexed(
                 ),
             ));
         }
+        if let Some(source_filter) = parse_prevent_damage_source_excluding_class(source_tokens)? {
+            return Ok(Some(
+                EffectAst::subject_verb_prevent_all_combat_damage_from_source_filter(
+                    source_filter,
+                    duration.clone(),
+                ),
+            ));
+        }
         if let Some((source_filter, excluded_target)) =
             parse_prevent_damage_source_excluding_target(source_tokens)?
         {
@@ -1455,6 +1524,27 @@ pub fn parse_prevent_damage_sentence_lexed(
             return Ok(None);
         };
         let source_tokens = source_clause.tokens();
+        // "Prevent all combat damage that other creatures would deal this
+        // turn" (Haze Frog): a relative "that" before a plural source set,
+        // not the demonstrative of "that creature would deal".
+        let source_tokens = if source_tokens.len() > 1
+            && source_tokens.first().is_some_and(|token| token.is_word("that"))
+            && source_tokens.last().is_some_and(|token| {
+                token.is_any_word(&[
+                    "sources",
+                    "creatures",
+                    "permanents",
+                    "spells",
+                    "artifacts",
+                    "enchantments",
+                    "planeswalkers",
+                ])
+            }) {
+            crate::word_claims::claim_tokens(&source_tokens[..1]);
+            &source_tokens[1..]
+        } else {
+            source_tokens
+        };
         let damage_tail = core_clause
             .after_words(would_idx + 2)
             .map(|part| trim_edge_punctuation_tokens(part.tokens()))
@@ -2164,7 +2254,7 @@ pub(crate) fn parse_counted_next_untap_steps(
 }
 
 /// Bind a named untap-step owner to the player targeted by this instruction.
-fn parse_named_player_untap_restriction(
+pub(crate) fn parse_named_player_untap_restriction(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     let Some(negation) = super::activation_restrictions::parse_activation_negation_span_tokens(tokens) else {
@@ -2172,7 +2262,11 @@ fn parse_named_player_untap_restriction(
     };
     let tail = parser_token_word_refs(&tokens[negation.end..]);
     let explicit_player = tail == ["untap", "during", "target", "players", "next", "untap", "step"];
-    let referenced_player = tail == ["untap", "during", "that", "players", "next", "untap", "step"];
+    // "Lands target player controls don't untap during their next untap
+    // step" (Mana Vapors, Exhaustion): with the subject bound to the target
+    // player's permanents, "their" is that player (the shared controller).
+    let referenced_player = tail == ["untap", "during", "that", "players", "next", "untap", "step"]
+        || tail == ["untap", "during", "their", "next", "untap", "step"];
     if !explicit_player && !referenced_player { return Ok(None); }
     let subject = &tokens[..negation.first];
     let (object_tokens, player, controller_bound) = if let Some(target) = subject.iter().position(|token| token.is_word("target")) {

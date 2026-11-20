@@ -1029,6 +1029,16 @@ fn has_requantified_comma_collection(tokens: &[OwnedLexToken]) -> bool {
 }
 
 fn preserve_explicit_spell_domain(filter: &mut ObjectFilter, tokens: &[OwnedLexToken]) {
+    // "spell or permanent that's red or green" (Aether Gust): the spell noun
+    // names one arm of a mixed-domain union; hoisting the stack domain onto
+    // the whole filter would exclude the permanent arm.
+    if filter
+        .any_of
+        .iter()
+        .any(|arm| arm.zone.is_some_and(|zone| zone != crate::Zone::Stack))
+    {
+        return;
+    }
     let words = TokenWordView::new(tokens).to_word_refs();
     let has_domain_noun = words.iter().enumerate().any(|(index, word)| {
         matches!(*word, "spell" | "spells")

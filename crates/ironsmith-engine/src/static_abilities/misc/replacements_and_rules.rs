@@ -844,6 +844,12 @@ impl ReplacementMatcher for WouldPutCountersOrEnterWithCountersMatcher {
         true
     }
 
+    /// CR 614.12: "if counters would be put on this creature" affects only
+    /// the entrant, so it modifies its own entry with counters (Mowu).
+    fn applies_from_entering_source(&self) -> bool {
+        self.filter.source && self.player_filter.is_none()
+    }
+
 
     fn matches_prepared_event(
         &self,
@@ -868,7 +874,12 @@ impl ReplacementMatcher for WouldPutCountersOrEnterWithCountersMatcher {
                 // Doubling Season ruling: loyalty (and other) counters put on
                 // as a cost, by combat damage (wither) or by a game rule
                 // aren't put on "by an effect".
-                if self.effect_only && !put_counters.cause.cause_type.is_effect_like() {
+                // CR 614.16: once another replacement effect has modified
+                // the placement (Pir's "+1" on a loyalty cost), it applies.
+                if self.effect_only
+                    && !put_counters.cause.cause_type.is_effect_like()
+                    && !put_counters.replacement_modified
+                {
                     return false;
                 }
                 if let Some(cause_filter) = &self.cause_filter {
@@ -902,7 +913,9 @@ impl ReplacementMatcher for WouldPutCountersOrEnterWithCountersMatcher {
                 let Some(etb) = downcast_event::<EnterBattlefieldEvent>(event) else {
                     return false;
                 };
-                if etb.object == self.ability_source {
+                // CR 614.12: a replacement that affects only this permanent
+                // may modify how it enters (Mowu's own entry counters).
+                if etb.object == self.ability_source && !self.filter.source {
                     return false;
                 }
                 // CR 122.6: the player who will control the permanent as it
@@ -1206,6 +1219,11 @@ impl StaticAbilityKind for DoubleTokenCreationReplacement {
         StaticAbilityId::DoubleTokenCreationReplacement
     }
 
+    // Replacement only: `generate_effects` keeps its empty default.
+    fn may_generate_continuous_effects(&self) -> bool {
+        false
+    }
+
     fn display(&self) -> String {
         ironsmith_core::semantic_audit::retained("DoubleTokenCreationReplacement", &self.display, self)
     }
@@ -1255,6 +1273,11 @@ impl MultiplyTokenCreationReplacement {
 impl StaticAbilityKind for MultiplyTokenCreationReplacement {
     fn id(&self) -> StaticAbilityId {
         StaticAbilityId::MultiplyTokenCreationReplacement
+    }
+
+    // Replacement only: `generate_effects` keeps its empty default.
+    fn may_generate_continuous_effects(&self) -> bool {
+        false
     }
 
     fn display(&self) -> String {
@@ -2119,7 +2142,7 @@ impl StaticAbilityKind for MaximumHandSizeSevenMinusYourGraveyardCardTypes {
             return;
         }
 
-        let max_hand_size = (7 - card_types).max(0);
+        let max_hand_size = 7i32.saturating_sub(card_types).max(0);
         let affected = player_ids_for_filter(game, self.player.clone(), controller);
         for player_id in affected {
             if let Some(player) = game.players.get_mut_for_derived_update().get_mut(player_id.index()) {
@@ -4265,7 +4288,7 @@ impl ReplacementMatcher for TappedForMinimumManaMatcher {
     fn matches_prepared_event(&self, event: &dyn GameEventType, ctx: &crate::events::context::PreparedEventContext) -> bool {
         self.inner.matches_prepared_event(event, ctx)
             && crate::events::downcast_event::<crate::events::ManaAddedEvent>(event)
-                .is_some_and(|added| added.mana.len() >= self.minimum_amount as usize)
+                .is_some_and(|added| added.mana_amount() >= u64::from(self.minimum_amount))
     }
 
     fn priority(&self) -> ReplacementPriority {
@@ -5083,6 +5106,11 @@ impl SourceLineKeywordGroup {
 }
 
 impl StaticAbilityKind for SourceLineKeywordGroup {
+    // Inert provenance: `generate_effects` keeps its empty default.
+    fn may_generate_continuous_effects(&self) -> bool {
+        false
+    }
+
     fn id(&self) -> StaticAbilityId {
         StaticAbilityId::SourceLineKeywordGroup
     }

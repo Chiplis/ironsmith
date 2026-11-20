@@ -15,7 +15,7 @@ pub(crate) fn life_payment_cost_description(amount: &Value) -> Option<String> {
     fn per_card(amount: &Value) -> Option<u32> {
         match amount.unhinted() {
             Value::CardsInHand(PlayerFilter::You) => Some(1),
-            Value::Add(lhs, rhs) => per_card(lhs)?.checked_add(per_card(rhs)?),
+            Value::Add(lhs, rhs) => Some(per_card(lhs)?.saturating_add(per_card(rhs)?)),
             _ => None,
         }
     }

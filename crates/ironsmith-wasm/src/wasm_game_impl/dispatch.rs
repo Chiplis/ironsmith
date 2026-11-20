@@ -623,7 +623,25 @@ fn counter_type_from_preview_name(raw_name: &str) -> ironsmith::object::CounterT
         "time" => ironsmith::object::CounterType::Time,
         "stun" => ironsmith::object::CounterType::Stun,
         "lore" => ironsmith::object::CounterType::Lore,
-        _ => ironsmith::object::CounterType::Named(normalized.into()),
+        // Every other modeled kind ("luck", "ice", "level", ...) by its
+        // variant name; a fixture "luck" counter must be the Luck counter
+        // Gemstone Caverns reads, not an unrelated named counter.
+        _ => {
+            let variant: String = normalized
+                .split(|character: char| character.is_whitespace() || character == '_')
+                .filter(|word| !word.is_empty())
+                .map(|word| {
+                    let mut characters = word.chars();
+                    characters.next().map_or_else(String::new, |first| {
+                        first.to_ascii_uppercase().to_string() + characters.as_str()
+                    })
+                })
+                .collect();
+            serde_json::from_value::<ironsmith::object::CounterType>(serde_json::Value::String(
+                variant,
+            ))
+            .unwrap_or_else(|_| ironsmith::object::CounterType::Named(normalized.into()))
+        }
     }
 }
 
@@ -3891,12 +3909,18 @@ impl WasmGame {
             .map_err(|e| JsValue::from_str(&format!("objectDetails encode failed: {e}")))
     }
 
-    /// Read a battlefield object's current mana value from its characteristic snapshot.
+    /// Read a public object's current mana value from its characteristic snapshot.
+    ///
+    /// Any face-up object in a public zone (CR 400.2) may be inspected: an
+    /// exiled modal double-faced card has its front face's mana value (CR 712.8).
     #[wasm_bindgen(js_name = objectManaValue)]
     pub fn object_mana_value(&self, object_id: u64) -> Result<u32, JsValue> {
         let id = ObjectId::from_raw(object_id);
-        if !self.game.object(id).is_some_and(|object| object.zone == Zone::Battlefield) {
-            return Err(JsValue::from_str("Mana value inspection requires a battlefield object"));
+        if !self.game.object(id).is_some_and(|object| {
+            object.zone == Zone::Battlefield
+                || (object.zone.is_public() && !self.game.is_face_down(id))
+        }) {
+            return Err(JsValue::from_str("Mana value inspection requires a public object"));
         }
         ironsmith::snapshot::ObjectSnapshot::try_from_object_id(&self.game, id)
             .map_err(|error| JsValue::from_str(&error.to_string()))?

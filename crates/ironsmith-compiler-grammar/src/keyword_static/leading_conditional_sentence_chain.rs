@@ -99,6 +99,7 @@ fn parse_borrowed_static_variant_chain(
     let mut consequence_signature = None;
     let mut selectors = Vec::new();
     let mut phrases = Vec::new();
+    let mut recipient = None;
 
     let mut trailing_form = None;
     for sentence in sentences {
@@ -143,7 +144,10 @@ fn parse_borrowed_static_variant_chain(
         let next_consequence_signature = words_without_exact_phrase(consequence, phrase)?;
         match &consequence_signature {
             Some(expected) if expected != &next_consequence_signature => return None,
-            None => consequence_signature = Some(next_consequence_signature),
+            None => {
+                consequence_signature = Some(next_consequence_signature);
+                recipient = borrowed_variant_recipient(consequence);
+            }
             _ => {}
         }
 
@@ -162,12 +166,29 @@ fn parse_borrowed_static_variant_chain(
     let trailing = oracle_list(phrases.get(1..)?)?;
     let display = format!("{first_sentence}. The same is true for {trailing}.");
     Some(vec![StaticAbilityAst::Static(
-        StaticAbility::copy_static_ability_variants(CopyStaticAbilityVariants::new(
-            common_filter?,
-            selectors,
-            display,
-        )),
+        StaticAbility::copy_static_ability_variants(
+            CopyStaticAbilityVariants::new(common_filter?, selectors, display)
+                .with_recipient(recipient),
+        ),
     )])
+}
+
+/// The subject that inherits the borrowed variants: "equipped creature has
+/// flying" gives the equipped creature, while a source reference ("this
+/// creature has flying") keeps the source itself (`None`).
+fn borrowed_variant_recipient(consequence: &[OwnedLexToken]) -> Option<ObjectFilter> {
+    let verb = consequence
+        .iter()
+        .position(|token| token.is_any_word(&["has", "have"]))?;
+    let subject = consequence.get(..verb)?;
+    if subject.is_empty() {
+        return None;
+    }
+    let words = parser_token_word_refs(subject);
+    if crate::util::is_source_reference_words(&words) {
+        return None;
+    }
+    crate::object_filters::parse_object_filter_lexed(subject, false).ok()
 }
 
 /// Parse a multi-sentence static line as independent abilities when every

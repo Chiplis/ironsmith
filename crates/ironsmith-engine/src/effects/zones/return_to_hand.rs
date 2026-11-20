@@ -124,7 +124,30 @@ impl ZoneMovementInstruction for ReturnToHandEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<SelectedZoneMovement, ExecutionError> {
-        let mut objects = match super::resolve_zone_move_objects(game, ctx, &self.spec) {
+        // "Then you may return any number of creatures that saddled it this
+        // turn" (Rambling Possum): an untargeted counted pick is made by the
+        // player performing the return, not by a trigger-bound player such as
+        // the defending player of an attack trigger (same as MoveToZone).
+        let actor = match (&self.actor_surface, self.spec.is_target()) {
+            (Some(actor), false)
+                if matches!(
+                    self.spec,
+                    ChooseSpec::WithCount(..) | ChooseSpec::WithCountValue(..)
+                ) =>
+            {
+                Some(crate::effects::helpers::resolve_player_filter_as_chooser(
+                    game, actor, ctx,
+                )?)
+            }
+            _ => None,
+        };
+        let saved_iterated_player = ctx.iteration.iterated_player;
+        if let Some(actor) = actor {
+            ctx.iteration.iterated_player = Some(actor);
+        }
+        let resolved = super::resolve_zone_move_objects(game, ctx, &self.spec);
+        ctx.iteration.iterated_player = saved_iterated_player;
+        let mut objects = match resolved {
             Ok(objects) => objects,
             Err(ExecutionError::InvalidTarget) => {
                 return Ok(SelectedZoneMovement::Finished(

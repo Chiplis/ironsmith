@@ -1132,13 +1132,13 @@ pub(super) fn apply_layer_7_effects(
                 let color_count = chars.colors.count() as i32;
                 add_pt_checked(
                     &mut power,
-                    i128::from(*power_multiplier) * i128::from(color_count),
+                    i128::from(*power_multiplier).saturating_mul(i128::from(color_count)),
                     &mut chars.numeric_range_error,
                     "power",
                 );
                 add_pt_checked(
                     &mut toughness,
-                    i128::from(*toughness_multiplier) * i128::from(color_count),
+                    i128::from(*toughness_multiplier).saturating_mul(i128::from(color_count)),
                     &mut chars.numeric_range_error,
                     "toughness",
                 );
@@ -1231,8 +1231,10 @@ pub(super) fn apply_counter_modifications(
     let (mut power_delta, mut toughness_delta) = (0i128, 0i128);
     for (counter, count) in &object.counters {
         if let Some((power, toughness)) = counter.pt_delta() {
-            power_delta += i128::from(power) * i128::from(*count);
-            toughness_delta += i128::from(toughness) * i128::from(*count);
+            power_delta =
+                power_delta.saturating_add(i128::from(power).saturating_mul(i128::from(*count)));
+            toughness_delta = toughness_delta
+                .saturating_add(i128::from(toughness).saturating_mul(i128::from(*count)));
         }
     }
     // CR 122.1j: a hone counter on an Equipment gives +1/+0 to any creature
@@ -1245,7 +1247,7 @@ pub(super) fn apply_counter_modifications(
                 && equipment.subtypes.contains(&crate::types::Subtype::Equipment)
                 && let Some(count) = equipment.counters.get(&hone)
             {
-                power_delta += i128::from(*count);
+                power_delta = power_delta.saturating_add(i128::from(*count));
             }
         }
     }
@@ -1493,7 +1495,7 @@ pub(super) fn count_filter_matches(
         };
         if filter_matches_with_characteristics_in_context(filter, obj, &chars, ctx.game, filter_ctx)
         {
-            count += 1;
+            count = count.saturating_add(1);
             if set_constrained {
                 members.push(crate::static_abilities::SetMember::layered(obj, &chars));
             }

@@ -95,11 +95,15 @@ impl EffectExecutor for ExchangeControlEffect {
         };
 
         // CR 701.12a/b: both permanents must still be on the battlefield (and
-        // phased in, CR 702.26b) or no part of the exchange happens.
+        // phased in, CR 702.26b) or no part of the exchange happens. An
+        // exchange with a spell ("exchange control of this creature and that
+        // spell", Perplexing Chimera) needs that spell still on the stack;
+        // stack objects with an object are spells (abilities have none).
         let present = |id: crate::ids::ObjectId| {
-            game.object(id)
-                .is_some_and(|object| object.zone == crate::zone::Zone::Battlefield)
-                && !game.is_phased_out(id)
+            game.object(id).is_some_and(|object| {
+                (object.zone == crate::zone::Zone::Battlefield && !game.is_phased_out(id))
+                    || object.zone == crate::zone::Zone::Stack
+            })
         };
         if !present(perm1_id) || !present(perm2_id) {
             return Ok(EffectOutcome::target_invalid());

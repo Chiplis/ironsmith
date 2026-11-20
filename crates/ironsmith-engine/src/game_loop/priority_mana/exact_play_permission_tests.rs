@@ -58,7 +58,7 @@ fn exact_menu_and_payment_distinguish_color_from_type_for_same_host() {
         let policy = proposal.mana_spend_policy_for_cast(player, Some(stack));
         assert_eq!(proposal.try_pay_mana_cost_with_policy(player, Some(stack), &ManaCost::from_symbols(vec![ManaSymbol::Colorless]),
             0, crate::costs::PaymentReason::CastSpell, &policy).unwrap(), expected);
-        assert_eq!(proposal.player(player).unwrap().mana_pool.red, u32::from(!expected));
+        assert_eq!(proposal.player(player).unwrap().mana_pool.red, u64::from(!expected));
     }
 }
 

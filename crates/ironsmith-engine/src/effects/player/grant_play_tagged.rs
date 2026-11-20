@@ -80,6 +80,10 @@ pub struct GrantPlayTaggedEffect {
     /// "the player who exiled it may play it" (Vulcan Mind-Meld): each
     /// tagged card's permission belongs to its recorded exiler.
     pub beneficiary_is_each_exiler: bool,
+    /// "If you do, it has <keyword>" (Chiss-Goria, Forge Tyrant): static
+    /// abilities the spell cast through this permission has as it is put on
+    /// the stack, before its total cost is determined (CR 601.2a, 601.2f).
+    pub cast_this_way_statics: Vec<crate::static_abilities::StaticAbility>,
 }
 
 impl GrantPlayTaggedEffect {
@@ -121,6 +125,7 @@ impl GrantPlayTaggedEffect {
             control_duration: None,
             permanents_enter_tapped: false,
             beneficiary_is_each_exiler: false,
+            cast_this_way_statics: Vec::new(),
         }
     }
 
@@ -513,7 +518,23 @@ impl EffectExecutor for GrantPlayTaggedEffect {
                 continue;
             }
             let object_is_land = object.is_land();
-            if (!self.allow_land && object_is_land && self.spell_filter.is_none() && self.alternative_cost.is_none())
+            // A permission to *cast* a card still covers a land card cast face
+            // down (morph, disguise: CR 702.37c, 702.168a), but never playing
+            // it as a land (Gonti, Lord of Luxury and Zoetic Cavern).
+            let face_down_land_cast = !self.allow_land
+                && object_is_land
+                && self.spell_filter.is_none()
+                && self.alternative_cost.is_none()
+                && crate::decision::spell_can_be_cast_face_down(game, object);
+            // A permission to *cast* a modal DFC whose front face is a spell
+            // (Akoum Warrior // Akoum Teeth) never lets its land face be
+            // played (CR 712.12, 305.9): only nonland proposed faces qualify.
+            let land_face_excluded = !self.allow_land
+                && !object_is_land
+                && self.spell_filter.is_none()
+                && crate::decision::linked_other_face_land_definition(game, object).is_some();
+            if (!self.allow_land && object_is_land && self.spell_filter.is_none() && self.alternative_cost.is_none()
+                    && !face_down_land_cast)
                 || !seen.insert(object_id)
             {
                 continue;
@@ -521,6 +542,17 @@ impl EffectExecutor for GrantPlayTaggedEffect {
             let object_stable_id = object.stable_id;
             let object_zone = object.zone;
             let object_owner = object.owner;
+            // "cast it ... as an Adventure" (Hildibrand Manderville): the
+            // Adventure-subtype filter names the proposed spell face, but an
+            // adventurer card also matches "Adventure" through its linked
+            // face. Bind the permission to the Adventure half itself so the
+            // creature face is never authorized (CR 715.3, 715.4).
+            let adventure_face_name = self
+                .spell_filter
+                .as_ref()
+                .filter(|filter| filter.subtypes.contains(&crate::types::Subtype::Adventure))
+                .filter(|_| !object.zone_subtypes().contains(&crate::types::Subtype::Adventure))
+                .and_then(|_| object.other_face_name.as_deref().map(str::to_string));
             // "the player who exiled it may play it" (Vulcan Mind-Meld): the
             // exile instruction recorded each card's exiler.
             let player_id = if self.beneficiary_is_each_exiler {
@@ -534,7 +566,7 @@ impl EffectExecutor for GrantPlayTaggedEffect {
             let duration_player = self.duration_player(ctx.controller, player_id);
             let expires_end_of_turn = self.expires_end_of_turn(game, duration_player);
 
-            if !permission_bound_mana && !self.mana_spend_mode.is_normal() && !object_is_land {
+            if !permission_bound_mana && !self.mana_spend_mode.is_normal() && (!object_is_land || face_down_land_cast) {
                 mana_permission_stable_ids
                     .entry(player_id)
                     .or_default()
@@ -686,11 +718,30 @@ impl EffectExecutor for GrantPlayTaggedEffect {
                     Grantable::AlternativeCast(crate::alternative_cast::AlternativeCastingMethod::cast_from_zone_with_total_cost(
                         if price.costs().is_empty() { "Without paying its mana cost" } else { "Effect casting price" }, object_zone, price, None, false)), source.clone());
                 // A price added to an existing play permission shares its use budget.
-                let shared_usage_id = shared_usage_id.or_else(|| game.effect_store.grant_registry.grants.iter().rev().find(|grant| {
-                    grant.target_id == Some(object_id) && grant.player == player_id
-                        && matches!(grant.grantable, Grantable::PlayFrom)
-                        && grant.source.source_id() == ctx.source && grant.shared_usage_id.is_some()
-                }).and_then(|grant| grant.shared_usage_id));
+                let bound_permission = if shared_usage_id.is_none() {
+                    game.effect_store.grant_registry.grants.iter().rev().find(|grant| {
+                        grant.target_id == Some(object_id) && grant.player == player_id
+                            && matches!(grant.grantable, Grantable::PlayFrom)
+                            && grant.source.source_id() == ctx.source && grant.shared_usage_id.is_some()
+                    }).map(|grant| (grant.shared_usage_id, grant.filter.clone()))
+                } else {
+                    None
+                };
+                let shared_usage_id = shared_usage_id.or_else(|| bound_permission.as_ref().and_then(|(id, _)| *id));
+                // The price is usable only where the permission it spends is
+                // ("for each nonland card type, you may cast a card of that
+                // type ... without paying its mana cost", Aminatou's Augury):
+                // an unfiltered price inherits that permission's card filter.
+                if self.spell_filter.is_none()
+                    && let Some((_, Some(permission_filter))) = bound_permission
+                {
+                    let mut inherited = permission_filter;
+                    inherited.zone = None;
+                    if !inherited.excluded_card_types.contains(&crate::types::CardType::Land) {
+                        inherited.excluded_card_types.push(crate::types::CardType::Land);
+                    }
+                    spell_filter = inherited;
+                }
                 let grant = game.effect_store.grant_registry.grants.last_mut().expect("inserted priced grant");
                 grant.filter = Some(spell_filter);
                 grant.play_from_constraints = constraints.clone();
@@ -780,6 +831,26 @@ impl EffectExecutor for GrantPlayTaggedEffect {
                     .last_mut()
                     .expect("created tagged play grant")
                     .filter = Some(filter.clone());
+                if let Some(face) = adventure_face_name {
+                    game.effect_store
+                        .grant_registry
+                        .grants
+                        .last_mut()
+                        .expect("created tagged play grant")
+                        .required_face_name = Some(face);
+                }
+            } else if face_down_land_cast || land_face_excluded {
+                // Only the face-down spell (a nonland 2/2) or the spell face
+                // is a proposed face this permission admits; the land face
+                // can't be played.
+                let mut nonland = ObjectFilter::default();
+                nonland.excluded_card_types.push(crate::types::CardType::Land);
+                game.effect_store
+                    .grant_registry
+                    .grants
+                    .last_mut()
+                    .expect("created tagged play grant")
+                    .filter = Some(nonland);
             }
             granted += 1;
         }
@@ -800,6 +871,13 @@ impl EffectExecutor for GrantPlayTaggedEffect {
                 grant
                     .cast_this_way_grants
                     .push(crate::static_abilities::StaticAbility::enters_tapped_ability());
+            }
+        }
+        if !self.cast_this_way_statics.is_empty() {
+            for grant in &mut game.effect_store.grant_registry.grants[first_grant..] {
+                grant
+                    .cast_this_way_grants
+                    .extend(self.cast_this_way_statics.iter().cloned());
             }
         }
         if self.during_your_turns {

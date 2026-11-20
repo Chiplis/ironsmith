@@ -191,9 +191,7 @@ fn counter_removal_cost_inputs(
     if !crate::effects::can_pay_declared_resources(game, &resources) {
         return Ok(None);
     }
-    let total = i64::try_from(total).map_err(|_| {
-        ExecutionError::Impossible("counter cost exceeds the outcome count range".into())
-    })?;
+    let total = i64::try_from(total).unwrap_or(i64::MAX);
     Ok(Some((total, resources)))
 }
 
@@ -219,16 +217,12 @@ fn counter_cost_outcome(
     // their unrelated counts to either quantity.
     let mut removed = 0u64;
     for outcome in &outcomes {
-        let count = u32::try_from(outcome.instruction_result().count_or_zero()).map_err(|_| {
+        let count = u64::try_from(outcome.instruction_result().count_or_zero()).map_err(|_| {
             ExecutionError::InternalError("counter payment has an invalid removal count".into())
         })?;
-        removed = removed.checked_add(u64::from(count)).ok_or_else(|| {
-            ExecutionError::InternalError("counter payment removal total overflow".into())
-        })?;
+        removed = removed.saturating_add(count);
     }
-    let removed = i64::try_from(removed).map_err(|_| {
-        ExecutionError::InternalError("counter payment removal total exceeds outcome range".into())
-    })?;
+    let removed = i64::try_from(removed).unwrap_or(i64::MAX);
     let mut payment = EffectOutcome::aggregate(
         outcomes
             .iter()

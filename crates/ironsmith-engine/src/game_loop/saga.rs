@@ -183,6 +183,31 @@ pub fn add_saga_lore_counters_with_dm(
 
 /// Lore counters a Saga gets as it enters the battlefield (CR 714.3a), or
 /// the chosen chapter for read ahead (CR 702.155b). None unless a calculated Saga.
+/// `false` proves the object's calculated subtypes lack Saga: it prints no
+/// Saga subtype on either face or component, and no live continuous effect
+/// could add one (copy, text and merge effects count as possibly adding it).
+fn object_may_be_saga(game: &GameState, object_id: ObjectId) -> bool {
+    use crate::continuous::Modification as M;
+    let Some(object) = game.object(object_id) else {
+        return true;
+    };
+    object.subtypes.contains(&Subtype::Saga)
+        || object.other_face.is_some()
+        || object.other_face_name.is_some()
+        || game.merged_permanent(object.stable_id).is_some()
+        || game.all_continuous_effects_arc().iter().any(|effect| match &effect.modification {
+            M::AddSubtypes(subtypes) | M::SetSubtypes(subtypes) => subtypes.contains(&Subtype::Saga),
+            M::CopyOf { .. }
+            | M::MergeComponent { .. }
+            | M::ChangeText { .. }
+            | M::SetTextBox(_)
+            | M::RewriteText(_)
+            | M::RemoveOptionalTextFragments(_)
+            | M::AddAllSubtypesOfFamily(_) => true,
+            _ => false,
+        })
+}
+
 fn entry_lore_counter_amount(
     game: &mut GameState,
     saga_id: ObjectId,
@@ -216,6 +241,11 @@ pub(crate) fn add_entry_lore_counters(
     decision_maker: &mut dyn DecisionMaker,
 ) -> Result<(), crate::effects::ExecutionError> {
     if game.has_processed_saga_entry_lore(saga_id) {
+        return Ok(());
+    }
+    // The profile reads calculated subtypes, which on a just-changed board
+    // recomputes every permanent. A non-Saga entrant needs no profile.
+    if !object_may_be_saga(game, saga_id) {
         return Ok(());
     }
     let Some(amount) = entry_lore_counter_amount(game, saga_id, decision_maker) else {

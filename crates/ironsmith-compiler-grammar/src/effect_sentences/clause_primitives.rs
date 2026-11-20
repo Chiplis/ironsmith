@@ -2753,6 +2753,31 @@ pub fn parse_deal_damage_equal_to_power_clause(
                     None,
                 );
             }
+            // "Each creature deals 1 damage to its controller" (Rakdos
+            // Charm): with no target named, "its" is the iterated source.
+            if iterated_source_filter.is_some()
+                && !TokenWordView::new(target_tokens)
+                    .to_word_refs()
+                    .iter()
+                    .any(|word| *word == "target")
+                && let TargetAst::Player(filter, None) = &mut target
+            {
+                let it = || {
+                    crate::target::ObjectRef::tagged(crate::tag::CompilerReferenceTag::It.bind())
+                };
+                let replacement = match &*filter {
+                    PlayerFilter::ControllerOf(crate::target::ObjectRef::Target) => {
+                        Some(PlayerFilter::ControllerOf(it()))
+                    }
+                    PlayerFilter::OwnerOf(crate::target::ObjectRef::Target) => {
+                        Some(PlayerFilter::OwnerOf(it()))
+                    }
+                    _ => None,
+                };
+                if let Some(replacement) = replacement {
+                    *filter = replacement;
+                }
+            }
             if target_tokens
                 .first()
                 .is_some_and(|token| token.is_word("each"))

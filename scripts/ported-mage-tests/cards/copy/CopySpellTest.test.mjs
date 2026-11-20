@@ -2246,6 +2246,7 @@ registerPortedMageTests({
         },
         {
           "op": "assertStackCardCopy",
+          "note": "Port correction (CR 709.4, 702.102a): Oracle prints Fuse on each half (cards.json card_faces), so the exiled split card's combined rules text has each half's text and Fuse, and a copy of one half keeps that half's Fuse line. XMage's rules list omits the keyword.",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
@@ -2255,11 +2256,14 @@ registerPortedMageTests({
           "manaCost": "{3}{G}",
           "typeLine": "Sorcery",
           "rulesText": [
-            "Create a 3/3 green Centaur creature token."
+            "Create a 3/3 green Centaur creature token.",
+            "Fuse"
           ],
           "originalText": [
             "Create a 3/3 green Centaur creature token.",
-            "You gain 2 life for each creature you control."
+            "Fuse",
+            "You gain 2 life for each creature you control.",
+            "Fuse"
           ]
         },
         {
@@ -2355,6 +2359,7 @@ registerPortedMageTests({
         },
         {
           "op": "assertStackCardCopy",
+          "note": "Port correction (CR 709.4, 702.102a): Oracle prints Fuse on each half (cards.json card_faces), so the exiled split card's combined rules text has each half's text and Fuse, and a copy of one half keeps that half's Fuse line. XMage's rules list omits the keyword.",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
@@ -2364,11 +2369,14 @@ registerPortedMageTests({
           "manaCost": "{W}",
           "typeLine": "Sorcery",
           "rulesText": [
-            "You gain 2 life for each creature you control."
+            "You gain 2 life for each creature you control.",
+            "Fuse"
           ],
           "originalText": [
             "Create a 3/3 green Centaur creature token.",
-            "You gain 2 life for each creature you control."
+            "Fuse",
+            "You gain 2 life for each creature you control.",
+            "Fuse"
           ]
         },
         {

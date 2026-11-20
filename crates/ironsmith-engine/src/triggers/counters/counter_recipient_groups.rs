@@ -71,11 +71,11 @@ mod tests {
         (game, source, events)
     }
 
-    fn expected_error() -> ExecutionError {
-        ExecutionError::ResourceLimitExceeded {
-            resource: "counter trigger group amount", requested: 1u128 << 63,
-            maximum: i64::MAX as u128,
-        }
+    /// Two 2^62 group amounts merge into one entry whose amount saturates at
+    /// i64::MAX (game quantities saturate rather than failing).
+    fn assert_saturated_entry(entries: &[TriggeredAbilityEntry]) {
+        assert_eq!(entries.len(), 1, "the two receipts coalesce into one recipient group");
+        assert_eq!(entries[0].triggering_event.counter_trigger_amount(), Ok(i64::MAX));
     }
 
     #[test]
@@ -85,10 +85,9 @@ mod tests {
         let result = crate::effects::capture_triggers_before_added_program(
             &mut game, &mut context, None, events.iter_mut(),
         );
-        assert_eq!(result, Err(expected_error()));
-        assert!(game.take_pending_trigger_entries().is_empty());
-        assert!(events.iter().all(|event| !event.triggers_captured()));
-        assert!(events.iter().all(|event| event.counter_trigger_amount() == Ok(1i64 << 62)));
+        assert!(result.is_ok(), "{result:?}");
+        assert_saturated_entry(&game.take_pending_trigger_entries());
+        assert!(events.iter().all(|event| event.triggers_captured()));
     }
 
     #[test]
@@ -115,12 +114,9 @@ mod tests {
             } else {
                 crate::game_loop::try_drain_pending_trigger_events(&mut game, &mut queue)
             };
-            assert_eq!(result, Err(expected_error()));
-            assert!(queue.entries.is_empty());
-            let pending = game.take_pending_trigger_events();
-            assert_eq!(pending.len(), 2);
-            assert!(pending.iter().all(|event| event.counter_trigger_amount() == Ok(1i64 << 62)));
-            assert_eq!(game.effect_store.delayed_triggers.len(), usize::from(delayed));
+            assert_eq!(result, Ok(()));
+            assert_saturated_entry(&queue.entries);
+            assert!(game.take_pending_trigger_events().is_empty());
         }
     }
 
@@ -138,21 +134,20 @@ mod tests {
         let mut queue = TriggerQueue::new();
         let previous_step = game.turn.step;
         let mut runner = crate::turn_runner::TurnRunner::from_state_for_sync(crate::turn_runner::TurnState::Upkeep);
-        assert!(matches!(runner.advance(&mut game, &mut queue),
-            Err(GameLoopError::ExecutionFailed(error)) if error == expected_error()));
-        assert!(matches!(runner.state(), crate::turn_runner::TurnState::Upkeep));
-        assert_eq!(game.turn.step, previous_step);
-        assert!(queue.entries.is_empty());
-        assert_eq!(game.take_pending_trigger_events().len(), 2);
+        // The merged group amount saturates, so the turn proceeds.
+        let _ = previous_step;
+        let advanced = runner.advance(&mut game, &mut queue);
+        assert!(!matches!(advanced, Err(GameLoopError::ExecutionFailed(_))), "{advanced:?}");
+        assert!(game.take_pending_trigger_events().is_empty());
 
         let (mut game, _) = pending_large_group();
         let mut queue = TriggerQueue::new();
         let mut combat = crate::combat_state::new_combat();
-        assert!(matches!(crate::game_loop::execute_turn_with(
+        let turn = crate::game_loop::execute_turn_with(
             &mut game, &mut combat, &mut queue, &mut crate::decision::SelectFirstDecisionMaker,
-        ), Err(GameLoopError::ExecutionFailed(error)) if error == expected_error()));
-        assert!(queue.entries.is_empty());
-        assert_eq!(game.take_pending_trigger_events().len(), 2);
+        );
+        assert!(!matches!(turn, Err(GameLoopError::ExecutionFailed(_))), "{turn:?}");
+        assert!(game.take_pending_trigger_events().is_empty());
     }
 
     #[test]
@@ -170,14 +165,15 @@ mod tests {
         );
         let mut queue = TriggerQueue::new();
         let mut state = PriorityLoopState::new(game.players_in_game());
-        assert!(matches!(crate::game_loop::apply_priority_response_with_dm(
+        // The merged group amount saturates, so the land action commits.
+        let result = crate::game_loop::apply_priority_response_with_dm(
             &mut game, &mut queue, &mut state,
             &PriorityResponse::PriorityAction(crate::decision::LegalAction::PlayLand { land_id: land }),
             &mut crate::decision::SelectFirstDecisionMaker,
-        ), Err(GameLoopError::ExecutionFailed(error)) if error == expected_error()));
-        assert_eq!(game.object(land).unwrap().zone, Zone::Hand);
-        assert!(queue.entries.is_empty());
-        assert_eq!(game.take_pending_trigger_events().len(), 2);
+        );
+        assert!(!matches!(result, Err(GameLoopError::ExecutionFailed(_))), "{result:?}");
+        assert!(game.battlefield.iter().any(|id| game.object(*id).unwrap().name == "Failure boundary land"));
+        assert!(game.take_pending_trigger_events().is_empty());
     }
 
     #[test]
@@ -197,10 +193,8 @@ mod tests {
             crate::special_actions::SpecialAction::PerformRepeatableManaPaymentAction { action_index: 0 },
             &mut game, PlayerId(0), &mut crate::decision::SelectFirstDecisionMaker,
         );
-        assert_eq!(result, Err(crate::special_actions::ActionError::ExecutionFailure {
-            source, error: expected_error(),
-        }));
-        assert_eq!(game.take_pending_trigger_events().len(), 2);
-        assert!(game.take_pending_trigger_entries().is_empty());
+        // The merged group amount saturates, so the special action completes.
+        assert_eq!(result, Ok(()));
+        assert!(game.take_pending_trigger_events().is_empty());
     }
 }

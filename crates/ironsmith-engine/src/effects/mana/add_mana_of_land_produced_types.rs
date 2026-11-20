@@ -89,6 +89,39 @@ impl EffectExecutor for AddManaOfLandProducedTypesEffect {
         true
     }
 
+    /// CR 106.7: the symbols matching permanents could produce right now.
+    /// Without this, a source whose activation cannot be projected (Benthic
+    /// Explorers' untap-an-opponent's-land cost) had no inferred colours, so
+    /// the payment search offered only its open variant and never the colour
+    /// the cost needed.
+    fn producible_mana_symbols(
+        &self,
+        game: &GameState,
+        source: crate::ids::ObjectId,
+        controller: crate::ids::PlayerId,
+    ) -> Option<Vec<ManaSymbol>> {
+        if self.mana_type_source != ManaTypeSource::MatchingLandsCouldProduce {
+            return None;
+        }
+        // A producer reached through a wrapper re-enters here with a fresh
+        // visiting list; bound the depth so mutual "could produce" sources
+        // (two wrapped Exotic Orchards) cannot recurse forever.
+        thread_local! {
+            static DEPTH: std::cell::Cell<u8> = const { std::cell::Cell::new(0) };
+        }
+        if DEPTH.with(|depth| depth.get()) >= 4 {
+            return None;
+        }
+        DEPTH.with(|depth| depth.set(depth.get() + 1));
+        let ctx = ExecutionContext::new_default(source, controller);
+        let symbols: Vec<ManaSymbol> = collect_available_mana_symbols(game, &ctx, &self.land_filter)
+            .into_iter()
+            .filter(|symbol| is_allowed_symbol(*symbol, self.allow_colorless))
+            .collect();
+        DEPTH.with(|depth| depth.set(depth.get() - 1));
+        (!symbols.is_empty()).then_some(symbols)
+    }
+
     #[crate::effects::project_effect_outcome]
     fn execute_with_outputs(
         &self,
@@ -533,7 +566,7 @@ mod retained_production_evidence_tests {
                 projection.unwrap();
                 if case == 4 { game.move_object_by_effect(source, Zone::Graveyard).unwrap(); }
                 effect.execute(&mut game, &mut ctx).unwrap();
-                assert_eq!(game.player(player).unwrap().mana_pool.blue, u32::from(case == 4));
+                assert_eq!(game.player(player).unwrap().mana_pool.blue, u64::from(case == 4));
             }
         }
     }

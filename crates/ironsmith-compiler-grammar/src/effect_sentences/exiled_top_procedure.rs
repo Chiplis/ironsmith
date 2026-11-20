@@ -407,6 +407,10 @@ pub(super) fn continue_with(
                 ExilePermissionFollowupKind::DelayedPlayCard => {
                     group.effects.push(permission);
                     let tagged = ObjectFilter::tagged(group.tag.clone());
+                    // "When you play a card this way" (Fires of Mount Doom)
+                    // names a play made through the permission just granted,
+                    // not any play of that card (Squee's own permission
+                    // doesn't count): link the watcher to those exact grants.
                     let trigger = TriggerSpec::Either(
                         Box::new(TriggerSpec::SpellCast {
                             filter: Some(tagged.clone()),
@@ -423,6 +427,8 @@ pub(super) fn continue_with(
                             filter: tagged,
                         }),
                     );
+                    let trigger =
+                        TriggerSpec::PlayedOrCastThroughPreviousPermission(Box::new(trigger));
                     group.effects.push(EffectAst::Delayed(
                         DelayedEffectAst::DelayedTriggerThisTurn {
                             trigger,

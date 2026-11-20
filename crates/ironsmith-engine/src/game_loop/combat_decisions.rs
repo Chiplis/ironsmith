@@ -4523,8 +4523,19 @@ mod declaration_batch_tests {
 mod continuous_failure_rollback_tests {
     use super::*;
 
-    fn poison_scalar_domain(game: &mut GameState) {
-        game.player_mut(PlayerId::from_index(0)).unwrap().mana_pool.white = i32::MAX as u32 + 1;
+    /// Game quantities saturate, so inject the refresh failure through missing
+    /// numeric-choice evidence: a creature whose CDA reads a chosen number with
+    /// no linked pair. Returns that host.
+    fn poison_scalar_domain(game: &mut GameState) -> crate::ids::ObjectId {
+        let card = crate::card::CardBuilder::new(crate::ids::CardId::new(), "Missing evidence host")
+            .card_types(vec![crate::types::CardType::Creature])
+            .power_toughness(crate::card::PowerToughness::fixed(1, 1)).build();
+        let host = game.create_object_from_card(&card, PlayerId::from_index(0), Zone::Battlefield);
+        let value = crate::effect::Value::SourceChosenNumber { if_unset: Some(0), pair: None };
+        game.object_mut(host).unwrap().abilities_mut().push(crate::ability::Ability::static_ability(
+            crate::static_abilities::StaticAbility::characteristic_defining_pt(value.clone(), value)));
+        game.mark_continuous_state_dirty();
+        host
     }
 
     #[test]
@@ -4539,13 +4550,15 @@ mod continuous_failure_rollback_tests {
             },
         };
         assert!(game.combat.is_none());
-        poison_scalar_domain(&mut game);
+        let host = poison_scalar_domain(&mut game);
+        let host_abilities = game.object(host).unwrap().abilities.len();
         let result = transaction.stage_proposed_combat_for_payment(&mut game);
         assert!(matches!(result, Err(GameLoopError::ExecutionFailed(crate::effects::ExecutionError::ContinuousDiscovery(
-            crate::static_ability_processor::StaticEffectDiscoveryError::ScalarRange { .. }
-        )))));
+            crate::static_ability_processor::StaticEffectDiscoveryError::NumericChoiceEvidence { .. }
+        )))), "{result:?}");
         assert!(game.combat.is_none(), "failed proposal must not publish its combat state");
-        assert_eq!(game.player(PlayerId::from_index(0)).unwrap().mana_pool.white, i32::MAX as u32 + 1);
+        assert_eq!(game.object(host).unwrap().abilities.len(), host_abilities,
+            "restoring the previous state keeps the pre-proposal world");
     }
 
     #[test]

@@ -166,15 +166,16 @@ registerPortedMageTests({
           "op": "addCard",
           "zone": "LIBRARY",
           "player": 1,
-          "name": "Whitesun's Passage@passage",
-          "count": 1
+          "name": "Whitesun's Passage",
+          "count": 4
         },
         {
           "op": "addCard",
           "zone": "LIBRARY",
           "player": 1,
-          "name": "Whitesun's Passage",
-          "count": 4
+          "name": "Whitesun's Passage@passage",
+          "count": 1,
+          "note": "Added last so the aliased copy is the library top that Robber exiles (CR 401.2: the source adds five identical copies; only the top one is exiled)."
         },
         {
           "op": "addCard",

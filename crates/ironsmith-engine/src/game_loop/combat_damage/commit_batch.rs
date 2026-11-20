@@ -155,7 +155,7 @@ pub(super) fn commit_combat_damage_batch(
                 index
             };
             events[index].amount = crate::events::damage::checked_damage_amount(
-                u128::from(events[index].amount) + u128::from(assignment.amount),
+                u128::from(events[index].amount).saturating_add(u128::from(assignment.amount)),
                 "combat damage receipt total",
             )
             .map_err(|error| CombatDamageAssignmentError::execution(plan.source, error))?;
@@ -265,7 +265,7 @@ pub(super) fn commit_combat_damage_batch(
             return Ok(Vec::new());
         }
         events[index].life_lost = crate::events::damage::checked_damage_amount(
-            u128::from(events[index].life_lost) + u128::from(damage.original.life_lost),
+            u128::from(events[index].life_lost).saturating_add(u128::from(damage.original.life_lost)),
             "combat life-loss receipt total",
         )
         .map_err(|error| CombatDamageAssignmentError::execution(source, error))?;
@@ -331,7 +331,7 @@ pub(super) fn commit_combat_damage_batch(
                     .copied()
                     .unwrap_or(0);
                 crate::events::damage::checked_damage_amount(
-                    u128::from(prior) + u128::from(event.amount),
+                    u128::from(prior).saturating_add(u128::from(event.amount)),
                     "commander damage total",
                 )
                 .map_err(|error| CombatDamageAssignmentError::execution(event.source, error))?;

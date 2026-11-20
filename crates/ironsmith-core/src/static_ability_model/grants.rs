@@ -409,6 +409,10 @@ pub struct CopyStaticAbilityVariants {
     pub selectors: Vec<StaticAbilityVariantSelector>,
     pub exclude_source_id: bool,
     pub display: String,
+    /// The objects that inherit the variants ("equipped creature has
+    /// flying"). Absent means the source itself ("this creature has ...").
+    #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "Option::is_none"))]
+    pub recipient: Option<ObjectFilter>,
 }
 
 impl CopyStaticAbilityVariants {
@@ -424,11 +428,17 @@ impl CopyStaticAbilityVariants {
             selectors,
             exclude_source_id: true,
             display: display.into(),
+            recipient: None,
         }
     }
 
     pub fn with_exclude_source_id(mut self, exclude: bool) -> Self {
         self.exclude_source_id = exclude;
+        self
+    }
+
+    pub fn with_recipient(mut self, recipient: Option<ObjectFilter>) -> Self {
+        self.recipient = recipient;
         self
     }
 }

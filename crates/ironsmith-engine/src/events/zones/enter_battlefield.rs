@@ -1393,16 +1393,14 @@ mod entry_intrinsic_counter_overflow_tests {
                 ironsmith_core::IntrinsicStartingCounter::Defense => builder.subtypes(vec![Subtype::Siege]).defense(u32::MAX).build(),
             };
             let entrant = game.create_object_from_definition(&definition, alice, Zone::Hand);
-            let before_ids = game.object_ids_in_deterministic_order();
-            let before_battlefield = game.battlefield.clone();
             let result = game.move_object_with_etb_processing_with_initial_counters_with_dm(
                 entrant, Zone::Battlefield, vec![(rule.counter_type(), 1)], &mut crate::decision::SelectFirstDecisionMaker,
             );
-            assert!(matches!(result, Err(crate::effects::ExecutionError::InternalError(ref message)) if message.contains("counter contribution overflow")));
-            assert_eq!(game.object(entrant).unwrap().zone, Zone::Hand);
-            assert_eq!(game.counter_count(entrant, rule.counter_type()), 0);
-            assert_eq!(game.object_ids_in_deterministic_order(), before_ids);
-            assert_eq!(game.battlefield, before_battlefield);
+            // Counter quantities saturate: u32::MAX + 1 clamps and the entry commits.
+            let receipt = result.unwrap();
+            let crate::events::processing::EventOutcome::Proceed(entered) = receipt.original else { panic!("entry completes"); };
+            assert_eq!(game.object(entered.new_id).unwrap().zone, Zone::Battlefield);
+            assert_eq!(game.counter_count(entered.new_id, rule.counter_type()), u32::MAX);
         }
     }
 }

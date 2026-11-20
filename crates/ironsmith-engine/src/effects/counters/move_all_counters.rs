@@ -135,18 +135,16 @@ impl EffectExecutor for MoveAllCountersEffect {
                     None
                 };
 
-                let to_id = if let Some((_, to_id)) = contextual_target_pair {
-                    to_id
+                let (to_id, extra_to_ids) = if let Some((_, to_id)) = contextual_target_pair {
+                    (to_id, Vec::new())
                 } else {
-                    let Some(to_id) = resolve_objects_for_effect(game, ctx, &self.to)?
-                        .first()
-                        .copied()
-                    else {
+                    let resolved_to = resolve_objects_for_effect(game, ctx, &self.to)?;
+                    let Some(to_id) = resolved_to.first().copied() else {
                         return Ok(CompletedEffectOutputs::aggregate_only(
                             EffectOutcome::target_invalid(),
                         ));
                     };
-                    to_id
+                    (to_id, resolved_to.into_iter().skip(1).collect::<Vec<_>>())
                 };
 
                 let from_id = if let Some((from_id, _)) = contextual_target_pair {
@@ -211,6 +209,35 @@ impl EffectExecutor for MoveAllCountersEffect {
                         EffectOutcome::count(0),
                     ));
                 }
+                // A placement (not a move) of the source's counters onto "that
+                // token" also reaches every token a replacement added to that
+                // same creation (Chatterfang, doublers): each such token is
+                // one of the tokens the instruction created. A live move can
+                // have only one destination.
+                let extra_placements: Vec<(crate::ids::ObjectId, Vec<(CounterType, u32)>)> =
+                    if self.remove_from_source {
+                        Vec::new()
+                    } else {
+                        extra_to_ids
+                            .iter()
+                            .copied()
+                            .filter(|id| *id != to_id)
+                            .map(|id| {
+                                let counters = counters_to_move
+                                    .iter()
+                                    .copied()
+                                    .filter(|(counter_type, _)| {
+                                        super::move_destination_can_receive_counters(
+                                            game,
+                                            id,
+                                            *counter_type,
+                                        )
+                                    })
+                                    .collect::<Vec<_>>();
+                                (id, counters)
+                            })
+                            .collect()
+                    };
                 // CR 122.5: counters that can't be put onto the destination aren't
                 // removed from the source either.
                 let counters_to_move: Vec<(CounterType, u32)> = counters_to_move
@@ -260,7 +287,15 @@ impl EffectExecutor for MoveAllCountersEffect {
                 }
                 let mut total_moved = 0i64;
                 let mut children = Vec::new();
-                for (kind, count) in counters_to_move {
+                let mut placements = vec![(to_id, counters_to_move)];
+                if live_source.is_none() {
+                    placements.extend(extra_placements);
+                }
+                for (kind, count, to_id) in placements.into_iter().flat_map(|(to_id, counters)| {
+                    counters
+                        .into_iter()
+                        .map(move |(kind, count)| (kind, count, to_id))
+                }) {
                     let transferred = super::transfer_counters_with_outputs(
                         game,
                         ctx,
@@ -275,13 +310,7 @@ impl EffectExecutor for MoveAllCountersEffect {
                         ));
                     }
                     total_moved = total_moved
-                        .checked_add(transferred.outcome.instruction_result().count_or_zero())
-                        .ok_or_else(|| {
-                            ExecutionError::InternalError(
-                                "counter movement total exceeds the supported wide count range"
-                                    .into(),
-                            )
-                        })?;
+                        .saturating_add(transferred.outcome.instruction_result().count_or_zero());
                     children.push(transferred);
                 }
                 let outcome = EffectOutcome::aggregate_with_primary_result(

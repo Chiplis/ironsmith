@@ -372,27 +372,18 @@ impl TriggerMatcher for DealsCombatDamageToPlayerTrigger {
             && self.each_damaged_player
             && matches!(damage.target, DamageTarget::Object(_))
         {
-            return i32::try_from(damage.amount).ok();
+            return Some(ironsmith_core::quantity::clamp_i32_from_u32(damage.amount));
         }
         let DamageTarget::Player(current_player) = damage.target else {
             return None;
         };
         if self.per_source_controller {
-            return match i32::try_from(damage.amount) {
-                Ok(amount) => Some(amount),
-                Err(_) => {
-                    ctx.game.record_token_resource_failure(&crate::effects::ExecutionError::ResourceLimitExceeded {
-                        resource: "grouped combat damage amount", requested: u128::from(damage.amount),
-                        maximum: i32::MAX as u128,
-                    });
-                    None
-                }
-            };
+            return Some(ironsmith_core::quantity::clamp_i32_from_u32(damage.amount));
         }
         // "That much damage" / "the amount of damage those creatures dealt to
         // that player": this assignment's share of the per-player total.
         if self.each_damaged_player {
-            return i32::try_from(damage.amount).ok();
+            return Some(ironsmith_core::quantity::clamp_i32_from_u32(damage.amount));
         }
 
         let mut damaged_players = HashSet::new();
@@ -412,7 +403,7 @@ impl TriggerMatcher for DealsCombatDamageToPlayerTrigger {
                 damaged_players.insert(*player);
             }
         }
-        i32::try_from(damaged_players.len()).ok()
+        Some(i32::try_from(damaged_players.len()).unwrap_or(i32::MAX))
     }
 }
 

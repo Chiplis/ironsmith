@@ -695,7 +695,12 @@ mod pending_result_publication_contract_tests {
             let (mut game, source, alice, bob) = fixture();
             let mut shields = Vec::new();
             for extra in [0, 1] {
-                let effect=crate::static_abilities::StaticAbility::add_player_counters_placement_replacement(PlayerFilter::Specific(bob),Some(CounterType::Energy),extra,"Player counter result choice".into()).generate_replacement_effect(source,alice).unwrap();
+                let mut effect=crate::static_abilities::StaticAbility::add_player_counters_placement_replacement(PlayerFilter::Specific(bob),Some(CounterType::Energy),extra,"Player counter result choice".into()).generate_replacement_effect(source,alice).unwrap();
+                // Two adders commute and need no choice; a doubler and an
+                // adder do not.
+                if extra == 0 {
+                    effect.replacement = crate::replacement::ReplacementAction::DoubleCounters { counter_type: Some(CounterType::Energy) };
+                }
                 shields.push(
                     game.effect_store
                         .replacement_effects
@@ -768,10 +773,11 @@ mod pending_result_publication_contract_tests {
                 effect.execute(&mut game, &mut ctx).unwrap()
             };
             assert!(!ctx.decision_maker.awaiting_choice());
-            assert_eq!(out.as_count(), Some(2));
-            assert_eq!(ctx.get_outcome(EffectId(77)).unwrap().as_count(), Some(2));
+            // Answer 0 doubles first: 1 * 2 + 1.
+            assert_eq!(out.as_count(), Some(3));
+            assert_eq!(ctx.get_outcome(EffectId(77)).unwrap().as_count(), Some(3));
             assert_eq!(ctx.get_outcome(EffectId(31)).unwrap().as_count(), Some(42));
-            assert_eq!(game.player(bob).unwrap().energy_counters, 2);
+            assert_eq!(game.player(bob).unwrap().energy_counters, 3);
             assert!(shields.iter().all(|id| {
                 game.effect_store
                     .replacement_effects
@@ -803,7 +809,7 @@ mod pending_result_publication_contract_tests {
         run(true, true);
     }
     #[test]
-    fn with_id_real_storage_failure_restores_previous_receipt() {
+    fn with_id_player_counter_overflow_saturates() {
         let (mut game, source, alice, bob) = fixture();
         game.player_mut(bob).unwrap().energy_counters = u32::MAX;
         let mut ctx = ExecutionContext::new_default(source, alice);
@@ -816,16 +822,8 @@ mod pending_result_publication_contract_tests {
                 PlayerFilter::Specific(bob),
             )),
         );
-        assert_eq!(
-            effect.execute(&mut game, &mut ctx).unwrap_err(),
-            ExecutionError::ResourceLimitExceeded {
-                resource: "player counter placement",
-                requested: u128::from(u32::MAX) + 1,
-                maximum: u128::from(u32::MAX)
-            }
-        );
-        assert_eq!(ctx.get_outcome(EffectId(77)).unwrap().as_count(), Some(7));
+        let result = effect.execute(&mut game, &mut ctx);
+        assert!(result.is_ok(), "{result:?}");
         assert_eq!(game.player(bob).unwrap().energy_counters, u32::MAX);
-        assert!(game.take_pending_trigger_events().is_empty());
     }
 }

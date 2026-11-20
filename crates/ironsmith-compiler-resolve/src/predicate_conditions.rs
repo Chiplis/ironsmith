@@ -503,6 +503,16 @@ pub fn resolve_condition_from_predicate(
                 count: *count,
             }
         }
+        PredicateAst::Player(PlayerPredicateAst::PlayerPaidOrLostEnergyThisTurnOrMore {
+            player,
+            count,
+        }) => {
+            let player = resolve_non_target_player_filter(*player, &refs)?;
+            Condition::PlayerPaidOrLostEnergyThisTurnOrMore {
+                player,
+                count: *count,
+            }
+        }
         PredicateAst::TurnEvents(TurnEventPredicateAst::CreatureDiedThisTurnOrMore(count)) => {
             Condition::CreatureDiedThisTurnOrMore(*count)
         }

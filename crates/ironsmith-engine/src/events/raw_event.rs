@@ -356,24 +356,15 @@ impl RawEvent {
     }
 
     /// Queue ownership only: preserve the event payload, occurrence identity,
-    /// actor and snapshots while retaining the checked sum for resolution.
-    /// An unrepresentable total remains a typed failure, never a first-event
-    /// fallback, wrapping value, or saturated successful amount.
+    /// actor and snapshots while retaining the summed amount for resolution.
+    /// The total is a game quantity and saturates at the i64 bound.
     pub(crate) fn accumulate_counter_trigger_amount(
         &mut self,
         next: &Self,
     ) -> Result<(), crate::effects::ExecutionError> {
         let prior = self.counter_trigger_amount()?;
         let next = next.counter_trigger_amount()?;
-        let amount = prior.checked_add(next).ok_or_else(|| {
-            crate::effects::ExecutionError::ResourceLimitExceeded {
-                resource: "counter trigger group amount",
-                requested: prior as u128 + next as u128,
-                maximum: i64::MAX as u128,
-            }
-        })?;
-        // Check before changing even the private staged entry. Queue owners
-        // publish nothing until the complete group's checked projection exists.
+        let amount = prior.saturating_add(next);
         self.counter_trigger_amount = Some(amount);
         Ok(())
     }
@@ -483,7 +474,7 @@ mod counter_group_amount_tests {
     use super::*;
 
     #[test]
-    fn checked_counter_group_failure_leaves_prior_projection_and_physical_receipt_intact() {
+    fn counter_group_amount_saturates_and_leaves_the_physical_receipt_intact() {
         let mut receipt = RawEvent::new(super::super::MarkersChangedEvent::added(
             crate::CounterType::Charge, ObjectId::from_raw(1), 1, None, None,
         ), ProvNodeId::default());
@@ -492,13 +483,10 @@ mod counter_group_amount_tests {
         }
         let prior = receipt.clone();
         assert_eq!(receipt.counter_trigger_amount(), Ok(1i64 << 62));
-        assert_eq!(receipt.accumulate_counter_trigger_amount(&prior),
-            Err(crate::effects::ExecutionError::ResourceLimitExceeded {
-                resource: "counter trigger group amount",
-                requested: 1u128 << 63,
-                maximum: i64::MAX as u128,
-            }));
-        assert_eq!(receipt.counter_trigger_amount(), prior.counter_trigger_amount());
+        receipt.accumulate_counter_trigger_amount(&prior).unwrap();
+        receipt.accumulate_counter_trigger_amount(&prior).unwrap();
+        assert_eq!(receipt.counter_trigger_amount(), Ok(i64::MAX));
+        let receipt = prior.clone();
         assert_eq!(receipt.downcast::<super::super::MarkersChangedEvent>().unwrap().amount, 1);
         assert!(receipt.ptr_eq(&prior));
         let enriched = receipt.with_inner_event(

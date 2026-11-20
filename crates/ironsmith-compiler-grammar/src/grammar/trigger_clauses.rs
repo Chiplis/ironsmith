@@ -193,6 +193,35 @@ pub fn parse_enters_origin_clause_words(words: &[&str]) -> Option<EntersOriginCl
     primitives::parse_full_word_slice(&normalized, parse_enters_origin_clause_word_slice)
 }
 
+/// "from anywhere other than a graveyard or exile" ("Name Sticker" Goblin):
+/// several origins excluded together. Returns the excluded zones when the
+/// list names at least two; single exclusions stay with
+/// `parse_enters_origin_clause_words`.
+pub fn parse_enters_origin_exclusion_list_words(words: &[&str]) -> Option<Vec<Zone>> {
+    let normalized = words
+        .iter()
+        .copied()
+        .filter(|word| leaf::parse_leaf_article_complete(word).is_err())
+        .collect::<Vec<_>>();
+    let rest = normalized.strip_prefix(&["from", "anywhere", "other", "than"])?;
+    let mut zones = Vec::new();
+    for word in rest {
+        let zone = match *word {
+            "or" | "and" => continue,
+            "graveyard" | "graveyards" => Zone::Graveyard,
+            "exile" => Zone::Exile,
+            "hand" | "hands" => Zone::Hand,
+            "library" | "libraries" => Zone::Library,
+            "stack" => Zone::Stack,
+            _ => return None,
+        };
+        if !zones.contains(&zone) {
+            zones.push(zone);
+        }
+    }
+    (zones.len() >= 2).then_some(zones)
+}
+
 pub fn parse_source_trigger_subject_words(words: &[&str]) -> SourceTriggerSubjectShape {
     let mut input: primitives::WordSliceInput<'_> = words;
     let facts = parse_source_trigger_subject_facts

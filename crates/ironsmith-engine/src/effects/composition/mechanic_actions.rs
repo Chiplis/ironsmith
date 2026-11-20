@@ -1336,6 +1336,12 @@ impl EffectExecutor for BolsterEffect {
                         EffectOutcome::count(0),
                     ));
                 };
+                // "Bolster 2. The chosen creature gains trample until end of
+                // turn" (Optimus Prime, Autobot Leader): later instructions of
+                // this resolution refer to the creature bolster chose.
+                if let Some(snapshot) = crate::snapshot::ObjectSnapshot::from_object_id(game, chosen) {
+                    ctx.set_tagged_objects(crate::tag::CHOSEN_OBJECTS_TAG, vec![snapshot]);
+                }
 
                 bolster_body(ChooseSpec::SpecificObject(chosen), amount.into())
                     .execute_child_with_outputs(game, ctx)
@@ -1719,11 +1725,7 @@ impl EffectExecutor for DevourEffect {
                             .saturating_add(count.max(0) as u32);
                         game.set_devoured_objects(ctx.source, all_devoured);
                         game.set_devoured_count(ctx.source, total);
-                        let devoured_count = u32::try_from(count).map_err(|_| {
-                            ExecutionError::InternalError(
-                                "devour count exceeds the counter range".into(),
-                            )
-                        })?;
+                        let devoured_count = ironsmith_core::quantity::clamp_u32(count);
                         let counters = crate::effects::PutCountersEffect::new(
                             CounterType::PlusOnePlusOne,
                             self.counters_for(devoured_count),
@@ -1768,7 +1770,21 @@ impl EffectExecutor for AmplifyEffect {
                     ));
                 }
 
-                let source_creature_types = game
+                // "This creature" is the permanent as it would exist on the
+                // battlefield, including a copy replacement already applied to
+                // this entry (Clone entering as Kilnmouth Dragon), CR 614.12,
+                // CR 707.2: the copy's creature types decide what can be revealed.
+                let entry_preview = ctx
+                    .replacement
+                    .entry_event
+                    .as_deref()
+                    .filter(|entry| {
+                        entry.object == ctx.source && entry.enters_as_copy_of.is_some()
+                    })
+                    .and_then(|entry| entry.prospective_game_state(game));
+                let source_creature_types = entry_preview
+                    .as_ref()
+                    .unwrap_or(&*game)
                     .calculated_subtypes(ctx.source)
                     .into_iter()
                     .filter(|subtype| subtype.is_creature_type())
@@ -1920,9 +1936,7 @@ impl EffectExecutor for AmplifyEffect {
                         .action_objects(crate::effect::PriorEffectAction::Revealed, Some(actor))
                         .len(),
                 )
-                .map_err(|_| {
-                    ExecutionError::InternalError("amplify count exceeds the counter range".into())
-                })?;
+                .unwrap_or(u32::MAX);
                 let counters = crate::effects::PutCountersEffect::new(
                     CounterType::PlusOnePlusOne,
                     revealed_count.saturating_mul(self.amount),
@@ -3660,7 +3674,7 @@ mod tests {
     }
 
     #[test]
-    fn dynamic_bolster_zero_pending_and_unsigned_overflow_preserve_the_attempt() {
+    fn dynamic_bolster_zero_pending_and_unsigned_overflow_saturates() {
         let mut game = setup_game();
         let alice = PlayerId::from_index(0);
         let source = game.new_object_id();
@@ -3679,11 +3693,14 @@ mod tests {
         let too_large = crate::effect::Value::Add(
             Box::new(crate::effect::Value::from(u32::MAX)),
             Box::new(crate::effect::Value::Fixed(1)));
-        assert!(BolsterEffect::with_value(too_large)
-            .execute(&mut game, &mut ExecutionContext::new_default(source, alice)).is_err());
         for id in [first, second] {
             assert_eq!(game.counter_count(id, CounterType::PlusOnePlusOne), 0);
         }
+        let mut dm = SelectIdsDecisionMaker { choices: VecDeque::from([vec![second]]) };
+        BolsterEffect::with_value(too_large).execute(&mut game,
+            &mut ExecutionContext::new_default(source, alice).with_decision_maker(&mut dm)).unwrap();
+        assert_eq!(game.counter_count(first, CounterType::PlusOnePlusOne), 0);
+        assert_eq!(game.counter_count(second, CounterType::PlusOnePlusOne), u32::MAX);
         // Preserve main's unsigned event domain instead of imposing an i32 cap.
         assert_eq!(crate::effects::helpers::resolve_nonnegative_u32(&game,
             &crate::effect::Value::from(u32::MAX),

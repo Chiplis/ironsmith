@@ -562,6 +562,14 @@ impl GameState {
                     ))
                     .with_provenance(provenance);
             context.source_snapshot = source_snapshot.cloned();
+            // CR 107.3m / 707.10: an entering permanent's "as this enters"
+            // programs read the X announced for the spell it was (a copied
+            // spell keeps the original's X): "roll X d6" (Neverwinter Hydra).
+            if context.x_value.is_none() {
+                context.x_value = source_snapshot
+                    .and_then(|snapshot| snapshot.x_value)
+                    .or_else(|| self.object(source).and_then(|object| object.x_value));
+            }
             if program.source_number_pair.is_some() {
                 context.source_number_owner = Some(if preparing_entry {
                     let from = self
@@ -932,8 +940,7 @@ impl GameState {
                 Adjustment::CounterKind(kind) => {
                     let object = self.object_mut(source)
                         .ok_or(crate::effects::ExecutionError::ObjectNotFound(source))?;
-                    let total = object.counters.values().try_fold(0u32, |total, count| total.checked_add(*count))
-                        .ok_or_else(|| crate::effects::ExecutionError::Impossible("counter count overflow".into()))?;
+                    let total = object.counters.values().fold(0u32, |total, count| total.saturating_add(*count));
                     object.counters.clear();
                     if total != 0 { object.counters.insert(kind, total); }
                 }
@@ -1923,6 +1930,32 @@ impl GameState {
         {
             let handles = self.object_store.shared_handles_for_definition(&front_def);
             new_object.apply_definition_face_with_shared(&front_def, &handles);
+        }
+        // CR 702.102c-d / 709.3: a fused split spell's combined
+        // characteristics exist only on the stack. The card that leaves it
+        // (resolved, countered, exiled by Delay) is the split card again,
+        // shown with its first half, so a later cast chooses one half.
+        if old_zone == Zone::Stack
+            && !matches!(new_zone, Zone::Stack | Zone::Battlefield)
+            && new_object.kind == crate::object::ObjectKind::Card
+            && new_object.linked_face_layout == LinkedFaceLayout::Split
+            && new_object
+                .split_combined
+                .as_ref()
+                .is_some_and(|combined| combined.unfused_half.is_some())
+            && new_object.name.contains(" // ")
+            && let Some(other_def) = self.linked_face_definition_by_name_or_id(
+                new_object.other_face_name.as_deref(),
+                new_object.other_face,
+            )
+            && let Some(front_def) = self.linked_face_definition_by_name_or_id(
+                other_def.card.other_face_name.as_deref(),
+                other_def.card.other_face,
+            )
+        {
+            let handles = self.object_store.shared_handles_for_definition(&front_def);
+            new_object.apply_definition_face_with_shared(&front_def, &handles);
+            new_object.clear_fused_split_overlay_marker();
         }
         // CR 712.8a / 712.14: outside the battlefield and the stack a
         // transforming double-faced card has only its front face, and it
@@ -4270,7 +4303,15 @@ impl GameState {
                         }
                     }
                     for subtype in &result.added_subtypes {
-                        if !copiable_values.subtypes.contains(subtype) {
+                        // CR 205.3d: "an Illusion in addition to its other
+                        // types" adds nothing to a noncreature copy (an
+                        // animated Chimeric Staff copies as an artifact).
+                        if !copiable_values.subtypes.contains(subtype)
+                            && crate::continuous::card_types_support_subtype(
+                                &copiable_values.card_types,
+                                *subtype,
+                            )
+                        {
                             copiable_values.subtypes.push(*subtype);
                         }
                     }
@@ -4410,7 +4451,13 @@ retain_original_types: false, retain_original_name: false,
                 && let Some(new_obj) = self.object_mut(new_id)
             {
                 for subtype in &result.added_subtypes {
-                    if !new_obj.subtypes.contains(subtype) {
+                    // CR 205.3d (see the layer-1 copy values above).
+                    if !new_obj.subtypes.contains(subtype)
+                        && crate::continuous::card_types_support_subtype(
+                            &new_obj.card_types,
+                            *subtype,
+                        )
+                    {
                         new_obj.subtypes.push(*subtype);
                     }
                 }
@@ -4942,11 +4989,18 @@ retain_original_types: false, retain_original_name: false,
         {
             // A permanent entering as a copy of a Room (Clone) wasn't cast as
             // either half, so it enters with neither door unlocked.
+            // A resolving copy of a Room spell (See Double) copies which half
+            // was being cast (CR 707.10, 709.3), and becomes a token as it
+            // enters (CR 707.10c); it enters with that door unlocked. Only a
+            // spell copy can be a token leaving the stack.
             let cast_as_spell = originless.is_none() && old_zone == Zone::Stack
                 && result.enters_as_copy_of.is_none()
-                && self
-                    .object(new_id)
-                    .is_some_and(|object| object.kind == crate::object::ObjectKind::Card);
+                && self.object(new_id).is_some_and(|object| {
+                    matches!(
+                        object.kind,
+                        crate::object::ObjectKind::Card | crate::object::ObjectKind::Token
+                    )
+                });
             if cast_as_spell {
                 let provenance = self
                     .provenance_graph_mut()
@@ -5702,6 +5756,9 @@ retain_original_types: false, retain_original_name: false,
 
         if removed == 0 {
             return None;
+        }
+        if matches!(counter_type, crate::object::CounterType::Energy) {
+            self.record_energy_paid_or_lost(player_id, removed);
         }
 
         let count_after = self.player(player_id)?.counter_count(counter_type);
@@ -7210,6 +7267,17 @@ retain_original_types: false, retain_original_name: false,
         .map(|chars| chars.controller)
     }
 
+    /// The controller `id` has under exactly `effects` (for static discovery,
+    /// whose own control-changing statics are not yet registered).
+    pub(crate) fn controller_with_known_effects(
+        &self,
+        id: ObjectId,
+        effects: &[ContinuousEffect],
+    ) -> Option<PlayerId> {
+        let object = self.object(id)?;
+        self.controller_from_known_effects(id, object, effects, None)
+    }
+
     /// Return the object's current controller, falling back to its owner if the
     /// object cannot be evaluated through continuous effects.
     pub fn controller_of(&self, object: &Object) -> PlayerId {
@@ -8009,7 +8077,7 @@ retain_original_types: false, retain_original_name: false,
         )
     }
 
-    fn cant_effects_static_scan_can_stay_empty(&self, all_effects: &[ContinuousEffect]) -> bool {
+    pub(crate) fn cant_effects_static_scan_can_stay_empty(&self, all_effects: &[ContinuousEffect]) -> bool {
         use crate::ability::AbilityKind;
 
         if !self.effect_store.restriction_effects.is_empty()
@@ -8227,6 +8295,14 @@ retain_original_types: false, retain_original_name: false,
                 | StaticAbilityId::BlackManaMayBePaidWithLife
                 | StaticAbilityId::MinimumSpellTotalMana
                 | StaticAbilityId::SpellManaSpendingRestriction
+                // Replacement-only and inert provenance statics: no
+                // `apply_restrictions`, hand-size or cast-number behavior.
+                | StaticAbilityId::DoubleTokenCreationReplacement
+                | StaticAbilityId::MultiplyTokenCreationReplacement
+                | StaticAbilityId::SourceLineKeywordGroup
+                | StaticAbilityId::SourceLineStaticGroup
+                // Attachment legality only; its model has no leaf static.
+                | StaticAbilityId::Enchant
         )
     }
 

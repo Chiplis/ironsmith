@@ -25,6 +25,22 @@ fn fixture(anthem: Anthem) -> (GameState, ObjectId, PlayerId) {
     (game, id, player)
 }
 
+/// Make continuous discovery fail closed through missing numeric-choice evidence
+/// (a CDA reading a chosen number with no linked pair). Quantity overflow no
+/// longer fails, so this is the rollback tests' injected failure.
+fn inject_discovery_failure(game: &mut GameState, id: ObjectId) {
+    let value = Value::SourceChosenNumber { if_unset: Some(0), pair: None };
+    game.object_mut(id).unwrap().abilities_mut().push(Ability::static_ability(
+        StaticAbility::characteristic_defining_pt(value.clone(), value),
+    ));
+    game.mark_continuous_state_dirty();
+}
+
+fn clear_discovery_failure(game: &mut GameState, id: ObjectId) {
+    game.object_mut(id).unwrap().abilities_mut().pop();
+    game.mark_continuous_state_dirty();
+}
+
 fn assert_matches_full(game: &mut GameState) {
     game.refresh_continuous_state().unwrap();
     let mut full = game.clone();
@@ -156,14 +172,17 @@ fn unrelated_player_changes_are_not_acknowledged_by_mana_credit() {
 
 #[test]
 fn mana_scalar_domain_validation_still_runs_on_retained_cache() {
-    let (mut game, _, player) = fixture(Anthem::for_source(1, 1));
-    game.with_player_mana_mut(player, |p| p.mana_pool.green = u32::MAX);
-    assert!(matches!(
-        game.refresh_continuous_state(),
-        Err(crate::static_ability_processor::StaticEffectDiscoveryError::ScalarRange { .. })
-    ));
+    let value = AnthemValue::scaled(1, AnthemCountExpression::TotalUnspentMana(PlayerFilter::You));
+    let (mut game, id, player) =
+        fixture(Anthem::for_source(0, 0).with_values(value, AnthemValue::Fixed(0)));
+    // Game quantities saturate: an oversized pool clamps instead of failing.
+    game.with_player_mana_mut(player, |p| p.mana_pool.green = u64::from(u32::MAX));
+    game.refresh_continuous_state().unwrap();
+    assert_matches_full(&mut game);
+    assert_eq!(game.current_characteristics(id).unwrap().power, Some(i32::MAX));
     game.with_player_mana_mut(player, |p| p.mana_pool.green = 0);
     assert_matches_full(&mut game);
+    assert_eq!(game.current_characteristics(id).unwrap().power, Some(2));
 }
 
 #[test]
@@ -196,14 +215,14 @@ fn recomputation_discards_dependencies_of_removed_mana_readers() {
 fn checked_stack_insertion_and_cleanup_restore_state_when_discovery_fails() {
     let (mut game, object, player) = fixture(Anthem::for_source(1, 1));
     game.mark_damage(object, 1);
-    game.with_player_mana_mut(player, |p| p.mana_pool.green = u32::MAX);
+    inject_discovery_failure(&mut game, object);
     let entry = StackEntry::ability(object, player, Vec::new());
     assert!(game.try_push_to_stack(entry.clone()).is_err());
     assert!(game.stack.is_empty(), "failed discovery must not publish the stack entry");
     assert_eq!(game.damage_on(object), 1);
     assert!(crate::turn::try_execute_cleanup_step(&mut game).is_err());
     assert_eq!(game.damage_on(object), 1, "failed cleanup must restore marked damage");
-    game.with_player_mana_mut(player, |p| p.mana_pool.green = 0);
+    clear_discovery_failure(&mut game, object);
     game.try_push_to_stack(entry).unwrap();
     assert_eq!(game.stack.len(), 1);
     crate::turn::try_execute_cleanup_step(&mut game).unwrap();
@@ -218,7 +237,7 @@ fn failed_sticker_refresh_leaves_each_sticker_available_and_retries_cleanly() {
         vec![Ability::static_ability(StaticAbility::vigilance())], "Vigilance");
     let name = game.add_accessible_name_sticker(player, "Bright");
     let stable_id = game.object(object).unwrap().stable_id;
-    game.with_player_mana_mut(player, |p| p.mana_pool.green = u32::MAX);
+    inject_discovery_failure(&mut game, object);
     assert!(game.apply_pt_sticker(object, pt).is_none());
     assert!(game.apply_ability_sticker(object, ability).is_none());
     assert!(game.apply_available_name_sticker(player, object, name, 0).is_none());
@@ -226,7 +245,7 @@ fn failed_sticker_refresh_leaves_each_sticker_available_and_retries_cleanly() {
     assert!(game.available_pt_stickers(player).iter().any(|entry| entry.0 == pt));
     assert!(game.available_ability_stickers(player).iter().any(|entry| entry.id == ability));
     assert!(game.available_name_stickers(player).iter().any(|entry| entry.0 == name));
-    game.with_player_mana_mut(player, |p| p.mana_pool.green = 0);
+    clear_discovery_failure(&mut game, object);
     assert!(game.apply_pt_sticker(object, pt).is_some());
     assert!(game.apply_ability_sticker(object, ability).is_some());
     assert!(game.apply_available_name_sticker(player, object, name, 0).is_some());

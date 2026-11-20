@@ -1593,6 +1593,22 @@ fn matching_snapshots<'a>(
                 && snapshot_matches_filter(snapshot, filter, ctx))
             .collect();
     }
+    // A self trigger that functions where the card arrived ("when this card
+    // is put into your graveyard from your library", CR 603.6d) is checked
+    // from the destination object, while the origin LKI still carries the
+    // origin object id (CR 400.7). Bind "this card" to that exact origin
+    // incarnation of the source rather than to the destination id.
+    let rebound_source_filter;
+    let filter = match destination_source_origin(zc, filter, ctx) {
+        Some(origin) => {
+            let mut rebound = filter.clone();
+            rebound.source = false;
+            rebound.specific = Some(origin);
+            rebound_source_filter = rebound;
+            &rebound_source_filter
+        }
+        None => filter,
+    };
     // A leaves-the-battlefield trigger looks back in time (CR 603.10a): a
     // characteristic comparison against the battlefield ("with the greatest
     // power among creatures that player controls") still sees the permanents
@@ -1615,6 +1631,29 @@ fn matching_snapshots<'a>(
         .collect()
 }
 
+fn destination_source_origin(
+    zc: &ZoneChangeEvent,
+    filter: &ObjectFilter,
+    ctx: &TriggerContext,
+) -> Option<crate::ids::ObjectId> {
+    if !filter.source
+        || filter.specific.is_some()
+        || zc.to == Zone::Battlefield
+        || !zc.destination_objects().contains(&ctx.source_id)
+        || zc.snapshots().iter().any(|snapshot| snapshot.object_id == ctx.source_id)
+    {
+        return None;
+    }
+    let source = ctx.game.object(ctx.source_id)?;
+    if source.zone != zc.to {
+        return None;
+    }
+    zc.snapshots()
+        .iter()
+        .find(|snapshot| snapshot.stable_id == source.stable_id && snapshot.zone == zc.from)
+        .map(|snapshot| snapshot.object_id)
+}
+
 fn source_zone_is_explicitly_looked_back(from: &ZonePattern, zone: Zone) -> bool {
     *from != ZonePattern::Any && from.matches(zone)
 }
@@ -1624,6 +1663,21 @@ fn is_public_to_hand_or_library_zone_change(zc: &ZoneChangeEvent) -> bool {
 }
 
 impl ZoneChangeTrigger {
+    /// A subject that names only zones the destination pattern cannot match
+    /// ("creatures you control and/or creature cards in your graveyard are put
+    /// into exile") describes the objects as they existed before the move, so
+    /// the subject must be evaluated against origin LKI (CR 603.6e/603.10a).
+    fn subject_names_origin_zone(&self) -> bool {
+        let names_non_destination = |filter: &ObjectFilter| {
+            filter.zone.is_some_and(|zone| !self.to.matches(zone))
+        };
+        let filter = &self.object_filter;
+        if filter.zone.is_some() {
+            return names_non_destination(filter);
+        }
+        !filter.any_of.is_empty() && filter.any_of.iter().all(names_non_destination)
+    }
+
     fn accepts_game_departure(&self) -> bool {
         self.from != ZonePattern::Any && self.from.matches(Zone::Battlefield)
             && self.to == ZonePattern::Any
@@ -2048,7 +2102,7 @@ impl TriggerMatcher for ZoneChangeTrigger {
     fn uses_snapshot(&self) -> bool {
         // Zone change triggers often need LKI for the object's characteristics
         // at the moment it left its origin zone
-        self.from != ZonePattern::Any
+        self.from != ZonePattern::Any || self.subject_names_origin_zone()
     }
 
     fn looks_back_for_source(&self, event: &TriggerEvent) -> bool {

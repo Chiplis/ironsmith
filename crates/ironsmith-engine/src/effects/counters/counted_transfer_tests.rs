@@ -156,7 +156,9 @@ fn original_removal_receipt_excludes_prevention_and_placement_multiplication() {
 fn combined_count_overflow_rolls_back_without_capping_a_donor() {
     let (mut game, destination, first, second, effect) = fixture();
     game.object_mut(first).unwrap().counters.insert(KIND, u32::MAX);
-    assert!(run(&mut game, destination, &effect, &mut crate::decision::SelectFirstDecisionMaker).is_err());
-    assert_eq!(game.counter_count(first, KIND), u32::MAX); assert_eq!(game.counter_count(second, KIND), 3);
-    assert_eq!(game.counter_count(destination, KIND), 0);
+    // Counter quantities saturate: every donor still gives all of its counters
+    // and the combined placement clamps at u32::MAX.
+    run(&mut game, destination, &effect, &mut crate::decision::SelectFirstDecisionMaker).unwrap();
+    assert_eq!(game.counter_count(first, KIND), 0); assert_eq!(game.counter_count(second, KIND), 0);
+    assert_eq!(game.counter_count(destination, KIND), u32::MAX);
 }

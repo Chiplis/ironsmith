@@ -175,14 +175,13 @@ fn single_damage_replays_life_loss_then_lifelink_replacement_choices() {
     let gain_double = add_lifelink_modifiers(&mut game, alice);
     let loss_first = permanent(&mut game, bob, "First life-loss doubler", vec![]);
     let loss_second = permanent(&mut game, bob, "Second life-loss doubler", vec![]);
-    for id in [loss_first, loss_second] {
+    // A doubler and an adder: their order is a real choice for Bob.
+    for (id, action) in [
+        (loss_first, ReplacementAction::Double),
+        (loss_second, ReplacementAction::Modify(EventModification::Add(1))),
+    ] {
         game.effect_store.replacement_effects.add_resolution_effect(
-            ReplacementEffect::with_matcher(
-                id,
-                bob,
-                WouldLoseLifeMatcher::you(),
-                ReplacementAction::Double,
-            ),
+            ReplacementEffect::with_matcher(id, bob, WouldLoseLifeMatcher::you(), action),
         );
     }
     let targets = [ResolvedTarget::Player(bob)];
@@ -204,7 +203,7 @@ fn single_damage_replays_life_loss_then_lifelink_replacement_choices() {
     );
     assert_eq!(game.player(alice).unwrap().life, 20);
     let outcome = replay_damage(&mut game, source, 3, &targets, &[first, second]).unwrap();
-    assert_eq!(game.player(bob).unwrap().life, 8);
+    assert_eq!(game.player(bob).unwrap().life, 12, "(3 + 1) * 2 life lost");
     assert_eq!(game.player(alice).unwrap().life, 27);
     assert_eq!(outcome.count_or_zero(), 3);
     assert_eq!(

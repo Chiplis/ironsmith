@@ -159,7 +159,8 @@ registerPortedMageTests({
             {
               "property": "subtype",
               "value": "Clue",
-              "expected": false
+              "expected": true,
+              "note": "Port correction: the Java test is assertSubtype(\"Red Herring\", SubType.CLUE). Losing all other card types removes only subtypes that no longer correspond to a type (CR 205.1b, 205.3d); Clue is an artifact type, so it stays."
             },
             {
               "property": "subtype",

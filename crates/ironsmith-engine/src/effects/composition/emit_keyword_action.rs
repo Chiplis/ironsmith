@@ -534,7 +534,7 @@ impl EffectExecutor for PerformNamedActionEffect {
                 .collect::<Result<Vec<_>, _>>()? };
             // A known empty set is a completed amount-zero operation. Its
             // source history still advances once; observer bounds are explicit.
-            let amount = if self.objects.is_some() || self.prior_objects.is_some() {u32::try_from(objects.len()).map_err(|_| ExecutionError::Impossible("named action object count exceeds its numeric vocabulary".into()))?} else {1};
+            let amount = if self.objects.is_some() || self.prior_objects.is_some() {u32::try_from(objects.len()).unwrap_or(u32::MAX)} else {1};
             let participant_sources = self.prior_objects.and_then(|(id, _)| ctx.get_outcome(id)).and_then(|outcome| {
                 let mut found = false; let mut sources = Vec::new(); let mut seen = std::collections::HashSet::new();
                 for fact in outcome.instruction_result().execution_facts() {
@@ -587,13 +587,13 @@ impl EffectExecutor for PerformNamedActionEffect {
                     if ctx.replacement.entry_counter_source==Some(id) {
                         let payment=game.object(id).map(|object|object.mana_spent_to_cast.clone()).unwrap_or_default();
                         ctx.replacement.entry_named_actions.push((self.label.clone(),payment));
-                        staged=staged.checked_add(1).ok_or_else(||ExecutionError::Impossible("staged action count overflow".into()))?;
+                        staged=staged.saturating_add(1);
                     }else if !game.is_phased_out(id) && game.object(id).is_some_and(|object|object.zone==crate::zone::Zone::Battlefield) {performers.push(id);}
                 }
                 performers
             }else{vec![ctx.source]};
             if performers.is_empty() {
-                let count=i32::try_from(staged).map_err(|_|ExecutionError::Impossible("staged action count exceeds outcome vocabulary".into()))?;
+                let count=ironsmith_core::quantity::clamp_i32_from_u32(staged);
                 return Ok(EffectOutcome::count(count));
             }
             // Complete every selected actor before event-time observers inspect
@@ -653,8 +653,7 @@ impl EffectExecutor for PerformNamedActionEffect {
             }
             if self.performer.is_none(){affected=objects;}
             let affected_ids=affected.iter().map(|snapshot|snapshot.object_id).collect();
-            let count=u64::try_from(performers.len()).ok().and_then(|count|count.checked_mul(u64::from(amount))).and_then(|count|count.checked_add(u64::from(staged)))
-                .and_then(|count|i32::try_from(count).ok()).ok_or_else(||ExecutionError::Impossible("named action count exceeds outcome vocabulary".into()))?;
+            let count=ironsmith_core::quantity::clamp_i32_from_u32(u32::try_from(performers.len()).unwrap_or(u32::MAX).saturating_mul(amount).saturating_add(staged));
             Ok(EffectOutcome::count(count).with_affected_objects(affected_ids).with_affected_object_memory(affected).with_events(events))
         })
     }

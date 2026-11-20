@@ -835,6 +835,35 @@ pub fn parse_spells_cost_modifier_line(
                 break;
             }
         }
+        // "Spells named Armed cost {4} less to cast" / "Creature spells you
+        // cast named Grizzly Bears cost ...": a literal name restriction on
+        // the spell (CR 201.2). The spell-filter word reader has no name
+        // grammar; it dropped the name (a reduction for every spell) or read
+        // name words as subtypes ("Bears" -> Bear). Read the literal surface.
+        if between_for_filter.first().is_some_and(|token| token.is_word("named")) {
+            let name_end = between_for_filter
+                .iter()
+                .skip(1)
+                .position(|token| {
+                    token.is_any_word(&["from", "that", "with", "without"])
+                        || matches!(
+                            token.kind,
+                            crate::lexer::TokenKind::Period | crate::lexer::TokenKind::Semicolon
+                        )
+                })
+                .map_or(between_for_filter.len(), |offset| offset + 1);
+            let surface = crate::lexer::render_literal_token_slice(&between_for_filter[1..name_end])
+                .trim()
+                .trim_end_matches(',')
+                .trim()
+                .to_string();
+            if !surface.is_empty() && filter.name.is_none() {
+                crate::word_claims::claim_tokens(&between_for_filter[..name_end]);
+                filter.name = Some(surface.to_ascii_lowercase());
+                filter.set_name_surface(surface);
+                between_for_filter.drain(..name_end);
+            }
+        }
         let between_filter = parse_spell_filter_with_grammar_entrypoint(&between_for_filter);
         if spell_filter_has_identity(&between_filter) {
             merge_spell_filters(&mut filter, between_filter);
@@ -6662,7 +6691,11 @@ fn parse_turn_player_source_exiled_play_line(
         filter,
         Zone::Exile,
     )
-    .with_beneficiary(PlayerFilter::Active);
+    .with_beneficiary(PlayerFilter::Active)
+    // "may play a land or cast a spell" is one use per turn (Share the
+    // Spoils ruling 2021-08-27): a land played this way spends the same
+    // allowance as a spell cast this way.
+    .with_usage_limit(crate::grant::GrantUsageLimit::OnceEachTurn);
     spec.cast_mana_spend_mode = ironsmith_core::value_model::ManaSpendMode::AnyColor;
     spec.on_use_effects = on_use_effects;
     let rendered = crate::lexer::render_token_slice(tokens);
@@ -6935,7 +6968,10 @@ pub fn parse_you_may_static_grant_line(
             )
             // "During each player's turn, that player may cast ...": only the
             // player whose turn it is holds the permission.
-            .with_beneficiary(PlayerFilter::Active),
+            .with_beneficiary(PlayerFilter::Active)
+            // "may cast a spell" is one cast each turn (Ian Malcolm,
+            // Chaotician ruling: only one spell this way each turn).
+            .with_usage_limit(crate::grant::GrantUsageLimit::OnceEachTurn),
         );
         let mana_permission = StaticAbility::mana_spend_permission(
             crate::effect::ManaSpendPermission::any_color_for_casting_matching(
@@ -8016,11 +8052,12 @@ pub fn parse_if_you_would_draw_instead_effects_line(
         return Ok(None);
     }
     let body = draw_replacement_drawn_card_body(&shape.body).unwrap_or(shape.body);
-    let effects = if shape.skip {
+    let mut effects = if shape.skip {
         Vec::new()
     } else {
         super::super::clause_support::parse_effect_sentences_lexed(&body)?
     };
+    bind_draw_replacement_other_player(&mut effects);
     let display = render_token_slice(tokens);
     if let Some(source_tokens) = shape.cycling_source.as_ref() {
         // "If a cycling ability of another nonland card would cause you to
@@ -8084,24 +8121,72 @@ pub fn parse_if_you_would_draw_instead_effects_line(
 /// (Uba Mask) reads as "that player exiles the top card of their library".
 /// Exile is face up by default (CR 406.3), so "face up" adds nothing.
 fn draw_replacement_drawn_card_body(body: &[OwnedLexToken]) -> Option<Vec<OwnedLexToken>> {
-    let words = parser_token_word_refs(body);
-    let verb = words.iter().position(|word| matches!(*word, "exiles" | "exile"))?;
+    // Only the first sentence names the would-be-drawn card; any follow-up
+    // sentences (Zur's Weirding) are kept verbatim.
+    let end = body.iter().position(|token| token.is_period()).unwrap_or(body.len());
+    let (first, follow_up) = body.split_at(end);
+    // A lone closing period is not a follow-up sentence (Uba Mask).
+    let follow_up = if follow_up.iter().all(|token| parser_token_word_refs(std::slice::from_ref(token)).is_empty()) {
+        &follow_up[follow_up.len()..]
+    } else {
+        follow_up
+    };
+    let words = parser_token_word_refs(first);
+    let verb = words
+        .iter()
+        .position(|word| matches!(*word, "exiles" | "exile" | "reveals" | "reveal"))?;
+    let reveal = matches!(words[verb], "reveals" | "reveal");
     let rest = match &words[verb + 1..] {
         ["that", "card", rest @ ..] | ["it", rest @ ..] => rest,
         _ => return None,
     };
     let rest = match rest {
-        ["face", "up", rest @ ..] => rest,
+        ["face", "up", rest @ ..] if !reveal => rest,
         rest => rest,
     };
     if !rest.is_empty() {
         return None;
     }
     let subject = &words[..verb];
+    // "they reveal it instead. Then ..." (Zur's Weirding): the drawer reveals
+    // the top card of their library. Exile keeps its single-sentence reading.
+    if reveal && !matches!(subject, [] | ["you"] | ["they"] | ["that", "player"]) {
+        return None;
+    }
+    if !reveal && !follow_up.is_empty() {
+        return None;
+    }
     let possessive = if subject.is_empty() || subject == ["you"] { "your" } else { "their" };
     let mut rewritten = crate::lexer::synthetic_word_tokens(subject);
     rewritten.extend(crate::lexer::synthetic_word_tokens([words[verb], "the", "top", "card", "of", possessive, "library"]));
+    rewritten.extend(follow_up.iter().cloned());
     Some(rewritten)
+}
+
+/// "Then any other player may pay 2 life" inside a draw replacement (Zur's
+/// Weirding): "other" excludes the player who would draw, which the
+/// replacement program binds as the iterated player. The shared "any other
+/// player may pay" reading names a trigger's subject (the triggering object's
+/// controller), and a draw replacement has no triggering object.
+fn bind_draw_replacement_other_player(effects: &mut [crate::cards::builders::EffectAst]) {
+    for effect in effects.iter_mut() {
+        if let crate::cards::builders::EffectAst::Permissions(
+            crate::cards::builders::PermissionEffectAst::AnyPlayerMay {
+                players: PlayerFilter::Excluding { excluded, .. },
+                ..
+            },
+        ) = effect
+            && **excluded
+                == PlayerFilter::ControllerOf(crate::filter::ObjectRef::tagged(
+                    crate::tag::CompilerReferenceTag::Triggering.bind(),
+                ))
+        {
+            **excluded = PlayerFilter::IteratedPlayer;
+        }
+        crate::model::visit::for_each_nested_effects_mut(effect, true, |nested| {
+            bind_draw_replacement_other_player(nested)
+        });
+    }
 }
 
 pub fn parse_draw_extra_cards_replacement_line(

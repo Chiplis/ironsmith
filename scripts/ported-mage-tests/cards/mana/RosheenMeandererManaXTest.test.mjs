@@ -568,7 +568,9 @@ registerPortedMageTests({
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
           "colors": "C",
-          "amount": "4"
+          "amount": "4",
+          "holdStack": true,
+          "note": "XMage checkManaPool reads the pool while Condescend is still on the stack; without holdStack the harness resolves Condescend first and the {X}=2 payment leaves 2."
         },
         {
           "op": "setChoice",

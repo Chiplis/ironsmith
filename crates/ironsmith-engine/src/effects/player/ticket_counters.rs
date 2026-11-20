@@ -232,7 +232,7 @@ mod ticket_counter_event_contract_tests {
         }
     }
     #[test]
-    fn ticket_instruction_unsigned_overflow_restores_counter_and_one_shot() {
+    fn ticket_instruction_unsigned_overflow_saturates_counter() {
         let (mut game, source, alice, bob) = fixture();
         game.player_mut(bob)
             .unwrap()
@@ -244,24 +244,16 @@ mod ticket_counter_event_contract_tests {
         let result =
             TicketCountersEffect::new(2, PlayerFilter::Specific(bob)).execute(&mut game, &mut ctx);
         assert_eq!(
-            result.unwrap_err(),
-            ExecutionError::ResourceLimitExceeded {
-                resource: "player counter placement",
-                requested: u128::from(u32::MAX) + 2,
-                maximum: u128::from(u32::MAX)
-            }
+            result.expect("ticket counters saturate").as_count(),
+            Some(2)
         );
-        assert_eq!(
-            game.player(bob).unwrap().counter_count(kind()),
-            u32::MAX - 2
-        );
+        assert_eq!(game.player(bob).unwrap().counter_count(kind()), u32::MAX);
         assert!(
             game.effect_store
                 .replacement_effects
                 .get_effect(one_shot)
-                .is_some()
+                .is_none()
         );
         assert_eq!(ctx.get_tagged_players("retained"), Some(&vec![alice]));
-        assert!(game.take_pending_trigger_events().is_empty());
     }
 }

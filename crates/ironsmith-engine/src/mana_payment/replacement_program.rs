@@ -177,11 +177,11 @@ impl CompiledManaReplacements {
             color,
         });
         if apply {
-            branch.event.mana = compiled
+            let transformation = compiled
                 .effect
                 .replacement
-                .mana_transformation_with_color(color)?
-                .apply(&branch.event.mana);
+                .mana_transformation_with_color(color)?;
+            branch.event.apply_mana_transformation(transformation);
             if compiled.once {
                 branch.resources.consumed.push(compiled.key.clone());
             }

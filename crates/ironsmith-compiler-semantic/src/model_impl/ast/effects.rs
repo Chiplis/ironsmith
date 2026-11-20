@@ -38,6 +38,8 @@ pub enum CardCreationSelectionAst {
     AllNamed(Vec<String>),
     RandomMatching { filter:ObjectFilter, independent:bool },
     Duplicate(TargetAst),
+    /// Arena "conjure": a named real card from the game's card catalog.
+    Catalog(String),
 }
 
 #[derive(Debug, Clone, PartialEq, TagKeyWalk)]

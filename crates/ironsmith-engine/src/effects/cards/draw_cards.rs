@@ -50,18 +50,9 @@ pub(crate) fn execute_scoped_draw_replacement_effects(
         .iter()
         .filter_map(|event| event.downcast::<CardsDrawnEvent>())
         .filter(|event| event.player == replaced_player)
-        .try_fold(0i64, |total, event| {
-            let amount = i64::try_from(event.amount()).map_err(|_| {
-                ExecutionError::InternalError(
-                    "draw replacement outcome exceeds the supported count range".into(),
-                )
-            })?;
-            total.checked_add(amount).ok_or_else(|| {
-                ExecutionError::InternalError(
-                    "draw replacement outcome exceeds the supported count range".into(),
-                )
-            })
-        })?;
+        .fold(0i64, |total, event| {
+            total.saturating_add(i64::try_from(event.amount()).unwrap_or(i64::MAX))
+        });
     outcome.value = crate::effect::OutcomeValue::Count(drawn_count);
     Ok(outcome)
 }
@@ -627,9 +618,7 @@ fn commit_draw_original_with_reveal_mode(
             {
                 return Err(ExecutionError::PlayerNotFound(player));
             }
-            let count = usize::try_from(draw.count).map_err(|_| {
-                ExecutionError::InternalError("resolved draw count exceeds supported range".into())
-            })?;
+            let count = usize::try_from(draw.count).unwrap_or(usize::MAX);
             if !game.can_draw(player) {
                 return Ok(EffectOutcome::count(0));
             }
@@ -666,11 +655,7 @@ fn commit_draw_original_with_reveal_mode(
                 return Ok(EffectOutcome::count(0));
             }
             let count = if player == requested_player {
-                i64::try_from(drawn.len()).map_err(|_| {
-                    ExecutionError::InternalError(
-                        "draw outcome exceeds supported count range".into(),
-                    )
-                })?
+                i64::try_from(drawn.len()).unwrap_or(i64::MAX)
             } else {
                 0
             };
@@ -886,10 +871,21 @@ fn execute_prepared_draw_cards(
     // CR 121.2: each card is a separate draw, so the one-card limit is
     // checked per card below. A replaced draw (dredge) isn't a draw.
     let count = requested_count;
-    let cause_ability = resolving_activated_ability_draw_cause(game, ctx);
+    // A replacement that draws instead ("draw two cards instead", Thought
+    // Reflection; "that player skips that draw and you draw a card",
+    // Plagiarize) modifies the cycling draw; each resulting draw, whoever
+    // makes it, is still caused by that cycling ability, so cause-scoped draw
+    // replacements (Unpredictable Cyclone) apply to each (CR 614.1a, 614.6,
+    // 616.1). Only replacement payloads carry the would-draw event here.
+    let cause_ability = resolving_activated_ability_draw_cause(game, ctx).or_else(|| {
+        ctx.triggering_event
+            .as_ref()
+            .and_then(|event| event.downcast::<crate::events::DrawEvent>())
+            .and_then(|replaced| replaced.cause_ability.clone())
+    });
 
     let mut total_drawn: i64 = 0;
-    let mut replacement_count = 0;
+    let mut replacement_count: i64 = 0;
     let mut events = Vec::new();
     let mut replacement_facts = Vec::new();
     let mut original_draw_facts = Vec::new();
@@ -987,13 +983,7 @@ fn execute_prepared_draw_cards(
             if ctx.decision_maker.awaiting_choice() {
                 return Ok(EffectOutcome::count(0));
             }
-            total_drawn = total_drawn
-                .checked_add(completed.count_or_zero())
-                .ok_or_else(|| {
-                    ExecutionError::InternalError(
-                        "draw outcome exceeds supported count range".into(),
-                    )
-                })?;
+            total_drawn = total_drawn.saturating_add(completed.count_or_zero());
             events.extend(completed.events);
             replacement_facts.extend(completed.execution_facts);
             continue;
@@ -1018,7 +1008,7 @@ fn execute_prepared_draw_cards(
                 if ctx.decision_maker.awaiting_choice() {
                     return Ok(EffectOutcome::count(0));
                 }
-                replacement_count += replacement_outcome.count_or_zero();
+                replacement_count = replacement_count.saturating_add(replacement_outcome.count_or_zero());
                 // Replacement draws publish their own events, but are not cards
                 // drawn by the instruction that was replaced (CR 121.6c).
                 events.extend(replacement_outcome.events);
@@ -1175,7 +1165,7 @@ fn execute_prepared_draw_cards(
                     );
                 }
                 direct_automatic_reveals.extend(completed.automatic_reveals);
-                total_drawn += drawn_len;
+                total_drawn = total_drawn.saturating_add(drawn_len);
                 direct_drawn.extend(drawn);
             }
         }
@@ -1265,7 +1255,7 @@ fn execute_prepared_draw_cards(
         original = original.with_execution_fact(crate::effect::ExecutionFact::Accepted);
         replacement_facts.push(crate::effect::ExecutionFact::Accepted);
     }
-    let mut observed = EffectOutcome::count(total_drawn + replacement_count)
+    let mut observed = EffectOutcome::count(total_drawn.saturating_add(replacement_count))
         .with_events(events)
         .with_execution_facts(EffectOutcome::merge_execution_facts(replacement_facts));
     observed.instruction_result = Some(Box::new(original));

@@ -6,24 +6,24 @@ pub(super) fn plus_minus_counter_delta(
     let plus = counters
         .get(&CounterType::PlusOnePlusOne)
         .copied()
-        .unwrap_or(0) as i32;
+        .unwrap_or(0);
     let minus = counters
         .get(&CounterType::MinusOneMinusOne)
         .copied()
-        .unwrap_or(0) as i32;
-    plus - minus
+        .unwrap_or(0);
+    ironsmith_core::quantity::clamp_i32(i64::from(plus) - i64::from(minus))
 }
 
 pub(super) fn object_base_power_for_filter(object: &Object) -> Option<i32> {
     if let Some(power) = object.power() {
-        return Some(power - plus_minus_counter_delta(&object.counters));
+        return Some(power.saturating_sub(plus_minus_counter_delta(&object.counters)));
     }
     object.base_power.as_ref().map(|pt| pt.base_value())
 }
 
 pub(super) fn object_base_toughness_for_filter(object: &Object) -> Option<i32> {
     if let Some(toughness) = object.toughness() {
-        return Some(toughness - plus_minus_counter_delta(&object.counters));
+        return Some(toughness.saturating_sub(plus_minus_counter_delta(&object.counters)));
     }
     object.base_toughness.as_ref().map(|pt| pt.base_value())
 }

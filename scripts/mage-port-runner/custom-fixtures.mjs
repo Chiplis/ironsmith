@@ -1,3 +1,5 @@
+import { ensureCardSourcesForNames } from "../wasm-test-harness.mjs";
+
 const fixtureSourcesByGame = new WeakMap();
 
 export function registerMageFixtureSource(game, fixture) {
@@ -26,4 +28,11 @@ export function registerMageFixtureSource(game, fixture) {
     throw new Error(`could not register XMage fixture ${name}: ${JSON.stringify(registered.failed)}`);
   }
   sources.set(key, block);
+  // Arena conjure creates a named catalog card at resolution; the engine reads
+  // that card's definition from the game's registered catalog, so register it
+  // with the fixture that names it (as a host preloads a deck's dependencies).
+  const conjured = [...String(oracleText || "").matchAll(
+    /\bconjures? (?:a|an|one|two|three|four|five|six|seven|x|\d+) (.+?) cards? (?:into|onto|on)\b/gi,
+  )].map(match => match[1]);
+  if (conjured.length) ensureCardSourcesForNames(game, conjured);
 }

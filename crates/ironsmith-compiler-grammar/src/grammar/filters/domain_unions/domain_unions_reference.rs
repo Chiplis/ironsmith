@@ -383,6 +383,23 @@ pub fn parse_branch_scoped_object_filter_union_lexed(
         }
     }
 
+    // "each artifact, creature, and enchantment with mana value X or less"
+    // (Pernicious Deed): bare type arms before the final arm share its
+    // trailing mana-value qualifier. Every object has a mana value, unlike
+    // power/toughness ("artifact, enchantment, or creature with power 4 or
+    // greater" keeps that comparison on the creature arm).
+    let earlier_arms_are_bare = !repeats_indefinite_article
+        && segments.len() >= 2
+        && segments[..segments.len() - 1].iter().all(|segment| {
+            segment.len() <= 2
+                && !segment.iter().any(|token| {
+                    token.is_word("with")
+                        || token.is_word("without")
+                        || token.is_word("that")
+                        || token.is_word("you")
+                })
+        });
+    let authored_arm_count = segments.len();
     let branches = segments
         .into_iter()
         .enumerate()
@@ -432,6 +449,17 @@ pub fn parse_branch_scoped_object_filter_union_lexed(
             }
         })
         .collect::<Vec<_>>();
+    if earlier_arms_are_bare
+        && branches.len() == authored_arm_count
+        && let Some(shared_mana_value) = branches.last().and_then(|last| last.mana_value.clone())
+    {
+        let last_index = branches.len() - 1;
+        for branch in &mut branches[..last_index] {
+            if branch.mana_value.is_none() {
+                branch.mana_value = Some(shared_mana_value.clone());
+            }
+        }
+    }
     if elided_into_next_arm.len() == branches.len() {
         for index in (0..branches.len()).rev() {
             if !elided_into_next_arm[index] {

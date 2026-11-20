@@ -73,10 +73,17 @@ pub fn companion_deck_facts_from_definition(definition: &CardDefinition) -> Comp
                 AbilityKind::Static(ability) if ability.id() == StaticAbilityId::Changeling
             )
         }),
+        // CR 305.6: a basic land type grants its intrinsic mana ability,
+        // which the card's printed ability list does not carry.
         has_activated_ability: definition
             .abilities
             .iter()
-            .any(|ability| matches!(ability.kind, AbilityKind::Activated(_))),
+            .any(|ability| matches!(ability.kind, AbilityKind::Activated(_)))
+            || definition
+                .card
+                .subtypes
+                .iter()
+                .any(|subtype| subtype.is_basic_land_type()),
     }
 }
 
@@ -95,7 +102,11 @@ pub fn companion_deck_facts_from_object(object: &Object) -> CompanionDeckCardFac
         has_activated_ability: object
             .abilities
             .iter()
-            .any(|ability| matches!(ability.kind, AbilityKind::Activated(_))),
+            .any(|ability| matches!(ability.kind, AbilityKind::Activated(_)))
+            || object
+                .subtypes
+                .iter()
+                .any(|subtype| subtype.is_basic_land_type()),
     }
 }
 

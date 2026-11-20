@@ -474,20 +474,26 @@ pub(super) fn begin_mana_ability_activation_with_outputs(
                     ctx = ctx
                         .with_tagged_objects(cost_tagged_objects)
                         .with_effect_outcomes(cost_effect_outcomes);
-                    let mut emitted_events = Vec::new();
-
-                    for effect in &effects_to_run {
-                        let outcome =
-                            crate::effects::execute_effect_with_outputs(game, effect, &mut ctx)?;
-                        if ctx.decision_maker.awaiting_choice() {
-                            return Ok(ManaActivationProgress::without_outputs(
-                                GameProgress::Continue,
-                            ));
-                        }
-                        emitted_events.extend(outcome.outcome.events.iter().cloned());
-                        root_outputs.retain_published_children([outcome]);
+                    // Run the program, not its flattened defaults, so
+                    // "instead" self-replacements (Gemstone Caverns) apply
+                    // exactly as on the pending-payment path (CR 614.1a).
+                    let execution =
+                        crate::game_loop::execute_resolution_program_with_outputs_typed(
+                            game,
+                            &mut ctx,
+                            player,
+                            *source,
+                            &effects_to_run,
+                            None,
+                            &[],
+                        )?;
+                    if ctx.decision_maker.awaiting_choice() {
+                        return Ok(ManaActivationProgress::without_outputs(
+                            GameProgress::Continue,
+                        ));
                     }
-                    queue_triggers_for_events_including_delayed(game, trigger_queue, emitted_events)?;
+                    root_outputs.retain_published_children(execution.outputs);
+                    queue_triggers_for_events_including_delayed(game, trigger_queue, execution.events)?;
                     try_drain_pending_trigger_events(game, trigger_queue)?;
                 }
 

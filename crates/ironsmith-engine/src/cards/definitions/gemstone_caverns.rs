@@ -40,7 +40,7 @@ mod tests {
             .expect("Gemstone Caverns should have a mana ability")
     }
 
-    fn colored_mana_total(pool: &crate::player::ManaPool) -> u32 {
+    fn colored_mana_total(pool: &crate::player::ManaPool) -> u64 {
         pool.white + pool.blue + pool.black + pool.red + pool.green
     }
 

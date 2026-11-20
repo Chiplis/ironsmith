@@ -266,8 +266,10 @@ registerPortedMageTests({
           "name": "Absolute Virtue",
           "zone": "graveyard",
           "methods": [
+            "alternative_price",
             "play_from"
-          ]
+          ],
+          "note": "Chainer supplies the graveyard permission; web-slinging is a separate alternative cost for that cast (CR 118.9, 601.2b), which Ironsmith names alternative_price."
         },
         {
           "op": "assertCastMethods",
@@ -278,7 +280,7 @@ registerPortedMageTests({
           "zone": "graveyard",
           "filterMethod": "Web-slinging",
           "methods": [
-            "play_from"
+            "alternative_price"
           ]
         },
         {

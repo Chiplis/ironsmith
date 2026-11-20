@@ -31,11 +31,7 @@ fn max_removable(
         obj.counters
             .values()
             .copied()
-            .try_fold(0u32, |total, count| {
-                total.checked_add(count).ok_or_else(|| {
-                    "counter total exceeds the supported count range".to_string()
-                })
-            })?
+            .fold(0u32, |total, count| total.saturating_add(count))
     })
 }
 

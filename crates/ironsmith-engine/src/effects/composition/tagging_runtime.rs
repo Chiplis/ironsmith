@@ -244,10 +244,18 @@ fn tag_instruction_result(
             (!state.pre_snapshots_from_decision_hints
                 || outcome.chosen_objects().is_some_and(|chosen| chosen.contains(&snapshot.object_id)))
                 && game.object(snapshot.object_id).is_none()
-                && game
+                && (game
                     .find_object_by_stable_id(snapshot.stable_id)
                     .and_then(|id| game.object(id))
                     .is_some_and(|object| object.zone != snapshot.zone)
+                    // A melded permanent leaves as its component cards, none
+                    // of which keeps its identity (CR 713.8c); the recorded
+                    // zone-change results are its departure.
+                    || game
+                        .zone_change_result_ids(snapshot.object_id)
+                        .iter()
+                        .filter_map(|id| game.object(*id))
+                        .any(|object| object.zone != snapshot.zone))
         })
         .cloned()
         .collect::<Vec<_>>();

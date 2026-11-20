@@ -37,7 +37,8 @@ fn mana_value_on_stack(cost: Option<&ManaCost>, x_value: Option<u32>) -> u32 {
         return 0;
     };
     let x = x_value.unwrap_or(0);
-    cost.mana_value() + (cost.x_pip_count() as u32).saturating_mul(x)
+    cost.mana_value()
+        .saturating_add(u32::try_from(cost.x_pip_count()).unwrap_or(u32::MAX).saturating_mul(x))
 }
 
 fn controller_has_cascade_land_drop(game: &GameState, controller: crate::ids::PlayerId) -> bool {

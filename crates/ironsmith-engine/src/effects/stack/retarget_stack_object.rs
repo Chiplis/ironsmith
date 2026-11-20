@@ -760,6 +760,17 @@ impl EffectExecutor for RetargetStackObjectEffect {
                         if !legal.contains(&fixed_target) {
                             continue;
                         }
+                        // CR 115.3, 115.7d: one instance of "target" can't
+                        // name the same object twice, so a requirement that
+                        // already targets the fixed object has no change to
+                        // it (Spellskite on a divided Fiery Justice).
+                        if entry
+                            .targets
+                            .get(range.clone())
+                            .is_some_and(|chosen| chosen.contains(&fixed_target))
+                        {
+                            continue;
+                        }
                         for idx in range.clone() {
                             if entry.targets.get(idx).is_some_and(|t| *t == fixed_target) {
                                 continue;

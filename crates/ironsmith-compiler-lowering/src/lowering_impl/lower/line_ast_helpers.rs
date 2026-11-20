@@ -298,6 +298,16 @@ pub fn uses_spell_only_functional_zones(static_ability: &StaticAbility) -> bool 
             if increase.filter.source
     ) || match &static_ability.payload {
         ironsmith_core::StaticAbilityPayload::GrantOptionalSpellCost { filter, .. } if filter.source => true,
+        // "As long as this spell was kicked, this spell has split second"
+        // (Molten Disaster): a self-grant of a stack-only ability is a rule
+        // of the spell, so it must function while the card is a spell
+        // (CR 113.6, 702.61a), not only on the battlefield.
+        ironsmith_core::StaticAbilityPayload::GrantObjectAbilityForFilter(grant)
+            if grant.filter.source
+                && grant.ability.functional_zones.as_slice() == [crate::zone::Zone::Stack] =>
+        {
+            true
+        }
         ironsmith_core::StaticAbilityPayload::FlashIfTargetsMatching(_)
         | ironsmith_core::StaticAbilityPayload::FlashIfCastChoice(_)
         | ironsmith_core::StaticAbilityPayload::CastTargetRestriction { .. } => true,

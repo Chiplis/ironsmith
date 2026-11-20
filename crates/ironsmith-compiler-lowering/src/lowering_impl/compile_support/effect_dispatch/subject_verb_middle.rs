@@ -4801,16 +4801,20 @@ fn lower_ability_removal_modifications(
             crate::ability::AbilityKind::Static(static_ability)
                 if static_ability.id() == crate::static_abilities::StaticAbilityId::Changeling
         );
+        // The object keeps changeling itself: it is a characteristic-defining
+        // ability (CR 702.73a, 604.3) that a later layer-4 type loss
+        // overrides, not removes (Nameless Inversion on a changeling).
+        if loses_all_creature_types {
+            removals.push(crate::continuous::Modification::RemoveAllSubtypesOfFamily(
+                crate::types::SubtypeFamily::Creature,
+            ));
+            continue;
+        }
         removals.push(if mode == ironsmith_core::AbilityLossMode::Lose {
             crate::continuous::Modification::RemoveAbility(ability)
         } else {
             crate::continuous::Modification::RemoveAbilityWithMode { ability, mode }
         });
-        if loses_all_creature_types {
-            removals.push(crate::continuous::Modification::RemoveAllSubtypesOfFamily(
-                crate::types::SubtypeFamily::Creature,
-            ));
-        }
     }
     removals.extend(families.into_iter().filter_map(|family| match family {
         GrantedAbilityAst::StaticAbilityFamily(id) => Some(

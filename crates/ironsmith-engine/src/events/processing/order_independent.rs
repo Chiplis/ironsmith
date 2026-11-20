@@ -29,8 +29,8 @@
 //! 4. Members have distinct application keys, so applying one never retires
 //!    another.
 //!
-//! Overflow is monotone under these operations. If any order overflows, the
-//! final amount overflows, so every order fails at its last step.
+//! Saturation is monotone under these operations. If any order reaches the
+//! storage bound, the final amount saturates in every order.
 
 use super::*;
 

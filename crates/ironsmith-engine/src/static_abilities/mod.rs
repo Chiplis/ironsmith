@@ -3605,7 +3605,7 @@ impl StaticAbility {
     pub fn enters_with_counters(counter_type: crate::object::CounterType, count: u32) -> Self {
         Self::new(EntersWithCounters::new(
             counter_type,
-            crate::effect::Value::Fixed(count as i32),
+            crate::effect::Value::Fixed(ironsmith_core::quantity::clamp_i32_from_u32(count)),
         ))
     }
 
@@ -3699,7 +3699,7 @@ impl StaticAbility {
         Self::new(EnterWithCountersForFilter::new(
             filter,
             counter_type,
-            crate::effect::Value::Fixed(count as i32),
+            crate::effect::Value::Fixed(ironsmith_core::quantity::clamp_i32_from_u32(count)),
         ))
     }
 

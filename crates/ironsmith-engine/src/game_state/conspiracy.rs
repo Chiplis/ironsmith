@@ -491,9 +491,10 @@ impl ConspiracyDraftState {
         }
         let mut available = HashMap::<String, usize>::new();
         for definition in self.card_pool(player)? {
-            *available
+            let tally = available
                 .entry(definition.name().trim().to_ascii_lowercase())
-                .or_default() += 1;
+                .or_default();
+            *tally = tally.saturating_add(1);
         }
         for definition in deck {
             if definition.card.has_card_type(CardType::Conspiracy) {

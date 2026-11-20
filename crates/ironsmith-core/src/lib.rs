@@ -40,6 +40,7 @@ pub mod mana;
 pub mod library_movement;
 mod number_words;
 pub mod ordinal;
+pub mod quantity;
 pub mod resolution_model;
 pub mod semantic_audit;
 pub mod spell_cost_condition_model;

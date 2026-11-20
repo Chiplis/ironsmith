@@ -214,14 +214,16 @@ fn combat_life_loss_replacement_order_replays_every_assignment() {
     let second = permanent(&mut game, alice, "Second attacker", Some((1, 3)));
     let first_double = permanent(&mut game, bob, "First life-loss doubler", None);
     let double = permanent(&mut game, bob, "Second life-loss doubler", None);
-    for source in [first_double, double] {
+    // An adder and a doubler: their order is a real choice for Bob.
+    for (source, action) in [
+        (
+            first_double,
+            ReplacementAction::Modify(crate::replacement::EventModification::Add(1)),
+        ),
+        (double, ReplacementAction::Double),
+    ] {
         game.effect_store.replacement_effects.add_resolution_effect(
-            ReplacementEffect::with_matcher(
-                source,
-                bob,
-                WouldLoseLifeMatcher::you(),
-                ReplacementAction::Double,
-            ),
+            ReplacementEffect::with_matcher(source, bob, WouldLoseLifeMatcher::you(), action),
         );
     }
     let mut runner = regular_combat_runner(&mut game, &[first, second]);
@@ -240,8 +242,8 @@ fn combat_life_loss_replacement_order_replays_every_assignment() {
     ));
     assert_eq!(
         game.player(bob).unwrap().life,
-        12,
-        "both doublers apply to each one-point damage assignment"
+        14,
+        "1 * 2 + 1 for each one-point damage assignment"
     );
     assert!(!runner.has_pending_replay_choice());
 }

@@ -297,6 +297,20 @@ impl GameState {
                 }))
     }
 
+    /// CR 801.7 for an event that happens only to `defender` ("enchanted
+    /// player is attacked"): the unnamed attacker isn't part of it.
+    pub(crate) fn defender_event_is_within_range(
+        &self,
+        observer: PlayerId,
+        defender: PlayerId,
+        source: Option<ObjectId>,
+        source_snapshot: Option<&ObjectSnapshot>,
+    ) -> bool {
+        self.range_of_influence.is_none()
+            || self.source_snapshot_is_exempt_from_range(source, source_snapshot)
+            || self.player_is_within_range(observer, defender)
+    }
+
     /// CR 801.7 requires a trigger event to happen entirely inside the
     /// triggered ability controller's range. Zone-change snapshots supply the
     /// required before-event controller for look-back events.

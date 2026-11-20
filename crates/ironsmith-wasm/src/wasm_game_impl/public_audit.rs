@@ -14,24 +14,24 @@ use sha2::{Digest, Sha256};
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct SyncManaPool {
-    white: u32,
-    blue: u32,
-    black: u32,
-    red: u32,
-    green: u32,
-    colorless: u32,
+    white: u64,
+    blue: u64,
+    black: u64,
+    red: u64,
+    green: u64,
+    colorless: u64,
 }
 
 
 impl From<&ManaPool> for SyncManaPool {
     fn from(value: &ManaPool) -> Self {
         Self {
-            white: value.white,
-            blue: value.blue,
-            black: value.black,
-            red: value.red,
-            green: value.green,
-            colorless: value.colorless,
+            white: value.white.min(crate::MAX_JS_SAFE_MANA),
+            blue: value.blue.min(crate::MAX_JS_SAFE_MANA),
+            black: value.black.min(crate::MAX_JS_SAFE_MANA),
+            red: value.red.min(crate::MAX_JS_SAFE_MANA),
+            green: value.green.min(crate::MAX_JS_SAFE_MANA),
+            colorless: value.colorless.min(crate::MAX_JS_SAFE_MANA),
         }
     }
 }

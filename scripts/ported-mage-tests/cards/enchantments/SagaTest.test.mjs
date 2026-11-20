@@ -732,7 +732,8 @@ registerPortedMageTests({
             {
               "property": "counter",
               "value": "lore",
-              "expected": 0
+              "expected": 1,
+              "note": "Port correction (CR 714.3a, 305.7): the entry lore counter comes from the Saga's intrinsic ability, which Blood Moon does not remove because it is not generated from the rules text. Urza's Saga enters with one lore counter and has no chapter ability to trigger."
             }
           ],
           "turn": 1,

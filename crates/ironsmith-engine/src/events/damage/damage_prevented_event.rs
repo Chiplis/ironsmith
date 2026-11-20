@@ -87,9 +87,7 @@ impl DamagePreventedEvent {
         {
             return Ok(false);
         }
-        let total = u128::from(self.amount) + u128::from(other.amount);
-        super::checked_damage_count(total, "simultaneous prevented damage total")?;
-        self.amount = super::checked_damage_amount(total, "simultaneous prevented damage total")?;
+        self.amount = self.amount.saturating_add(other.amount);
         self.applications.extend(other.applications);
         Ok(true)
     }

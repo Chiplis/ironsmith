@@ -1127,6 +1127,11 @@ impl TurnRunner {
             }
 
             TurnState::Untap => {
+                // An additional beginning phase (Sphinx of the Second Sun)
+                // enters here directly rather than through BeginTurn; its
+                // steps belong to the beginning phase (CR 500.8, 501.1).
+                game.turn.phase = Phase::Beginning;
+                game.turn.step = Some(Step::Untap);
                 let mut pending =
                     self.pending_untap_choices
                         .take()
@@ -1191,6 +1196,7 @@ impl TurnRunner {
                     .into_iter()
                     .any(|player| game.player_skips_upkeep_step(player))
                 {
+                    game.turn.phase = Phase::Beginning;
                     game.turn.step = Some(Step::Upkeep);
                     game.reset_priority_for_new_window();
                     self.state = finish_step(
@@ -1200,6 +1206,7 @@ impl TurnRunner {
                     );
                     return Ok(TurnAction::Continue);
                 }
+                game.turn.phase = Phase::Beginning;
                 game.turn.step = Some(Step::Upkeep);
                 for player in game.turn_players() {
                     game.mark_upkeep_began(player);
@@ -1230,6 +1237,7 @@ impl TurnRunner {
                 // CR 702.57b: a Forecast card stops being revealed as soon as
                 // a step other than upkeep begins.
                 game.clear_forecast_revealed_hand_cards();
+                game.turn.phase = Phase::Beginning;
                 game.turn.step = Some(Step::Draw);
                 game.refresh_continuous_state()
                     .map_err(crate::effects::ExecutionError::ContinuousDiscovery)?;
@@ -2273,6 +2281,8 @@ impl TurnRunner {
                         game.turn.phase = Phase::Ending;
                         game.turn.step = Some(Step::Cleanup);
                         game.turn.priority_player = None;
+                        // CR 724.1f / 514.3a: the cleanup step still begins.
+                        generate_and_queue_step_triggers(game, tq);
                         self.state = TurnState::CleanupDiscard;
                         Ok(TurnAction::Continue)
                     }
@@ -2280,6 +2290,14 @@ impl TurnRunner {
             }
 
             TurnState::CleanupDiscard => {
+                // CR 514.3a: abilities that trigger "at the beginning of the
+                // (next) cleanup step" trigger as the step begins and wait
+                // for the 514.3a check. Generate the step event once, on the
+                // first entry (discard prompts re-enter this state).
+                if game.turn.step != Some(Step::Cleanup) {
+                    game.turn.step = Some(Step::Cleanup);
+                    generate_and_queue_step_triggers(game, tq);
+                }
                 game.turn.step = Some(Step::Cleanup);
                 self.advance_cleanup_discard(game)
             }
@@ -2329,6 +2347,8 @@ impl TurnRunner {
                 if let Some(prompt) = self.empty_mana_pools_with_choices(game)? {
                     return Ok(TurnAction::Decision(prompt));
                 }
+                // CR 514.3a: another cleanup step begins.
+                generate_and_queue_step_triggers(game, tq);
                 self.state = TurnState::CleanupRecursiveDiscard;
                 Ok(TurnAction::Continue)
             }

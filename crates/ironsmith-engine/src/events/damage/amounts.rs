@@ -1,84 +1,36 @@
-//! Checked host representations for damage and its scalar consequences.
-//! These limits describe the current engine representation, never a Magic cap.
+//! Damage and its scalar consequences are game quantities: they saturate at
+//! the bounds of their storage type instead of failing (CR has no cap).
+//! The `Result` shape is kept for callers; these conversions never fail.
 use crate::effects::ExecutionError;
 
 pub(crate) fn checked_damage_amount(
     amount: u128,
-    resource: &'static str,
+    _resource: &'static str,
 ) -> Result<u32, ExecutionError> {
-    u32::try_from(amount).map_err(|_| ExecutionError::ResourceLimitExceeded {
-        resource,
-        requested: amount,
-        maximum: u32::MAX as u128,
-    })
+    Ok(u32::try_from(amount).unwrap_or(u32::MAX))
 }
 pub(crate) fn checked_damage_count(
     amount: u128,
-    resource: &'static str,
+    _resource: &'static str,
 ) -> Result<i64, ExecutionError> {
-    i64::try_from(amount).map_err(|_| ExecutionError::ResourceLimitExceeded {
-        resource,
-        requested: amount,
-        maximum: i64::MAX as u128,
-    })
+    Ok(i64::try_from(amount).unwrap_or(i64::MAX))
 }
 
 /// Characteristic and cost consumers retain a signed 32-bit representation.
 pub(crate) fn checked_scalar_count(
     amount: u128,
-    resource: &'static str,
+    _resource: &'static str,
 ) -> Result<i32, ExecutionError> {
-    i32::try_from(amount).map_err(|_| ExecutionError::ResourceLimitExceeded {
-        resource,
-        requested: amount,
-        maximum: i32::MAX as u128,
-    })
+    Ok(i32::try_from(amount).unwrap_or(i32::MAX))
 }
 
-/// Current-turn quantity queries and grouped trigger values use signed scalar
-/// results. Validate the completed receipt set before publication or projection,
-/// including earlier actions, rather than allow their sums to wrap later.
+/// Current-turn quantity queries and grouped trigger values saturate where
+/// they are summed, so a completed receipt set never needs a representation
+/// check before publication. Kept as the publication seam for callers.
 pub(crate) fn validate_damage_history_amounts<'a>(
-    game: &'a crate::game_state::GameState,
-    incoming: impl IntoIterator<Item = &'a crate::triggers::TriggerEvent>,
+    _game: &'a crate::game_state::GameState,
+    _incoming: impl IntoIterator<Item = &'a crate::triggers::TriggerEvent>,
 ) -> Result<(), ExecutionError> {
-    let mut seen_occurrences = std::collections::HashSet::new();
-    let mut totals = [0u128; 3];
-    let mut add = |event: &crate::triggers::TriggerEvent| {
-        let (index, amount) = if let Some(damage) = event.downcast::<crate::events::DamageEvent>() {
-            (0, damage.amount)
-        } else if let Some(loss) = event.downcast::<crate::events::LifeLossEvent>() {
-            (1, loss.amount)
-        } else if let Some(gain) = event.downcast::<crate::events::LifeGainEvent>() {
-            (2, gain.amount)
-        } else {
-            return;
-        };
-        if !seen_occurrences.insert(event.occurrence_key()) {
-            return;
-        }
-        totals[index] += u128::from(amount);
-    };
-    for record in game.turn_store.turn_history.projected_records() {
-        add(&record.event);
-    }
-    for event in game
-        .effect_store
-        .pending_trigger_events
-        .iter()
-        .chain(incoming)
-    {
-        if !event.triggers_captured() {
-            add(event);
-        }
-    }
-    for (amount, resource) in totals.into_iter().zip([
-        "current-turn damage quantity",
-        "current-turn life-loss quantity",
-        "current-turn life-gain quantity",
-    ]) {
-        checked_damage_count(amount, resource)?;
-    }
     Ok(())
 }
 
@@ -155,7 +107,7 @@ mod tests {
     }
 
     #[test]
-    fn exact_boundaries_and_incomplete_execution_classification() {
+    fn damage_representations_saturate_at_their_bounds() {
         assert_eq!(
             checked_damage_amount(u32::MAX as u128, "damage").unwrap(),
             u32::MAX
@@ -164,15 +116,11 @@ mod tests {
             checked_damage_count(i64::MAX as u128, "damage outcome").unwrap(),
             i64::MAX
         );
-        for error in [
-            checked_damage_amount(u32::MAX as u128 + 1, "damage").unwrap_err(),
-            checked_damage_count(i64::MAX as u128 + 1, "damage outcome").unwrap_err(),
-        ] {
-            assert!(error.is_incomplete_execution());
-            assert!(matches!(
-                error,
-                ExecutionError::ResourceLimitExceeded { .. }
-            ));
-        }
+        assert_eq!(checked_damage_amount(u32::MAX as u128 + 1, "damage").unwrap(), u32::MAX);
+        assert_eq!(
+            checked_damage_count(i64::MAX as u128 + 1, "damage outcome").unwrap(),
+            i64::MAX
+        );
+        assert_eq!(checked_scalar_count(u128::MAX, "scalar").unwrap(), i32::MAX);
     }
 }

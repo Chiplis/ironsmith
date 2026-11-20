@@ -253,6 +253,23 @@ pub(crate) fn sacrificed_cost_land_types(ctx: &ExecutionContext) -> Vec<crate::t
     land_types
 }
 
+/// "Target creature gains all creature types until end of turn" (Amoeboid
+/// Changeling, Mirror Entity) lowers to a granted changeling. Changeling means
+/// "this object is every creature type" (CR 702.73a): a type-changing effect
+/// (layer 4, CR 613.1d), which a layer-6 ability grant alone never reaches.
+/// The same effect group also adds every creature type in layer 4.
+fn expand_granted_changeling_creature_types(mut mods: Vec<Modification>) -> Vec<Modification> {
+    let grants_changeling = mods.iter().any(|modification| matches!(modification,
+        Modification::AddAbility(ability)
+            if ability.id() == crate::static_abilities::StaticAbilityId::Changeling));
+    let adds_creature_types = mods.iter().any(|modification| matches!(modification,
+        Modification::AddAllSubtypesOfFamily(crate::types::SubtypeFamily::Creature)));
+    if grants_changeling && !adds_creature_types {
+        mods.push(Modification::AddAllSubtypesOfFamily(crate::types::SubtypeFamily::Creature));
+    }
+    mods
+}
+
 /// "landwalk of each of the land types of the sacrificed land" (Excavator):
 /// one landwalk grant per land type of the sacrificed cost land (CR 702.14a).
 fn expand_sacrificed_land_type_landwalk_modifications(
@@ -419,6 +436,34 @@ fn resolve_runtime_modification(
                     _ => None,
                 })
                 .or_else(|| {
+                    // "Exile another target nontoken creature. If you do,
+                    // this creature becomes a copy of that creature"
+                    // (Identity Thief): "that creature" is the permanent this
+                    // resolution exiled, so the copy uses its last known
+                    // copiable values on the battlefield, including "as ...
+                    // enters" power/toughness choices (CR 707.2, 608.2h),
+                    // not the card's printed values in exile.
+                    let ChooseSpec::Tagged(tag) = source.base() else {
+                        return None;
+                    };
+                    if ironsmith_core::tag::pre_move_history_base_tag(tag).is_some() {
+                        return None;
+                    }
+                    let current = ctx.get_tagged(tag.as_str())?;
+                    if current.zone == crate::zone::Zone::Battlefield {
+                        return None;
+                    }
+                    ctx.get_tagged_all(ironsmith_core::tag::pre_move_history_tag(tag))?
+                        .iter()
+                        .find(|before| {
+                            before.zone == crate::zone::Zone::Battlefield
+                                && (before.stable_id == current.stable_id
+                                    || game.current_object_id_after_zone_change(before.object_id)
+                                        == Some(current.object_id))
+                        })
+                        .cloned()
+                })
+                .or_else(|| {
                     // A non-targeted reference to a specific departed
                     // permanent (for example a death-trigger subject)
                     // copies its last known copiable characteristics.
@@ -480,6 +525,23 @@ fn resolve_runtime_modification(
                         .filter(|departure| departure.zone == snapshot.zone)
                         .unwrap_or_else(|| snapshot.clone()),
                     )
+                })
+                .or_else(|| {
+                    // "That creature becomes a copy of this creature" after
+                    // this creature left the battlefield (Permeating Mass
+                    // dying to the combat damage that triggered it) copies
+                    // its last known copiable values (CR 707.2, 608.2h).
+                    if !matches!(source.base(), ChooseSpec::Source) {
+                        return None;
+                    }
+                    let snapshot = ctx.source_snapshot.as_ref()?;
+                    if game
+                        .object(ctx.source)
+                        .is_some_and(|object| object.zone == snapshot.zone)
+                    {
+                        return None;
+                    }
+                    Some(snapshot.clone())
                 });
             let source_id = if let Some(snapshot) = sacrificed_snapshot.as_ref() {
                 snapshot.object_id
@@ -563,6 +625,20 @@ fn resolve_runtime_modification(
                     } else {
                         ctx.ability_index.and_then(|index| abilities.get(index))
                     }
+                }).or_else(|| {
+                    // A reflexive "When you do, this creature becomes a copy
+                    // ..., except it has this ability" (Aurora Shifter) is
+                    // part of the ability that created it (CR 603.12), so
+                    // "this ability" is that enclosing printed ability: the
+                    // one source ability whose program carries this exact
+                    // copy instruction.
+                    let abilities = source_abilities.as_ref()?;
+                    let needle = format!("{modification:?}");
+                    let mut owners = abilities
+                        .iter()
+                        .filter(|ability| format!("{ability:?}").contains(&needle));
+                    let owner = owners.next()?;
+                    owners.next().is_none().then_some(owner)
                 });
                 if let Some(ability) = resolving {
                     std::sync::Arc::make_mut(&mut copiable_values.abilities).push(ability.clone());
@@ -1524,7 +1600,31 @@ fn acquire_continuous_action(
         for modification in &mut mods { if let Modification::CopyOf { retain_original_name, .. } = modification { *retain_original_name = true; } }
     }
     let mods = expand_sacrificed_land_type_landwalk_modifications(mods, ctx);
+    let mods = expand_granted_changeling_creature_types(mods);
     let mods=mods.into_iter().map(|modification|ctx.bind_definition_scope_modification(modification)).collect::<Result<Vec<_>,_>>()?;
+    // CR 101.2, 611.2c: a control change fixes its objects as it resolves.
+    // One the new controller can't gain control of at that moment (Guardian
+    // Beast) is left out, together with any object given away alongside the
+    // prohibition's source, and doesn't follow later once the prohibition
+    // ends (Coveted Falcon).
+    let sole_control_recipient = match mods.as_slice() {
+        [Modification::ChangeController(player)] => Some(*player),
+        [Modification::ChangeControllerToEffectController] => Some(ctx.controller),
+        _ => None,
+    };
+    if let Some(new_controller) = sole_control_recipient
+        && let Some(EffectSourceType::Resolution { locked_targets }) = &mut source_type
+    {
+        locked_targets.retain(|id| {
+            game.object(*id).is_none_or(|object| {
+                object.zone != Zone::Battlefield
+                    || game.control_acquisition_allowed(*id, game.controller_of(object), new_controller)
+            })
+        });
+        if locked_targets.is_empty() {
+            return Ok(AcquiredContinuousAction::Terminal(EffectOutcome::resolved()));
+        }
+    }
     if definition.grant_only_if_absent
         && let Some(terminal) = skip_objects_already_having_grants(&mods, &mut source_type, game, ctx)
     {
@@ -1608,7 +1708,7 @@ impl ContinuousActionInputs {
             // step is the next turn's.
             Until::NextEndStep => {
                 if matches!(game.turn.phase, crate::game_state::Phase::Ending) {
-                    game.turn.turn_number + 1
+                    game.turn.turn_number.saturating_add(1)
                 } else {
                     game.turn.turn_number
                 }
@@ -1708,8 +1808,10 @@ pub(crate) fn commit_control_assignments(
     crate::effects::composition::execute_transaction(game, ctx, Vec::new, |game, ctx| {
         if matches!(policy, ControlAssignmentPolicy::AllOrNothing)
             && assignments.iter().any(|(object, player)| {
+                // A spell on the stack can change control too (CR 112.2:
+                // its controller is the player who controls it now).
                 game.object(*object)
-                    .is_none_or(|object| object.zone != Zone::Battlefield)
+                    .is_none_or(|object| !matches!(object.zone, Zone::Battlefield | Zone::Stack))
                     || game
                         .player(*player)
                         .is_none_or(|player| !player.is_in_game())
@@ -1756,6 +1858,20 @@ pub(crate) fn commit_control_assignments(
         }
         game.refresh_continuous_state()
             .map_err(ExecutionError::ContinuousDiscovery)?;
+        // CR 112.2: a spell is controlled by whoever controls it now. Keep the
+        // stack entry's recorded controller in step with an exchange
+        // (Perplexing Chimera) so priority, targets and views agree.
+        for (object, _) in assignments {
+            if game.object(*object).is_some_and(|object| object.zone == Zone::Stack)
+                && let Some(controller) = game.current_controller(*object)
+            {
+                for entry in &mut game.stack {
+                    if !entry.is_ability && entry.object_id == *object {
+                        entry.controller = controller;
+                    }
+                }
+            }
+        }
         Ok(completions
             .into_iter()
             .map(|(outcome, affected)| {
@@ -1818,14 +1934,34 @@ fn publish_continuous_action(
     ) -> Result<Option<ContinuousEffect>, ExecutionError>,
 ) -> Result<EffectOutcome, ExecutionError> {
     let mut registered_active_modification = false;
+    // Players given control by this action, when every registered effect is
+    // a control change ("draw a card for each one they gained control of
+    // this way", Coveted Falcon).
+    let mut control_recipients = Vec::new();
+    let mut only_control_changes = true;
     while let Some(effect) = next(game, ctx)? {
         registered_active_modification |=
             crate::continuous::continuous_effect_duration_and_condition_are_active(&effect, game);
+        match &effect.modification {
+            Modification::ChangeController(player) => control_recipients.push(*player),
+            _ => only_control_changes = false,
+        }
         ctx.created_continuous_effects.extend(register_resolved_continuous_batch(game, [effect]));
     }
 
     game.refresh_continuous_state()
         .map_err(ExecutionError::ContinuousDiscovery)?;
+
+    // An object a "can't gain control" prohibition kept from changing
+    // controller (Guardian Beast) wasn't affected by the control change
+    // (CR 101.2, 613.1b).
+    let mut affected_objects = affected_objects;
+    if only_control_changes && !control_recipients.is_empty() {
+        affected_objects.retain(|object| {
+            game.current_controller(*object)
+                .is_some_and(|controller| control_recipients.contains(&controller))
+        });
+    }
 
     Ok(if registered_active_modification {
         EffectOutcome::resolved().with_affected_objects_from_game(game, affected_objects)

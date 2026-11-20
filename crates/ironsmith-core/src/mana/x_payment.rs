@@ -114,6 +114,7 @@ impl ManaCost {
         let mut pips = if scoped_waterbend { self.pips_with_bound_x_expanded() } else { self.pips.clone() };
         pips.extend(if scoped_waterbend { other.pips_with_bound_x_expanded() } else { other.pips.clone() });
         let mut result = Self::from_pips(pips);
+        result.priced_from_x = self.contains_x_in_total_cost() || other.contains_x_in_total_cost();
         for rule in self
             .spending_restrictions()
             .iter()

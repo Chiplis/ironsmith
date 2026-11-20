@@ -210,7 +210,7 @@ fn run_tidecaller_mill_case(mana_spent: u32, expected_milled: usize) {
     game.object_mut(spell)
         .expect("triggering spell should exist")
         .mana_spent_to_cast = crate::player::ManaPool {
-        colorless: mana_spent,
+        colorless: u64::from(mana_spent),
         ..crate::player::ManaPool::default()
     };
     let snapshot = crate::snapshot::ObjectSnapshot::from_object(

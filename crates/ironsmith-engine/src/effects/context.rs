@@ -1833,7 +1833,8 @@ impl<'a> ExecutionContext<'a> {
         let mut counts = HashMap::new();
         if let Some(snapshots) = self.tagged_objects.get(tag.as_ref()) {
             for snapshot in snapshots {
-                *counts.entry(snapshot.controller).or_insert(0) += 1;
+                let tally = counts.entry(snapshot.controller).or_insert(0usize);
+                *tally = tally.saturating_add(1);
             }
         }
         counts
@@ -2039,7 +2040,16 @@ impl<'a> ExecutionContext<'a> {
             tagged_objects
                 .entry(TagKey::from("triggering"))
                 .or_insert_with(|| vec![snapshot]);
-            if let Some(entry) = game.stack.iter().find(|entry| entry.object_id == object_id) {
+            // A zone change names the moved object, not a stack object. Its old
+            // id may be the source of a sibling trigger already on the stack
+            // (Jackdaw Savior dying with another flier), whose targets are not
+            // this ability's "other" exclusions (CR 603.3d, 115.1).
+            let names_stack_object = triggering_event
+                .downcast::<crate::events::zones::ZoneChangeEvent>()
+                .is_none_or(|change| change.to == crate::zone::Zone::Stack);
+            if names_stack_object
+                && let Some(entry) = game.stack.iter().find(|entry| entry.object_id == object_id)
+            {
                 // "that spell targets only a single opponent ... for each
                 // other opponent": an ability with no player targets of its
                 // own reads the triggering spell's targeted player, just as it

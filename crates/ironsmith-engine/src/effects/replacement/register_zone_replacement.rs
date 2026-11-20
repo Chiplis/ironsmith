@@ -119,11 +119,24 @@ impl RegisterZoneReplacementEffect {
                 };
                 // A followed card's matcher is rebound to its spell when it is
                 // cast (ReplacementEffectManager::rebind_followed_object).
-                let matcher = crate::events::zones::matchers::WouldChangeZoneMatcher::new(
+                let mut matcher = crate::events::zones::matchers::WouldChangeZoneMatcher::new(
                     ObjectFilter::specific(object_id),
                     self.from_zone,
                     self.to_zone,
                 );
+                // "exile that card ... instead of putting it into your
+                // graveyard as it resolves" (Gandalf of the Secret Fire,
+                // Goliath Daydreamer, Lilah, Feather): registered for a spell
+                // already on the stack, it replaces only that spell's own
+                // finishing move (CR 608.2n). A countered spell does not
+                // resolve, so it goes to the graveyard (CR 701.6a).
+                matcher.require_resolving_object_match = self.from_zone == Some(Zone::Stack)
+                    && self.to_zone == Some(Zone::Graveyard)
+                    && self.replacement_zone == Zone::Exile
+                    && !follows_onto_stack
+                    && game
+                        .object(object_id)
+                        .is_some_and(|object| object.zone == Zone::Stack);
                 ReplacementEffect::with_matcher(ctx.source, ctx.controller, matcher, replacement)
             })
             .collect())

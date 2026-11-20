@@ -1,7 +1,6 @@
 //! Simultaneous damage from independently evaluated, exactly bound sources.
 use crate::effect::{EffectOutcome, ExecutionFact};
 use crate::effects::{EffectExecutor, ExecutionContext, ExecutionError};
-use crate::events::damage::{checked_damage_amount, checked_damage_count};
 use crate::events::processing::{
     SimultaneousDamageEvent, prepare_simultaneous_damage_assignments_with_scopes,
 };
@@ -573,7 +572,7 @@ impl DamageOriginalProjection {
     ) -> Result<EffectOutcome, ExecutionError> {
         self.validate(self.assignments.len())?;
         let mut included = vec![false; self.assignments.len()];
-        let mut total = 0u128;
+        let mut total = 0i64;
         let mut any_prevented = false;
         let mut any_replaced = false;
         let mut recipients = Vec::new();
@@ -590,7 +589,7 @@ impl DamageOriginalProjection {
             }
             *included = true;
             let assignment = &self.assignments[*index];
-            total += assignment.total as u128;
+            total = total.saturating_add(assignment.total);
             any_prevented |= assignment.prevented;
             any_replaced |= assignment.replaced;
             if let Some(recipient) = &assignment.recipient_before
@@ -599,7 +598,6 @@ impl DamageOriginalProjection {
                 recipients.push(recipient.clone());
             }
         }
-        let total = checked_damage_count(total, "simultaneous damage total")?;
         let mut outcome = if total == 0 && any_replaced {
             EffectOutcome::replaced()
         } else if total == 0 && any_prevented {
@@ -733,7 +731,6 @@ impl PreparedDamageOriginals {
         }
         crate::effects::composition::with_held_original_triggers(game, |game| {
             let mut receipts = Vec::new();
-            let mut lost = 0u128;
             for (index, observation, plan) in prepared {
                 let state = &states[index];
                 let mut ctx = state.execution_context(observation, &mut *parent.decision_maker);
@@ -743,7 +740,6 @@ impl PreparedDamageOriginals {
                 if ctx.decision_maker.awaiting_choice() {
                     return Ok(Vec::new());
                 }
-                lost += u128::from(receipt.original.life_lost);
                 let mut receipt = crate::effects::SimultaneousEffectCommit {
                     outcome: receipt.original.consequence_outcome.unwrap_or_else(|| {
                         crate::effects::CompletedEffectOutputs::aggregate_only(
@@ -760,8 +756,6 @@ impl PreparedDamageOriginals {
                     ),
                 });
             }
-            checked_damage_count(lost, "simultaneous damage-result life loss")?;
-            let mut gained = 0u128;
             for PreparedLifelinkConsequence {
                 context_assignment,
                 contributions,
@@ -778,14 +772,6 @@ impl PreparedDamageOriginals {
                 if ctx.decision_maker.awaiting_choice() {
                     return Ok(Vec::new());
                 }
-                gained += receipt
-                    .outcome
-                    .outcome
-                    .events
-                    .iter()
-                    .filter_map(|event| event.downcast::<LifeGainEvent>())
-                    .map(|event| u128::from(event.amount))
-                    .sum::<u128>();
                 bind_consequence_batch(&mut receipt.outcome.outcome, batch);
                 receipts.push(OwnedDamageConsequence {
                     origin: DamageConsequenceOrigin::Lifelink(contributions),
@@ -794,7 +780,6 @@ impl PreparedDamageOriginals {
                     ),
                 });
             }
-            checked_damage_count(gained, "simultaneous lifelink life gain")?;
             Ok(receipts)
         })
     }
@@ -2091,8 +2076,7 @@ fn prepare_damage_batch_inputs(
             );
             let state = &states[index];
             let mut ctx = state.execution_context(observation, &mut *parent.decision_maker);
-            let amount =
-                checked_damage_count(u128::from(assignment.amount), "damage result count")?;
+            let amount = i64::from(assignment.amount);
             let plan = crate::rules::damage::prepare_processed_damage_assignment(
                 game,
                 &mut ctx,
@@ -2106,21 +2090,17 @@ fn prepare_damage_batch_inputs(
             if !plan.applied {
                 continue;
             }
-            total =
-                checked_damage_count(total as u128 + amount as u128, "simultaneous damage total")?;
-            original_assignments[index].total = checked_damage_count(
-                original_assignments[index].total as u128 + amount as u128,
-                "damage assignment total",
-            )?;
+            total = total.saturating_add(amount);
+            original_assignments[index].total =
+                original_assignments[index].total.saturating_add(amount);
             let excess = if let DamageTarget::Object(target) = assignment.target {
                 let prior = *dealt.get(&target).unwrap_or(&0);
-                let next = prior + u64::from(assignment.amount);
+                let next = prior.saturating_add(u64::from(assignment.amount));
                 dealt.insert(target, next);
                 let capacity = u64::from(*capacities.get(&target).unwrap_or(&u32::MAX));
-                checked_damage_amount(
-                    u128::from(next.saturating_sub(prior.max(capacity))),
-                    "simultaneous excess damage",
-                )?
+                ironsmith_core::quantity::clamp_u32_from_u64(
+                    next.saturating_sub(prior.max(capacity)),
+                )
             } else {
                 0
             };
@@ -2152,10 +2132,7 @@ fn prepare_damage_batch_inputs(
                     .iter_mut()
                     .find(|(existing, _, _)| states[*existing].source == state.source)
                 {
-                    *sum = checked_damage_amount(
-                        u128::from(*sum) + u128::from(assignment.amount),
-                        "lifelink damage total",
-                    )?;
+                    *sum = sum.saturating_add(assignment.amount);
                     contributions.push((index, assignment.amount));
                 } else {
                     lifelink.push((index, assignment.amount, vec![(index, assignment.amount)]));

@@ -700,7 +700,7 @@ registerPortedMageTests({
           "name": "Kaldring, the Rimestaff using foretell",
           "holdStack": true,
           "objectAlias": "@back",
-          "actionLabel": "Cast Kaldring, the Rimestaff (foretell)"
+          "actionLabel": "Cast Kaldring, the Rimestaff (foretell, from exile)"
         },
         {
           "op": "assertStackObject",

@@ -1,17 +1,17 @@
 //! Preserve an unrepresentable authored life amount without narrowing it.
+//!
+//! The amount exceeds every representable (saturated `i32`) life total, so
+//! the cost is simply unpayable (CR 119.4: a player can pay life only if
+//! their life total is greater than or equal to the payment).
 use super::{CostContext, CostPayer, CostPaymentResult};
-use crate::{cost::CostPaymentError, effects::ExecutionError, game_state::GameState};
+use crate::{cost::CostPaymentError, game_state::GameState};
 #[derive(Debug, Clone, PartialEq)]
 pub(super) struct UnrepresentableLifePayment {
     pub amount: u32,
 }
 impl UnrepresentableLifePayment {
     fn error(&self) -> CostPaymentError {
-        CostPaymentError::ExecutionFailed(ExecutionError::ResourceLimitExceeded {
-            resource: "life payment cost amount",
-            requested: u128::from(self.amount),
-            maximum: i32::MAX as u128,
-        })
+        CostPaymentError::InsufficientLife
     }
 }
 impl CostPayer for UnrepresentableLifePayment {

@@ -59,8 +59,10 @@ impl DiesDamagedByThisTurnTrigger {
         zc: &ZoneChangeEvent,
         ctx: &TriggerContext,
     ) -> bool {
-        if let Some(snapshot) = zc.snapshot.as_ref()
-            && snapshot.object_id == victim_id
+        if let Some(snapshot) = zc
+            .snapshots()
+            .iter()
+            .find(|snapshot| snapshot.object_id == victim_id)
         {
             return self
                 .victim
@@ -85,9 +87,11 @@ impl DiesDamagedByThisTurnTrigger {
         zc.objects
             .iter()
             .filter(|&&victim_id| {
-                let victim_stable_id = zc.snapshot.as_ref().and_then(|snapshot| {
-                    (snapshot.object_id == victim_id).then_some(snapshot.stable_id)
-                });
+                let victim_stable_id = zc
+                    .snapshots()
+                    .iter()
+                    .find(|snapshot| snapshot.object_id == victim_id)
+                    .map(|snapshot| snapshot.stable_id);
                 if !self.victim_matches(victim_id, zc, ctx) {
                     return false;
                 }
@@ -100,17 +104,31 @@ impl DiesDamagedByThisTurnTrigger {
                             victim_id,
                             victim_stable_id,
                             ctx.source_id,
-                            ctx.game.object(ctx.source_id).map(|obj| obj.stable_id),
+                            damager_lookback_stable_id(ctx.game, ctx.source_id),
                         ),
                     // "Equipped/enchanted creature" is read when the trigger
                     // condition is checked: damage dealt this turn by the
                     // creature this source is attached to NOW counts, even if
                     // the attachment happened after the damage (Unscythe).
+                    //
+                    // CR 603.10a/603.6e: the attachment is read from the game
+                    // state immediately before the death, so an Equipment
+                    // whose host died in the same event (and became
+                    // unattached) still uses that host.
                     DamagerSource::EquippedCreature | DamagerSource::EnchantedCreature => {
-                        let damager = ctx
-                            .game
-                            .object(ctx.source_id)
-                            .and_then(|obj| obj.attached_to.as_ref())
+                        let pre_event_attachment = event
+                            .lookback_source_snapshots()
+                            .iter()
+                            .find(|snapshot| {
+                                snapshot.object_id == ctx.source_id
+                                    && snapshot.zone == crate::zone::Zone::Battlefield
+                            })
+                            .map(|snapshot| snapshot.attached_to);
+                        let damager = pre_event_attachment
+                            .unwrap_or_else(|| {
+                                ctx.game.object(ctx.source_id).and_then(|obj| obj.attached_to)
+                            })
+                            .as_ref()
                             .and_then(|target| match target {
                                 crate::object::AttachmentTarget::Object(id) => Some(*id),
                                 _ => None,
@@ -123,7 +141,7 @@ impl DiesDamagedByThisTurnTrigger {
                                     victim_id,
                                     victim_stable_id,
                                     damager,
-                                    ctx.game.object(damager).map(|obj| obj.stable_id),
+                                    damager_lookback_stable_id(ctx.game, damager),
                                 )
                         })
                     }
@@ -133,6 +151,19 @@ impl DiesDamagedByThisTurnTrigger {
     }
 }
 
+/// The damager's stable identity, admitted only for look-back reads. A
+/// damager that is on the battlefield now is a new object since it entered
+/// (CR 400.7): damage dealt by an earlier incarnation of the same card (a
+/// creature that died and returned this turn) was not dealt by it.
+fn damager_lookback_stable_id(
+    game: &crate::game_state::GameState,
+    damager: crate::ids::ObjectId,
+) -> Option<crate::ids::StableId> {
+    game.object(damager)
+        .filter(|obj| obj.zone != crate::zone::Zone::Battlefield)
+        .map(|obj| obj.stable_id)
+}
+
 impl TriggerMatcher for DiesDamagedByThisTurnTrigger {
     fn matches(&self, event: &TriggerEvent, ctx: &TriggerContext) -> bool {
         self.matching_objects(event, ctx) > 0
@@ -140,6 +171,16 @@ impl TriggerMatcher for DiesDamagedByThisTurnTrigger {
 
     fn uses_snapshot(&self) -> bool {
         true
+    }
+
+    /// CR 603.6c/603.10a: a "dies" trigger is a leaves-the-battlefield
+    /// ability that looks back in time, so it triggers even when its own
+    /// source dies simultaneously with the victim (Seraph and Sengir
+    /// Vampire trading in combat).
+    fn looks_back_for_source(&self, event: &TriggerEvent) -> bool {
+        event
+            .downcast::<ZoneChangeEvent>()
+            .is_some_and(|zc| zc.is_dies())
     }
 
     fn display(&self) -> String {

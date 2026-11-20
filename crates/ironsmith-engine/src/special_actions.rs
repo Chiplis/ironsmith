@@ -195,6 +195,10 @@ pub fn room_unlock_cost_display(
 
 /// Name of the half a door unlock applies to, for action labels.
 pub fn room_door_name(game: &GameState, room_id: ObjectId, door: RoomDoor) -> Option<String> {
+    if let Some(values) = game.copied_room_halves(room_id) {
+        let half = copied_room_door_half(&values, door);
+        return Some(crate::continuous::room_half_name(&half.name).to_string());
+    }
     match door {
         RoomDoor::Current => game.object(room_id).map(|room| room.name.to_string()),
         RoomDoor::Linked => room_locked_door_definition(game, room_id).map(|def| def.card.name),
@@ -203,6 +207,12 @@ pub fn room_door_name(game: &GameState, room_id: ObjectId, door: RoomDoor) -> Op
 
 /// The doors of a Room that are currently locked.
 pub fn locked_room_doors(game: &GameState, room_id: ObjectId) -> Vec<RoomDoor> {
+    if game.copied_room_halves(room_id).is_some() {
+        return [RoomDoor::Current, RoomDoor::Linked]
+            .into_iter()
+            .filter(|door| !copied_room_door_unlocked(game, room_id, *door))
+            .collect();
+    }
     if !game.room_has_locked_door(room_id) {
         return Vec::new();
     }
@@ -236,6 +246,27 @@ pub fn ignore_source_effect_cost_display(
     }
 }
 
+/// The copied half behind a door of a Room that is one only through a
+/// layer-1 copy effect (CR 707.2, 709.5).
+fn copied_room_door_half(
+    values: &crate::snapshot::CopiableValues,
+    door: RoomDoor,
+) -> &crate::snapshot::CopiableValues {
+    match door {
+        RoomDoor::Current => values,
+        RoomDoor::Linked => values.other_copy_face.as_deref().unwrap_or(values),
+    }
+}
+
+/// CR 709.5c: whether a copied Room's permanent has that door's designation.
+fn copied_room_door_unlocked(game: &GameState, room_id: ObjectId, door: RoomDoor) -> bool {
+    let (first, second) = game.copied_room_unlocked_halves(room_id);
+    match door {
+        RoomDoor::Current => first,
+        RoomDoor::Linked => second,
+    }
+}
+
 fn room_locked_door_definition(
     game: &GameState,
     room_id: ObjectId,
@@ -253,6 +284,12 @@ fn room_unlock_cost(
         return None;
     }
     // CR 709.5e: the unlock cost is the mana cost of the locked half.
+    if let Some(values) = game.copied_room_halves(room_id) {
+        return copied_room_door_half(&values, door)
+            .mana_cost
+            .clone()
+            .map(crate::cost::TotalCost::mana);
+    }
     if door == RoomDoor::Current {
         return game
             .object(room_id)?
@@ -410,6 +447,25 @@ fn granted_hand_foretell_cost(
         })
 }
 
+/// The generic reduction of a granted "its mana cost reduced by {N}"
+/// foretell (Dream Devourer) for a card in `player`'s hand.
+fn granted_hand_foretell_reduction(
+    game: &GameState,
+    player: PlayerId,
+    card_id: ObjectId,
+) -> Option<u32> {
+    game.effect_store
+        .grant_registry
+        .get_grants_for_card(game, card_id, Zone::Hand, player)
+        .into_iter()
+        .find_map(|grant| match grant.grantable {
+            crate::grant::Grantable::DerivedAlternativeCast(
+                crate::grant::DerivedAlternativeCast::ForetellFromCardManaCostReducedBy { reduction },
+            ) => Some(reduction),
+            _ => None,
+        })
+}
+
 fn plot_cost(object: &crate::object::Object) -> Option<crate::mana::ManaCost> {
     object
         .alternative_casts
@@ -425,13 +481,64 @@ fn plot_cost_for(
     player: PlayerId,
     object: &crate::object::Object,
 ) -> Option<crate::mana::ManaCost> {
-    plot_cost(object).or_else(|| {
-        game.effect_store
-            .grant_registry
-            .granted_alternative_casts_for_card(game, object.id, object.zone, player)
-            .into_iter()
-            .find_map(|granted| granted.method.plot_cost().cloned())
-    })
+    plot_cost(object).or_else(|| granted_plot_cost_for(game, player, object))
+}
+
+/// A plot cost another object grants the card in its current zone.
+fn granted_plot_cost_for(
+    game: &GameState,
+    player: PlayerId,
+    object: &crate::object::Object,
+) -> Option<crate::mana::ManaCost> {
+    game.effect_store
+        .grant_registry
+        .granted_alternative_casts_for_card(game, object.id, object.zone, player)
+        .into_iter()
+        .find_map(|granted| granted.method.plot_cost().cloned())
+}
+
+/// The plot cost a plot action uses. `granted` selects the plot instance a
+/// granting object gives a card that also has its own printed plot cost
+/// (CR 702.170a: each plot instance is its own special action).
+fn selected_plot_cost(
+    game: &GameState,
+    player: PlayerId,
+    object: &crate::object::Object,
+    granted: bool,
+) -> Option<crate::mana::ManaCost> {
+    if granted {
+        plot_cost(object)?;
+        granted_plot_cost_for(game, player, object)
+    } else {
+        plot_cost_for(game, player, object)
+    }
+}
+
+/// The separate granted plot action for `card_id`, when the card has both a
+/// printed plot cost and a granted one (Fblthp, Lost on the Range).
+pub(crate) fn granted_plot_action(
+    game: &GameState,
+    player: PlayerId,
+    card_id: ObjectId,
+) -> Option<SpecialAction> {
+    let object = game.object(card_id)?;
+    selected_plot_cost(game, player, object, true)?;
+    Some(SpecialAction::PlotGranted { card_id })
+}
+
+/// Cost text that tells two plot actions for the same card apart. `None`
+/// when the card has a single plot instance.
+pub fn plot_action_cost_label(game: &GameState, action: &SpecialAction) -> Option<String> {
+    let (card_id, granted) = match action {
+        SpecialAction::Plot { card_id } => (*card_id, false),
+        SpecialAction::PlotGranted { card_id } => (*card_id, true),
+        _ => return None,
+    };
+    let object = game.object(card_id)?;
+    let player = object.owner;
+    plot_cost(object)?;
+    granted_plot_cost_for(game, player, object)?;
+    selected_plot_cost(game, player, object, granted).map(|cost| cost.to_oracle())
 }
 
 /// CR 702.170a with Fblthp, Lost on the Range: the top card of `player`'s
@@ -458,9 +565,10 @@ fn plot_special_action_cost(
     game: &GameState,
     player: PlayerId,
     card_id: ObjectId,
+    granted: bool,
 ) -> Result<crate::mana::ManaCost, ActionError> {
     let object = game.object(card_id).ok_or(ActionError::ObjectNotFound)?;
-    let cost = plot_cost_for(game, player, object).ok_or(ActionError::NoSuchAbility)?;
+    let cost = selected_plot_cost(game, player, object, granted).ok_or(ActionError::NoSuchAbility)?;
     // "Plotting cards from your hand costs {N} less" reads only hand plots.
     if object.zone != Zone::Hand {
         return Ok(cost);
@@ -602,6 +710,10 @@ pub enum SpecialAction {
 
     /// Plot a card from hand (exile it face up as a sorcery, cast on a later turn).
     Plot { card_id: ObjectId },
+
+    /// Plot a card for the plot cost another object grants it, when the card
+    /// also has its own printed plot cost (CR 702.170a).
+    PlotGranted { card_id: ObjectId },
 
     /// Activate a mana ability (doesn't use the stack).
     ActivateManaAbility {
@@ -817,7 +929,8 @@ pub fn can_perform_check(
         SpecialAction::Foretell { card_id } => can_foretell(game, player, *card_id),
         SpecialAction::PrepareExile { card_id, method_index, preparation } => can_prepare_exile(game, player, *card_id, *method_index, preparation),
         SpecialAction::PrepareGrantedExile { card_id, grant, preparation } => selected_granted_exile_preparation(game,player,*card_id,grant,preparation).map(|_|()),
-        SpecialAction::Plot { card_id } => can_plot(game, player, *card_id),
+        SpecialAction::Plot { card_id } => can_plot(game, player, *card_id, false),
+        SpecialAction::PlotGranted { card_id } => can_plot(game, player, *card_id, true),
         SpecialAction::ActivateManaAbility {
             permanent_id,
             ability_index,
@@ -1037,7 +1150,9 @@ fn finish_special_action_with_mana_activation_outputs(
             }
             perform_prepare_exile(game,player,card_id,0,preparation,Some(receipt.method),Some(grant))
         },
-        SpecialAction::Plot { card_id } => perform_plot(game, player, card_id),
+        SpecialAction::Plot { card_id } | SpecialAction::PlotGranted { card_id } => {
+            perform_plot(game, player, card_id)
+        }
         SpecialAction::ActivateManaAbility {
             permanent_id,
             ability_index,
@@ -1161,7 +1276,7 @@ fn perform_repeatable_mana_payment_action(
     if let Some(uses) = game.effect_store.repeatable_mana_payment_actions[action_index]
         .restrictions.remaining_uses.as_mut()
     {
-        *uses -= 1;
+        *uses = uses.saturating_sub(1);
     }
 
     if let Some(permission) = &action.restrictions.face_down_exile_cast {
@@ -2413,6 +2528,9 @@ pub(crate) fn apply_room_door_unlock(
     if !locked_room_doors(game, room_id).contains(&door) {
         return false;
     }
+    if game.copied_room_halves(room_id).is_some() {
+        return game.set_copied_room_half_unlocked(room_id, door == RoomDoor::Linked, true);
+    }
     // CR 709.5d-e: with neither door unlocked, unlocking one gives only that
     // half its designation. The Room's current half becomes the unlocked one
     // (switching to the linked half first if that door was chosen).
@@ -2436,6 +2554,12 @@ pub(crate) fn apply_room_door_unlock(
 /// The doors of a Room that are currently unlocked (CR 709.5c: only an
 /// unlocked door can be locked).
 pub fn unlocked_room_doors(game: &GameState, room_id: ObjectId) -> Vec<RoomDoor> {
+    if game.copied_room_halves(room_id).is_some() {
+        return [RoomDoor::Current, RoomDoor::Linked]
+            .into_iter()
+            .filter(|door| copied_room_door_unlocked(game, room_id, *door))
+            .collect();
+    }
     let is_room = game.object(room_id).is_some_and(|room| {
         room.zone == crate::zone::Zone::Battlefield
             && room.linked_face_layout == crate::card::LinkedFaceLayout::Split
@@ -2458,6 +2582,9 @@ pub(crate) fn apply_room_door_lock(game: &mut GameState, room_id: ObjectId, door
     if !unlocked_room_doors(game, room_id).contains(&door) {
         return false;
     }
+    if game.copied_room_halves(room_id).is_some() {
+        return game.set_copied_room_half_unlocked(room_id, door == RoomDoor::Linked, false);
+    }
     if game.is_room_fully_unlocked(room_id) {
         return game.lock_door_of_fully_unlocked_room(room_id, door == RoomDoor::Current);
     }
@@ -2475,22 +2602,27 @@ pub(crate) fn unlock_room_door_with_events(
     room_id: ObjectId,
     door: RoomDoor,
 ) -> Option<Vec<KeywordActionEvent>> {
-    let second_door = !game.room_has_no_unlocked_door(room_id);
-    let door_triggers = second_door.then(|| {
-        room_locked_door_definition(game, room_id)
-            .map(|definition| {
-                definition
-                    .abilities
-                    .iter()
-                    .filter_map(|ability| match &ability.kind {
-                        crate::ability::AbilityKind::Triggered(triggered) => {
-                            Some(crate::triggers::compute_trigger_identity(triggered))
-                        }
-                        _ => None,
-                    })
-                    .collect::<Vec<_>>()
+    let copied = game.copied_room_halves(room_id);
+    let second_door = match &copied {
+        Some(_) => game.copied_room_unlocked_halves(room_id) != (false, false),
+        None => !game.room_has_no_unlocked_door(room_id),
+    };
+    let door_trigger_identities = |abilities: &[crate::ability::Ability]| {
+        abilities
+            .iter()
+            .filter_map(|ability| match &ability.kind {
+                crate::ability::AbilityKind::Triggered(triggered) => {
+                    Some(crate::triggers::compute_trigger_identity(triggered))
+                }
+                _ => None,
             })
-            .unwrap_or_default()
+            .collect::<Vec<_>>()
+    };
+    let door_triggers = second_door.then(|| match &copied {
+        Some(values) => door_trigger_identities(&copied_room_door_half(values, door).abilities),
+        None => room_locked_door_definition(game, room_id)
+            .map(|definition| door_trigger_identities(&definition.abilities))
+            .unwrap_or_default(),
     });
     let abilities_before = game.object(room_id).map(|room| room.abilities.len());
     if !apply_room_door_unlock(game, room_id, door) {
@@ -2505,7 +2637,9 @@ pub(crate) fn unlock_room_door_with_events(
     );
     if let Some(door_triggers) = door_triggers {
         unlock = unlock.with_unlocked_door_triggers(door_triggers);
-        if let (Some(before), Some(after)) = (abilities_before, abilities_after) {
+        // A copied Room's raw ability list never changes; its door is
+        // identified by the copied half's trigger identities instead.
+        if let (None, Some(before), Some(after)) = (&copied, abilities_before, abilities_after) {
             unlock = unlock.with_unlocked_door_ability_range(before..after);
         }
     }
@@ -2840,6 +2974,11 @@ fn perform_foretell(
         }
         _ => None,
     };
+    // "Its foretell cost is equal to its mana cost reduced by {N}": keep the
+    // reduction so each other spell face gets its own foretell cost.
+    let granted_reduction = granted_cost
+        .as_ref()
+        .and_then(|_| granted_hand_foretell_reduction(game, player, card_id));
     // Move to exile face-down
     let new_id = game
         .move_object(
@@ -2860,6 +2999,9 @@ fn perform_foretell(
         object
             .alternative_casts
             .push(crate::alternative_cast::AlternativeCastingMethod::Foretell { cost });
+    }
+    if let Some(reduction) = granted_reduction {
+        game.set_foretold_face_cost_reduction(new_id, reduction);
     }
 
     // "Whenever you foretell a card" (CR 702.143a): the special action is the
@@ -2885,7 +3027,12 @@ fn perform_foretell(
 
 // === Plot ===
 
-fn can_plot(game: &GameState, player: PlayerId, card_id: ObjectId) -> Result<(), ActionError> {
+fn can_plot(
+    game: &GameState,
+    player: PlayerId,
+    card_id: ObjectId,
+    granted: bool,
+) -> Result<(), ActionError> {
     has_sorcery_speed_special_action_timing(game, player)?;
 
     let object = game.object(card_id).ok_or(ActionError::ObjectNotFound)?;
@@ -2899,7 +3046,7 @@ fn can_plot(game: &GameState, player: PlayerId, card_id: ObjectId) -> Result<(),
         return Err(ActionError::InvalidTarget);
     }
 
-    let Some(_cost) = plot_cost_for(game, player, object) else {
+    let Some(_cost) = selected_plot_cost(game, player, object, granted) else {
         return Err(ActionError::NoSuchAbility);
     };
 
@@ -3541,6 +3688,41 @@ pub(crate) fn prepare_mana_activation_cost(
         }
         announced_x = Some(chosen);
         original = crate::decision::activation_cost_with_locked_x(&original, chosen);
+    } else {
+        // CR 601.2b via 602.2b/605.3a: a cost that itself names X ("{1},
+        // Remove X storage counters", Calciform Pools) announces X before any
+        // cost is paid, not as a choice in the middle of payment.
+        let mut references_x = false;
+        let mut cost_maximum: Option<u32> = None;
+        for component in original.costs() {
+            let Some(effect) = component.effect_ref() else {
+                continue;
+            };
+            if !effect.references_cost_x() {
+                continue;
+            }
+            references_x = true;
+            if let Some(maximum) = effect.max_cost_x(game, source, player) {
+                cost_maximum = Some(cost_maximum.map_or(maximum, |prior| prior.min(maximum)));
+            }
+        }
+        if references_x && let Some(maximum) = cost_maximum {
+            let minimum = activated.activation_x_minimum();
+            if maximum < minimum {
+                return Err(ActionError::CantPayCost);
+            }
+            let context = crate::decisions::context::NumberContext::x_value_with_min(
+                player, source, minimum, maximum,
+            );
+            let chosen = decision_maker.decide_number(game, &context);
+            if decision_maker.awaiting_choice() {
+                return Ok(None);
+            }
+            if chosen < minimum || chosen > maximum {
+                return Err(ActionError::InvalidTarget);
+            }
+            announced_x = Some(chosen);
+        }
     }
     let priced = crate::decision::calculate_effective_activation_selected_branch_cost(
         game,
@@ -5629,11 +5811,11 @@ fn resolve_dynamic_u32(
 
 fn expand_dynamic_mana_base(base: &ManaCost, x_value: u32, multiplier: u32) -> ManaCost {
     let mut pips = Vec::new();
-    let mut generic_to_add = 0;
+    let mut generic_to_add = 0u32;
     for _ in 0..multiplier {
         for pip in base.pips() {
             if pip.len() == 1 && matches!(pip[0], ManaSymbol::X) {
-                generic_to_add += x_value;
+                generic_to_add = generic_to_add.saturating_add(x_value);
                 continue;
             }
             pips.push(
@@ -5762,6 +5944,12 @@ fn resolve_cost_choice_with_outputs(
                     }
                     let performed = matches!(&receipt.original, EventOutcome::Proceed(_));
                     if performed {
+                        let destination = match &receipt.original {
+                            EventOutcome::Proceed(applied) => applied
+                                .new_object_id
+                                .or_else(|| applied.new_object_ids.first().copied()),
+                            _ => None,
+                        };
                         let provenance = game.alloc_child_event_provenance(
                             ctx.provenance,
                             crate::events::EventKind::Sacrifice,
@@ -5770,7 +5958,8 @@ fn resolve_cost_choice_with_outputs(
                             ctx.provenance,
                             TriggerEvent::new_with_provenance(
                                 SacrificeEvent::new(target_id, Some(ctx.source))
-                                    .with_snapshot(snapshot, sacrificing_player),
+                                    .with_snapshot(snapshot, sacrificing_player)
+                                    .with_destination(destination),
                                 provenance,
                             ),
                         );

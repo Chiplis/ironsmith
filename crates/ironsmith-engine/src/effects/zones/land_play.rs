@@ -34,6 +34,8 @@ pub(crate) enum LandPlayAuthorization {
     ResolvingInstruction {
         from_zone: Zone,
         temporary_copy: bool,
+        /// CR 712.12: play a modal DFC as its land back face.
+        back_face: bool,
     },
 }
 
@@ -210,9 +212,20 @@ pub(crate) fn execute_land_play_program_with_outputs<'a>(
             if root {
                 game.begin_library_top_announcement(LibraryTopAnnouncement::Land(card));
             }
-            let selected_entry_definition = if let LandPlayAuthorization::SelectedPermission { back_face, .. } = &authorization {
-                crate::special_actions::apply_land_play_face(game, card, *back_face)
-            } else { None };
+            let selected_entry_definition = match &authorization {
+                LandPlayAuthorization::SelectedPermission { back_face, .. } => {
+                    crate::special_actions::apply_land_play_face(game, card, *back_face)
+                }
+                LandPlayAuthorization::ResolvingInstruction { back_face: true, .. } => {
+                    // CR 712.12: play the card's land face. `true` names the
+                    // back land of a land-fronted MDFC (Pathways); a
+                    // nonland-fronted MDFC (Akoum Warrior // Akoum Teeth)
+                    // resolves its linked land face through `false`.
+                    crate::special_actions::apply_land_play_face(game, card, true)
+                        .or_else(|| crate::special_actions::apply_land_play_face(game, card, false))
+                }
+                LandPlayAuthorization::ResolvingInstruction { back_face: false, .. } => None,
+            };
             let checked = crate::special_actions::land_play_query_snapshot(game, player, card)
                 .map_err(ExecutionError::ContinuousDiscovery)?;
             let legal = checked.is_active_player(player)
@@ -284,11 +297,14 @@ pub(crate) fn execute_land_play_program_with_outputs<'a>(
                 }
                 LandPlayEntryReceipt::Root(receipt)
             } else {
+                let mut entry_options =
+                    super::BattlefieldEntryOptions::specific(player, permission.enters_tapped);
+                entry_options.entry_definition = selected_entry_definition;
                 let entry = super::move_to_battlefield_with_options(
                     game,
                     ctx,
                     card,
-                    super::BattlefieldEntryOptions::specific(player, permission.enters_tapped),
+                    entry_options,
                 )?;
                 if ctx.decision_maker.awaiting_choice() {
                     return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
@@ -424,6 +440,28 @@ pub(crate) fn play_land_from_resolving_effect_with_outputs(
     from_zone: Zone,
     temporary_copy: bool,
 ) -> Result<crate::effects::CompletedEffectOutputs, ExecutionError> {
+    play_land_face_from_resolving_effect_with_outputs(
+        game,
+        ctx,
+        card,
+        player,
+        from_zone,
+        temporary_copy,
+        false,
+    )
+}
+
+/// A resolving "play it" instruction may play a modal DFC as its land back
+/// face (CR 712.12), still only with an available land play (CR 305.2a).
+pub(crate) fn play_land_face_from_resolving_effect_with_outputs(
+    game: &mut GameState,
+    ctx: &mut ExecutionContext,
+    card: ObjectId,
+    player: PlayerId,
+    from_zone: Zone,
+    temporary_copy: bool,
+    back_face: bool,
+) -> Result<crate::effects::CompletedEffectOutputs, ExecutionError> {
     let result = execute_land_play_program_with_outputs(
         game,
         ctx,
@@ -432,6 +470,7 @@ pub(crate) fn play_land_from_resolving_effect_with_outputs(
         LandPlayAuthorization::ResolvingInstruction {
             from_zone,
             temporary_copy,
+            back_face,
         },
         LandPlayObservationTiming::BeforeHistory,
         |game, _, _, _, event| {

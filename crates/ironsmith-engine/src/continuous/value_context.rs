@@ -120,7 +120,7 @@ impl<'a, 'game> LayerValueContext<'a, 'game> {
         if let Some(count) = count_retained_tagged_snapshot_matches(filter, ctx.game, &filter_ctx) {
             return count;
         }
-        let mut count = 0;
+        let mut count = 0i32;
         let set_constrained = filter.has_selection_set_constraint();
         let mut members = Vec::new();
         let mut board = None;
@@ -154,14 +154,17 @@ impl<'a, 'game> LayerValueContext<'a, 'game> {
                 ctx.game,
                 &filter_ctx,
             ) {
-                count += 1;
+                count = count.saturating_add(1);
                 if set_constrained {
                     members.push(crate::static_abilities::SetMember::layered(object, &chars));
                 }
             }
         });
         if set_constrained {
-            return crate::static_abilities::set_constrained_member_count(filter, members) as i32;
+            return i32::try_from(crate::static_abilities::set_constrained_member_count(
+                filter, members,
+            ))
+            .unwrap_or(i32::MAX);
         }
         count
     }
@@ -346,13 +349,13 @@ impl<'a, 'game> LayerValueContext<'a, 'game> {
                     .unwrap_or(0)
             };
             if let ChooseSpec::All(filter) = spec.unhinted() {
-                let mut total = 0;
+                let mut total = 0i32;
                 for_each_matching_continuous_object(
                     ctx,
                     filter,
                     controller,
                     source,
-                    |object, _| total += count_symbols(object),
+                    |object, _| total = total.saturating_add(count_symbols(object)),
                 );
                 total
             } else {
@@ -444,14 +447,10 @@ impl<'a, 'game> LayerValueContext<'a, 'game> {
     }
 
 }
-/// Keep counter cardinalities wide until their consumer's checked scalar
-/// boundary. Never reinterpret a u32 counter count or a multi-object sum as i32.
+/// Keep counter cardinalities wide until their consumer narrows them. Game
+/// quantities saturate: a multi-object sum clamps at the wide range.
 fn checked_counter_total(total: i64, count: i64) -> Result<i64, crate::effects::ExecutionError> {
-    total.checked_add(count).ok_or(crate::effects::ExecutionError::ResourceLimitExceeded {
-        resource: "continuous counter total",
-        requested: total as u128 + count as u128,
-        maximum: i64::MAX as u128,
-    })
+    Ok(total.saturating_add(count))
 }
 
 fn object_for_value_spec<'a>(

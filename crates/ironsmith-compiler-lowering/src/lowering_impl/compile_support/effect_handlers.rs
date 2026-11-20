@@ -1051,6 +1051,11 @@ fn compile_duration_scoped_delayed_trigger(
     fn watches_ability_source(trigger: &TriggerSpec) -> bool {
         match trigger_without_intro(trigger) {
             TriggerSpec::ThisBecomesUntapped => true,
+            // "When Tawnos's Coffin leaves the battlefield or becomes
+            // untapped": the leave arm watches the registering incarnation;
+            // its current-object fallback is already the graveyard card.
+            TriggerSpec::ThisLeavesBattlefield
+            | TriggerSpec::ThisLeavesBattlefieldWithSurface(_) => true,
             TriggerSpec::PermanentBecomesUntapped { filter, .. } => filter.source,
             TriggerSpec::CharacteristicGained(control) => control.filter.source,
             TriggerSpec::ControlChanged(control) => control.filter.source,
@@ -1646,6 +1651,21 @@ fn try_compile_timing_and_control_effect_inner(
                     .until_end_of_turn(),
                 );
                 return Ok(Some((vec![effect], choices)));
+            }
+            // "When you play a card this way, ..." (Fires of Mount Doom): the
+            // body keeps the play-or-cast event's references; the matcher is
+            // linked to the exact preceding play grants.
+            if let TriggerSpec::PlayedOrCastThroughPreviousPermission(event) =
+                trigger_without_intro(trigger)
+                && !*until_end_of_combat
+                && !*attach_to_previous_ability
+            {
+                let (body, _) = compile_trigger_effects(Some(event.as_ref()), effects)?;
+                let delayed = crate::effects::ScheduleDelayedTriggerEffect::new(
+                    ironsmith_core::DelayedTriggerSpec::PlayedOrCastThroughPreviousPermission,
+                    body, *one_shot, Vec::new(), PlayerFilter::You,
+                ).until_end_of_turn();
+                return Ok(Some((vec![Effect::new(delayed)], Vec::new())));
             }
             if matches!(trigger_without_intro(trigger), TriggerSpec::SpellCastThroughPreviousPermission) {
                 // The body has the ordinary cast-event reference scope; only
@@ -2745,6 +2765,37 @@ fn compile_conditional_ast(
         prelude.push(Effect::new(crate::effects::TargetOnlyEffect::new(choice)).tag(tag.clone()));
         condition_reference_tag = Some(tag);
     }
+    // The antecedent prelude announces the branch's target once (CR 115.1,
+    // 601.2c). The branch, compiled in isolation, re-exposed that same
+    // choice through its own synthetic declaration, and a replacement it
+    // registers ("If an artifact or creature spell is countered this way,
+    // put that card onto the battlefield ... instead", Desertion) names the
+    // announced object rather than choosing another one. Drop the duplicate
+    // declaration and bind such registrations to the prelude's tag, so the
+    // action after the conditional consumes the single announced target.
+    let true_effects = match (antecedent_choice.as_ref(), condition_reference_tag.as_ref()) {
+        (Some(choice), Some(tag)) => true_effects
+            .into_iter()
+            .enumerate()
+            .filter(|(index, effect)| {
+                *index != 0
+                    || effect
+                        .downcast_ref::<crate::effects::TargetOnlyEffect>()
+                        .is_none_or(|target| target.explicit_declaration || &target.target != choice)
+            })
+            .map(|(_, effect)| {
+                match effect.downcast_ref::<crate::effects::RegisterZoneReplacementEffect>() {
+                    Some(replacement) if &replacement.target == choice => {
+                        let mut replacement = replacement.clone();
+                        replacement.target = ChooseSpec::Tagged(tag.clone().into());
+                        Effect::new(replacement)
+                    }
+                    _ => effect,
+                }
+            })
+            .collect::<Vec<_>>(),
+        _ => true_effects,
+    };
 
     let original_last_tag = ctx.last_object_tag.clone();
     ctx.last_object_tag = condition_reference_tag.clone().or(saved_last_tag.clone());

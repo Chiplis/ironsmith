@@ -198,6 +198,7 @@ impl EffectExecutor for ExileEffect {
                     .position(|entry| entry.is_ability && entry.ability_id == Some(id))
                 {
                     let entry = game.stack.remove(index);
+                    crate::effects::stack::record_departed_ability_entry(game, &entry);
                     crate::effects::stack::discard_departed_ability_copy_object(game, &entry);
                     removed.push(id);
                 }
@@ -436,6 +437,22 @@ impl ZoneMovementInstruction for ExileEffect {
                     // instructions; unrelated same-card incarnations do not qualify.
                     if matches!(effect.spec.base(), ChooseSpec::Source) && *id == ctx.source {
                         moved_source = change.new_object_id;
+                    } else if moved_source.is_none()
+                        && matches!(effect.spec.base(), ChooseSpec::Tagged(_))
+                        && *id != ctx.source
+                        && game
+                            .object(ctx.source)
+                            .is_none_or(|source| source.zone != Zone::Battlefield)
+                        && ctx.source_snapshot.as_ref().is_some_and(|source| {
+                            source.stable_id == snapshot.stable_id && source.zone != snapshot.zone
+                        })
+                    {
+                        // "When this dies, exile it ... return this card from
+                        // exile" (Lucius the Eternal): the departed source's
+                        // card, found through the triggering tag, is the
+                        // source this resolution moved (CR 400.7j), so later
+                        // "this card" references follow it into exile.
+                        moved_source = change.new_object_id;
                     }
                     if change.final_zone != Zone::Exile {
                         continue;
@@ -450,8 +467,24 @@ impl ZoneMovementInstruction for ExileEffect {
                                 }
                             }
                         }
-                        if let Some(owner) = &ctx.linked_exile_owner {
-                            game.add_linked_exile_pair_member(owner.clone(), new_id);
+                        // CR 607.2q: a printed permanent spell's exile cost
+                        // links to the "exiled with it" readers of the
+                        // permanent it becomes.
+                        // `cost_linked_exile_pair` is only compiled onto a
+                        // cost's exile instruction. A spell's additional cost
+                        // can run with the casting context's cause (not
+                        // `CauseType::Cost`), so the pair is not gated on it
+                        // (Redemptor Dreadnought: no pair was recorded).
+                        let owner = ctx.linked_exile_owner.clone().or_else(|| {
+                            effect.cost_linked_exile_pair
+                                .map(|pair| crate::linked_exile::LinkedExileOwner {
+                                    host: ctx.source,
+                                    pair,
+                                    acquisition: crate::linked_exile::LinkedExileAcquisition::Printed,
+                                })
+                        });
+                        if let Some(owner) = owner {
+                            game.add_linked_exile_pair_member(owner, new_id);
                         }
                         game.add_exiled_with_source_link(ctx.source, new_id);
                         game.record_source_exiler(new_id, exiler);

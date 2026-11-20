@@ -1,4 +1,4 @@
-// Damage and its scalar result events share checked numeric replacement rules.
+// Damage and its scalar result events share saturating numeric replacement rules.
 fn apply_damage_result_modification(
     game: &GameState,
     event: &Event,
@@ -21,8 +21,8 @@ fn apply_damage_result_modification(
         return Ok(None);
     };
     let next: u128 = match modification {
-        EventModification::Multiply(factor) => u128::from(amount) * u128::from(*factor),
-        EventModification::Add(delta) => (i128::from(amount) + i128::from(*delta)).max(0) as u128,
+        EventModification::Multiply(factor) => u128::from(amount).saturating_mul(u128::from(*factor)),
+        EventModification::Add(delta) => i128::from(amount).saturating_add(i128::from(*delta)).max(0) as u128,
         EventModification::Subtract(delta) => u128::from(amount.saturating_sub(*delta)),
         EventModification::SetTo(value) => u128::from(*value),
         EventModification::SetToAtLeast(value) => u128::from(amount.max(
@@ -31,7 +31,7 @@ fn apply_damage_result_modification(
         EventModification::ReduceToZero => 0,
         EventModification::AddDynamic(value) => {
             let delta = resolve_signed_value_for_replacement(value, game, effect)?;
-            (i128::from(amount) + i128::from(delta)).max(0) as u128
+            i128::from(amount).saturating_add(i128::from(delta)).max(0) as u128
         },
         EventModification::Halve { round_up } => {
             u128::from(if *round_up { amount.div_ceil(2) } else { amount / 2 })
@@ -42,7 +42,7 @@ fn apply_damage_result_modification(
         EventModification::NamedActionFirstThenOtherMode { .. } => unreachable!("modal operation modifier dispatched before damage modification"),
     };
     // A rules-imposed maximum (an event-local player-counter lock) is
-    // applied mathematically before asking whether the final event fits.
+    // applied mathematically before the result saturates to its carrier.
     let next = if let Some(counter) = downcast_event::<PutCountersEvent>(event.inner()) {
         counter
             .maximum_count

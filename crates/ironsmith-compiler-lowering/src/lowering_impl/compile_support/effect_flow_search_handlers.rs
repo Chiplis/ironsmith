@@ -648,8 +648,45 @@ fn try_compile_for_each_object_as_damage_source(
             ChooseSpec::Object(resolved_filter.clone().other()),
             Vec::new(),
         )
+    } else if let TargetAst::Player(
+        player @ (PlayerFilter::ControllerOf(crate::target::ObjectRef::Tagged(tag))
+        | PlayerFilter::OwnerOf(crate::target::ObjectRef::Tagged(tag))),
+        None,
+    ) = target
+        && tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str()
+    {
+        // "Each creature deals 1 damage to its controller" (Rakdos Charm):
+        // `its` is this loop's iterated source, bound per iteration. The
+        // outer reference frame has no `it`, so resolving there would fall
+        // back to an undeclared target's controller.
+        (ChooseSpec::Player(player.clone()), Vec::new())
     } else {
-        resolve_target_spec_with_choices(target, &refs)?
+        let (spec, choices) = resolve_target_spec_with_choices(target, &refs)?;
+        // The same possessive without an antecedent outside the loop: no
+        // target was announced, so it can only name the iterated source.
+        let iterated_possessive = |reference: &crate::target::ObjectRef| {
+            *reference == crate::target::ObjectRef::Target
+                && choices.is_empty()
+                && ctx.last_object_tag.is_none()
+                && matches!(target, TargetAst::Player(_, None))
+        };
+        let it = || {
+            crate::target::ObjectRef::tagged(crate::tag::CompilerReferenceTag::It.bind())
+        };
+        let rebound = match &spec {
+            ChooseSpec::Player(PlayerFilter::ControllerOf(reference))
+                if iterated_possessive(reference) =>
+            {
+                Some(ChooseSpec::Player(PlayerFilter::ControllerOf(it())))
+            }
+            ChooseSpec::Player(PlayerFilter::OwnerOf(reference))
+                if iterated_possessive(reference) =>
+            {
+                Some(ChooseSpec::Player(PlayerFilter::OwnerOf(it())))
+            }
+            _ => None,
+        };
+        (rebound.unwrap_or(spec), choices)
     };
     if !choose_spec_is_single_damage_recipient(&target_spec) {
         return Ok(None);

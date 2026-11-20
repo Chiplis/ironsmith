@@ -191,8 +191,15 @@ registerPortedMageTests({
           "op": "addCard",
           "zone": "GRAVEYARD",
           "player": 0,
-          "name": "Risen Executioner",
-          "count": 2
+          "name": "Risen Executioner@riseGisa",
+          "count": 1
+        },
+        {
+          "op": "addCard",
+          "zone": "GRAVEYARD",
+          "player": 0,
+          "name": "Risen Executioner@riseOwn",
+          "count": 1
         },
         {
           "op": "addCard",
@@ -220,7 +227,11 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
-          "name": "Risen Executioner"
+          "name": "Risen Executioner",
+          "objectAlias": "@riseGisa",
+          "castingMethod": "play_from",
+          "permissionSource": "Gisa and Geralf",
+          "note": "XMage setChoice(\"Gisa\") picks which as-though permission is used; each permission is a separate cast action here"
         },
         {
           "op": "setChoice",
@@ -242,7 +253,10 @@ registerPortedMageTests({
           "turn": 1,
           "phase": "POSTCOMBAT_MAIN",
           "player": 0,
-          "name": "Risen Executioner"
+          "name": "Risen Executioner",
+          "objectAlias": "@riseOwn",
+          "castingMethod": "play_from",
+          "permissionSource": "@riseOwn"
         },
         {
           "op": "setStopAt",

@@ -111,6 +111,10 @@ pub enum PlayerPredicateAst {
         player: PlayerAst,
         count: u32,
     },
+    PlayerPaidOrLostEnergyThisTurnOrMore {
+        player: PlayerAst,
+        count: u32,
+    },
     PlayerHadLandEnterBattlefieldThisTurn {
         player: PlayerAst,
     },

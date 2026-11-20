@@ -171,7 +171,12 @@ impl TriggerMatcher for DealsDamageToTrigger {
     fn simultaneous_trigger_key(&self, event: &TriggerEvent) -> Option<SimultaneousTriggerKey> {
         let damage = event.downcast::<DamageEvent>()?;
         let DamageTarget::Object(target) = damage.target else {
-            return None;
+            // This arm cannot match player damage, but as one alternative of
+            // "one or more permanents and/or players" it must not split its
+            // sibling player arm's per-source group (CR 603.2c).
+            return (!self.source_filter.union_is_one_or_more()
+                && self.target_filter.union_is_one_or_more())
+            .then_some(SimultaneousTriggerKey::DamageSource(damage.source));
         };
         self.cardinality_key(damage.source, target)
     }

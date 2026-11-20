@@ -247,6 +247,16 @@ pub struct ManaCost {
     required_actual_payment: Option<ActualManaAllocation>,
     #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "Option::is_none"))]
     waterbend_payment_scope: Option<WaterbendPaymentScope>,
+    /// Set once `{X}` pips are rewritten (announced X priced as generic, or a
+    /// payment sub-request's expanded pips). The total cost still "contains
+    /// {X}" for spend rules such as Rosheen Meanderer's (CR 107.3, 601.2f).
+    #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "is_false_flag"))]
+    priced_from_x: bool,
+}
+
+#[cfg(feature = "serde")]
+fn is_false_flag(value: &bool) -> bool {
+    !*value
 }
 
 /// Generic mana symbols hold one byte. Larger totals use consecutive pips.
@@ -291,13 +301,13 @@ fn symbol_combinations<P: AsRef<[ManaSymbol]>>(
 impl ManaCost {
     /// Creates an empty mana cost.
     pub fn new() -> Self {
-        Self { pips: Vec::new(), waterbend_payment_scope: None, spending_restrictions: Vec::new(), x_payment_scope: None, required_actual_payment: None }
+        Self { pips: Vec::new(), waterbend_payment_scope: None, spending_restrictions: Vec::new(), x_payment_scope: None, required_actual_payment: None, priced_from_x: false }
     }
 
     /// Creates a mana cost from a list of pips, where each pip is a list of
     /// alternative payment options.
     pub fn from_pips(pips: Vec<Vec<ManaSymbol>>) -> Self {
-        Self { pips, waterbend_payment_scope: None, spending_restrictions: Vec::new(), x_payment_scope: None, required_actual_payment: None }
+        Self { pips, waterbend_payment_scope: None, spending_restrictions: Vec::new(), x_payment_scope: None, required_actual_payment: None, priced_from_x: false }
     }
 
     pub fn from_generic(amount: u32) -> Self {
@@ -312,6 +322,7 @@ impl ManaCost {
             spending_restrictions: Vec::new(),
             x_payment_scope: None,
             required_actual_payment: None,
+            priced_from_x: false,
         }
     }
 
@@ -355,7 +366,8 @@ impl ManaCost {
     /// Rewrite the price while retaining transaction-wide spending rules.
     pub fn with_pips(&self, pips: Vec<Vec<ManaSymbol>>) -> Self {
         let mut result = Self { pips, waterbend_payment_scope: self.waterbend_payment_scope.clone(), spending_restrictions: self.spending_restrictions.clone(),
-            x_payment_scope: self.x_payment_scope.clone(), required_actual_payment: self.required_actual_payment };
+            x_payment_scope: self.x_payment_scope.clone(), required_actual_payment: self.required_actual_payment,
+            priced_from_x: self.priced_from_x || self.has_x() };
         if let Some(scope) = result.x_payment_scope.as_mut() {
             let old_x = self.x_pip_count() as u32;
             let new_x = x_pips(&result.pips).count() as u32;
@@ -492,6 +504,13 @@ impl ManaCost {
     /// Returns true if this mana cost contains X.
     pub fn has_x(&self) -> bool {
         x_pips(&self.pips).next().is_some()
+    }
+
+    /// True when this cost contains `{X}` or was priced from a cost that did
+    /// (its X pips rewritten to the announced value). "Spend this mana only
+    /// on costs that contain {X}" asks this of the whole total cost.
+    pub fn contains_x_in_total_cost(&self) -> bool {
+        self.priced_from_x || self.has_x()
     }
 
     /// Count each pip offering X once, including pips with other payment options.

@@ -408,6 +408,14 @@ pub(super) fn parse_effect_clause_unstacked(
             }
         }
     }
+    // Arena "conjure" creates a named real card from outside the game.
+    if let Some(effect) = crate::effect_sentences::dispatch_entry::real_card_creation::read_conjure(tokens)? {
+        return Ok(effect);
+    }
+    // Arena "seek" puts random matching library cards into the hand.
+    if let Some(effect) = crate::effect_sentences::dispatch_entry::real_card_creation::read_seek(tokens)? {
+        return Ok(effect);
+    }
     let (verb, _) = find_verb(tokens).ok_or_else(|| {
         let clause = render_lower_words(tokens);
         let known_verbs = [
@@ -908,6 +916,16 @@ pub(super) fn parse_effect_clause_unstacked(
     {
         if matches!(verb, Verb::Deal) {
             bind_quantified_damage_actor(&mut effect, span_from_tokens(subject_tokens));
+            // "Each creature deals 1 damage to its controller" (Rakdos
+            // Charm): with no target in the clause, "its" is the iterated
+            // damage source, not a target's controller.
+            let rest_words = ClauseDispatchCompatWords::new(rest).to_word_refs();
+            if !rest_words.iter().any(|word| *word == "target")
+                && (crate::word_primitives::sequence_occurs(&rest_words, &["its", "controller"])
+                    || crate::word_primitives::sequence_occurs(&rest_words, &["its", "owner"]))
+            {
+                bind_quantified_damage_recipient_player(&mut effect);
+            }
         }
         if let EffectAst::SubjectVerb(subject_verb) = &mut effect
             && let SubjectVerbActionAst::StatChanges(
@@ -940,6 +958,40 @@ pub(super) fn parse_effect_clause_unstacked(
 /// [object], this spell deals ..." is parsed through a different scope and
 /// must retain the spell as source. Already explicit damage sources are not
 /// rebound by this helper.
+fn bind_quantified_damage_recipient_player(effect: &mut EffectAst) {
+    if let EffectAst::SubjectVerb(SubjectVerbEffectAst {
+        action:
+            SubjectVerbActionAst::Damage(DamageActionAst::DealDamageEqualToPower {
+                source, target, ..
+            }),
+        ..
+    }) = effect
+        && matches!(source, TargetAst::Tagged(tag, _)
+            if tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str())
+        && let TargetAst::Player(filter, None) = target
+    {
+        let it = || crate::filter::ObjectRef::tagged(crate::tag::CompilerReferenceTag::It.bind());
+        let replacement = match &*filter {
+            crate::target::PlayerFilter::ControllerOf(crate::filter::ObjectRef::Target) => {
+                Some(crate::target::PlayerFilter::ControllerOf(it()))
+            }
+            crate::target::PlayerFilter::OwnerOf(crate::filter::ObjectRef::Target) => {
+                Some(crate::target::PlayerFilter::OwnerOf(it()))
+            }
+            _ => None,
+        };
+        if let Some(replacement) = replacement {
+            *filter = replacement;
+        }
+        return;
+    }
+    crate::model::visit::for_each_nested_effects_mut(effect, false, |effects| {
+        for child in effects {
+            bind_quantified_damage_recipient_player(child);
+        }
+    });
+}
+
 fn bind_quantified_damage_actor(effect: &mut EffectAst, span: Option<TextSpan>) {
     if let EffectAst::SubjectVerb(SubjectVerbEffectAst {
         action: SubjectVerbActionAst::Damage(action),

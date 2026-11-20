@@ -150,6 +150,13 @@ fn direct_and_dispatched_linked_quantity_failures_leave_no_partial_stat_effect()
         let provenance = game.provenance_graph().node_count();
         let outcome = if dispatched { crate::effects::execute_effect(&mut game, &crate::effect::Effect::new(pump.clone()), &mut ctx) }
             else { pump.execute(&mut game, &mut ctx) };
+        if !invalid {
+            // Game quantities saturate: an astronomically countered linked
+            // card's power clamps to i32::MAX instead of failing the pump.
+            assert!(outcome.is_ok(), "{outcome:?}");
+            assert_eq!(game.current_power(source), Some(i32::MAX - 3));
+            continue;
+        }
         assert!(matches!(outcome, Err(ExecutionError::IncompleteEvidence(_) | ExecutionError::ContinuousDiscovery(_))), "{outcome:?}");
         assert_eq!(game.next_object_id_counter(), ids); assert_eq!(game.turn_store.turn_history.event_records.len(), history);
         assert_eq!(game.provenance_graph().node_count(), provenance);
@@ -518,13 +525,14 @@ fn fractional_rounding_uses_a_wide_intermediate_for_representable_results() {
         Box::new(Value::Fixed(1)),
     )));
     assert_eq!(continuous(&half, &game, source, alice), 1_073_741_824);
-    let overflow = Value::DividedRoundedDown(Box::new(Value::Fixed(i32::MIN)), -1);
-    assert!(
+    let saturated = Value::DividedRoundedDown(Box::new(Value::Fixed(i32::MIN)), -1);
+    assert_eq!(
         resolve(
-            &overflow,
+            &saturated,
             &EvaluationContext::execution_context(&game, &exec)
         )
-        .is_err()
+        .unwrap(),
+        i32::MAX
     );
 }
 
@@ -663,7 +671,7 @@ fn scoped_life_maxima_and_below_half_counts_preserve_sign_scope_ties_and_odd_thr
 }
 
 #[test]
-fn absolute_difference_widens_intermediates_without_inventing_an_out_of_range_value() {
+fn absolute_difference_widens_intermediates_and_saturates_out_of_range_values() {
     let (game, source, player) = fixture();
     let ctx = ExecutionContext::new_default(source, player);
     for (a, b, expected) in [
@@ -678,15 +686,16 @@ fn absolute_difference_widens_intermediates_without_inventing_an_out_of_range_va
         );
         assert_eq!(continuous(&value, &game, source, player), expected);
     }
-    let unrepresentable =
+    let saturated =
         Value::absolute_difference(Value::Fixed(i32::MIN), Value::Fixed(i32::MAX));
-    assert!(matches!(
+    assert_eq!(
         resolve(
-            &unrepresentable,
+            &saturated,
             &EvaluationContext::execution_context(&game, &ctx)
-        ),
-        Err(ExecutionError::UnresolvableValue(_))
-    ));
+        )
+        .unwrap(),
+        i32::MAX
+    );
 }
 
 #[test]
@@ -815,12 +824,8 @@ fn numeric_damage_and_prevention_receipts_preserve_wide_amounts_before_narrowing
                 &Value::EventValue(EventValueSpec::Amount),
                 &EvaluationContext::execution_context(&game, &context),
             );
-            if amount == i32::MAX as u32 {
-                assert_eq!(result.unwrap(), i32::MAX);
-            } else {
-                let error = result.unwrap_err();
-                assert!(matches!(error, ExecutionError::ResourceLimitExceeded { requested, maximum, .. } if requested == u128::from(amount) && maximum == i32::MAX as u128));
-            }
+            // Game quantities saturate at the signed characteristic range.
+            assert_eq!(result.unwrap(), i32::MAX);
         }
     }
 }

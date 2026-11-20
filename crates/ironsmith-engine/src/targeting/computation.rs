@@ -343,6 +343,24 @@ pub fn legal_target_sets_for_spec(
     }
 }
 
+/// Drop candidates that no legal target set can contain: a target whose own
+/// contribution already exceeds the set-wide limit ("any number of target
+/// nonland permanents with total mana value 6 or less" never admits a mana
+/// value 7 permanent, CR 601.2c). Only sound when no contribution is
+/// negative, so a larger value can never be offset by another target.
+pub fn retain_targets_admissible_under_aggregate(
+    legal_targets: &mut Vec<Target>,
+    constraint: Option<&crate::targeting::ResolvedTargetAggregateConstraint>,
+) {
+    let Some(constraint) = constraint else {
+        return;
+    };
+    if constraint.target_values.iter().any(|(_, value)| *value < 0) {
+        return;
+    }
+    legal_targets.retain(|target| constraint.allows(std::slice::from_ref(target)));
+}
+
 /// Resolve a set-wide target restriction for the current announcement and
 /// record each legal target's contribution for decision validation.
 pub fn resolved_target_aggregate_constraint(
@@ -1020,8 +1038,15 @@ pub(crate) fn protection_from_subject_with_origin(
             // granting object when its continuous grant was constructed.
             let mut filter_ctx =
                 game.filter_context_for(game.controller_of(target), Some(target_id));
-            if source.zone() == Zone::Stack {
+            let prospective_spell =
+                source.zone() != Zone::Stack && view.is_casting_spell(source.object_id());
+            if source.zone() == Zone::Stack || prospective_spell {
                 filter_ctx.caster = Some(source.protection_controller(game));
+            }
+            if prospective_spell
+                && let Some(qualities) = prospective_spell_protection_qualities(filter)
+            {
+                return source.matches(&qualities, &filter_ctx, game);
             }
             // "protection from each of the exiled card's card types" (Mirror
             // Golem): the linked collection is the protected permanent's,
@@ -1067,6 +1092,25 @@ pub(crate) fn source_matches_protection_with_view(
     subject_matches_protection(ObjectSubject::Live(source), protection, game, view)
 }
 
+/// "Protection from spells" / "from colored spells" read against a card whose
+/// castability is being checked before it moves to the stack. That card is
+/// the spell that would target (CR 601.2c chooses targets with the spell on
+/// the stack, CR 702.16b), so its stack-spell kind is satisfied and only its
+/// other qualities are compared. `None` when the quality isn't spell-only.
+fn prospective_spell_protection_qualities(filter: &ObjectFilter) -> Option<ObjectFilter> {
+    if filter.stack_kind != Some(crate::filter::StackObjectKind::Spell) || !filter.any_of.is_empty()
+    {
+        return None;
+    }
+    let mut qualities = filter.clone();
+    qualities.stack_kind = None;
+    qualities.has_mana_cost = false;
+    if qualities.zone == Some(Zone::Stack) {
+        qualities.zone = None;
+    }
+    Some(qualities)
+}
+
 fn subject_matches_protection(
     source: ObjectSubject<'_>,
     protection: &crate::ability::ProtectionFrom,
@@ -1106,8 +1150,15 @@ fn subject_matches_protection(
         ProtectionFrom::Permanents(filter) => {
             let controller = source.protection_controller(game);
             let mut filter_ctx = game.filter_context_for(controller, Some(source.object_id()));
-            if source.zone() == Zone::Stack {
+            let prospective_spell =
+                source.zone() != Zone::Stack && view.is_casting_spell(source.object_id());
+            if source.zone() == Zone::Stack || prospective_spell {
                 filter_ctx.caster = Some(controller);
+            }
+            if prospective_spell
+                && let Some(qualities) = prospective_spell_protection_qualities(filter)
+            {
+                return source.matches(&qualities, &filter_ctx, game);
             }
             source.matches(filter, &filter_ctx, game)
         }
@@ -1214,7 +1265,9 @@ impl ObjectSubject<'_> {
     fn protection_mana_value(self, game: &GameState) -> i32 {
         // Preserve this targeting query's printed-cost policy, rather than the
         // stack-X/split-card policy used by numeric ObjectFilter predicates.
-        self.mana_cost(game).map_or(0, |cost| cost.mana_value() as i32)
+        self.mana_cost(game).map_or(0, |cost| {
+            ironsmith_core::quantity::clamp_i32_from_u32(cost.mana_value())
+        })
     }
 }
 

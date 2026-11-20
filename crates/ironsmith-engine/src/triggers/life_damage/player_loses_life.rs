@@ -88,6 +88,17 @@ impl TriggerMatcher for PlayerLosesLifeTrigger {
         Some(vec![EventKind::LifeLoss])
     }
 
+    /// "Whenever one or more opponents [each] lose [exactly 1] life" (Ob
+    /// Nixilis, Captive Kingpin): several players losing life at the same
+    /// time trigger the ability once (CR 603.2c).
+    fn simultaneous_trigger_key(
+        &self,
+        _event: &TriggerEvent,
+    ) -> Option<crate::triggers::matcher_trait::SimultaneousTriggerKey> {
+        self.one_or_more
+            .then_some(crate::triggers::matcher_trait::SimultaneousTriggerKey::LifeLossBatch)
+    }
+
     fn display(&self) -> String {
         if let Some(exact) = self.exact_amount {
             let subject = match &self.player {

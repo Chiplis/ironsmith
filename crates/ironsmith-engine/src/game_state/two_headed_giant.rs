@@ -184,10 +184,10 @@ impl GameState {
         if seats.len() != distinct.len() || distinct != expected {
             return Err("Two-Headed Giant teams must contain every player exactly once".into());
         }
-        let additional_heads =
-            u32::try_from(team_size - 2).map_err(|_| "Two-Headed Giant team size exceeds u32")?;
-        let starting_life = 30_i32
-            .saturating_add(i32::try_from(additional_heads.saturating_mul(15)).unwrap_or(i32::MAX));
+        let additional_heads = u32::try_from(team_size.saturating_sub(2)).unwrap_or(u32::MAX);
+        let starting_life = 30_i32.saturating_add(ironsmith_core::quantity::clamp_i32_from_u32(
+            additional_heads.saturating_mul(15),
+        ));
         let poison_threshold = 15_u32.saturating_add(additional_heads.saturating_mul(5));
         Ok((seats, starting_life, poison_threshold))
     }

@@ -18,6 +18,10 @@ pub struct SacrificeEvent {
     pub snapshot: Option<ObjectSnapshot>,
     /// The player who sacrificed the permanent.
     pub sacrificing_player: Option<PlayerId>,
+    /// The object the sacrificed permanent became in the zone it moved to
+    /// (its owner's graveyard, or wherever a replacement sent it). CR 400.7e:
+    /// "that card" can find this object if that zone is public.
+    pub destination: Option<ObjectId>,
 }
 
 impl SacrificeEvent {
@@ -28,6 +32,7 @@ impl SacrificeEvent {
             source,
             snapshot: None,
             sacrificing_player: None,
+            destination: None,
         }
     }
 
@@ -38,6 +43,7 @@ impl SacrificeEvent {
             source: Some(source),
             snapshot: None,
             sacrificing_player: None,
+            destination: None,
         }
     }
 
@@ -48,6 +54,7 @@ impl SacrificeEvent {
             source: self.source,
             snapshot: self.snapshot.clone(),
             sacrificing_player: self.sacrificing_player,
+            destination: self.destination,
         }
     }
 
@@ -59,6 +66,12 @@ impl SacrificeEvent {
     ) -> Self {
         self.snapshot = snapshot;
         self.sacrificing_player = sacrificing_player;
+        self
+    }
+
+    /// Record the object the sacrificed permanent became after its move.
+    pub fn with_destination(mut self, destination: Option<ObjectId>) -> Self {
+        self.destination = destination;
         self
     }
 }

@@ -174,6 +174,28 @@ impl crate::effects::EffectExecutor for CopySpellForEachTargetEffect {
             });
         }
 
+        // CR 707.10, 614.1a: "If you would copy a spell one or more times,
+        // instead copy it that many times plus an additional time" (Twinning
+        // Staff) also changes how many copies this instruction makes. The
+        // additional copy keeps the original's targets and may be retargeted.
+        let additional = if original_entry.is_ability || planned.is_empty() {
+            0
+        } else {
+            let Some(total) = super::copy_spell::proposed_spell_copy_count(
+                game,
+                ctx,
+                copier,
+                planned.len(),
+            )?
+            else {
+                return Ok(EffectOutcome::count(0));
+            };
+            if total < planned.len() {
+                planned.truncate(total);
+            }
+            total.saturating_sub(planned.len())
+        };
+
         for (_, targets) in planned {
             let Some(copy_id) = create_stack_copy_with_context(
                 game,
@@ -187,6 +209,37 @@ impl crate::effects::EffectExecutor for CopySpellForEachTargetEffect {
             created_ids.push(copy_id);
 
             events.extend(super::copy_spell::stack_copy_events(game,ctx,copy_id,super::copy_spell::CopyCompletionOrder::CopyThenTargets));
+        }
+
+        let mut additional_copies = Vec::with_capacity(additional);
+        for _ in 0..additional {
+            let Some(copy_id) = create_stack_copy_with_context(
+                game,
+                target_id,
+                &original_entry,
+                copier,
+                &self.removed_supertypes,
+                None,
+                ctx,
+            )? else {if ctx.decision_maker.awaiting_choice(){return Ok(EffectOutcome::count(0));} continue; };
+            created_ids.push(copy_id);
+            additional_copies.push(copy_id);
+            events.extend(super::copy_spell::stack_copy_events(game,ctx,copy_id,super::copy_spell::CopyCompletionOrder::CopyThenTargets));
+        }
+        if !additional_copies.is_empty() {
+            // "You may choose new targets for the additional copy" (CR 707.10c).
+            ctx.store_outcome(
+                crate::effect::EffectId::ADDITIONAL_COPIES,
+                EffectOutcome::with_objects(additional_copies),
+            );
+            crate::effects::EffectExecutor::execute_child(
+                &crate::effects::ChooseNewTargetsEffect::new(
+                    crate::effect::EffectId::ADDITIONAL_COPIES,
+                    true,
+                ),
+                game,
+                ctx,
+            )?;
         }
 
         Ok(EffectOutcome::with_objects(created_ids).with_events(events))

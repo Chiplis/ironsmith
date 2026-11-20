@@ -3319,6 +3319,12 @@ pub(super) fn parse_effect_sentences_from_sentence_inputs(
             sentence_idx += 1;
             continue;
         }
+        if let Some(program) = parse_self_enter_as_copy_sentence(sentence)? {
+            effects.extend(program);
+            carried_context = None;
+            sentence_idx += 1;
+            continue;
+        }
         if let Some(rating_effects) = parse_outside_game_art_rating_sentence(sentence)? {
             effects.extend(rating_effects);
             carried_context = None;
@@ -3938,8 +3944,12 @@ pub(super) fn parse_effect_sentences_from_sentence_inputs(
                 ..
             })) = effects.last_mut()
             {
-                branch.append(&mut exact_type_effects);
-            } else {
+                // CR 614.1c / 611.2e: the description is how the card enters,
+                // so creature-entry triggers never see it (Vraska, the Silencer).
+                if !super::bundle_rules::attach_described_entry(branch, &exact_type_effects) {
+                    branch.append(&mut exact_type_effects);
+                }
+            } else if !super::bundle_rules::attach_described_entry(&mut effects, &exact_type_effects) {
                 effects.append(&mut exact_type_effects);
             }
             carried_context = None;
@@ -4026,6 +4036,8 @@ pub(super) fn parse_effect_sentences_from_sentence_inputs(
         }
         if let Some(effect)=crate::object_filters::source_noted_names::action(&sentence_tokens){effects.push(effect);sentence_idx+=1;continue;}
         if let Some(effect)=real_card_creation::read(&sentence_tokens)? { effects.push(effect); sentence_idx+=1; continue; }
+        if let Some(effect)=real_card_creation::read_conjure(&sentence_tokens)? { effects.push(effect); sentence_idx+=1; continue; }
+        if let Some(effect)=real_card_creation::read_seek(&sentence_tokens)? { effects.push(effect); sentence_idx+=1; continue; }
         if let Some(restrictions)=zone_move_prohibitions::read(&sentence_tokens) { effects.extend(restrictions); sentence_idx+=1; continue; }
         if let Some(effect)=link_exiled_cards::read(&sentence_tokens)? {
             effects.push(effect);sentence_idx+=1;continue;
@@ -8860,9 +8872,12 @@ fn merge_cast_this_way_tax_into_play_permission(
     else {
         return;
     };
+    // "A spell cast this way costs {2} more to cast." (Elite Spellbinder)
+    // names no caster: the tax rides every use of the permission.
     let owner = match tax.taxed_caster {
-        Some(PlayerFilter::Opponent) => PlayerFilter::Opponent,
-        Some(PlayerFilter::You) => PlayerFilter::You,
+        Some(PlayerFilter::Opponent) => Some(PlayerFilter::Opponent),
+        Some(PlayerFilter::You) => Some(PlayerFilter::You),
+        None => None,
         _ => return,
     };
     fn is_tax_grant(effect: &EffectAst) -> bool {
@@ -8924,6 +8939,11 @@ fn merge_cast_this_way_tax_into_play_permission(
             cost,
             false,
         )
+    };
+    let Some(owner) = owner else {
+        effects.remove(index + 1);
+        effects[index] = permission(Some(tax.additional_cost.clone()));
+        return;
     };
     let mut owned_by_taxed_caster = ObjectFilter::default();
     owned_by_taxed_caster.owner = Some(owner);
@@ -11057,6 +11077,64 @@ fn effect_ast_can_produce_mana(effect: &EffectAst) -> bool {
         found |= children.iter().any(effect_ast_can_produce_mana);
     });
     found
+}
+
+/// "You may choose a creature card from it and have this creature enter the
+/// battlefield as a copy of that creature card" (Zam Wesell): a resolving
+/// instruction that makes the source's own next entry a copy entry. It
+/// registers a one-shot replacement for that object's entry (CR 614.1c,
+/// 707.9) whose copied object is fixed now (CR 707.2). A leading coordinated
+/// instruction ("choose ... and have ...") is read as its own sentence first,
+/// so the reference names its result.
+fn parse_self_enter_as_copy_sentence(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let tokens = trim_edge_punctuation(tokens);
+    let words = crate::lexer::token_word_refs(&tokens);
+    let Some(have) = words.iter().position(|word| *word == "have") else {
+        return Ok(None);
+    };
+    let lead = &words[..have];
+    if !(lead.is_empty() || (lead.len() > 1 && lead.last() == Some(&"and"))) {
+        return Ok(None);
+    }
+    let rest = &words[have + 1..];
+    let subject_len = match rest {
+        ["this", "enter" | "enters", ..] => 1,
+        ["this", _, "enter" | "enters", ..] => 2,
+        _ => return Ok(None),
+    };
+    let mut cursor = subject_len + 1;
+    if rest.get(cursor..cursor + 2) == Some(&["the", "battlefield"][..]) {
+        cursor += 2;
+    }
+    if rest.get(cursor..cursor + 4) != Some(&["as", "a", "copy", "of"][..]) {
+        return Ok(None);
+    }
+    cursor += 4;
+    if rest.len() <= cursor {
+        return Ok(None);
+    }
+    let view = crate::lexer::TokenWordView::new(&tokens);
+    let Some(reference_start) = view.token_index_after_words(have + 1 + cursor) else {
+        return Ok(None);
+    };
+    let reference = trim_edge_punctuation(&tokens[reference_start..]);
+    let source = crate::util::parse_target_phrase(&reference)?;
+    let mut program = Vec::new();
+    if !lead.is_empty() {
+        let Some(and_token) = view.map_word_to_token_start(have - 1) else {
+            return Ok(None);
+        };
+        let leading = trim_edge_punctuation(&tokens[..and_token]);
+        program.extend(parse_effect_sentence_lexed(&leading)?);
+    }
+    let mut filter = ObjectFilter::source();
+    filter.zone = Some(Zone::Battlefield);
+    program.push(EffectAst::subject_verb_register_next_batch_enter_as_copy(
+        filter, source,
+    ));
+    Ok(Some(program))
 }
 
 fn parse_next_batch_enter_with_counters(
@@ -17074,9 +17152,16 @@ pub(crate) fn parse_borrowed_variant_gain_sentence(
         let Some(gain) = words.iter().position(|word| matches!(*word, "gain" | "gains")) else {
             return Ok(None);
         };
-        let (keyword, id) = match words.get(gain + 1) {
-            Some(&"landwalk") => ("landwalk", StaticAbilityId::Landwalk),
-            Some(&"protection") => ("protection", StaticAbilityId::Protection),
+        let (keyword, selectors) = match words.get(gain + 1) {
+            Some(&"landwalk") => ("landwalk", vec![StaticAbilityVariantSelector::Any(StaticAbilityId::Landwalk)]),
+            Some(&"protection") => ("protection", vec![StaticAbilityVariantSelector::Any(StaticAbilityId::Protection)]),
+            // CR 702.11d/e: "hexproof from [quality]" is a hexproof ability,
+            // and a look for hexproof finds it, so the grant inherits each
+            // hexproof variant (Bleeding Effect, Odric, Lunarch Marshal).
+            Some(&"hexproof") => ("hexproof", vec![
+                StaticAbilityVariantSelector::Any(StaticAbilityId::Hexproof),
+                StaticAbilityVariantSelector::Any(StaticAbilityId::HexproofFrom),
+            ]),
             _ => return Ok(None),
         };
         let tail = &words[gain + 2..];
@@ -17115,7 +17200,7 @@ pub(crate) fn parse_borrowed_variant_gain_sentence(
         let display = crate::lexer::render_token_slice(sentence).trim().trim_end_matches('.').to_string();
         let copy = CopyStaticAbilityVariants::new(
             sources,
-            vec![StaticAbilityVariantSelector::Any(id)],
+            selectors,
             display,
         )
         .with_exclude_source_id(false);

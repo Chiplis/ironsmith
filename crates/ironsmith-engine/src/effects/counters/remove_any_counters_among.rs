@@ -223,6 +223,22 @@ impl EffectExecutor for RemoveAnyCountersAmongEffect {
         Some(self)
     }
 
+    // "Remove X counters from among ..." names X in the cost itself, so X is
+    // announced with the activation (CR 601.2b via 602.2b), even when the
+    // only legal value is 0.
+    fn references_cost_x(&self) -> bool {
+        self.display_x && self.dynamic_count
+    }
+
+    fn max_cost_x(&self, game: &GameState, source: ObjectId, controller: PlayerId) -> Option<u32> {
+        if !self.references_cost_x() {
+            return None;
+        }
+        let available = u32::try_from(total_available(self, game, source, controller))
+            .unwrap_or(u32::MAX);
+        Some(self.count.min(available))
+    }
+
     fn decision_related_object_specs(&self) -> Vec<ChooseSpec> {
         vec![ChooseSpec::All(self.filter.clone())]
     }
@@ -743,19 +759,20 @@ pub(super) fn select_distributed_counter_removal(
                     .unwrap_or(0);
                 let already_allocated = allocations.get(&object_id).copied().unwrap_or(0);
                 let free_capacity = available.saturating_sub(u64::from(already_allocated));
-                let total_allocated: u32 = allocations.values().copied().sum();
+                let total_allocated: u32 = allocations.values().copied().fold(0, u32::saturating_add);
                 let remaining_total = requested_count.saturating_sub(total_allocated);
                 let accepted = amount
                     .min(u32::try_from(free_capacity).unwrap_or(u32::MAX))
                     .min(remaining_total);
                 if accepted > 0 {
-                    *allocations.entry(object_id).or_insert(0) += accepted;
+                    let allocated = allocations.entry(object_id).or_insert(0);
+                    *allocated = allocated.saturating_add(accepted);
                 }
             }
         }
     }
 
-    let distributed_total: u32 = allocations.values().copied().sum();
+    let distributed_total: u32 = allocations.values().copied().fold(0, u32::saturating_add);
     if distributed_total > requested_count {
         return Ok(SelectedCounterRemovalPlan::Finished(
             CompletedEffectOutputs::aggregate_only(EffectOutcome::impossible()),
@@ -778,7 +795,8 @@ pub(super) fn select_distributed_counter_removal(
                 continue;
             }
             let add = remaining.min(u32::try_from(free_capacity).unwrap_or(u32::MAX));
-            *allocations.entry(*object_id).or_insert(0) += add;
+            let allocated = allocations.entry(*object_id).or_insert(0);
+            *allocated = allocated.saturating_add(add);
             remaining -= add;
         }
         if remaining > 0 {
@@ -969,9 +987,7 @@ pub(super) fn select_wide_counter_removal_among(
                 "counter-removal choices did not fulfill the remaining budget".into(),
             ));
         }
-        selected_total = selected_total.checked_add(total).ok_or_else(|| {
-            ExecutionError::InternalError("selected counter total overflow".into())
-        })?;
+        selected_total = selected_total.saturating_add(total);
         plan.push((*object_id, amounts));
     }
     if selected_total < minimum {

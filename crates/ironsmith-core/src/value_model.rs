@@ -3134,6 +3134,12 @@ pub enum Condition {
         player: PlayerFilter,
         count: u32,
     },
+    /// "you've paid or lost N or more {E} this turn" (Izzet Generatorium):
+    /// energy counters that left the player this turn, by payment or loss.
+    PlayerPaidOrLostEnergyThisTurnOrMore {
+        player: PlayerFilter,
+        count: u32,
+    },
     PlayerHadLandEnterBattlefieldThisTurn {
         player: PlayerFilter,
     },

@@ -450,6 +450,56 @@ impl super::iteration_program::SelectedIterationPlan for TaggedObjectPlan {
         summarize_tagged_iterations(outcomes, ranges)
     }
 }
+/// The lowered "put the rest into <zone>" complement: for each tagged card,
+/// unless it shares a stable identity with the kept selection, move it.
+fn tagged_remainder_move(
+    effect: &ForEachTaggedEffect,
+) -> Option<(&TagKey, &crate::effects::MoveToZoneEffect)> {
+    let [child] = effect.effects.as_slice() else {
+        return None;
+    };
+    let conditional = child.downcast_ref::<crate::effects::ConditionalEffect>()?;
+    if !conditional.if_true.is_empty() || conditional.capture_condition_result {
+        return None;
+    }
+    let [move_child] = conditional.if_false.as_slice() else {
+        return None;
+    };
+    let move_effect = move_child.downcast_ref::<crate::effects::MoveToZoneEffect>()?;
+    if !matches!(move_effect.target, crate::target::ChooseSpec::Iterated)
+        || move_effect.zone == crate::zone::Zone::Library
+        || move_effect.zone == crate::zone::Zone::Battlefield
+        || move_effect.to_top
+        || move_effect.library_order.is_some()
+    {
+        return None;
+    }
+    let crate::effect::Condition::TaggedObjectMatches(condition_tag, membership) =
+        &conditional.condition
+    else {
+        return None;
+    };
+    let [constraint] = membership.tagged_constraints.as_slice() else {
+        return None;
+    };
+    if constraint.relation != crate::filter::TaggedOpbjectRelation::SameStableId {
+        return None;
+    }
+    let mut plain = membership.clone();
+    plain.tagged_constraints.clear();
+    if plain != crate::filter::ObjectFilter::default() {
+        return None;
+    }
+    let keep = if condition_tag.as_str() == "__it__" {
+        &constraint.tag
+    } else if constraint.tag.as_str() == "__it__" {
+        condition_tag
+    } else {
+        return None;
+    };
+    (keep != &effect.tag).then_some((keep, move_effect))
+}
+
 fn tagged_object_cursor(
     effect: &ForEachTaggedEffect,
     game: &GameState,
@@ -460,6 +510,47 @@ fn tagged_object_cursor(
         return Ok(super::action_program::finished_program_cursor(
             crate::effects::CompletedEffectOutputs::aggregate_only(EffectOutcome::count(0)),
         ));
+    }
+    // "Put the rest into your graveyard" is one action that moves every
+    // remaining card at once (CR 608.2c), so a "one or more cards are put
+    // into your graveyard" trigger sees a single event (CR 603.2c), not one
+    // per card.
+    if let Some((keep, move_effect)) = tagged_remainder_move(effect) {
+        let kept: Vec<_> = ctx
+            .get_tagged_all(keep)
+            .into_iter()
+            .flatten()
+            .map(|snapshot| snapshot.stable_id)
+            .collect();
+        let rest: Vec<ObjectSnapshot> = snapshots
+            .into_iter()
+            .filter(|snapshot| {
+                !kept.contains(&snapshot.stable_id)
+                    && game
+                        .object(snapshot.object_id)
+                        .is_some_and(|object| object.zone == snapshot.zone)
+            })
+            .collect();
+        if rest.is_empty() {
+            return Ok(super::action_program::finished_program_cursor(
+                crate::effects::CompletedEffectOutputs::aggregate_only(EffectOutcome::count(0)),
+            ));
+        }
+        let rest_tag = TagKey::from("__tagged_remainder__");
+        ctx.set_tagged_objects(rest_tag.clone(), rest);
+        let mut grouped = move_effect.clone();
+        grouped.target = crate::target::ChooseSpec::Tagged(rest_tag);
+        return Ok(super::branch_program::selected_branch_cursor(vec![
+            super::branch_program::SelectedProgramBranch {
+                effects: vec![Effect::new(grouped)],
+                identity: vec![0],
+                repetitions: 1,
+                scope: crate::effects::ProgramActionScope::default(),
+                child_scope: None,
+                first_scope: None,
+                match_before_first: false,
+            },
+        ]));
     }
     if effect.supports_simultaneous_player_action() {
         let proposal = prepare_tagged_iteration_proposal(effect, game, ctx, snapshots)?;

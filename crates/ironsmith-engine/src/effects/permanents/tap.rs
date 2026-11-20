@@ -1006,6 +1006,7 @@ mod checked_snapshot_transaction_tests {
             .card_types(vec![crate::types::CardType::Artifact]).build();
         let permanent = game.create_object_from_card(&card, actor, crate::zone::Zone::Battlefield);
         let pending_before = game.effect_store.pending_trigger_events.len();
+        let abilities_before = game.object(permanent).unwrap().abilities.len();
         let mut ctx = ExecutionContext::new_default(permanent, actor);
         let result = crate::effects::composition::execute_transaction(
             &mut game, &mut ctx, || EffectOutcome::count(0), |game, ctx| {
@@ -1013,15 +1014,23 @@ mod checked_snapshot_transaction_tests {
                 assert!(action.tap(game, permanent)?);
                 // The before-state was complete; a later invalid world must
                 // fail final observation capture without escaping the owner.
-                game.player_mut(actor).unwrap().mana_pool.white = i32::MAX as u32 + 1;
+                // Quantities saturate, so inject missing numeric-choice evidence
+                // (a CDA reading a chosen number with no linked pair) instead.
+                let value = crate::effect::Value::SourceChosenNumber { if_unset: Some(0), pair: None };
+                game.object_mut(permanent).unwrap().abilities_mut().push(
+                    crate::ability::Ability::static_ability(
+                        crate::static_abilities::StaticAbility::characteristic_defining_pt(
+                            value.clone(), value)));
+                game.mark_continuous_state_dirty();
                 action.finish(game)
             },
         );
         assert!(matches!(result, Err(ExecutionError::ContinuousDiscovery(
-            crate::static_ability_processor::StaticEffectDiscoveryError::ScalarRange { .. }
-        ))));
+            crate::static_ability_processor::StaticEffectDiscoveryError::NumericChoiceEvidence { .. }
+        ))), "{result:?}");
         assert!(!game.is_tapped(permanent));
-        assert_eq!(game.player(actor).unwrap().mana_pool.white, 0);
+        assert_eq!(game.object(permanent).unwrap().abilities.len(), abilities_before,
+            "the injected world is rolled back with the instruction");
         assert_eq!(game.effect_store.pending_trigger_events.len(), pending_before);
     }
 }

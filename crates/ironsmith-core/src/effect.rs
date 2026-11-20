@@ -7178,6 +7178,10 @@ pub struct ExileEffect {
     /// Recorded per exiled card as its exiler for its source link.
     #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "Option::is_none"))]
     pub actor: Option<PlayerFilter>,
+    /// Definition-local ownership of a printed permanent spell's exile cost
+    /// (CR 607.2q), as on [`ExileUntilEffect`]. Only a cost payment uses it.
+    #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "Option::is_none"))]
+    pub cost_linked_exile_pair: Option<crate::LinkedExilePair>,
 }
 
 impl std::fmt::Debug for ExileEffect {
@@ -7194,6 +7198,9 @@ impl std::fmt::Debug for ExileEffect {
         // an absent actor byte-identical to the historical field list.
         if let Some(actor) = &self.actor {
             debug.field("actor", actor);
+        }
+        if let Some(pair) = &self.cost_linked_exile_pair {
+            debug.field("cost_linked_exile_pair", pair);
         }
         debug.finish()
     }
@@ -7214,6 +7221,7 @@ impl ExileEffect {
             turn_face_up: false,
             remember_on_source: false,
             actor: None,
+            cost_linked_exile_pair: None,
         }
     }
 

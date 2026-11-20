@@ -561,6 +561,7 @@ pub fn condition_mentions_iterated_player(condition: &Condition) -> bool {
         | PlayerCastSpellsThisTurnOrMore { player, .. }
         | PlayerTappedLandForManaThisTurn { player }
         | PlayerGainedLifeThisTurnOrMore { player, .. }
+        | PlayerPaidOrLostEnergyThisTurnOrMore { player, .. }
         | PlayerHadLandEnterBattlefieldThisTurn { player }
         | PlayerDescendedThisTurn { player }
         | PlayerHasCardTypesInGraveyardOrMore { player, .. }

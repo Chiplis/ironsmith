@@ -2362,13 +2362,36 @@ pub fn prune_redundant_target_only_effects_in_program(
 ) {
     let mut segments = std::mem::take(&mut program.segments);
     for segment in &mut segments {
-        segment.default_effects =
-            remove_redundant_target_only_effects(std::mem::take(&mut segment.default_effects));
+        segment.default_effects = fold_cast_this_way_ability_riders(
+            remove_redundant_target_only_effects(std::mem::take(&mut segment.default_effects)),
+        );
         for branch in &mut segment.self_replacements {
             branch.replacement_effects = remove_redundant_target_only_effects(std::mem::take(
                 &mut branch.replacement_effects,
             ));
         }
+    }
+    // "If you do, it has <keyword>." is its own sentence, so the rider is
+    // usually the first effect of the segment after the permission.
+    let mut index = 1;
+    while index < segments.len() {
+        let (before, after) = segments.split_at_mut(index);
+        let previous = before.last_mut().expect("index starts at 1");
+        let next = &mut after[0];
+        let folded = match (previous.default_effects.last(), next.default_effects.first()) {
+            (Some(grant), Some(rider)) => fold_cast_this_way_ability_rider(grant, rider),
+            _ => None,
+        };
+        if let Some(folded) = folded {
+            previous.default_effects.pop();
+            previous.default_effects.push(folded);
+            next.default_effects.remove(0);
+            if next.default_effects.is_empty() && next.self_replacements.is_empty() {
+                segments.remove(index);
+                continue;
+            }
+        }
+        index += 1;
     }
     program.replace_segments(segments);
 }
@@ -2416,6 +2439,81 @@ fn convert_exchange_value_operand(
             crate::effects::ExchangeValueOperand::Toughness(target.clone())
         }
     }
+}
+
+/// "You may cast a spell from among them this turn. If you do, it has
+/// <keyword>." compiles to a tagged play permission followed by
+/// `If(Happened) { AddAbility(keyword) to the same tagged cards, Forever }`.
+/// The ability belongs to the spell cast through that permission: the exiled
+/// card becomes a new object on the stack (CR 400.7), and the keyword must
+/// already apply when the total cost is determined (CR 601.2f, 702.41a).
+/// Fold such riders into the permission's cast-this-way grants.
+fn fold_cast_this_way_ability_riders(effects: Vec<Effect>) -> Vec<Effect> {
+    let mut out: Vec<Effect> = Vec::with_capacity(effects.len());
+    for effect in effects {
+        let folded = out
+            .last()
+            .and_then(|previous| fold_cast_this_way_ability_rider(previous, &effect));
+        if let Some(folded) = folded {
+            out.pop();
+            out.push(folded);
+            continue;
+        }
+        out.push(effect);
+    }
+    out
+}
+
+fn fold_cast_this_way_ability_rider(previous: &Effect, next: &Effect) -> Option<Effect> {
+    let (with_id, grant) = if let Some(with_id) =
+        previous.downcast_ref::<crate::effects::WithIdEffect>()
+    {
+        (
+            Some(with_id),
+            with_id
+                .effect
+                .downcast_ref::<crate::effects::GrantPlayTaggedEffect>()?,
+        )
+    } else {
+        (None, previous.downcast_ref::<crate::effects::GrantPlayTaggedEffect>()?)
+    };
+    let rider = next.downcast_ref::<crate::effects::IfEffect>()?;
+    if rider.predicate != crate::effect::EffectPredicate::Happened
+        || rider.per_player_result
+        || !rider.else_.is_empty()
+        || rider.then.is_empty()
+        || with_id.is_some_and(|with_id| with_id.id != rider.condition)
+    {
+        return None;
+    }
+    let mut statics = Vec::with_capacity(rider.then.len());
+    for effect in &rider.then {
+        let apply = effect.downcast_ref::<crate::effects::ApplyContinuousEffect>()?;
+        let Some(crate::target::ChooseSpec::Tagged(tag)) = apply.target_spec.as_ref() else {
+            return None;
+        };
+        if tag != &grant.tag
+            || apply.until != crate::effect::Until::Forever
+            || apply.condition.is_some()
+            || !apply.additional_modifications.is_empty()
+            || !apply.runtime_modifications.is_empty()
+        {
+            return None;
+        }
+        let Some(crate::continuous::ContinuousModification::AddAbility(ability)) =
+            apply.modification.as_ref()
+        else {
+            return None;
+        };
+        statics.push(ability.clone());
+    }
+    let mut grant = grant.clone();
+    grant.cast_this_way_statics.extend(statics);
+    let grant = Effect::new(grant);
+    Some(match with_id {
+        Some(with_id) => Effect::new(crate::effects::WithIdEffect::new(with_id.id, grant)),
+        None => grant,
+    })
 }
 
 fn remove_redundant_target_only_effects(effects: Vec<Effect>) -> Vec<Effect> {

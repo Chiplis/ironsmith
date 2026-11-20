@@ -331,25 +331,30 @@ struct DispatchPerfMetrics {
     snapshot: Option<SnapshotPerfMetrics>,
 }
 
+/// Largest pool amount JS numbers represent exactly (2^53 - 1); mana counts
+/// cross the wasm boundary saturated at it (serde-wasm-bindgen rejects larger
+/// u64 values).
+pub(crate) const MAX_JS_SAFE_MANA: u64 = (1 << 53) - 1;
+
 #[derive(Debug, Clone, Serialize)]
 struct ManaPoolView {
-    white: u32,
-    blue: u32,
-    black: u32,
-    red: u32,
-    green: u32,
-    colorless: u32,
+    white: u64,
+    blue: u64,
+    black: u64,
+    red: u64,
+    green: u64,
+    colorless: u64,
 }
 
 impl From<&ironsmith::player::ManaPool> for ManaPoolView {
     fn from(pool: &ironsmith::player::ManaPool) -> Self {
         Self {
-            white: pool.white,
-            blue: pool.blue,
-            black: pool.black,
-            red: pool.red,
-            green: pool.green,
-            colorless: pool.colorless,
+            white: pool.white.min(MAX_JS_SAFE_MANA),
+            blue: pool.blue.min(MAX_JS_SAFE_MANA),
+            black: pool.black.min(MAX_JS_SAFE_MANA),
+            red: pool.red.min(MAX_JS_SAFE_MANA),
+            green: pool.green.min(MAX_JS_SAFE_MANA),
+            colorless: pool.colorless.min(MAX_JS_SAFE_MANA),
         }
     }
 }
@@ -2794,6 +2799,9 @@ enum SpecialActionRef {
         card_id: u64,
     },
     Plot {
+        card_id: u64,
+    },
+    PlotGranted {
         card_id: u64,
     },
     ActivateManaAbility {
@@ -7397,6 +7405,10 @@ mod blazing_shoal_tests;
 #[cfg(test)]
 #[path = "tests/port_payment_probe.rs"]
 mod port_payment_probe_tests;
+
+#[cfg(test)]
+#[path = "tests/sunborn_probe.rs"]
+mod sunborn_probe_tests;
 
 #[cfg(test)]
 #[path = "tests/viewed_card_acknowledgement.rs"]

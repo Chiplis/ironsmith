@@ -1732,6 +1732,10 @@ pub(super) fn describe_mana_usage_restriction(
                         crate::ability::ManaSpendAbilityGrantDuration::UntilYourNextTurn,
                     ) => "it gains haste until your next turn".to_string(),
                     (
+                        crate::static_abilities::StaticAbilityId::Haste,
+                        crate::ability::ManaSpendAbilityGrantDuration::Indefinitely,
+                    ) => "it gains haste".to_string(),
+                    (
                         crate::static_abilities::StaticAbilityId::Hexproof,
                         crate::ability::ManaSpendAbilityGrantDuration::UntilEndOfTurn,
                     ) => "it gains hexproof until end of turn".to_string(),

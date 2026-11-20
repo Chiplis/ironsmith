@@ -16,18 +16,36 @@ use std::collections::HashMap;
 use super::TriggerEvent;
 
 /// Forward a grouped alternative only when all arms subscribing to this
-/// event kind carry the same key. Unknown subscriptions or mixed singular/
-/// grouped arms keep the previous conservative ungrouped behavior.
+/// event kind (or subscribing to every kind) carry the same key. An arm without
+/// a key or mixed singular/grouped arms keep the conservative ungrouped behavior.
 pub(crate) fn alternative_grouping_key<'a>(
     branches: impl Iterator<Item = &'a super::Trigger>,
     event: &TriggerEvent,
 ) -> Option<SimultaneousTriggerKey> {
     let mut agreed = None;
+    let mut self_arm = false;
     for branch in branches {
-        if !branch.subscribed_kinds()?.contains(&event.kind()) { continue; }
+        // A wildcard arm (no subscription superset) may match any event kind,
+        // so it still supplies its grouping key instead of ungrouping the
+        // whole alternative (The Red Terror's permanent arm, CR 603.2c).
+        if branch.subscribed_kinds().is_some_and(|kinds| !kinds.contains(&event.kind())) { continue; }
+        // "Whenever Satoru and/or one or more other creatures enter": the
+        // singular self arm observes at most one object per event, so it
+        // joins the batch of a grouped sibling arm (CR 603.2c) instead of
+        // splitting the shared event into one trigger per object.
+        if let Some(zone) = branch.downcast_ref::<crate::triggers::ZoneChangeTrigger>()
+            && zone.this_object
+            && zone.count_mode == crate::triggers::zone_changes::CountMode::Each
+        {
+            self_arm = true;
+            continue;
+        }
         let key = branch.simultaneous_trigger_key(event)?;
         if agreed.is_some_and(|agreed| agreed != key) { return None; }
         agreed = Some(key);
+    }
+    if self_arm && agreed != Some(SimultaneousTriggerKey::ZoneChangeBatch) {
+        return None;
     }
     agreed
 }
@@ -85,6 +103,12 @@ pub enum SimultaneousTriggerKey {
     KeywordActionBatch(crate::events::KeywordActionKind),
     /// One or more affected objects participate in one labelled action.
     NamedActionBatch,
+    /// Every player's life loss in one simultaneous event ("whenever one or
+    /// more opponents [each] lose [exactly N] life": once per event).
+    LifeLossBatch,
+    /// One player's sacrifices in one simultaneous action ("whenever you
+    /// sacrifice one or more Foods": once per action, CR 603.2c).
+    SacrificeBatch(PlayerId),
 }
 
 /// Context provided to trigger matchers for determining if they match an event.

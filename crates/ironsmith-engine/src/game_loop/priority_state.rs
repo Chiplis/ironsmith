@@ -591,15 +591,27 @@ pub(crate) fn tagged_filter_matches(filter: &ObjectFilter, tag: &crate::tag::Tag
 }
 
 fn single_exile_object_cost(filter: &ObjectFilter, zone: Zone) -> crate::costs::Cost {
+    single_exile_object_cost_linked(filter, zone, None)
+}
+
+/// The exile payment for one chosen object. A printed permanent spell's exile
+/// cost keeps its `cost_linked_exile_pair` (CR 607.2q), so the cards it exiles
+/// are linked to that permanent's "exiled with it" abilities (Redemptor
+/// Dreadnought).
+fn single_exile_object_cost_linked(
+    filter: &ObjectFilter,
+    zone: Zone,
+    cost_linked_exile_pair: Option<ironsmith_core::LinkedExilePair>,
+) -> crate::costs::Cost {
     let mut single_filter = filter.clone();
     if single_filter.zone.is_none() {
         single_filter.zone = Some(zone);
     }
-    crate::costs::Cost::validated_effect(crate::effect::Effect::new(
-        crate::effects::ExileEffect::with_spec(
-            ChooseSpec::Object(single_filter).with_count(crate::effect::ChoiceCount::exactly(1)),
-        ),
-    ))
+    let mut exile = crate::effects::ExileEffect::with_spec(
+        ChooseSpec::Object(single_filter).with_count(crate::effect::ChoiceCount::exactly(1)),
+    );
+    exile.cost_linked_exile_pair = cost_linked_exile_pair;
+    crate::costs::Cost::validated_effect(crate::effect::Effect::new(exile))
 }
 
 pub(crate) fn choose_tagged_cost_step(
@@ -709,7 +721,7 @@ pub(crate) fn choose_tagged_cost_step(
             .display(),
             _ => format!("Exile {}", choose.filter.description()),
         };
-        let cost = single_exile_object_cost(&choose.filter, zone);
+        let cost = single_exile_object_cost_linked(&choose.filter, zone, exile.cost_linked_exile_pair);
 
         match exile.spec.base() {
             ChooseSpec::Tagged(tag) if tag == &choose.tag => {

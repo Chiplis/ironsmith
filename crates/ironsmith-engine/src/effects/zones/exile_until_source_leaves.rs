@@ -168,7 +168,10 @@ impl super::movement_instruction::ZoneMovementInstruction for ExileUntilEffect {
 
                 let objects = match super::resolve_zone_move_objects(game, ctx, &self.spec) {
                     Ok(objects) => objects,
-                    Err(ExecutionError::InvalidTarget) if !self.spec.is_target() => Vec::new(),
+                    // "Up to N target": an empty announced slot exiles
+                    // nothing (CR 601.2c), as ExileEffect does.
+                    Err(ExecutionError::InvalidTarget)
+                        if !self.spec.is_target() || self.spec.count().min == 0 => Vec::new(),
                     Err(error) => return Err(error),
                 };
                 if ctx.decision_maker.awaiting_choice() {

@@ -407,6 +407,22 @@ impl SequenceEffect {
             result_label: Some(label.into()),
         }
     }
+
+    /// "Create a 1/1 Snake, a 2/2 Wolf, and a 3/3 Elephant token" (Bestial
+    /// Menace): one coordinated creation instruction whose tokens are created
+    /// and enter simultaneously, so "one or more tokens enter" observers see
+    /// one event (CR 111.1, 603.2c; Kambal, Profiteering Mayor).
+    fn is_coordinated_token_creation(&self) -> bool {
+        matches!(
+            self.surface,
+            ironsmith_core::SequenceSurface::Coordinated
+                | ironsmith_core::SequenceSurface::CoordinatedLeadingDuration
+        ) && self.effects.len() >= 2
+            && self
+                .effects
+                .iter()
+                .all(super::for_each_object::is_token_creation_instruction)
+    }
 }
 
 impl EffectExecutor for SequenceEffect {
@@ -455,6 +471,11 @@ impl EffectExecutor for SequenceEffect {
     }
 
     fn supports_prepared_action_program(&self) -> bool {
+        // Execute a coordinated creation as a whole so one simultaneous
+        // action stays open across its children (see below).
+        if self.is_coordinated_token_creation() {
+            return false;
+        }
         self.effects
             .iter()
             .all(super::action_program::action_program_child_is_prepared)
@@ -548,7 +569,13 @@ fn execute_sequence_with_outputs(
             } else {
                 sequence_cursor(sequence, ctx)
             };
-            super::action_program::execute_action_program_with_outputs(cursor, game, ctx, purpose)
+            let opened = matches!(purpose, crate::effects::EffectExecutionPurpose::Action)
+                && sequence.is_coordinated_token_creation()
+                && game.open_simultaneous_action();
+            let result =
+                super::action_program::execute_action_program_with_outputs(cursor, game, ctx, purpose);
+            game.close_simultaneous_action(opened);
+            result
         },
     )
 }
@@ -1119,7 +1146,8 @@ mod tests {
             let suffix = if pending { Effect::new(PendingChoiceEffect) } else {
                 Effect::new(crate::effects::CreateTokenEffect::you(crate::cards::tokens::treasure_token_definition(), 1))
             };
-            if !pending { game.set_token_creation_limits(crate::effects::tokens::TokenCreationLimits { max_created_tokens: 0, ..Default::default() }); }
+            // Token counts clamp to the creation budget; the instruction work guard still fails.
+            if !pending { game.set_token_creation_limits(crate::effects::tokens::TokenCreationLimits { max_instructions: 0, ..Default::default() }); }
             let sequence = SequenceEffect::new(vec![Effect::with_id(11, Effect::gain_life(3)), suffix]);
             let mut dm = CapturingDecisionMaker::default();
             let mut ctx = ExecutionContext::new(source, alice, &mut dm);

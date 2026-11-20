@@ -273,6 +273,37 @@ impl ReplacementMatcher for WouldBeSacrificedMatcher {
     }
 }
 
+thread_local! {
+    /// Permanents whose current destruction "can't be regenerated" (Wrath of
+    /// God). One-shot shields are suspended by the destroy owner; static
+    /// regeneration replacements are regenerated from their abilities, so
+    /// they consult this scope instead (CR 701.19c).
+    static REGENERATION_SUSPENDED: std::cell::RefCell<Vec<crate::ids::ObjectId>> =
+        const { std::cell::RefCell::new(Vec::new()) };
+}
+
+fn regeneration_suspended_for(permanent: crate::ids::ObjectId) -> bool {
+    REGENERATION_SUSPENDED.with(|scope| scope.borrow().contains(&permanent))
+}
+
+/// Run `body` while regeneration can't replace `permanent`'s destruction.
+pub(crate) fn with_regeneration_suspended<R>(
+    permanent: crate::ids::ObjectId,
+    body: impl FnOnce() -> R,
+) -> R {
+    struct Pop;
+    impl Drop for Pop {
+        fn drop(&mut self) {
+            REGENERATION_SUSPENDED.with(|scope| {
+                scope.borrow_mut().pop();
+            });
+        }
+    }
+    REGENERATION_SUSPENDED.with(|scope| scope.borrow_mut().push(permanent));
+    let _pop = Pop;
+    body()
+}
+
 /// Matches when a specific creature (protected by regeneration) would be destroyed.
 ///
 /// Unlike `ThisWouldBeDestroyedMatcher` which uses the effect's source,
@@ -310,6 +341,15 @@ impl ReplacementMatcher for RegenerationShieldMatcher {
 
         // Check if the permanent being destroyed matches our protected creature
         if destroy.permanent != self.protected {
+            return false;
+        }
+
+        // A permanent that can't be regenerated isn't protected by any
+        // regeneration effect, including a static "if this would be
+        // destroyed, regenerate it" replacement (CR 701.19c).
+        if !ctx.game.can_be_regenerated(destroy.permanent)
+            || regeneration_suspended_for(destroy.permanent)
+        {
             return false;
         }
 

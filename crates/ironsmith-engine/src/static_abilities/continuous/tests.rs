@@ -3721,19 +3721,15 @@ fn player_counter_anthem_native_scalar_admission_never_wraps() {
     let anthem = Anthem::for_source(0, 0).with_values(
         AnthemValue::scaled(2, count.clone()), AnthemValue::Fixed(0),
     );
-    // Deliberately seed an out-of-domain state; do not exercise an unchecked cast.
+    // Deliberately seed an out-of-domain state; game quantities saturate, never wrap.
     game.player_mut(a).unwrap().experience_counters = u32::MAX;
-    assert!(resolve_anthem_count_expression_checked(&count, &game, source, a).is_err());
-    assert!(matches!(anthem.validate_mana_scalar_ranges(&game, source, a),
-        Err(crate::static_ability_processor::StaticEffectDiscoveryError::ScalarRange {
-            resource: "player-counter anthem count", ..
-        })));
+    assert_eq!(resolve_anthem_count_expression_checked(&count, &game, source, a).unwrap(), i32::MAX);
+    assert_eq!(anthem.validate_mana_scalar_ranges(&game, source, a).unwrap(), true);
+    assert_eq!(anthem.power.evaluate(&game, source, a), i32::MAX);
     game.player_mut(a).unwrap().experience_counters = i32::MAX as u32;
     assert_eq!(resolve_anthem_count_expression_checked(&count, &game, source, a).unwrap(), i32::MAX);
-    assert!(matches!(anthem.validate_mana_scalar_ranges(&game, source, a),
-        Err(crate::static_ability_processor::StaticEffectDiscoveryError::ScalarRange {
-            resource: "player-counter anthem modifier", ..
-        })));
+    assert_eq!(anthem.validate_mana_scalar_ranges(&game, source, a).unwrap(), true);
+    assert_eq!(anthem.power.evaluate(&game, source, a), i32::MAX, "2 * i32::MAX saturates");
     let capped = Anthem::for_source(0, 0).with_values(
         AnthemValue::scaled_capped(2, count.clone(), 9), AnthemValue::Fixed(0),
     );

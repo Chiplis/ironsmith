@@ -148,8 +148,10 @@ pub(crate) fn process_destroy_with_regeneration(
             .suspend_regeneration_shields_from_source(object_id);
         let shield_count = game.regeneration_shield_count(object_id);
         game.clear_regeneration_shields(object_id);
-        let result =
-            crate::events::processing::process_destroy_scoped(game, object_id, source, ctx, None);
+        let result = crate::events::permanents::matchers::with_regeneration_suspended(
+            object_id,
+            || crate::events::processing::process_destroy_scoped(game, object_id, source, ctx, None),
+        );
         if result.is_err() || ctx.decision_maker.awaiting_choice() {
             return result;
         }
@@ -298,6 +300,7 @@ pub(crate) fn execute_simultaneous_destroy_with_outputs(
                 .unwrap_or(ctx.provenance);
             let pending_start = staged_game.effect_store.pending_trigger_events.len();
             let mut destroyed_objects = Vec::new();
+            let mut redirected_objects = Vec::new();
             let mut destroyed_memory = Vec::new();
             let mut graveyard_zone_changes = Vec::new();
             let mut departed_snapshots = Vec::new();
@@ -358,13 +361,25 @@ pub(crate) fn execute_simultaneous_destroy_with_outputs(
                         graveyard_zone_changes.push((object_id, result_objects.clone(), snapshot));
                     }
                     destroyed_objects.extend(result_objects);
+                } else if matches!(result, EventOutcome::Proceed(zone) if zone != Zone::Battlefield) {
+                    // CR 701.8a, 614.6: a replacement that changes only the
+                    // destination (Rest in Peace) still destroyed the
+                    // permanent, so it counts as "destroyed this way". It
+                    // joins neither the graveyard order nor the death batch.
+                    applied_count += 1;
+                    if let Some(snapshot) = pre_snapshot.as_ref() {
+                        destroyed_memory.push(Clone::clone(snapshot));
+                    }
+                    redirected_objects.extend(receipt_result_objects);
                 }
             }
+            let graveyard_destroyed_objects = destroyed_objects.clone();
+            destroyed_objects.extend(redirected_objects);
 
             // CR 404.3: cards a replacement put into a graveyard instead
             // (umbra armor destroying its Aura) arrive in the same event and
             // join their owner's ordering choice.
-            let mut graveyard_arrivals = destroyed_objects.clone();
+            let mut graveyard_arrivals = graveyard_destroyed_objects;
             for player in &staged_game.players {
                 let before = decision_view
                     .player(player.id)

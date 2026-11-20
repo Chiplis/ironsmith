@@ -568,11 +568,7 @@ fn apply_exchange_modifiers(
         let Some(roll) = rolls.get_mut(index) else {
             continue;
         };
-        let result = i32::try_from(roll.result).map_err(|_| ExecutionError::ResourceLimitExceeded {
-            resource: "exchanged die result",
-            requested: u128::from(roll.result),
-            maximum: i32::MAX as u128,
-        })?;
+        let result = ironsmith_core::quantity::clamp_i32_from_u32(roll.result);
         let value = crate::effect::Value::Fixed(result);
         let modification = if power {
             crate::continuous::Modification::SetPower {
@@ -610,13 +606,9 @@ fn apply_exchange_modifiers(
 }
 
 fn bounded_die_result(result: i128) -> Result<u32, ExecutionError> {
-    // CR 107.1b: a negative result of an effect is zero; an unrepresentable
-    // positive result is an execution-resource error, never saturation.
-    u32::try_from(result.max(0)).map_err(|_| ExecutionError::ResourceLimitExceeded {
-        resource: "modified die result",
-        requested: result.max(0) as u128,
-        maximum: u32::MAX as u128,
-    })
+    // CR 107.1b: a negative result of an effect is zero; die results are
+    // quantities and saturate at the unsigned event range.
+    Ok(u32::try_from(result.max(0)).unwrap_or(u32::MAX))
 }
 
 pub(crate) fn roll_dice_with_modifiers(
@@ -750,7 +742,7 @@ pub(crate) fn complete_die_rolls(
                 roll.result,
                 sides,
             )
-            .with_turn_ordinal(ordinal + index as u32);
+            .with_turn_ordinal(ordinal.saturating_add(u32::try_from(index).unwrap_or(u32::MAX)));
             let observation = if attraction_visit {
                 observation.for_attraction_visit()
             } else {

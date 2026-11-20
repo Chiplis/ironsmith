@@ -210,9 +210,14 @@ pub(crate) fn excess_damage_to_object(
         let lethal = if keywords.has_deathtouch {
             Some(1)
         } else {
-            game.calculated_toughness(target)
-                .or_else(|| object.toughness())
-                .map(|toughness| (toughness - game.damage_on(target) as i32).max(0) as u32)
+            // CR 120.4a: lethal damage follows the rule that defines it for
+            // this creature (Zilortha: power instead of toughness).
+            crate::rules::damage::lethal_damage_threshold_for_creature(game, object)
+                .map(|toughness| {
+                    ironsmith_core::quantity::clamp_u32(
+                        i64::from(toughness) - i64::from(game.damage_on(target)),
+                    )
+                })
         };
         if let Some(lethal) = lethal {
             excess = Some(excess.unwrap_or(0).max(amount.saturating_sub(lethal)));
@@ -3191,19 +3196,17 @@ mod wide_damage_receipt_consumer_tests {
             &mut ctx,
         );
         if out_of_range {
-            assert!(
-                matches!(following, Err(ExecutionError::UnresolvableValue(_))),
-                "a quantity beyond one damage event's unsigned range must reject explicitly"
-            );
-            assert_eq!(
-                game.damage_on(next),
-                0,
-                "range rejection occurs before mutation"
-            );
-            assert!(
-                game.take_pending_trigger_events().is_empty(),
-                "rejected damage publishes no observation"
-            );
+            // A quantity beyond one damage event's unsigned range saturates.
+            let following =
+                following.expect("oversized following damage saturates and resolves");
+            assert_eq!(game.damage_on(next), u32::MAX);
+            let observations = following
+                .events
+                .iter()
+                .filter_map(|event| event.downcast::<DamageEvent>())
+                .collect::<Vec<_>>();
+            assert_eq!(observations.len(), 1);
+            assert_eq!(observations[0].amount, u32::MAX);
         } else {
             let following =
                 following.expect("representable unsigned following damage must resolve");

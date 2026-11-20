@@ -104,14 +104,16 @@ pub(super) fn select_contributors_with_requirement(
         return Some((chosen, sufficient));
     }
     let ContributionRequirement::AtLeast(required) = requirement else { unreachable!() };
-    let mut total: i64 = chosen.iter().map(|id| i64::from(value(*id))).sum();
+    let mut total: i64 = chosen
+        .iter()
+        .fold(0i64, |total, id| total.saturating_add(i64::from(value(*id))));
     for id in candidates {
         if total >= i64::from(required) {
             break;
         }
         if !chosen.contains(&id) && value(id) > 0 {
             chosen.push(id);
-            total += i64::from(value(id));
+            total = total.saturating_add(i64::from(value(id)));
         }
     }
     Some((chosen, total >= i64::from(required)))
@@ -228,15 +230,15 @@ pub(super) fn contribution_value(game: &GameState, object_id: ObjectId, crew: bo
                 .fold(1i32, i32::saturating_mul),
         )
     };
-    base + mechanics
+    mechanics
         .iter()
         .filter_map(|mechanic| match mechanic {
             KeywordMarkerMechanic::ContributesExtraPower { saddles, amount } if applies(*saddles) => {
-                i32::try_from(*amount).ok()
+                Some(i32::try_from(*amount).unwrap_or(i32::MAX))
             }
             _ => None,
         })
-        .sum::<i32>()
+        .fold(base, i32::saturating_add)
 }
 
 #[cfg(test)]

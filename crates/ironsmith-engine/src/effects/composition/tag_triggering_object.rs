@@ -174,6 +174,25 @@ impl crate::effects::ResolutionPreludeBinding for TagTriggeringObjectEffect {
                     set_triggering_object_tags(ctx, self.tag.as_str(), vec![snapshot.clone()]);
                     return Ok(EffectOutcome::count(1));
                 }
+                // The arrival already left its destination (Emrakul milled
+                // and returned by the same spell, CR 603.10). Its last-known
+                // information in that zone still answers "its owner"; the
+                // departed id cannot be moved again by a live-object lookup.
+                let departed: Vec<_> = zone_change
+                    .result_objects
+                    .iter()
+                    .filter_map(|&id| {
+                        zone_change
+                            .destination_snapshot(id)
+                            .cloned()
+                            .or_else(|| latest_zone_lki_snapshot(game, id, zone_change.to))
+                    })
+                    .collect();
+                if !departed.is_empty() {
+                    let count = departed.len() as i32;
+                    set_triggering_object_tags(ctx, self.tag.as_str(), departed);
+                    return Ok(EffectOutcome::count(count));
+                }
                 set_triggering_object_tags(ctx, self.tag.as_str(), Vec::new());
                 return Ok(EffectOutcome::count(0));
             }
@@ -294,6 +313,27 @@ impl crate::effects::ResolutionPreludeBinding for TagTriggeringObjectEffect {
         if let Some(sacrifice) = event.downcast::<crate::events::permanents::SacrificeEvent>()
             && let Some(snapshot) = sacrifice.snapshot.as_ref()
         {
+            // CR 400.7e: a sacrifice trigger can find the new object the
+            // permanent became in the zone it moved to, if that zone is public
+            // (Rest in Peace sends it to exile instead of the graveyard). The
+            // recorded arrival pins that exact incarnation.
+            if let Some(destination) = sacrifice.destination {
+                let tagged = game
+                    .object(destination)
+                    .filter(|obj| {
+                        obj.zone.is_public()
+                            && obj.zone != crate::zone::Zone::Battlefield
+                            && obj.zone != crate::zone::Zone::Stack
+                            && obj.stable_id == snapshot.stable_id
+                    })
+                    .map(|obj| {
+                        ObjectSnapshot::from_object_with_calculated_characteristics(obj, game)
+                    });
+                let tagged = tagged.into_iter().collect::<Vec<_>>();
+                let count = tagged.len() as i32;
+                set_triggering_object_tags(ctx, self.tag.as_str(), tagged);
+                return Ok(EffectOutcome::count(count));
+            }
             let tagged = game
                 .find_object_by_stable_id(snapshot.stable_id)
                 .and_then(|id| game.object(id))
@@ -353,6 +393,19 @@ impl crate::effects::ResolutionPreludeBinding for TagTriggeringObjectEffect {
             // follow the card to its new zone does so through
             // `resolve_tagged_object_id`.
             set_triggering_object_tags(ctx, self.tag.as_str(), vec![snapshot.clone()]);
+            return Ok(EffectOutcome::count(1));
+        }
+
+        // An event without its own snapshot (counters removed from a creature
+        // that then died to state-based actions, Magma Pummeler): "it" still
+        // names that object as it last existed (CR 608.2h, 113.7a).
+        if let Some(snapshot) = ctx
+            .source_snapshot
+            .clone()
+            .filter(|snapshot| snapshot.object_id == object_id)
+            .or_else(|| game.source_last_known_snapshot(object_id).cloned())
+        {
+            set_triggering_object_tags(ctx, self.tag.as_str(), vec![snapshot]);
             return Ok(EffectOutcome::count(1));
         }
 

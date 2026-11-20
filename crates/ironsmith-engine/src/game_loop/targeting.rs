@@ -18,7 +18,7 @@ fn resolve_modal_count_value_for_source(
         crate::effect::Value::Fixed(n) => (*n).max(0) as usize,
         crate::effect::Value::X => x_value.unwrap_or(fallback),
         crate::effect::Value::XTimes(multiplier) => x_value
-            .map(|x| ((x as i32) * *multiplier).max(0) as usize)
+            .map(|x| ironsmith_core::quantity::clamp_usize(i64::try_from(x).unwrap_or(i64::MAX).saturating_mul(i64::from(*multiplier))))
             .unwrap_or(fallback),
         _ => fallback,
     }
@@ -485,7 +485,7 @@ pub(super) fn queue_triggers_for_simultaneous_events(
                             &mut trigger_queue.entries[index];
                         if let Some(amount) = trigger.event_value_amount {
                             previous.event_value_amount =
-                                Some(previous.event_value_amount.unwrap_or(0) + amount);
+                                Some(previous.event_value_amount.unwrap_or(0).saturating_add(amount));
                         }
                         crate::triggers::merge_trigger_group_tags(
                             &mut previous.tagged_objects,
@@ -521,15 +521,8 @@ pub(super) fn queue_triggers_for_simultaneous_events(
                             let previous: &mut crate::triggers::TriggeredAbilityEntry =
                                 &mut trigger_queue.entries[index];
                             if let Some(amount) = trigger.event_value_amount {
-                                let Some(total) = previous.event_value_amount.unwrap_or(0).checked_add(amount) else {
-                                    game.record_token_resource_failure(&crate::effects::ExecutionError::ResourceLimitExceeded {
-                                        resource: "grouped damage trigger amount", requested: i32::MAX as u128 + 1,
-                                        maximum: i32::MAX as u128,
-                                    });
-                                    game.turn_store.turn_history.end_simultaneous_batch(previous_batch_start);
-                                    return;
-                                };
-                                previous.event_value_amount = Some(total);
+                                previous.event_value_amount =
+                                    Some(previous.event_value_amount.unwrap_or(0).saturating_add(amount));
                             }
                             crate::triggers::merge_trigger_group_tags(
                                 &mut previous.tagged_objects,
@@ -1082,6 +1075,14 @@ pub(super) fn apply_keyword_payment_tags_for_resolution(
         if let Some(obj) = game.object(contribution.permanent_id) {
             let snapshot = ObjectSnapshot::from_object(obj, game);
             ctx.tag_object(payment_contribution_tag(contribution.effect), snapshot);
+        } else if let Some(snapshot) =
+            game.source_last_known_snapshot(contribution.permanent_id)
+        {
+            // A convoking creature that left the battlefield before the spell
+            // resolved is still "each creature that convoked this spell";
+            // its last known information drives instructions such as connive
+            // (CR 608.2h, 701.50c). Effects that physically act on it no-op.
+            ctx.tag_object(payment_contribution_tag(contribution.effect), snapshot.clone());
         }
     }
 
@@ -2154,7 +2155,7 @@ fn modal_effect_has_legal_targets_internal_with_view(
                 mode_declared_targets,
                 &mut declared_targets_from_modes,
             );
-            selected_count += point_cost;
+            selected_count = selected_count.saturating_add(point_cost);
         }
 
         let valid_selection = if require_full_selection {
@@ -2608,6 +2609,35 @@ pub(super) fn spell_effect_has_legal_targets_internal_with_view(
     )
 }
 
+thread_local! {
+    static KEEP_TRIGGER_CONTEXT_TARGETS: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+}
+
+/// Run a target extraction for a triggered ability whose trigger context
+/// (triggering event, damaged player) is applied afterwards by
+/// `refresh_trigger_program_target_requirements`. A target that names "that
+/// player" / "that opponent" has no legal targets until that context binds it,
+/// so it must be kept rather than dropped as unsatisfiable (CR 603.3d).
+pub(super) fn with_trigger_context_target_requirements<R>(
+    triggering_event: Option<&TriggerEvent>,
+    f: impl FnOnce() -> R,
+) -> R {
+    // Only an event that names "that player" can bind such a target later.
+    if !triggering_event.is_some_and(|event| event.trigger_player().is_some()) {
+        return f();
+    }
+    let previous = KEEP_TRIGGER_CONTEXT_TARGETS.with(|flag| flag.replace(true));
+    let result = f();
+    KEEP_TRIGGER_CONTEXT_TARGETS.with(|flag| flag.set(previous));
+    result
+}
+
+fn target_spec_binds_trigger_context_player(spec: &ChooseSpec) -> bool {
+    KEEP_TRIGGER_CONTEXT_TARGETS.with(|flag| flag.get())
+        && (spec.mentions_player_filter(&PlayerFilter::IteratedPlayer)
+            || spec.mentions_player_filter(&PlayerFilter::DamagedPlayer))
+}
+
 pub(super) fn extract_target_requirements_from_effect_internal(
     game: &GameState,
     effect: &Effect,
@@ -2924,6 +2954,10 @@ pub(super) fn extract_target_requirements_from_effect_internal(
             source_id,
             &legal_targets,
         );
+        crate::targeting::retain_targets_admissible_under_aggregate(
+            &mut legal_targets,
+            aggregate_constraint.as_ref(),
+        );
         // For "any number" effects (min_targets == 0), we can cast even with no legal targets.
         // For required targets (min_targets > 0), we need at least min_targets legal targets.
         let has_enough_targets = crate::targeting::has_enough_legal_targets_for_spec(
@@ -2934,7 +2968,10 @@ pub(super) fn extract_target_requirements_from_effect_internal(
         ) && aggregate_constraint
             .as_ref()
             .is_none_or(|constraint| constraint.supports_minimum(min_targets));
-        if has_enough_targets || extracted.chooser.is_some() {
+        if has_enough_targets
+            || extracted.chooser.is_some()
+            || target_spec_binds_trigger_context_player(extracted.spec)
+        {
             let distinct_player_group =
                 link_relative_target_to_prior_requirement(extracted.spec, requirements);
             let shared_player_group = link_target_controller_requirement(
@@ -3448,6 +3485,10 @@ fn extract_target_requirements_from_iterated_effect(
             caster,
             source_id,
             &legal_targets,
+        );
+        crate::targeting::retain_targets_admissible_under_aggregate(
+            &mut legal_targets,
+            aggregate_constraint.as_ref(),
         );
         let has_enough_targets = crate::targeting::has_enough_legal_targets_for_spec(
             game,

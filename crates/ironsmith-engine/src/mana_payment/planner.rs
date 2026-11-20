@@ -761,7 +761,11 @@ fn useful_manual_mana_abilities_with_resolved(
         let pool_total = |state: &GameState| {
             state
                 .player(request.payer)
-                .map_or(0, |player| player.mana_pool.total() as usize + player.restricted_mana.len())
+                .map_or(0, |player| {
+                    usize::try_from(player.mana_pool.total_wide())
+                        .unwrap_or(usize::MAX)
+                        .saturating_add(player.restricted_mana.len())
+                })
         };
         if finish_mana_activation_with_outputs(&mut staged, activation, &mut decision_maker).is_ok()
             && !decision_maker.awaiting_choice()
@@ -1184,6 +1188,47 @@ fn every_mana_ability_is_single_use(
     true
 }
 
+/// Like `every_mana_ability_is_single_use`, but an ability without a tap
+/// cost also qualifies when it can be activated only once each turn ("{1}:
+/// Add one mana of any color. Activate only once each turn.", Shire
+/// Scarecrow). Interchangeable copies of such a source are symmetric search
+/// branches: activating one or another identical copy leaves equivalent
+/// states, so `collapse_interchangeable_choices` may keep one per class.
+fn every_mana_ability_is_used_at_most_once(
+    game: &GameState,
+    request: &ManaPaymentRequest,
+    view: &DerivedGameView<'_>,
+) -> bool {
+    let analysis = view.simple_battlefield_mana_analysis(request.payer);
+    for &source in analysis.mana_source_ids() {
+        if super::sources::has_live_activation_alternatives(game,Some(source)){return false;}
+        let Some(object) = game.object(source) else {
+            continue;
+        };
+        let abilities = view
+            .abilities_rc(source)
+            .unwrap_or_else(|| std::sync::Arc::new(object.abilities_vec()));
+        for &ability_index in analysis.mana_ability_indices_for(source) {
+            let Some(ability) = abilities.get(ability_index) else {
+                continue;
+            };
+            let AbilityKind::Activated(mana_ability) = &ability.kind else {
+                continue;
+            };
+            let once = mana_ability.has_tap_cost()
+                || mana_ability.timing == crate::ability::ActivationTiming::OncePerTurn;
+            if !once
+                || mana_ability.activation_condition.is_some()
+                || !mana_ability.activation_restrictions.is_empty()
+                || !mana_ability.additional_restrictions.is_empty()
+            {
+                return false;
+            }
+        }
+    }
+    true
+}
+
 /// Fast unpayability check run once before the planner's search begins.
 ///
 /// Proving a cost unpayable is the planner's worst case: it expands the whole
@@ -1366,7 +1411,7 @@ fn finite_fixed_production_is_insufficient(
                 symbols,
                 amount: Value::Fixed(amount),
                 ..
-            } => symbol_units(symbols)?.checked_mul((*amount).max(0) as u64),
+            } => Some(symbol_units(symbols)?.saturating_mul((*amount).max(0) as u64)),
             ManaProduction::ChooseColors {
                 amount: Value::Fixed(amount),
                 ..
@@ -1418,7 +1463,7 @@ fn finite_fixed_production_is_insufficient(
                 _ => Some(1),
             })
             .min()?;
-        total.checked_add(units)
+        Some(total.saturating_add(units))
     });
     let Some(minimum) = minimum else {
         return false;
@@ -1481,20 +1526,14 @@ fn finite_fixed_production_is_insufficient(
                 let Some(units) = effect.mana_production().and_then(fixed_units) else {
                     return false;
                 };
-                let Some(total) = count.checked_add(units) else {
-                    return false;
-                };
-                count = total;
+                count = count.saturating_add(units);
             }
             largest = largest.max(count);
         }
         // Every ability counted here taps its source, and a source this cost
         // itself taps is never offered to the search.
         if !game.is_tapped(source) && !request.reserved_tap_sources.contains(&source) {
-            let Some(total) = available.checked_add(largest) else {
-                return false;
-            };
-            available = total;
+            available = available.saturating_add(largest);
         }
     }
     if available >= minimum {
@@ -2065,7 +2104,12 @@ fn fixed_outputs_cannot_pay_a_pip(game: &GameState, request: &ManaPaymentRequest
     let Some(player) = game.player(request.payer) else {
         return false;
     };
-    let mut symbols = super::sources::pool_units(&player.mana_pool);
+    // Only which symbols are present matters here, never how many: one unit
+    // per nonempty pool type keeps a saturated pool from being materialized.
+    let mut symbols: Vec<ManaSymbol> = crate::events::mana::POOL_SYMBOLS
+        .into_iter()
+        .filter(|symbol| player.mana_pool.amount(*symbol) > 0)
+        .collect();
     symbols.extend(player.restricted_mana.iter().map(|unit| unit.symbol));
     let mut snow = player.mana_source_provenance.iter().any(|unit| {
         unit.snapshot
@@ -2178,7 +2222,7 @@ fn fixed_outputs_cannot_cover_quantities(game: &GameState, request: &ManaPayment
             ManaSymbol::Colorless => &mut player.mana_pool.colorless,
             _ => return false,
         };
-        *amount = (*amount).max(bound);
+        *amount = (*amount).max(u64::from(bound));
     }
     optimistic
         .preview_mana_cost_payment_with_options(
@@ -3733,14 +3777,16 @@ fn collapse_interchangeable_choices(
     if super::sources::has_potential_mana_triggers(game, view)
         || !game.effect_store.replacement_effects.effects().is_empty()
         || game.continuous_effects_are_tap_sensitive()
-        || !every_mana_ability_is_single_use(game, request, view)
+        || !every_mana_ability_is_used_at_most_once(game, request, view)
     {
         return choices;
     }
     let analysis = super::sources::ManaSourceAnalysis::new(game);
     #[derive(PartialEq)]
     struct ClassKey {
-        symbols: Vec<ManaSymbol>,
+        // Multiplicity matters (one green differs from two), but compare the
+        // pool counts directly rather than materializing one symbol per unit.
+        symbols: crate::player::ManaPool,
         color_restriction: Option<Vec<Color>>,
         flexibility: usize,
         snow: bool,
@@ -3750,6 +3796,7 @@ fn collapse_interchangeable_choices(
         required_source: bool,
         preserved: bool,
         reserved_tap: bool,
+        paid_filter_key: Option<String>,
     }
 
     let mut classes: Vec<(ClassKey, usize)> = Vec::new();
@@ -3771,18 +3818,41 @@ fn collapse_interchangeable_choices(
             continue;
         };
         // A non-undo-safe activation can do anything to the game, so it is
-        // never merged with another source.
-        if !crate::game_loop::mana_ability_is_undo_safe(game, choice.source, choice.ability_index) {
+        // never merged with another source. The exception is a pure mana
+        // filter whose whole cost is mana ("{1}: Add one mana of any color.
+        // Activate only once each turn.", Shire Scarecrow): identical copies
+        // are interchangeable when their cost and timing are equal too.
+        let paid_filter_key = if crate::game_loop::mana_ability_is_undo_safe(
+            game,
+            choice.source,
+            choice.ability_index,
+        ) {
+            None
+        } else if let Some(costs) = mana_ability.mana_cost.as_all()
+            && !costs.is_empty()
+            && costs.iter().all(|cost| cost.is_mana_cost())
+            && mana_ability.effects.iter().all(|effect| {
+                effect
+                    .producible_mana_symbols(game, choice.source, game.controller_of(object))
+                    .is_some()
+            })
+        {
+            Some(format!(
+                "{}|{:?}",
+                costs.iter().map(|cost| cost.display()).collect::<Vec<_>>().join(","),
+                mana_ability.timing
+            ))
+        } else {
             keep[index] = true;
             continue;
-        }
+        };
         let Some(projected) = analysis.project(choice) else {
             keep[index] = true;
             continue;
         };
         // Preserve multiplicity: one green and two green are different
         // resources even though their sets of possible colors are identical.
-        let symbols = super::sources::pool_units(&projected.output);
+        let symbols = projected.output.clone();
         let key = ClassKey {
             symbols,
             color_restriction: choice.color_restriction.clone(),
@@ -3808,6 +3878,7 @@ fn collapse_interchangeable_choices(
                 .preserve_sources
                 .contains(&choice.source),
             reserved_tap: request.reserved_tap_sources.contains(&choice.source),
+            paid_filter_key,
         };
         match classes.iter().find(|(candidate, _)| *candidate == key) {
             Some(_) => continue,
@@ -3837,7 +3908,7 @@ pub(super) fn collect_search_choices(
     game: &GameState,
     request: &ManaPaymentRequest,
 ) -> Vec<ActivationChoice> {
-    let mut choices = collect_activation_choices_inner(game, request, true);
+    let choices = collect_activation_choices_inner(game, request, true);
     let missing = game.uncovered_mana_payment_pips(request);
     // A colour-choice ability is offered once per colour and once more with
     // the colour left to the chooser. The open variant is scored as though it
@@ -3852,7 +3923,7 @@ pub(super) fn collect_search_choices(
     // Ordering only: uncertain production never removes a legal branch. In
     // particular triggers, replacements and filter dependencies still execute
     // through prepare_activation when their branch is selected.
-    choices.sort_by_cached_key(|choice| {
+    let order_key = |choice: &ActivationChoice| {
         let preference = activation_preference_key(request, choice);
         let ability = game.current_ability(choice.source, choice.ability_index);
         let activated = ability.as_ref().and_then(|ability| match &ability.kind {
@@ -3941,11 +4012,20 @@ pub(super) fn collect_search_choices(
         let costly = activation_consumes_resources(game, choice);
         let open_colour_choice = choice.color_restriction.is_none()
             && colour_variants.contains(&(choice.source, choice.ability_index));
+        // Tier: 0 useful and free, 1 fuel (assigned below), 2 useful but
+        // consumes resources, 3 cannot pay an uncovered pip.
+        let tier: u8 = if useful_pips == 0 {
+            3
+        } else if costly != 0 {
+            2
+        } else {
+            0
+        };
         (
             preference.0,
             preference.1,
             preference.2,
-            u8::from(useful_pips == 0),
+            tier,
             costly,
             open_colour_choice,
             std::cmp::Reverse(constrained),
@@ -3954,8 +4034,54 @@ pub(super) fn collect_search_choices(
             preference.4,
             preference.5,
         )
-    });
-    choices
+    };
+    let mut keyed: Vec<_> = choices
+        .into_iter()
+        .map(|choice| (order_key(&choice), choice))
+        .collect();
+    // A useful mana filter whose cost is mana ("{1}: Add one mana of any
+    // color", Shire Scarecrow) can only be funded by mana already in the
+    // pool. Tapping its fuel first keeps the fuel ahead of the filter's output
+    // in pool order, so the filter's generic cost spends the fuel rather than
+    // the colour the request needs. Without this, the filter was tried first
+    // on an empty pool, and every later filter spent the previous filter's
+    // output, turning a six-step payment into an exhaustive search (CR 605.3a
+    // lets each filter be activated while paying, in any order).
+    let paid_filter_cost = |choice: &ActivationChoice| -> u32 {
+        game.current_ability(choice.source, choice.ability_index)
+            .and_then(|ability| match &ability.kind {
+                AbilityKind::Activated(activated) => activated.mana_cost.as_all().map(|costs| {
+                    costs
+                        .iter()
+                        .filter_map(|cost| cost.mana_cost_ref().map(|mana| mana.mana_value()))
+                        .sum::<u32>()
+                }),
+                _ => None,
+            })
+            .unwrap_or(0)
+    };
+    let cheapest_useful_filter = keyed
+        .iter()
+        .filter(|(key, _)| key.3 == 2)
+        .map(|(_, choice)| paid_filter_cost(choice))
+        .filter(|cost| *cost > 0)
+        .min();
+    if let Some(filter_cost) = cheapest_useful_filter {
+        let covered = expanded_pip_count(request).saturating_sub(missing.len());
+        let surplus = game
+            .player(request.payer)
+            .map_or(0, |player| player.mana_pool.total() as usize)
+            .saturating_sub(covered);
+        if surplus < missing.len().saturating_mul(filter_cost as usize) {
+            for (key, _) in &mut keyed {
+                if key.3 == 3 && key.4 == 0 {
+                    key.3 = 1;
+                }
+            }
+        }
+    }
+    keyed.sort_by(|left, right| left.0.cmp(&right.0));
+    keyed.into_iter().map(|(_, choice)| choice).collect()
 }
 
 fn collect_activation_choices_inner(
@@ -4210,17 +4336,17 @@ fn required_activations_are_present(request: &ManaPaymentRequest, path: &[Search
     true
 }
 
-fn expanded_pip_count(request: &ManaPaymentRequest) -> usize {
+pub(crate) fn expanded_pip_count(request: &ManaPaymentRequest) -> usize {
     request
         .cost
         .pips()
         .iter()
         .map(|pip| match pip.as_slice() {
             [ManaSymbol::Generic(amount)] => *amount as usize,
-            [ManaSymbol::X] => request.x_value as usize,
+            [ManaSymbol::X] => usize::try_from(request.x_value).unwrap_or(usize::MAX),
             _ => 1,
         })
-        .sum()
+        .fold(0usize, usize::saturating_add)
 }
 
 fn positive_pool_delta(before: &ManaPool, after: &ManaPool) -> ManaPool {
@@ -4691,13 +4817,22 @@ fn plan_hash(
         "exact actual mana payment".hash(&mut hasher);
         payment.hash(&mut hasher);
     }
-    pool.white.hash(&mut hasher);
-    pool.blue.hash(&mut hasher);
-    pool.black.hash(&mut hasher);
-    pool.red.hash(&mut hasher);
-    pool.green.hash(&mut hasher);
-    pool.colorless.hash(&mut hasher);
+    hash_pool_amount(pool.white, &mut hasher);
+    hash_pool_amount(pool.blue, &mut hasher);
+    hash_pool_amount(pool.black, &mut hasher);
+    hash_pool_amount(pool.red, &mut hasher);
+    hash_pool_amount(pool.green, &mut hasher);
+    hash_pool_amount(pool.colorless, &mut hasher);
     hasher.finish()
+}
+
+/// Hash a pool amount exactly as the historical u32 field did whenever it
+/// fits, so plan ids and memo keys of ordinary pools are unchanged.
+fn hash_pool_amount(amount: u64, hasher: &mut DefaultHasher) {
+    match u32::try_from(amount) {
+        Ok(amount) => amount.hash(hasher),
+        Err(_) => amount.hash(hasher),
+    }
 }
 
 /// Order-independent structural digest of one collection element.
@@ -4756,12 +4891,12 @@ fn safe_search_state_key(game: &GameState, payer: crate::ids::PlayerId) -> u64 {
     let mut hasher = DefaultHasher::new();
     if let Some(player) = game.player(payer) {
         player.life.hash(&mut hasher);
-        player.mana_pool.white.hash(&mut hasher);
-        player.mana_pool.blue.hash(&mut hasher);
-        player.mana_pool.black.hash(&mut hasher);
-        player.mana_pool.red.hash(&mut hasher);
-        player.mana_pool.green.hash(&mut hasher);
-        player.mana_pool.colorless.hash(&mut hasher);
+        hash_pool_amount(player.mana_pool.white, &mut hasher);
+        hash_pool_amount(player.mana_pool.blue, &mut hasher);
+        hash_pool_amount(player.mana_pool.black, &mut hasher);
+        hash_pool_amount(player.mana_pool.red, &mut hasher);
+        hash_pool_amount(player.mana_pool.green, &mut hasher);
+        hash_pool_amount(player.mana_pool.colorless, &mut hasher);
         // Hashed structurally rather than through `format!("{:?}")`: this key is
         // taken once per prepared candidate and once per queued node, and a
         // provenance entry carries a full `ObjectSnapshot` whose Debug output is
@@ -4779,6 +4914,10 @@ fn safe_search_state_key(game: &GameState, payer: crate::ids::PlayerId) -> u64 {
         .hash(&mut hasher);
         unordered_digest(&player.mana_source_provenance, |unit, hasher| {
             unit.symbol.hash(hasher);
+            // Ordinary one-unit records keep their historical digest.
+            if unit.count != 1 {
+                unit.count.hash(hasher);
+            }
             unit.source.hash(hasher);
             unit.restricted.hash(hasher);
             unit.retention.hash(hasher);
@@ -6438,7 +6577,7 @@ mod tests {
             request: &ManaPaymentRequest,
             sources: &[ObjectId],
             index: usize,
-            seen: &mut std::collections::HashSet<(usize, [u32; 6], i32)>,
+            seen: &mut std::collections::HashSet<(usize, [u64; 6], i32)>,
             states: &mut Vec<GameState>,
         ) {
             // Every source in this fixture has the same snow status, no input
@@ -8051,8 +8190,10 @@ mod token_resource_failure_tests {
                 ]),
             ),
         );
+        // Token counts clamp to the creation budget; the instruction work guard
+        // still fails the production's token instruction.
         game.set_token_creation_limits(crate::effects::tokens::TokenCreationLimits {
-            max_created_tokens: 1,
+            max_instructions: 0,
             ..Default::default()
         });
         let request = ManaPaymentRequest::new(

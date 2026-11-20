@@ -318,6 +318,39 @@ mod tests {
         id
     }
 
+    /// Timing probe: N token-doubling creatures enter through the
+    /// simultaneous battlefield-entry batch.
+    #[test]
+    #[ignore = "timing probe; run with --ignored --nocapture"]
+    fn batch_put_scaling_probe() {
+        let count: usize = std::env::var("ENTRANTS").ok().and_then(|v| v.parse().ok()).unwrap_or(128);
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let card = CardBuilder::new(CardId::from_raw(90_001), "Doubler")
+            .card_types(vec![CardType::Creature])
+            .power_toughness(PowerToughness::fixed(4, 5))
+            .build();
+        let mut make = |zone| {
+            let id = game.new_object_id();
+            let mut object = Object::from_card(id, &card, alice, zone);
+            object.abilities_mut().push(crate::ability::Ability::static_ability(
+                crate::static_abilities::StaticAbility::double_token_creation_replacement(
+                    crate::target::PlayerFilter::You, "double".into()),
+            ));
+            game.add_object(object);
+            id
+        };
+        let source = make(Zone::Battlefield);
+        for _ in 0..count { make(Zone::Graveyard); }
+        game.refresh_continuous_state().unwrap();
+        let effect = PutOntoBattlefieldEffect::you_control(
+            ChooseSpec::All(ObjectFilter::creature().in_zone(Zone::Graveyard)), false);
+        let mut ctx = ExecutionContext::new_default(source, alice);
+        let started = std::time::Instant::now();
+        effect.execute(&mut game, &mut ctx).unwrap();
+        eprintln!("batch put {count}: {:?} battlefield={}", started.elapsed(), game.battlefield.len());
+    }
+
     #[test]
     fn test_put_onto_battlefield_untapped() {
         let mut game = setup_game();
@@ -699,8 +732,11 @@ mod replacement_battlefield_owner_contract_tests {
         ctx.set_tagged_objects("entries", snapshots);
         let effect = Effect::new(PutOntoBattlefieldEffect::new(ChooseSpec::tagged("entries"), true,
             crate::target::PlayerFilter::Specific(bob)));
+        // Token counts clamp to the creation budget, so the instruction work guard
+        // injects the failure: the first Investigate (outer guard, one repetition,
+        // one clue instruction) fits and the second arrival's Investigate fails.
         game.set_token_creation_limits(crate::effects::tokens::resources::TokenCreationLimits {
-            max_created_tokens: 1, ..Default::default()
+            max_instructions: 3, ..Default::default()
         });
         let before_ids = game.next_object_id_counter();
         game.take_pending_trigger_events();
@@ -711,7 +747,7 @@ mod replacement_battlefield_owner_contract_tests {
         assert!(shields.iter().all(|id| game.effect_store.replacement_effects.get_effect(*id).is_some()));
         assert!(game.take_pending_trigger_events().is_empty());
         game.set_token_creation_limits(crate::effects::tokens::resources::TokenCreationLimits {
-            max_created_tokens: 2, ..Default::default()
+            max_instructions: 6, ..Default::default()
         });
         crate::effects::execute_effect(&mut game, &effect, &mut ctx).unwrap();
         for original in stable {

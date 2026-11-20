@@ -27,12 +27,27 @@ pub(in super::super) fn parse_object_filter_inner(
     other: bool,
     strict: bool,
 ) -> Result<ObjectFilter, CardTextError> {
-    let filter = parse_object_filter_inner_unchecked(tokens, other, strict)?;
+    let mut filter = parse_object_filter_inner_unchecked(tokens, other, strict)?;
     if strict && let Some(word) = ignored_filter_word(tokens, other, &filter) {
         return Err(CardTextError::ParseError(format!(
             "object filter does not understand '{word}' (full input: '{}')",
             crate::lexer::token_word_refs(tokens).join(" "),
         )));
+    }
+    // "Create a token ... Then exile all other tokens created with this
+    // creature" (Faerie Artisans): the source is never one of the tokens it
+    // created, so "other" excludes the previously referenced object (the
+    // token just created), exactly like "different" / "other than that".
+    if filter.other
+        && filter.created_with_source
+        && !filter.tagged_constraints.iter().any(|constraint| {
+            constraint.relation == TaggedOpbjectRelation::IsNotTaggedObject
+        })
+    {
+        filter.tagged_constraints.push(TaggedObjectConstraint {
+            tag: (crate::tag::CompilerReferenceTag::It.bind()).into(),
+            relation: TaggedOpbjectRelation::IsNotTaggedObject,
+        });
     }
     Ok(filter)
 }
@@ -952,7 +967,17 @@ fn parse_object_filter_inner_unchecked(
                 .windows(2)
                 .position(|pair| matches!(pair, ["was" | "were", "blocked"]))
         };
-        let historical = passive_blocked(&blocked_by_words).is_some()
+        // "all creatures it blocked this turn" (Defiant Vanguard) is block
+        // history too: the blocker may already be gone ("destroy it and all
+        // creatures it blocked this turn"), and the candidate never blocked.
+        let it_blocked_this_turn = all_words
+            .windows(4)
+            .position(|window| window == ["it", "blocked", "this", "turn"]);
+        if let Some(at) = it_blocked_this_turn {
+            crate::word_claims::claim_words(&all_words[at..at + 4]);
+        }
+        let historical = it_blocked_this_turn.is_some()
+            || passive_blocked(&blocked_by_words).is_some()
             && (blocked_by_words
                 .word_windows(5)
                 .any(|window| crate::word_primitives::equals(&window, &["blocked", "by", "one", "of", "those"]))
@@ -1998,7 +2023,9 @@ fn parse_object_filter_inner_unchecked(
                 && !idx
                     .checked_sub(1)
                     .and_then(|previous| all_words.get(previous))
-                    .is_some_and(|word| matches!(*word, "was" | "became" | "is")))
+                    // "creatures it blocked this turn" names the blocker's
+                    // history (read above as `blocked_by`), not the candidate's.
+                    .is_some_and(|word| matches!(*word, "was" | "became" | "is" | "it")))
             .then_some(idx)
         })
         .collect::<std::collections::HashSet<_>>();

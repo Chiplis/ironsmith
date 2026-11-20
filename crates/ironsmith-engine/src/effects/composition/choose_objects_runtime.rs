@@ -1910,6 +1910,17 @@ fn run_choose_objects_phase_with_outputs(
                             game.object_is_within_range(chooser_id, *object, Some(ctx.source))
                         });
                     }
+                    // "Each player sacrifices a creature." (Innocent Blood) while
+                    // Assault Suit says "equipped creature can't be sacrificed": the
+                    // choice feeding a sacrifice offers only permanents that can be
+                    // sacrificed (CR 701.21a); with none, nothing is sacrificed.
+                    if effect.tag.as_str().starts_with("sacrificed") {
+                        candidates.retain(|id| {
+                            game.object(*id)
+                                .is_none_or(|object| object.zone != Zone::Battlefield)
+                                || game.can_be_sacrificed(*id)
+                        });
+                    }
                     let hidden_library_candidates = if effect.is_search
                         && search_zones.contains(&Zone::Library)
                     {
@@ -2157,6 +2168,15 @@ fn run_choose_objects_phase_with_outputs(
                         game.shuffle_slice(&mut randomized);
                         randomized.truncate(max);
                         randomized
+                    } else if !effect.is_search
+                        && effect.filter.source
+                        && candidates.len() == 1
+                        && min >= 1
+                    {
+                        // "Return this card from your graveyard": a filter
+                        // naming the source matches one object at most, so
+                        // a required choice of it is no choice at all.
+                        candidates.clone()
                     } else {
                         let mut spec = ChooseObjectsSpec::new(
                             ctx.source,

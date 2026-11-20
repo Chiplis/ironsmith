@@ -200,8 +200,17 @@ fn build_token_copy_object(
     if let Some(subtypes) = &effect.set_subtypes {
         if effect.preserve_noncreature_subtypes {
             token.subtypes.retain(|subtype| !subtype.is_creature_type());
+            // CR 205.3d: creature types only on a creature or Kindred object.
+            let takes_creature_types = token
+                .card_types
+                .iter()
+                .any(|card_type| matches!(card_type, CardType::Creature | CardType::Kindred));
             for subtype in subtypes {
-                if !token.subtypes.contains(subtype) { token.subtypes.push(*subtype); }
+                if (takes_creature_types || !subtype.is_creature_type())
+                    && !token.subtypes.contains(subtype)
+                {
+                    token.subtypes.push(*subtype);
+                }
             }
         } else {
             token.subtypes = subtypes.clone().into();
@@ -433,6 +442,25 @@ fn prepare_single_token_copy_proposal(
             .then(|| ctx.source_snapshot.clone())
             .flatten()
     });
+    // A tagged copy source that has left the battlefield since it was tagged
+    // is a new object (CR 400.7); copy it as it last existed on the
+    // battlefield (CR 707.2, 608.2h). Supplant Form's returned face-down
+    // creature and Esoteric Duplicator's sacrificed copy both land here.
+    let departed_snapshot = departed_snapshot.or_else(|| {
+        let ChooseSpec::Tagged(tag) = effect.target.base() else {
+            return None;
+        };
+        let left_battlefield = |snapshot: &&ObjectSnapshot| {
+            snapshot.zone == Zone::Battlefield
+                && game
+                    .object(snapshot.object_id)
+                    .is_none_or(|object| object.zone != Zone::Battlefield)
+        };
+        ctx.get_tagged(format!("__pre_move_history__{}", tag.as_str()))
+            .filter(left_battlefield)
+            .or_else(|| ctx.get_tagged(tag.as_str()).filter(left_battlefield))
+            .cloned()
+    });
     let target_id = if let Some(snapshot) = departed_snapshot.as_ref() {
         snapshot.object_id
     } else {
@@ -549,7 +577,7 @@ fn prepare_single_token_copy_proposal(
                     .expect("target object should exist when no snapshot is available");
                 (target.power().unwrap_or(0), target.toughness().unwrap_or(0))
             };
-            ((power + 1) / 2, (toughness + 1) / 2)
+            (power.saturating_add(1) / 2, toughness.saturating_add(1) / 2)
         }
         None => (0, 0),
     };
@@ -682,18 +710,21 @@ impl crate::effects::SimultaneousEffectProposal for TokenCopyProposal {
         let mut event = crate::events::CreateTokensEvent::with_cause(self.controller, self.count, ctx.cause.clone());
         event.token = self.token_preview.clone();
         event.additional_copies = self.additional_copies.clone();
-        let prepared = crate::events::processing::prepare_token_creation_event_deferred(game, event, ctx)?;
+        let mut prepared = crate::events::processing::prepare_token_creation_event_deferred(game, event, ctx)?;
         if ctx.decision_maker.awaiting_choice() {
             return Ok(());
         }
-        if let crate::events::processing::PreparedTokenCreation::Proceed { event, .. } = &prepared {
+        if let crate::events::processing::PreparedTokenCreation::Proceed { event, .. } = &mut prepared {
             // Reserve once, before allocating per-token choice buffers. The
             // original phase consumes these slots rather than reserving again.
-            game.reserve_token_creation(event.total_count())?;
+            // Past the creation budget, create as many copies as fit.
+            let granted = super::resources::reserve_token_creation_up_to(game, event.total_count())?;
+            if granted < event.total_count() { *event = event.truncated_to(granted); }
             if self.effect.enters_attacking || self.configured_attack_player.is_some() {
                 use crate::events::tokens::TokenGroupKey;
                 self.additional_attack_targets = super::resources::buffer(
-                    (event.total_count() - u128::from(event.count)) as usize,
+                    usize::try_from(event.total_count().saturating_sub(u128::from(event.count)))
+                        .unwrap_or(usize::MAX),
                 )?;
                 for key in event.group_keys() {
                     let token = event.group_object(key).ok_or_else(|| {
@@ -779,6 +810,33 @@ fn execute_token_instruction(
     game: &mut GameState,
     ctx: &mut ExecutionContext,
 ) -> Result<crate::effects::CompletedEffectOutputs, ExecutionError> {
+    // CR 608.2d: "a token that's a copy of a permanent you control" is a
+    // choice made on resolution, not a target (CR 115.1).
+    if !effect.target.is_target()
+        && crate::effects::composition::bounded_choice_pool(&effect.target).is_some()
+    {
+        let chosen =
+            crate::effects::helpers::resolve_objects_for_effect(game, ctx, &effect.target)?;
+        if ctx.decision_maker.awaiting_choice() {
+            return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
+                EffectOutcome::count(0),
+            ));
+        }
+        if let [id] = chosen.as_slice() {
+            let mut selected = effect.clone();
+            selected.target = ChooseSpec::SpecificObject(*id);
+            return complete_token_copy_proposal(
+                prepare_token_copy_proposal(&selected, game, ctx)?,
+                game,
+                ctx,
+            );
+        }
+        if chosen.is_empty() {
+            return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
+                EffectOutcome::with_objects(Vec::new()),
+            ));
+        }
+    }
     complete_token_copy_proposal(prepare_token_copy_proposal(effect, game, ctx)?, game, ctx)
 }
 
@@ -905,7 +963,7 @@ fn commit_token_copy_original(
             token.zone = Zone::Command;
             token.token_creation_method = effect.creation_method;
             let token_is_creature = token.is_creature();
-            game.commit_token_resource_slot()?;
+            if !super::resources::commit_token_slot_within_budget(game)? { break; }
             game.add_object(token);
             let attachment = None;
             let entry_result = game.move_created_token_with_entry_instructions(
@@ -1101,7 +1159,9 @@ impl EffectExecutor for CreateTokenCopyEffect {
     }
 
     fn get_target_spec(&self) -> Option<&ChooseSpec> {
-        Some(&self.target)
+        // "Create a token that's a copy of a permanent you control" chooses
+        // on resolution; only a `Target` spec is announced (CR 115.1, 601.2c).
+        self.target.is_target().then_some(&self.target)
     }
 
     fn target_description(&self) -> &'static str {

@@ -534,10 +534,11 @@ fn pending_second_exchange_replacement_does_not_commit_the_first_player() {
     let bob = PlayerId::from_index(1);
     game.player_mut(bob).unwrap().life = 23;
     let source = permanent(&mut game, "Exchange source", 1);
-    for _ in 0..2 {
+    // A doubler and an adder do not commute, so Bob must order them.
+    for action in [ReplacementAction::Double, ReplacementAction::Modify(crate::replacement::EventModification::Add(1))] {
         game.effect_store.replacement_effects.add_resolution_effect(
             ReplacementEffect::with_matcher(source, alice,
-                WouldLoseLifeMatcher::new(PlayerFilter::Specific(bob)), ReplacementAction::Double),
+                WouldLoseLifeMatcher::new(PlayerFilter::Specific(bob)), action),
         );
     }
     let effect = ExchangeLifeTotalsEffect::new(PlayerFilter::You, PlayerFilter::Specific(bob));
@@ -554,7 +555,7 @@ fn pending_second_exchange_replacement_does_not_commit_the_first_player() {
     let mut ctx = ExecutionContext::new(source, alice, &mut dm);
     let outcome = effect.execute(&mut game, &mut ctx).unwrap();
     assert_eq!(game.player(alice).unwrap().life, 23);
-    assert_eq!(game.player(bob).unwrap().life, 11);
+    assert_eq!(game.player(bob).unwrap().life, 15, "adder first: (3 + 1) * 2 lost");
     assert_eq!(outcome.events.len(), 2);
 }
 
@@ -576,14 +577,15 @@ fn exchange_replacement_choices_use_apnap_and_precommit_life_totals() {
     let bob = PlayerId::from_index(1);
     game.player_mut(bob).unwrap().life = 23;
     let source = permanent(&mut game, "Exchange source", 1);
-    for _ in 0..2 {
+    // Each player orders a doubler against an adder (not commutative).
+    for action in [ReplacementAction::Double, ReplacementAction::Modify(crate::replacement::EventModification::Add(1))] {
         game.effect_store.replacement_effects.add_resolution_effect(
             ReplacementEffect::with_matcher(source, alice,
-                WouldGainLifeMatcher::new(PlayerFilter::Specific(alice)), ReplacementAction::Double),
+                WouldGainLifeMatcher::new(PlayerFilter::Specific(alice)), action.clone()),
         );
         game.effect_store.replacement_effects.add_resolution_effect(
             ReplacementEffect::with_matcher(source, alice,
-                WouldLoseLifeMatcher::new(PlayerFilter::Specific(bob)), ReplacementAction::Double),
+                WouldLoseLifeMatcher::new(PlayerFilter::Specific(bob)), action),
         );
     }
     // Authored order is deliberately the reverse of APNAP order.
@@ -591,8 +593,9 @@ fn exchange_replacement_choices_use_apnap_and_precommit_life_totals() {
     let mut dm = Choices::default();
     let mut ctx = ExecutionContext::new(source, alice, &mut dm);
     let outcome = effect.execute(&mut game, &mut ctx).unwrap();
-    assert_eq!(game.player(alice).unwrap().life, 32);
-    assert_eq!(game.player(bob).unwrap().life, 11);
+    // Answer 0 doubles first: 3 * 2 + 1 both ways.
+    assert_eq!(game.player(alice).unwrap().life, 27);
+    assert_eq!(game.player(bob).unwrap().life, 16);
     assert_eq!(outcome.events.len(), 2);
     drop(ctx);
     assert_eq!(dm.players, vec![alice, bob]);

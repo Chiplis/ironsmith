@@ -695,7 +695,7 @@ fn evaluate_value(
                     object_matches_filter_with_chars(filter, obj, chars, game, effect_controller)
                 })
                 .count() as i32;
-            ValueEval::Scalar(count * *multiplier)
+            ValueEval::Scalar(count.saturating_mul(*multiplier))
         }
         Value::GreatestSharedCreatureTypeCount(filter) => {
             let mut counts = HashMap::new();
@@ -710,7 +710,8 @@ fn evaluate_value(
                 let mut types_on_object = HashSet::new();
                 for subtype in &chars.subtypes {
                     if subtype.is_creature_type() && types_on_object.insert(*subtype) {
-                        *counts.entry((controller_group, *subtype)).or_insert(0i32) += 1;
+                        let count = counts.entry((controller_group, *subtype)).or_insert(0i32);
+                        *count = count.saturating_add(1);
                     }
                 }
             }
@@ -801,9 +802,9 @@ fn evaluate_value(
             ValueEval::Scalar(seen.len() as i32)
         }
         Value::CreaturesDiedThisTurn => ValueEval::Scalar(
-            game.turn_store
-                .turn_history
-                .total_creatures_died_this_turn() as i32,
+            ironsmith_core::quantity::clamp_i32_from_u32(
+                game.turn_store.turn_history.total_creatures_died_this_turn(),
+            ),
         ),
         Value::CreaturesDiedThisTurnControlledBy(player_filter) => {
             let filter_ctx = crate::filter::FilterContext {
@@ -845,10 +846,11 @@ fn evaluate_value(
                 if !player_filter.matches_player(player.id, &filter_ctx) {
                     continue;
                 }
-                total += game
-                    .turn_store
-                    .turn_history
-                    .creatures_died_under_controller(player.id) as i32;
+                total = total.saturating_add(ironsmith_core::quantity::clamp_i32_from_u32(
+                    game.turn_store
+                        .turn_history
+                        .creatures_died_under_controller(player.id),
+                ));
             }
             ValueEval::Scalar(total)
         }
@@ -892,10 +894,11 @@ fn evaluate_value(
                 if !player_filter.matches_player(player.id, &filter_ctx) {
                     continue;
                 }
-                total += game
-                    .turn_store
-                    .turn_history
-                    .lands_entered_under_controller(player.id) as i32;
+                total = total.saturating_add(ironsmith_core::quantity::clamp_i32_from_u32(
+                    game.turn_store
+                        .turn_history
+                        .lands_entered_under_controller(player.id),
+                ));
             }
             ValueEval::Scalar(total)
         }
@@ -1007,11 +1010,12 @@ fn evaluate_source_scalar_value(
         Value::Fixed(n) => Some(*n),
         Value::Add(left, right) => Some(
             evaluate_source_scalar_value(left, source_power, source_toughness)?
-                + evaluate_source_scalar_value(right, source_power, source_toughness)?,
+                .saturating_add(evaluate_source_scalar_value(right, source_power, source_toughness)?),
         ),
         Value::DividedRoundedDown(value, divisor) if *divisor != 0 => Some(
             evaluate_source_scalar_value(value, source_power, source_toughness)?
-                .div_euclid(*divisor),
+                .checked_div_euclid(*divisor)
+                .unwrap_or(i32::MAX),
         ),
         Value::HalfRoundedDown(value) => {
             Some(evaluate_source_scalar_value(value, source_power, source_toughness)?.div_euclid(2))
@@ -1297,6 +1301,18 @@ fn object_matches_filter_with_chars(
     }
 
     if filter.is_commander && !game.is_commander(object.id) {
+        return false;
+    }
+
+    // A union filter ("all Forests and all Saprolings", Life and Limb)
+    // matches when any alternative does; ignoring the alternatives made it
+    // match every object, hiding its dependency on type-adding effects
+    // (CR 613.8a).
+    if !filter.any_of.is_empty()
+        && !filter.any_of.iter().any(|inner| {
+            object_matches_filter_with_chars(inner, object, chars, game, effect_controller)
+        })
+    {
         return false;
     }
 
@@ -1718,30 +1734,30 @@ pub(crate) fn apply_continuous_effect_to_chars_for_dependency(
         }
         Modification::ModifyPower(delta) => {
             if let Some(ref mut p) = chars.power {
-                *p += delta;
+                *p = p.saturating_add(*delta);
             }
         }
         Modification::ModifyToughness(delta) => {
             if let Some(ref mut t) = chars.toughness {
-                *t += delta;
+                *t = t.saturating_add(*delta);
             }
         }
         Modification::ModifyPowerToughness { power, toughness } => {
             if let Some(ref mut p) = chars.power {
-                *p += power;
+                *p = p.saturating_add(*power);
             }
             if let Some(ref mut t) = chars.toughness {
-                *t += toughness;
+                *t = t.saturating_add(*toughness);
             }
         }
         Modification::ModifyPowerToughnessValue { power, toughness } => {
             let power_delta = evaluate_value_simple(power, chars);
             let toughness_delta = evaluate_value_simple(toughness, chars);
             if let (Some(p), ValueEval::Scalar(delta)) = (&mut chars.power, power_delta) {
-                *p += delta;
+                *p = p.saturating_add(delta);
             }
             if let (Some(t), ValueEval::Scalar(delta)) = (&mut chars.toughness, toughness_delta) {
-                *t += delta;
+                *t = t.saturating_add(delta);
             }
         }
         Modification::ModifyPowerToughnessByColorCount {
@@ -1750,10 +1766,10 @@ pub(crate) fn apply_continuous_effect_to_chars_for_dependency(
         } => {
             let color_count = chars.colors.count() as i32;
             if let Some(ref mut p) = chars.power {
-                *p += power_multiplier * color_count;
+                *p = p.saturating_add(power_multiplier.saturating_mul(color_count));
             }
             if let Some(ref mut t) = chars.toughness {
-                *t += toughness_multiplier * color_count;
+                *t = t.saturating_add(toughness_multiplier.saturating_mul(color_count));
             }
         }
         Modification::SwitchPowerToughness => {
@@ -2452,6 +2468,7 @@ pub(crate) fn condition_could_be_affected_by(
         | C::ThisSpellWasForetold
         | C::PlayerTappedLandForManaThisTurn { .. }
         | C::PlayerGainedLifeThisTurnOrMore { .. }
+        | C::PlayerPaidOrLostEnergyThisTurnOrMore { .. }
         | C::PlayerHadLandEnterBattlefieldThisTurn { .. }
         | C::PlayerDescendedThisTurn { .. }
         | C::NoSpellsWereCastLastTurn

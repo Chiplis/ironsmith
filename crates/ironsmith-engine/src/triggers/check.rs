@@ -31,6 +31,37 @@ use super::matcher_trait::TriggerContext;
 const SPEED_RULE_SOURCE_NAME: &str = "Start your engines";
 const SIEGE_DEFEAT_TRIGGER_ID: &str = "intrinsic_siege_defeat";
 
+/// CR 801.7: the trigger event must happen entirely within range. A passive
+/// "[player] is attacked" trigger that doesn't name the attacker observes only
+/// the defending player being attacked (like the rule's "becomes blocked"
+/// example, which excludes the unnamed blocker), so an attacking player
+/// outside the controller's range doesn't stop it.
+fn trigger_event_is_in_range_for(
+    trigger: &crate::triggers::Trigger,
+    game: &GameState,
+    trigger_event: &TriggerEvent,
+    controller: PlayerId,
+    source: ObjectId,
+    source_snapshot: Option<&ObjectSnapshot>,
+) -> bool {
+    if let Some(event) = trigger_event.downcast::<crate::events::PlayerAttackDeclarationEvent>()
+        && trigger
+            .downcast_ref::<crate::triggers::PlayerAttackDeclarationTrigger>()
+            .is_some_and(|matcher| {
+                matcher.grouping == ironsmith_core::trigger_model::PlayerAttackGrouping::Defender
+                    && matcher.attacker == crate::target::PlayerFilter::Any
+            })
+    {
+        return game.defender_event_is_within_range(
+            controller,
+            event.defender,
+            Some(source),
+            source_snapshot,
+        );
+    }
+    trigger_event_is_in_range(game, trigger_event, controller, source, source_snapshot)
+}
+
 fn trigger_event_is_in_range(
     game: &GameState,
     trigger_event: &TriggerEvent,
@@ -195,7 +226,7 @@ fn count_filter_from_trigger_lki(
     for object in game.objects_in_deterministic_order() {
         if filter.matches(object, &filter_ctx, game) {
             seen.insert(object.stable_id);
-            count += 1;
+            count = count.saturating_add(1);
         }
     }
 
@@ -205,14 +236,14 @@ fn count_filter_from_trigger_lki(
                 continue;
             }
             if filter.matches_snapshot(snapshot, &filter_ctx, game) {
-                count += 1;
+                count = count.saturating_add(1);
             }
         }
     } else if let Some(snapshot) = trigger_event.snapshot()
         && seen.insert(snapshot.stable_id)
         && filter.matches_snapshot(snapshot, &filter_ctx, game)
     {
-        count += 1;
+        count = count.saturating_add(1);
     }
 
     count
@@ -232,17 +263,17 @@ fn resolve_dynamic_soulshift_lki_value(
         Value::Fixed(value) => Some(*value),
         Value::Add(left, right) => Some(
             resolve_dynamic_soulshift_lki_value(game, trigger_event, controller, source, left)?
-                + resolve_dynamic_soulshift_lki_value(
+                .saturating_add(resolve_dynamic_soulshift_lki_value(
                     game,
                     trigger_event,
                     controller,
                     source,
                     right,
-                )?,
+                )?),
         ),
         Value::Scaled(value, multiplier) => {
             resolve_dynamic_soulshift_lki_value(game, trigger_event, controller, source, value)
-                .map(|value| value * *multiplier)
+                .map(|value| value.saturating_mul(*multiplier))
         }
         Value::DividedRoundedDown(value, divisor) if *divisor != 0 => {
             resolve_dynamic_soulshift_lki_value(game, trigger_event, controller, source, value)
@@ -267,7 +298,7 @@ fn resolve_dynamic_soulshift_lki_value(
         )),
         Value::CountScaled(filter, multiplier) => Some(
             count_filter_from_trigger_lki(game, trigger_event, controller, source, filter)
-                * *multiplier,
+                .saturating_mul(*multiplier),
         ),
         _ => None,
     }
@@ -952,7 +983,7 @@ fn additional_trigger_copies_for_entry(
             ) {
                 continue;
             }
-            copies += spec.copies;
+            copies = copies.saturating_add(spec.copies);
         }
     }
 
@@ -962,7 +993,7 @@ fn additional_trigger_copies_for_entry(
         let current_turn = game.turn.turn_number;
         for effect in &game.effect_store.trigger_multiplier_effects {
             if effect.object == entry.source && effect.is_active(game, current_turn) {
-                copies += effect.copies;
+                copies = copies.saturating_add(effect.copies);
             }
         }
     }
@@ -985,7 +1016,7 @@ fn additional_trigger_copies_for_entry(
             spec.event_matcher.as_ref(),
             spec.source_matcher,
         ) {
-            copies += spec.copies;
+            copies = copies.saturating_add(spec.copies);
         }
     });
 
@@ -1630,7 +1661,14 @@ pub fn check_triggers(
 
     let view = crate::derived_view::DerivedGameView::new(game);
 
-    check_triggers_with_view(game, trigger_event, &view)
+    let mut triggered = check_triggers_with_view(game, trigger_event, &view);
+    suppress_lookback_triggers_of_batch_departures(
+        game,
+        std::slice::from_ref(trigger_event),
+        &view,
+        std::slice::from_mut(&mut triggered),
+    );
+    triggered
 }
 
 /// Check a group of events that all observe the same stable game state.
@@ -1704,6 +1742,7 @@ pub(crate) fn check_triggers_batch(
             }
         })
         .collect::<Vec<_>>();
+    suppress_lookback_triggers_of_batch_departures(game, trigger_events, &view, &mut batches);
 
     // CR 805.4d does not turn an ordinary "each upkeep" trigger into one
     // trigger per teammate. Multiple events produce multiple triggers only
@@ -2706,7 +2745,14 @@ fn check_battlefield_trigger_subscriber(
     if skip_post_event_source_discovery(trigger_event, trigger_ability, obj.stable_id) {
         return;
     }
-    if !trigger_event_is_in_range(game, trigger_event, controller, obj_id, None)
+    // CR 603.10a (Recover): a graveyard-only ability of a card that was on
+    // the battlefield when the event happened did not exist then.
+    if look_back_source_moved_without_functioning_ability(
+        trigger_event, trigger_ability, ability, obj.stable_id,
+    ) {
+        return;
+    }
+    if !trigger_event_is_in_range_for(&trigger_ability.trigger, game, trigger_event, controller, obj_id, None)
         || !trigger_ability.trigger.matches(trigger_event, &ctx)
     {
         return;
@@ -2873,7 +2919,12 @@ fn battlefield_trigger_subscriber_matches_event(
     if skip_post_event_source_discovery(trigger_event, trigger_ability, obj.stable_id) {
         return false;
     }
-    if !trigger_event_is_in_range(game, trigger_event, controller, obj_id, None)
+    if look_back_source_moved_without_functioning_ability(
+        trigger_event, trigger_ability, ability, obj.stable_id,
+    ) {
+        return false;
+    }
+    if !trigger_event_is_in_range_for(&trigger_ability.trigger, game, trigger_event, controller, obj_id, None)
         || !trigger_ability.trigger.matches(trigger_event, &ctx)
     {
         return false;
@@ -2984,6 +3035,96 @@ fn presentation_labeled_snapshot_trigger_is_active(
 
     // CR 716.2: class levels are a designation, not level counters.
     game.class_level(source.object_id) >= level
+}
+
+/// CR 603.10a: a look-back zone-change trigger is checked against the game
+/// state immediately before the event. When the source itself moved in that
+/// event (Recover's card dying alongside another creature), the object that
+/// exists afterward is new, so its ability triggers only if the source's
+/// pre-event form had it functioning in the zone it left.
+/// CR 603.10a (Recover): "if another creature is put into your graveyard from
+/// the battlefield at the same time that a card with recover is put there, it
+/// won't cause that recover ability to trigger." A look-back trigger is checked
+/// against the game as it was before the simultaneous action, when the card
+/// was a permanent and its graveyard-only ability did not exist. A
+/// simultaneous action may report each moved object in its own event, so the
+/// check spans every event of the action, not only the source's own one.
+fn suppress_lookback_triggers_of_batch_departures(
+    game: &GameState,
+    trigger_events: &[TriggerEvent],
+    view: &crate::derived_view::DerivedGameView<'_>,
+    batches: &mut [Vec<TriggeredAbilityEntry>],
+) {
+    let mut departed_stable_ids = HashSet::new();
+    let mut departed_arrivals = HashSet::new();
+    for event in trigger_events {
+        let Some(zc) = event.downcast::<crate::events::zones::ZoneChangeEvent>() else {
+            continue;
+        };
+        if zc.from != Zone::Battlefield || zc.to == Zone::Battlefield {
+            continue;
+        }
+        departed_stable_ids.extend(
+            zc.snapshots()
+                .iter()
+                .filter(|snapshot| snapshot.zone == Zone::Battlefield)
+                .map(|snapshot| snapshot.stable_id),
+        );
+        departed_arrivals.extend(zc.destination_objects().iter().copied());
+    }
+    if departed_stable_ids.is_empty() && departed_arrivals.is_empty() {
+        return;
+    }
+    for entries in batches.iter_mut() {
+        entries.retain(|entry| {
+            if entry.source_kind != TriggeredAbilitySourceKind::Object {
+                return true;
+            }
+            let Some(object) = game.object(entry.source) else {
+                return true;
+            };
+            if object.zone == Zone::Battlefield
+                || !(departed_arrivals.contains(&entry.source)
+                    || departed_stable_ids.contains(&object.stable_id))
+                || !entry.ability.trigger.looks_back_for_source(&entry.triggering_event)
+            {
+                return true;
+            }
+            let abilities = view
+                .abilities_rc(entry.source)
+                .unwrap_or_else(|| std::sync::Arc::new(object.abilities_vec()));
+            let index = (0..abilities.len())
+                .find(|&index| {
+                    shared_trigger_identity(&abilities, index) == Some(entry.trigger_identity)
+                })
+                .or_else(|| {
+                    abilities.iter().position(|ability| {
+                        matches!(&ability.kind, AbilityKind::Triggered(triggered)
+                            if compute_trigger_identity(triggered) == entry.trigger_identity)
+                    })
+                });
+            index.is_none_or(|index| abilities[index].functions_in(&Zone::Battlefield))
+        });
+    }
+}
+
+fn look_back_source_moved_without_functioning_ability(
+    trigger_event: &TriggerEvent,
+    trigger_ability: &TriggeredAbility,
+    ability: &crate::ability::Ability,
+    source_stable_id: StableId,
+) -> bool {
+    let Some(zc) = trigger_event.downcast::<crate::events::zones::ZoneChangeEvent>() else {
+        return false;
+    };
+    if !trigger_ability.trigger.looks_back_for_source(trigger_event) {
+        return false;
+    }
+    zc.snapshots().iter().any(|snapshot| {
+        snapshot.stable_id == source_stable_id
+            && snapshot.zone == zc.from
+            && !ability.functions_in(&snapshot.zone)
+    })
 }
 
 fn skip_post_event_source_discovery(
@@ -3111,7 +3252,8 @@ fn collect_lookback_source_triggers(
             )
             .with_trigger_identity(trigger_identity)
             .with_ability_index(ability_index);
-            if !trigger_event_is_in_range(
+            if !trigger_event_is_in_range_for(
+                &trigger_ability.trigger,
                 game,
                 trigger_event,
                 source_snapshot.controller,
@@ -4336,8 +4478,29 @@ pub fn check_delayed_triggers_for_simultaneous_events(
         let mut matches: Vec<TriggeredAbilityEntry> = Vec::new();
         let mut counter_groups: std::collections::HashMap<_, usize> = std::collections::HashMap::new();
         let mut attack_groups = std::collections::HashSet::new();
+        let mut damage_groups: std::collections::HashMap<_, usize> = std::collections::HashMap::new();
         for trigger_event in events.iter().copied() {
-            for &source in candidate_sources {
+            // "When Merieke Ri Berit leaves the battlefield ..." (CR 603.10a):
+            // the stable-id lookup above already finds the source's new
+            // graveyard object, but its departure event names the permanent
+            // that left. Match that departure against the recorded source.
+            let departed_source = delayed
+                .ability_source
+                .filter(|source| delayed.target_objects.is_empty() && *source != fallback_source)
+                .filter(|source| {
+                    trigger_event
+                        .downcast::<crate::events::ZoneChangeEvent>()
+                        .is_some_and(|zc| {
+                            zc.from == Zone::Battlefield
+                                && (zc.objects.contains(source)
+                                    || zc.snapshots().iter().any(|snapshot| snapshot.object_id == *source))
+                        })
+                });
+            let event_sources: &[ObjectId] = match departed_source.as_ref() {
+                Some(source) => std::slice::from_ref(source),
+                None => candidate_sources,
+            };
+            for &source in event_sources {
                 let controller = if delayed.source_collection_scope.is_some() {
                     trigger_event.source_snapshot().filter(|snapshot|snapshot.object_id==source).map(|snapshot|snapshot.controller).or_else(||trigger_event.lookback_source_snapshots().iter().find(|snapshot| snapshot.object_id == source).map(|snapshot| snapshot.controller)).or_else(||game.controller_of_id(source)).or_else(|| game.source_last_known_snapshot(source).map(|snapshot| snapshot.controller)).unwrap_or(delayed.controller)
                 } else { delayed.controller };
@@ -4502,6 +4665,12 @@ pub fn check_delayed_triggers_for_simultaneous_events(
                                 let attachment_hosts =
                                     crate::effects::helpers::attachment_host_reference_tags(&delayed.effects);
                                 for (tag, snapshots) in &mut tagged {
+                                    // Pre-move history is last-known information
+                                    // (CR 608.2h), never an object the trigger
+                                    // affects, so it survives the zone change.
+                                    if tag.as_str().starts_with("__pre_move_history__") {
+                                        continue;
+                                    }
                                     snapshots.retain(|snapshot| {
                                         game.find_object_by_stable_id(snapshot.stable_id)
                                             == Some(snapshot.object_id)
@@ -4561,6 +4730,46 @@ pub fn check_delayed_triggers_for_simultaneous_events(
                         // Scope deduplication to this registration and this action:
                         // later combats and identical registrations remain distinct.
                         continue;
+                    }
+                    // CR 510.2 / 603.2c: every combat damage assignment of one
+                    // step is one simultaneous event, so a grouped "one or more
+                    // creatures deal combat damage to a player" registration
+                    // (Jace, Cunning Castaway's +1) triggers once per group,
+                    // exactly as the incremental combat-damage path merges it.
+                    let mut entry = entry;
+                    if let Some(group @ (
+                        crate::triggers::matcher_trait::SimultaneousTriggerKey::DamageBatch
+                        | crate::triggers::matcher_trait::SimultaneousTriggerKey::DamageSource(_)
+                        | crate::triggers::matcher_trait::SimultaneousTriggerKey::DamageTarget(_)
+                        | crate::triggers::matcher_trait::SimultaneousTriggerKey::DamageSourceTarget(_, _)
+                        | crate::triggers::matcher_trait::SimultaneousTriggerKey::DamageSourceController(_, _)
+                    )) = delayed.trigger.simultaneous_trigger_key(&entry.triggering_event)
+                    {
+                        let batch = group == crate::triggers::matcher_trait::SimultaneousTriggerKey::DamageBatch;
+                        let key = (source, group);
+                        if let Some(&index) = damage_groups.get(&key) {
+                            let previous: &mut TriggeredAbilityEntry = &mut matches[index];
+                            if let Some(amount) = entry.event_value_amount {
+                                previous.event_value_amount = Some(if batch {
+                                    previous.event_value_amount.map_or(amount, |prior| prior.max(amount))
+                                } else {
+                                    previous.event_value_amount.unwrap_or(0).saturating_add(amount)
+                                });
+                            }
+                            super::merge_trigger_group_tags(
+                                &mut previous.tagged_objects,
+                                &entry.tagged_objects,
+                            );
+                            if batch {
+                                super::record_damage_batch_player(previous, &entry.triggering_event);
+                            }
+                            continue;
+                        }
+                        if batch {
+                            let event = entry.triggering_event.clone();
+                            super::record_damage_batch_player(&mut entry, &event);
+                        }
+                        damage_groups.insert(key, matches.len());
                     }
                     matches.push(entry);
                 }
@@ -4639,6 +4848,14 @@ fn collect_object_trigger_occurrences(
         if skip_post_event_source_discovery(trigger_event, trigger_ability, obj.stable_id) {
             continue;
         }
+        if look_back_source_moved_without_functioning_ability(
+            trigger_event,
+            trigger_ability,
+            ability,
+            obj.stable_id,
+        ) {
+            continue;
+        }
 
         let Some(trigger_identity) = shared_trigger_identity(&calculated_abilities, ability_index)
         else {
@@ -4648,8 +4865,14 @@ fn collect_object_trigger_occurrences(
             .with_trigger_identity(trigger_identity)
             .with_ability_index(ability_index);
 
-        if trigger_event_is_in_range(game, trigger_event, game.controller_of(obj), obj_id, None)
-            && trigger_ability.trigger.matches(trigger_event, &ctx)
+        if trigger_event_is_in_range_for(
+            &trigger_ability.trigger,
+            game,
+            trigger_event,
+            game.controller_of(obj),
+            obj_id,
+            None,
+        ) && trigger_ability.trigger.matches(trigger_event, &ctx)
         {
             for instance in
                 trigger_instance_events(game, &trigger_ability.trigger, trigger_event, &ctx)

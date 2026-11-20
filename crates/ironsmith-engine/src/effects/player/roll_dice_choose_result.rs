@@ -117,13 +117,7 @@ impl EffectExecutor for RollDiceChooseResultEffect {
                         .iter()
                         .map(|roll| u64::from(roll.result))
                         .sum::<u64>();
-                    let total = u32::try_from(total).map_err(|_| {
-                        ExecutionError::ResourceLimitExceeded {
-                            resource: "die-roll total",
-                            requested: u128::from(total),
-                            maximum: u128::from(u32::MAX),
-                        }
-                    })?;
+                    let total = ironsmith_core::quantity::clamp_u32_from_u64(total);
                     return transaction.complete_with_outputs(
                         game,
                         ctx,

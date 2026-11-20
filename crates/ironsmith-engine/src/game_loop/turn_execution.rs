@@ -243,10 +243,25 @@ pub(super) fn generate_damage_triggers(
     // to the initiative holder triggers once per controller per damage batch.
     let initiative_source = ObjectId::from_raw(u64::MAX - 1);
     let mut initiative_transfers = std::collections::HashSet::new();
+    let mut captured_life_loss_groups: std::collections::HashSet<DamageBatchTriggerKey> =
+        std::collections::HashSet::new();
     for entry in std::mem::take(&mut game.effect_store.pending_trigger_entries) {
         if receipts.contains(&entry.triggering_event.occurrence_key()) {
             if entry.source == initiative_source
                 && !initiative_transfers.insert(entry.trigger_identity)
+            {
+                continue;
+            }
+            // The captured route needs the same life-loss grouping as the
+            // ordered route below: one combat damage step's life loss is one
+            // event for "one or more" and "for the first time each turn"
+            // triggers (Gonti's Machinations; CR 603.2c, 510.2).
+            if let Some(group) = captured_life_loss_group(&entry)
+                && !captured_life_loss_groups.insert((
+                    entry.source_stable_id,
+                    entry.trigger_identity,
+                    group,
+                ))
             {
                 continue;
             }
@@ -295,6 +310,10 @@ pub(super) fn generate_damage_triggers(
     // CR 510.2: every assignment below is one simultaneous damage event.
     let previous_batch_start = game.turn_store.turn_history.begin_simultaneous_batch();
     let mut damage_batch_groups = std::collections::HashMap::new();
+    // "Whenever one or more opponents lose life": every player's combat
+    // life loss is part of the same event (CR 510.2), so it triggers once.
+    let mut life_loss_groups_seen: std::collections::HashSet<DamageBatchTriggerKey> =
+        std::collections::HashSet::new();
     for event in events {
         let (damage_event, life_loss_event) = combat_damage_trigger_events(game, event);
         if let Some(damage_event) = damage_event {
@@ -306,7 +325,36 @@ pub(super) fn generate_damage_triggers(
             );
         }
         for life_event in life_loss_event {
-            queue_triggers_from_event(game, trigger_queue, life_event, true);
+            let mut candidates = TriggerQueue::new();
+            queue_triggers_from_event(game, &mut candidates, life_event, true);
+            for candidate in candidates.entries {
+                // "Whenever you lose life for the first time each turn"
+                // (Gonti's Machinations): the life lost to one combat damage
+                // step's simultaneous assignments is one first-time event, so
+                // the ability triggers once (CR 603.2c, 510.2).
+                let first_time_group = candidate
+                    .ability
+                    .intervening_if
+                    .as_ref()
+                    .is_some_and(condition_requires_first_time_this_turn)
+                    .then_some(crate::triggers::matcher_trait::SimultaneousTriggerKey::LifeLossBatch);
+                if let Some(
+                    group @ crate::triggers::matcher_trait::SimultaneousTriggerKey::LifeLossBatch,
+                ) = candidate
+                    .ability
+                    .trigger
+                    .simultaneous_trigger_key(&candidate.triggering_event)
+                    .or(first_time_group)
+                    && !life_loss_groups_seen.insert((
+                        candidate.source_stable_id,
+                        candidate.trigger_identity,
+                        group,
+                    ))
+                {
+                    continue;
+                }
+                trigger_queue.add(candidate);
+            }
         }
         for life_gain_event in combat_lifelink_trigger_events(event) {
             queue_triggers_from_event(game, trigger_queue, life_gain_event, true);
@@ -328,6 +376,41 @@ pub(super) fn generate_damage_triggers(
         .end_simultaneous_batch(previous_batch_start);
     game.clear_combat_damage_player_batch_hits();
     game.clear_combat_damage_object_batch_hits();
+}
+
+fn captured_life_loss_group(
+    entry: &crate::triggers::TriggeredAbilityEntry,
+) -> Option<crate::triggers::matcher_trait::SimultaneousTriggerKey> {
+    use crate::triggers::matcher_trait::SimultaneousTriggerKey;
+    if entry.triggering_event.kind() != crate::events::EventKind::LifeLoss {
+        return None;
+    }
+    let first_time_group = entry
+        .ability
+        .intervening_if
+        .as_ref()
+        .is_some_and(condition_requires_first_time_this_turn)
+        .then_some(SimultaneousTriggerKey::LifeLossBatch);
+    match entry
+        .ability
+        .trigger
+        .simultaneous_trigger_key(&entry.triggering_event)
+        .or(first_time_group)
+    {
+        Some(group @ SimultaneousTriggerKey::LifeLossBatch) => Some(group),
+        _ => None,
+    }
+}
+
+fn condition_requires_first_time_this_turn(condition: &crate::ConditionExpr) -> bool {
+    match condition {
+        crate::ConditionExpr::FirstTimeThisTurn => true,
+        crate::ConditionExpr::And(left, right) => {
+            condition_requires_first_time_this_turn(left)
+                || condition_requires_first_time_this_turn(right)
+        }
+        _ => false,
+    }
 }
 
 type DamageBatchTriggerKey = (
@@ -388,7 +471,7 @@ fn queue_incremental_combat_damage_event(
                             .map_or(amount, |prior| prior.max(amount)),
                         // "that much damage" is the total dealt to (or by)
                         // this object in the event.
-                        _ => existing.event_value_amount.unwrap_or(0) + amount,
+                        _ => existing.event_value_amount.unwrap_or(0).saturating_add(amount),
                     });
                 }
                 // The grouped instance refers to every source of its event

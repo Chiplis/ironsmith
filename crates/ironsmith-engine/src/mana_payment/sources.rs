@@ -231,8 +231,8 @@ impl<'a> ManaSourceAnalysis<'a> {
                 let mut output = ManaPool::new();
                 for credit in &branch.result.credits {
                     if credit.event.player == controller {
-                        for &symbol in &credit.event.mana {
-                            output.add(symbol, 1);
+                        for (symbol, count) in credit.event.mana_counts() {
+                            output.add_wide(symbol, count);
                         }
                     }
                 }
@@ -371,8 +371,8 @@ impl<'a> ManaSourceAnalysis<'a> {
         let mut output = ManaPool::new();
         for credit in &credits {
             if credit.event.player == controller {
-                for &symbol in &credit.event.mana {
-                    output.add(symbol, 1);
+                for (symbol, count) in credit.event.mana_counts() {
+                    output.add_wide(symbol, count);
                 }
             }
         }
@@ -450,7 +450,9 @@ pub(super) fn pool_units(pool: &ManaPool) -> Vec<ManaSymbol> {
         (pool.colorless, ManaSymbol::Colorless),
     ]
     .into_iter()
-    .flat_map(|(count, symbol)| std::iter::repeat_n(symbol, count as usize))
+    // Materialized per unit; a counted pool beyond 2^20 of one type is
+    // truncated here rather than allocating per unit.
+    .flat_map(|(count, symbol)| std::iter::repeat_n(symbol, count.min(1 << 20) as usize))
     .collect()
 }
 
@@ -983,11 +985,11 @@ mod tests {
                     .expect("fixed triggered bonus projects")
                     .output
                     .green,
-                instructions + copies
+                u64::from(instructions + copies)
             );
             let inventory = mana_payment_activation_inventory(&game, &request);
             assert_eq!(inventory.len(), 1);
-            assert_eq!(inventory[0].expected_mana.green, instructions + copies);
+            assert_eq!(inventory[0].expected_mana.green, u64::from(instructions + copies));
             let plan = plan_first_mana_payment(&game, &request).expect("triggered mana pays cost");
             assert_eq!(plan.mana_ability_steps.len(), 1);
             assert_eq!(game.player(request.payer).unwrap().mana_pool.total(), 0);

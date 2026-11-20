@@ -51,9 +51,11 @@ pub(crate) fn loyalty_allowance_count(
     allowance: LoyaltyActivationAllowance,
 ) -> u32 {
     let mut count = game.named_turn_counter(&object_counter(allowance, source));
-    count += game.named_turn_counter(&player_counter(allowance, controller, None));
+    count = count.saturating_add(game.named_turn_counter(&player_counter(allowance, controller, None)));
     for subtype in game.calculated_subtypes(source) {
-        count += game.named_turn_counter(&player_counter(allowance, controller, Some(subtype)));
+        count = count.saturating_add(
+            game.named_turn_counter(&player_counter(allowance, controller, Some(subtype))),
+        );
     }
     count
 }

@@ -132,7 +132,8 @@ registerPortedMageTests({
         {
           "op": "assertLibraryCount",
           "player": 1,
-          "count": 1
+          "count": 5,
+          "note": "CR 701.17c: a milled card is found only in a public destination; Progenitus (top card) is shuffled into the hidden library, so only the Mountain is seen and the process does not repeat"
         },
         {
           "op": "assertLibraryCount",
@@ -144,7 +145,7 @@ registerPortedMageTests({
           "op": "assertGraveyardCount",
           "player": 1,
           "name": "Mountain",
-          "count": 5
+          "count": 1
         }
       ]
     },
@@ -270,7 +271,14 @@ registerPortedMageTests({
         {
           "op": "assertResult",
           "player": 0,
-          "result": "DRAW"
+          "result": "ONGOING",
+          "note": "CR 701.17c: both Progenitus are shuffled into the hidden library, so no milled card is found, the colors are not compared, and the process does not repeat (no endless loop)"
+        },
+        {
+          "op": "assertLibraryCount",
+          "player": 1,
+          "name": "Progenitus",
+          "count": 2
         }
       ]
     },

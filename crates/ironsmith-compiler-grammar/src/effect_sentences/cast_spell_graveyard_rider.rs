@@ -254,7 +254,8 @@ fn entry_rider_line<'a>(input: &mut LexStream<'a>) -> WResult<GraveyardEntryRide
 /// do, it enters with a finality counter on it and is a Vampire in addition
 /// to its other types." (The Tomb of Aclazotz): the entry rider is a
 /// cast-this-way grant on the spell the permission permits (it enters with
-/// the counter, CR 614.1c), and the added type stays with the permanent.
+/// the counter, CR 614.1c), and the added type applies to both the spell and
+/// the permanent.
 pub(super) fn bind_cast_spell_graveyard_entry_rider(
     effects: &mut [EffectAst],
     sentence: &[OwnedLexToken],
@@ -316,6 +317,15 @@ pub(super) fn bind_cast_spell_graveyard_entry_rider(
         {
             return false;
         }
+        // "it ... is a Vampire in addition to its other types": the spell
+        // cast this way is already a Vampire spell on the stack (so "whenever
+        // you cast a Vampire spell" sees it, as XMage and the release notes
+        // treat it), and the resulting permanent keeps the type (CR 400.7
+        // makes it a new object, so it needs its own rider).
+        cast_this_way.push(crate::model::CompilerStaticAbilityCore::add_subtypes(
+            ObjectFilter::source(),
+            additions.subtypes.clone(),
+        ));
         permanent_this_way.push(crate::model::CompilerStaticAbilityCore::add_subtypes(
             ObjectFilter::source(),
             additions.subtypes,

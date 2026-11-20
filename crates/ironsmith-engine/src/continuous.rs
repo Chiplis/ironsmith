@@ -1372,6 +1372,15 @@ pub struct ContinuousEffectManager {
     /// Per Rule 613.7e, attachments get a new timestamp when attached.
     attachment_timestamps: FxMap<ObjectId, u64>,
 
+    /// CR 704.5k measures how long a permanent has had the world supertype.
+    /// Objects that entered during one simultaneous action share that moment
+    /// even though CR 613.7m gives them distinct, ordered timestamps. Absent
+    /// entries use the object's own entry timestamp.
+    object_entry_moments: FxMap<ObjectId, u64>,
+
+    /// First entry timestamp of the open simultaneous action, when one is open.
+    open_entry_moment: Option<Option<u64>>,
+
     /// Object-membership revision at which resolved effects were last checked
     /// for locked sets whose objects have all ceased to exist.
     retired_locked_scan_revision: u64,
@@ -2095,6 +2104,31 @@ impl ContinuousEffectManager {
     pub fn record_entry(&mut self, object_id: ObjectId) {
         let ts = self.next_timestamp();
         self.object_entry_timestamps.insert(object_id, ts);
+        if let Some(moment) = self.open_entry_moment.as_mut() {
+            let moment = *moment.get_or_insert(ts);
+            self.object_entry_moments.insert(object_id, moment);
+        } else {
+            self.object_entry_moments.remove(&object_id);
+        }
+    }
+
+    /// Entries recorded until [`Self::end_simultaneous_entry_moment`] happened
+    /// in one event (CR 603.2c) and so share their entry moment.
+    pub(crate) fn begin_simultaneous_entry_moment(&mut self) {
+        self.open_entry_moment = Some(None);
+    }
+
+    pub(crate) fn end_simultaneous_entry_moment(&mut self) {
+        self.open_entry_moment = None;
+    }
+
+    /// The moment the object entered its current zone, shared by every object
+    /// that entered in the same simultaneous action (CR 704.5k ties).
+    pub fn get_entry_moment(&self, object_id: ObjectId) -> Option<u64> {
+        self.object_entry_moments
+            .get(&object_id)
+            .copied()
+            .or_else(|| self.get_entry_timestamp(object_id))
     }
 
     /// Record when counters are added to an object.
@@ -2130,6 +2164,7 @@ impl ContinuousEffectManager {
     pub fn record_face_change(&mut self, object_id: ObjectId) {
         let ts = self.next_timestamp();
         self.object_entry_timestamps.insert(object_id, ts);
+        self.object_entry_moments.remove(&object_id);
     }
 
     /// Get the timestamp for an object's counters.
@@ -2163,6 +2198,7 @@ impl ContinuousEffectManager {
     /// Remove timestamp tracking for an object (when it leaves the zone).
     pub fn remove_timestamps(&mut self, object_id: ObjectId) {
         self.object_entry_timestamps.remove(&object_id);
+        self.object_entry_moments.remove(&object_id);
         self.counter_timestamps
             .retain(|(id, _), _| *id != object_id);
         self.attachment_timestamps.remove(&object_id);
@@ -2454,24 +2490,22 @@ fn clear_type_dependent_numbers(object: &Object, chars: &mut CalculatedCharacter
     }
 }
 
-/// Provisional P/T is never wrapped or saturated. The error marker travels
-/// with the computed characteristics to the authoritative checked owner.
+/// Game quantities saturate: P/T arithmetic is computed exactly in a wide
+/// intermediate and clamped to the native signed P/T domain. It never wraps
+/// and never records a range error.
 fn add_pt_checked(
     value: &mut Option<i32>,
     delta: i128,
-    error: &mut Option<(&'static str, i128)>,
-    axis: &'static str,
+    _error: &mut Option<(&'static str, i128)>,
+    _axis: &'static str,
 ) {
     let Some(current) = value else {
         return;
     };
-    let exact = i128::from(*current) + delta;
-    match i32::try_from(exact) {
-        Ok(next) => *current = next,
-        Err(_) => {
-            error.get_or_insert((axis, exact));
-        }
-    }
+    let exact = i128::from(*current).saturating_add(delta);
+    *current = ironsmith_core::quantity::clamp_i32(
+        ironsmith_core::quantity::clamp_i64_from_i128(exact),
+    );
 }
 
 /// Normalize metadata without changing subtype identity or order. A shared
@@ -3522,9 +3556,95 @@ fn apply_room_no_unlocked_door_layer(
     chars: &mut CalculatedCharacteristics,
     game: &crate::game_state::GameState,
 ) {
+    if apply_copied_room_door_layer(object, chars, game) {
+        return;
+    }
     if object.zone != Zone::Battlefield || !game.room_has_no_unlocked_door(object.id) {
         return;
     }
+    clear_locked_room_text(chars);
+}
+
+/// Copiable values that make their holder a Room with two doors (CR 709.5).
+pub(crate) fn copied_values_are_room(values: &CopiableValues) -> bool {
+    values.copy_face_layout == crate::card::LinkedFaceLayout::Split
+        && values.other_copy_face.as_deref().is_some_and(|other| {
+            values.subtypes.contains(&crate::types::Subtype::Room)
+                || other.subtypes.contains(&crate::types::Subtype::Room)
+        })
+}
+
+/// One half's own name from a copied half's (possibly "A // B") name.
+pub(crate) fn room_half_name(name: &str) -> &str {
+    name.split(" // ").next().unwrap_or(name).trim()
+}
+
+/// CR 707.2, 709.5, 709.5c: a permanent that is a Room only through a
+/// layer-1 copy effect (Mirage Mirror) copies both halves, but the unlocked
+/// designations are the permanent's own. A half without its designation
+/// contributes no name, mana cost or rules text. Returns whether `object` is
+/// such a copied Room.
+fn apply_copied_room_door_layer(
+    object: &Object,
+    chars: &mut CalculatedCharacteristics,
+    game: &crate::game_state::GameState,
+) -> bool {
+    if object.zone != Zone::Battlefield
+        || object.linked_face_layout == crate::card::LinkedFaceLayout::Split
+    {
+        return false;
+    }
+    let Some(envelope) = chars.copy_values.clone().filter(|values| copied_values_are_room(values))
+    else {
+        return false;
+    };
+    let Some(second) = envelope.other_copy_face.as_deref() else {
+        return false;
+    };
+    let origin = chars.abilities.current_effect_origin();
+    let first_name = room_half_name(&envelope.name);
+    let second_name = room_half_name(&second.name);
+    match game.copied_room_unlocked_halves(object.id) {
+        (false, false) => clear_locked_room_text(chars),
+        (true, false) => {
+            chars.name = first_name.into();
+            chars.alternate_name = None;
+        }
+        (false, true) => {
+            chars.name = second_name.into();
+            chars.alternate_name = None;
+            chars.mana_cost = second.mana_cost.clone().map(Into::into);
+            chars.linked_face_mana_value = None;
+            chars.colors = second.colors;
+            chars.compiled_card_text = second.compiled_card_text.clone().into();
+            chars.ability_labels = second.ability_labels.clone().into();
+            replace_rules_text_abilities(chars, second.abilities.as_ref().clone(), origin, false);
+            chars.static_abilities = extract_static_abilities(&chars.abilities).into();
+        }
+        (true, true) => {
+            // CR 709.5e: a fully unlocked Room has both halves' characteristics.
+            chars.name = format!("{first_name} // {second_name}").into();
+            chars.alternate_name = None;
+            let pips = envelope.mana_cost.iter().chain(second.mana_cost.iter())
+                .flat_map(|cost| cost.pips().iter().cloned()).collect::<Vec<_>>();
+            chars.mana_cost = (!pips.is_empty()).then(|| ManaCost::from_pips(pips).into());
+            chars.linked_face_mana_value = None;
+            chars.colors = envelope.colors.union(second.colors);
+            chars.compiled_card_text = [envelope.compiled_card_text.as_str(), second.compiled_card_text.as_str()]
+                .into_iter().filter(|text| !text.is_empty()).collect::<Vec<_>>().join("\n").into();
+            let mut labels = envelope.ability_labels.clone();
+            labels.extend(second.ability_labels.iter().cloned());
+            chars.ability_labels = labels.into();
+            let mut abilities = envelope.abilities.as_ref().clone();
+            abilities.extend(second.abilities.iter().cloned());
+            replace_rules_text_abilities(chars, abilities, origin, false);
+            chars.static_abilities = extract_static_abilities(&chars.abilities).into();
+        }
+    }
+    true
+}
+
+fn clear_locked_room_text(chars: &mut CalculatedCharacteristics) {
     chars.name = "".into();
     chars.alternate_name = None;
     chars.mana_cost = None;
@@ -4038,7 +4158,7 @@ fn calculate_characteristics_layer_batch_internal(
             chars.world_supertype_since = game
                 .effect_store
                 .continuous_effects
-                .get_entry_timestamp(object.id)
+                .get_entry_moment(object.id)
                 .or(Some(0));
         }
         guards.push(CharacteristicCalculationGuard::begin(game, id, &chars));
@@ -4737,6 +4857,33 @@ pub(crate) fn copiable_values_with_effects(
             normal
         });
     let mut chars = initial_text_box_characteristics(unflipped.as_ref().unwrap_or(object), Some(game));
+    // CR 702.103b, 707.2: a bestowed Aura permanent's Aura form comes from its
+    // bestow overlay, not a copy effect, so a copy of the permanent is the
+    // creature card (Mythos of Illuna copying a bestowed Hopeful Eidolon).
+    // A bestowed spell's copy stays bestowed instead (CR 702.103c).
+    if object.zone != Zone::Stack
+        && let Some(restore) = object.bestow_cast_state.as_deref()
+    {
+        if let Some(overlay_enchant) = object
+            .aura_attach_filter
+            .as_ref()
+            .map(|metadata| metadata.enchant_ability().instance_id())
+        {
+            chars.abilities.retain(|ability| {
+                !matches!(&ability.kind,
+                    AbilityKind::Static(ability) if ability.instance_id() == overlay_enchant)
+            });
+        }
+        chars.card_types = restore.card_types.clone();
+        chars.subtypes = restore.subtypes.clone();
+        chars.aura_attach_filter = restore
+            .aura_attach_filter
+            .as_ref()
+            .map(|filter| filter.to_owned_value());
+        chars.spell_effect = Arc::new(crate::snapshot::SpellProgramState::from_option(
+            restore.spell_effect.clone().map(|program| program.to_owned_value()),
+        ));
+    }
     if game.is_room_fully_unlocked(object_id)
         && object.split_combined.as_ref().is_some_and(|combined| combined.unfused_half.is_some())
     {
@@ -5183,7 +5330,7 @@ fn calculate_with_layers_direct_internal(
         chars.world_supertype_since = game
             .effect_store
             .continuous_effects
-            .get_entry_timestamp(object.id)
+            .get_entry_moment(object.id)
             .or(Some(0));
     }
     let calc_guard = CharacteristicCalculationGuard::begin(game, object.id, &chars);
@@ -6559,7 +6706,11 @@ pub(crate) fn filter_matches_with_characteristics_in_context(
             crate::filter::PtReference::Effective => chars.power,
             crate::filter::PtReference::Base => {
                 let (power_delta, _) = object.pt_counter_deltas();
-                object.power().and_then(|value| i32::try_from(i128::from(value) - power_delta).ok())
+                object.power().map(|value| {
+                    ironsmith_core::quantity::clamp_i32(ironsmith_core::quantity::clamp_i64_from_i128(
+                        i128::from(value).saturating_sub(power_delta),
+                    ))
+                })
             }
         };
         let Some(power) = power else {
@@ -6575,7 +6726,11 @@ pub(crate) fn filter_matches_with_characteristics_in_context(
             crate::filter::PtReference::Effective => chars.toughness,
             crate::filter::PtReference::Base => {
                 let (_, toughness_delta) = object.pt_counter_deltas();
-                object.toughness().and_then(|value| i32::try_from(i128::from(value) - toughness_delta).ok())
+                object.toughness().map(|value| {
+                    ironsmith_core::quantity::clamp_i32(ironsmith_core::quantity::clamp_i64_from_i128(
+                        i128::from(value).saturating_sub(toughness_delta),
+                    ))
+                })
             }
         };
         let Some(toughness) = toughness else {
@@ -7029,6 +7184,40 @@ fn filter_requires_layered_clone_fallback(filter: &ObjectFilter) -> bool {
         || filter.one_per_card_type
         || !filter.any_of.is_empty()
         || filter.source_surface.is_some()
+        // Status and history predicates the layered fast path does not read
+        // must take the full matcher, or a layered count silently ignores
+        // them (Mutagen Connoisseur counted every permanent as transformed).
+        || filter.transformed
+        || filter.suspected
+        || filter.goaded
+        || filter.renowned
+        || filter.double_faced
+        || !filter.all_subtypes.is_empty()
+        || !filter.custom_statuses.is_empty()
+        || !filter.excluded_custom_statuses.is_empty()
+        || !filter.excluded_rules.is_empty()
+        || filter.named_tap_payment.is_some()
+        || filter.text_added_from_source
+        || filter.text_added_from_stable.is_some()
+        || filter.has_basic_land_type
+        || filter.has_nonbasic_land_type
+        || filter.has_phyrexian_mana_symbol
+        || filter.mana_symbol_count.is_some()
+        || filter.colored_mana_symbol_count.is_some()
+        || filter.linked_from_source.is_some()
+        || filter.created_with_source
+        || filter.put_onto_battlefield_with_source
+        || filter.ability_activated_this_turn
+        || filter.blocked_this_turn
+        || filter.blocked_source_this_turn
+        || filter.attacking_alone
+        || filter.blocking_alone
+        || filter.attacking_player_only
+        || filter.attacking_battle
+        || filter.attacking_planeswalker
+        || filter.physical_card
+        || filter.not_cast
+        || filter.spell_copy
 }
 
 fn layered_matches_subtype(
@@ -8021,13 +8210,13 @@ fn apply_modification_to_chars(
             let color_count = chars.colors.count() as i32;
             add_pt_checked(
                 &mut chars.power,
-                i128::from(*power_multiplier) * i128::from(color_count),
+                i128::from(*power_multiplier).saturating_mul(i128::from(color_count)),
                 &mut chars.numeric_range_error,
                 "power",
             );
             add_pt_checked(
                 &mut chars.toughness,
-                i128::from(*toughness_multiplier) * i128::from(color_count),
+                i128::from(*toughness_multiplier).saturating_mul(i128::from(color_count)),
                 &mut chars.numeric_range_error,
                 "toughness",
             );

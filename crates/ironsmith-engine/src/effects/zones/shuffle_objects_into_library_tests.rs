@@ -135,8 +135,11 @@ fn direct_shuffle_shares_one_resource_budget_across_added_programs() {
             ), ReplacementAction::Additionally(vec![Effect::new(crate::effects::InvestigateEffect::you(1))]),
         )));
     }
+    // Token counts clamp to the creation budget, so the shared instruction work
+    // guard injects the failure: the first Investigate (outer guard, one
+    // repetition, one clue instruction) fits and the second fails.
     game.set_token_creation_limits(crate::effects::tokens::resources::TokenCreationLimits {
-        max_created_tokens: 1, ..Default::default()
+        max_instructions: 3, ..Default::default()
     });
     let before_ids = game.next_object_id_counter();
     let before_library = game.player(alice).unwrap().library.clone();
@@ -154,7 +157,7 @@ fn direct_shuffle_shares_one_resource_budget_across_added_programs() {
     assert!(shields.iter().all(|id| game.effect_store.replacement_effects.get_effect(*id).is_some()));
     assert!(game.take_pending_trigger_events().is_empty());
     game.set_token_creation_limits(crate::effects::tokens::resources::TokenCreationLimits {
-        max_created_tokens: 2, ..Default::default()
+        max_instructions: 6, ..Default::default()
     });
     effect.execute(&mut game, &mut ctx).unwrap();
     assert_eq!(game.battlefield.len(), 3);

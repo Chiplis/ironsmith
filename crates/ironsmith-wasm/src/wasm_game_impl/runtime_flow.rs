@@ -2938,7 +2938,7 @@ mod live_action_rollback_tests {
             assert!(wasm.game.is_tapped(filters[index]));
             assert_eq!(wasm.game.player(alice).unwrap().life, 19 - paid as i32);
             assert_eq!(wasm.game.player(alice).unwrap().mana_pool.red, 0);
-            assert_eq!(wasm.game.player(alice).unwrap().mana_pool.colorless, 2 + paid as u32);
+            assert_eq!(wasm.game.player(alice).unwrap().mana_pool.colorless, 2 + paid as u64);
             assert!(wasm.game.is_tapped(mountain));
         }
         assert_eq!(wasm.current_mana_payment_view().unwrap().source_name, "Manual Payment Spell");
@@ -2946,7 +2946,7 @@ mod live_action_rollback_tests {
         confirm_pending_mana_payment(&mut wasm);
         assert!(wasm.priority_state.pending_mana_ability.is_none());
         assert!(wasm.priority_state.pending_cast.is_none());
-        assert_eq!(wasm.game.player(alice).unwrap().mana_pool.colorless, paid_depth as u32);
+        assert_eq!(wasm.game.player(alice).unwrap().mana_pool.colorless, paid_depth as u64);
         assert_eq!(wasm.game.player(alice).unwrap().life, 20 - paid_depth as i32);
     }
 

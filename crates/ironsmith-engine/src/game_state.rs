@@ -578,6 +578,10 @@ struct BattlefieldFlags {
     /// Rooms that entered without either half cast, so neither door has an
     /// unlocked designation yet (CR 709.5d).
     rooms_with_no_unlocked_door: HashSet<ObjectId>,
+    /// CR 709.5c: unlocked designations of permanents that are Rooms only
+    /// through a layer-1 copy effect (bit 1: the copied first half, bit 2:
+    /// its linked half). They belong to the permanent and outlive the copy.
+    copied_room_unlocked_halves: HashMap<ObjectId, u8>,
     /// Number of times each battlefield permanent has transformed.
     transform_count: HashMap<ObjectId, u64>,
     /// Number of times each battlefield permanent has mutated.
@@ -630,6 +634,10 @@ struct CastPermissionFlags {
     /// Cards exiled via Foretell, with the turn they became foretold
     /// (CR 702.143a/d: castable only after that turn has ended).
     foretold_cards: HashMap<ObjectId, u32>,
+    /// Foretold cards whose foretell cost is "its mana cost reduced by {N}"
+    /// (Dream Devourer, Ethereal Valkyrie): the generic reduction, so each
+    /// other spell face gets its own reduced foretell cost (CR 702.143a).
+    foretold_face_cost_reductions: HashMap<ObjectId, u32>,
     /// Same preparation behavior, without Foretell/Plot designations.
     descriptive_exile_preparations: HashSet<ObjectId>,
     selected_exile_preparations: HashMap<ObjectId, usize>,
@@ -913,6 +921,9 @@ struct AuxiliaryTrackingState {
     /// "This turn, that player plays with their hand revealed" (Sen
     /// Triplets): (player, turn number) pairs, live during that turn.
     hands_revealed_this_turn: Vec<(PlayerId, u32)>,
+    /// Energy counters each player paid or lost, as (player, turn number,
+    /// amount) records; only the current turn's records are live.
+    energy_paid_or_lost_by_turn: Vec<(PlayerId, u32, u32)>,
     /// Cards a player exiled "with cards named" a given name (Volatile
     /// Chimera's pregame exile), shared by every card of that name. Each id
     /// is the exiled incarnation, so a card that leaves exile drops out.
@@ -994,6 +1005,10 @@ struct AuxiliaryTrackingState {
     /// simultaneous event (CR 603.2c), and "one or more" triggers group on
     /// its identity.
     simultaneous_action_scope: Option<SimultaneousActionScope>,
+    /// "If one or more tokens would be created ..., those tokens plus an
+    /// additional <kind> are created instead" sources already applied inside
+    /// the open simultaneous action (CR 616.1, 111.1). Cleared when it closes.
+    simultaneous_added_tokens: Vec<(ObjectId, ironsmith_core::AdditionalTokenKind)>,
     /// Original admission rules shared by every member of this physical action.
     zone_movement_admission: Option<ZoneMovementAdmission>,
     /// Exact library placements owned by one simultaneous physical action.
@@ -1356,6 +1371,11 @@ pub struct TurnStore {
     /// casualty, replicate, conspire, demonstrate) still copy a spell that
     /// left the stack before they resolved, using this information.
     pub cast_spell_lki: im::HashMap<ObjectId, Arc<(Object, StackEntry)>>,
+    /// Last known stack entry of each ability countered or otherwise removed
+    /// from the stack this turn, keyed by the entry's provenance. "Copy that
+    /// ability" still copies it as it last existed on the stack (CR 608.2h,
+    /// 707.10; Unbound Flourishing after Stifle).
+    pub departed_ability_entries: im::HashMap<crate::provenance::ProvNodeId, Arc<StackEntry>>,
     /// Exhaust activated abilities that have been activated by this object instance.
     pub exhaust_abilities_activated: im::HashSet<(ObjectId, usize)>,
     /// Exhaust proposals counted at their beginning; finalization must not count twice.
@@ -2278,7 +2298,8 @@ fn triggered_ability_resolution_turn_counter_name(
 
 impl TurnCounterTracker {
     pub fn increment(&mut self, key: TurnCounterKey) {
-        *self.counters.entry(key).or_insert(0) += 1;
+        let count = self.counters.entry(key).or_insert(0);
+        *count = count.saturating_add(1);
     }
 
     pub fn increment_event_kind(&mut self, event_kind: EventKind) {
@@ -3482,10 +3503,12 @@ impl CantEffectTracker {
         }
         self.must_be_blocked.extend(other.must_be_blocked);
         for (attacker, count) in other.must_be_blocked_requirement_counts {
-            *self.must_be_blocked_requirement_counts.entry(attacker).or_default() += count;
+            let total = self.must_be_blocked_requirement_counts.entry(attacker).or_default();
+            *total = total.saturating_add(count);
         }
         for (pair, count) in other.must_block_specific_attacker_counts {
-            *self.must_block_specific_attacker_counts.entry(pair).or_default() += count;
+            let total = self.must_block_specific_attacker_counts.entry(pair).or_default();
+            *total = total.saturating_add(count);
         }
         for (attacker, groups) in other.must_be_blocked_by {
             self.must_be_blocked_by.entry(attacker).or_default().extend(groups);
@@ -3497,10 +3520,12 @@ impl CantEffectTracker {
                 .extend(minimums);
         }
         for (object, count) in other.must_block {
-            *self.must_block.entry(object).or_default() += count;
+            let total = self.must_block.entry(object).or_default();
+            *total = total.saturating_add(count);
         }
         for (object, count) in other.must_attack {
-            *self.must_attack.entry(object).or_default() += count;
+            let total = self.must_attack.entry(object).or_default();
+            *total = total.saturating_add(count);
         }
         for (object, players) in other.must_attack_players {
             self.must_attack_players
@@ -4471,6 +4496,11 @@ pub struct ActiveManaSpendPermission {
 #[derive(Debug, Clone, PartialEq)]
 pub enum ManaSpendPermissionSource {
     StaticAbility,
+    /// A static ability whose scope names objects linked to its source
+    /// ("cards exiled with this creature", Ian Malcolm, Chaotician).
+    StaticAbilityOf {
+        source_id: ObjectId,
+    },
     Effect {
         source_id: ObjectId,
         expires_end_of_turn: u32,
@@ -4509,7 +4539,8 @@ impl ManaSpendEffectTracker {
     pub fn cleanup_expired(&mut self, current_turn: u32) {
         self.permissions
             .retain(|permission| match permission.source {
-                ManaSpendPermissionSource::StaticAbility => true,
+                ManaSpendPermissionSource::StaticAbility
+                | ManaSpendPermissionSource::StaticAbilityOf { .. } => true,
                 ManaSpendPermissionSource::Effect {
                     expires_end_of_turn,
                     ..
@@ -4676,7 +4707,51 @@ impl ActiveManaSpendPermission {
                 let Some(source_obj) = game.object(source_id) else {
                     return false;
                 };
-                let filter_ctx = game.filter_context_for(self.controller, Some(source_id));
+                let mut filter_ctx = game.filter_context_for(self.controller, Some(source_id));
+                // "cards exiled with this creature" names the permission's
+                // own source's linked exile, not the spell being paid for.
+                let permission_source = match self.source {
+                    ManaSpendPermissionSource::StaticAbilityOf { source_id }
+                    | ManaSpendPermissionSource::Effect { source_id, .. }
+                    | ManaSpendPermissionSource::UntilEndOfTurnEffect { source_id, .. } => {
+                        Some(source_id)
+                    }
+                    ManaSpendPermissionSource::StaticAbility => None,
+                };
+                if let Some(permission_source) = permission_source {
+                    let source_exiled = game
+                        .get_exiled_with_source_links(permission_source)
+                        .iter()
+                        .filter_map(|id| game.object(*id))
+                        .map(|object| ObjectSnapshot::from_object(object, game))
+                        .collect::<Vec<_>>();
+                    // Casting moves the card to the stack before payment
+                    // (CR 601.2a), which ends its exile link. A spell cast
+                    // from exile through this same source's permission was
+                    // one of the cards exiled with it, so its origin snapshot
+                    // still counts during payment (CR 601.2h).
+                    let mut source_exiled = source_exiled;
+                    if source_obj.zone == Zone::Stack
+                        && source_obj
+                            .cast_play_from_constraints
+                            .as_deref()
+                            .is_some_and(|(granting, zone, _)| {
+                                *granting == permission_source && *zone == Zone::Exile
+                            })
+                        && let Some(origin) = game
+                            .cast_origin_snapshot(source_id)
+                            .filter(|snapshot| snapshot.zone == Zone::Exile)
+                    {
+                        source_exiled.push(origin.clone());
+                    }
+                    if !source_exiled.is_empty() {
+                        filter_ctx
+                            .tagged_objects
+                            .entry(crate::tag::TagKey::from(crate::tag::SOURCE_EXILED_TAG))
+                            .or_default()
+                            .extend(source_exiled);
+                    }
+                }
                 filter.matches(source_obj, &filter_ctx, game)
                     || (source_obj.zone == Zone::Stack
                         && game
@@ -5748,19 +5823,27 @@ impl GameState {
         let tracking = self.auxiliary_tracking_mut();
         tracking.simultaneous_event_lookback = lookback;
         tracking.simultaneous_combat_lookback = combat_lookback;
-        match (pinning, tracking.simultaneous_action_scope) {
+        let entry_moment = match (pinning, tracking.simultaneous_action_scope) {
             (true, None) => {
                 tracking.zone_movement_admission = zone_movement_admission;
                 tracking.simultaneous_action_scope = Some(SimultaneousActionScope {
                     batch: None,
                     opened_by_lookback: true,
                 });
+                Some(true)
             }
             (false, Some(scope)) if scope.opened_by_lookback => {
                 tracking.simultaneous_action_scope = None;
                 tracking.zone_movement_admission = None;
+                tracking.simultaneous_added_tokens.clear();
+                Some(false)
             }
-            _ => {}
+            _ => None,
+        };
+        match entry_moment {
+            Some(true) => self.effect_store.continuous_effects.begin_simultaneous_entry_moment(),
+            Some(false) => self.effect_store.continuous_effects.end_simultaneous_entry_moment(),
+            None => {}
         }
         if !pinning { self.reconcile_library_top_identity(); }
         if let Some(batch) = phase_return_batch { self.finish_phase_duration_returns(batch); }
@@ -5815,6 +5898,25 @@ impl GameState {
             .retain(|group| key.is_some() && group.first().map(delayed_alternative_key) != key);
     }
 
+    /// Peregrin Took-style "those tokens plus an additional Food" replaces
+    /// one instruction's creation event (CR 616.1, 111.1). Inside one open
+    /// simultaneous action ("for each of them, create a token copy") each
+    /// source adds its tokens once. Returns whether this application may add.
+    pub(crate) fn claim_simultaneous_added_tokens(
+        &mut self,
+        source: ObjectId,
+        kind: ironsmith_core::AdditionalTokenKind,
+    ) -> bool {
+        if self.auxiliary_tracking.simultaneous_action_scope.is_none() {
+            return true;
+        }
+        if self.auxiliary_tracking.simultaneous_added_tokens.contains(&(source, kind)) {
+            return false;
+        }
+        self.auxiliary_tracking_mut().simultaneous_added_tokens.push((source, kind));
+        true
+    }
+
     pub(crate) fn has_open_simultaneous_action(&self) -> bool {
         self.auxiliary_tracking.simultaneous_action_scope.is_some()
     }
@@ -5832,6 +5934,7 @@ impl GameState {
             batch: None,
             opened_by_lookback: false,
         });
+        self.effect_store.continuous_effects.begin_simultaneous_entry_moment();
         true
     }
 
@@ -5851,6 +5954,7 @@ impl GameState {
             batch: Some(batch),
             opened_by_lookback: false,
         });
+        self.effect_store.continuous_effects.begin_simultaneous_entry_moment();
         true
     }
 
@@ -5860,6 +5964,8 @@ impl GameState {
             let batch = self.auxiliary_tracking.simultaneous_action_scope.and_then(|scope| scope.batch);
             self.auxiliary_tracking_mut().simultaneous_action_scope = None;
             self.auxiliary_tracking_mut().zone_movement_admission = None;
+            self.auxiliary_tracking_mut().simultaneous_added_tokens.clear();
+            self.effect_store.continuous_effects.end_simultaneous_entry_moment();
             self.reconcile_library_top_identity();
             if let Some(batch) = batch { self.finish_phase_duration_returns(batch); }
         }
@@ -6481,6 +6587,35 @@ impl GameState {
         self.bump_mutation_revision();
     }
 
+    /// Record that `player` paid or lost `amount` energy counters this turn.
+    pub(crate) fn record_energy_paid_or_lost(&mut self, player: PlayerId, amount: u32) {
+        if amount == 0 {
+            return;
+        }
+        let turn = self.turn.turn_number;
+        let records = &mut self.auxiliary_tracking_mut().energy_paid_or_lost_by_turn;
+        records.retain(|(_, recorded, _)| *recorded == turn);
+        if let Some(record) = records
+            .iter_mut()
+            .find(|(recorded, _, _)| *recorded == player)
+        {
+            record.2 = record.2.saturating_add(amount);
+        } else {
+            records.push((player, turn, amount));
+        }
+        self.bump_mutation_revision();
+    }
+
+    /// Energy counters `player` paid or lost during the current turn.
+    pub fn energy_paid_or_lost_this_turn(&self, player: PlayerId) -> u32 {
+        self.auxiliary_tracking
+            .energy_paid_or_lost_by_turn
+            .iter()
+            .filter(|(recorded, turn, _)| *recorded == player && *turn == self.turn.turn_number)
+            .map(|(_, _, amount)| *amount)
+            .sum()
+    }
+
     /// `player` plays with their hand revealed for the rest of this turn.
     pub fn reveal_hand_this_turn(&mut self, player: PlayerId) {
         let turn = self.turn.turn_number;
@@ -6510,11 +6645,12 @@ impl GameState {
     /// Record that `player` guessed correctly during the draft for the
     /// guessing instruction of a card named `card_name`.
     pub fn record_draft_correct_guess(&mut self, player: PlayerId, card_name: impl AsRef<str>) {
-        *self
+        let guesses = self
             .auxiliary_tracking_mut()
             .draft_correct_guesses
             .entry((player, normalize_draft_note_card_name(card_name.as_ref())))
-            .or_default() += 1;
+            .or_default();
+        *guesses = guesses.saturating_add(1);
         self.bump_mutation_revision();
         self.mark_continuous_state_dirty();
     }
@@ -6689,7 +6825,8 @@ impl GameState {
         };
         let mut counts = std::collections::BTreeMap::<u32, u32>::new();
         for result in results {
-            *counts.entry(*result).or_default() += 1;
+            let count = counts.entry(*result).or_default();
+            *count = count.saturating_add(1);
         }
         counts.values().copied().max().unwrap_or(0)
     }
@@ -6842,7 +6979,8 @@ impl GameState {
     pub fn sticker_characteristic_total(&self, object_id: ObjectId, toughness: bool) -> i64 {
         self.object(object_id).and_then(|object| self.object_annotations.object_stickers.get(&object.stable_id))
             .into_iter().flatten().filter_map(|marker| marker.power_toughness)
-            .map(|(power, value)| i64::from(if toughness { value } else { power })).sum()
+            .map(|(power, value)| i64::from(if toughness { value } else { power }))
+            .fold(0i64, i64::saturating_add)
     }
 
     /// Register a name from the sheets made accessible during game setup. Equal
@@ -8812,7 +8950,8 @@ impl GameState {
         }
         let mut counts: HashMap<ObjectId, usize> = HashMap::new();
         for &id in left {
-            *counts.entry(id).or_default() += 1;
+            let tally = counts.entry(id).or_default();
+            *tally = tally.saturating_add(1);
         }
         for &id in right {
             let Some(count) = counts.get_mut(&id) else {
@@ -9759,7 +9898,7 @@ impl GameState {
                 .get_mut(idx)
                 && effect.remaining_uses > 0 && !effect.repeat_for_turn
             {
-                effect.remaining_uses -= 1;
+                effect.remaining_uses = effect.remaining_uses.saturating_sub(1);
             }
         }
         crate::granted_spell_keywords::acquire_spell_keywords_for_cast(self, spell_id, player);
@@ -9824,7 +9963,8 @@ impl GameState {
             })
             .collect::<Vec<_>>();
         for index in matching {
-            self.effect_store.temporary_spell_ability_grants[index].remaining_uses -= 1;
+            let grant = &mut self.effect_store.temporary_spell_ability_grants[index];
+            grant.remaining_uses = grant.remaining_uses.saturating_sub(1);
         }
     }
 
@@ -9850,7 +9990,8 @@ impl GameState {
             })
             .collect::<Vec<_>>();
         for index in matching {
-            self.effect_store.temporary_spell_ability_grants[index].remaining_uses -= 1;
+            let grant = &mut self.effect_store.temporary_spell_ability_grants[index];
+            grant.remaining_uses = grant.remaining_uses.saturating_sub(1);
         }
     }
 
@@ -10327,10 +10468,7 @@ impl GameState {
             let entry = totals
                 .entry(key)
                 .or_insert((0, candidate.life.max(0) as u32));
-            let Some(total) = entry.0.checked_add(amount) else {
-                return false;
-            };
-            entry.0 = total;
+            entry.0 = entry.0.saturating_add(amount);
         }
         totals.values().all(|(total, available)| total <= available)
     }
@@ -10347,8 +10485,7 @@ impl GameState {
         };
         if self.write_shared_life(
             player,
-            (i64::from(current) - i64::from(amount)).clamp(i64::from(i32::MIN), i64::from(i32::MAX))
-                as i32,
+            current.saturating_sub_unsigned(amount),
         ) {
             amount
         } else {
@@ -10366,8 +10503,7 @@ impl GameState {
         };
         if self.write_shared_life(
             player,
-            (i64::from(current) + i64::from(amount)).clamp(i64::from(i32::MIN), i64::from(i32::MAX))
-                as i32,
+            current.saturating_add_unsigned(amount),
         ) {
             amount
         } else {
@@ -11933,8 +12069,10 @@ impl GameState {
             let card_id = self.next_draw_card(player);
 
             let Some(id) = card_id else {
+                // The flag is idempotent and nothing refills the library
+                // mid-loop, so a saturated count stops after one empty draw.
                 self.record_empty_library_draw_attempt(player);
-                continue;
+                break;
             };
 
             let final_zone =
@@ -12194,9 +12332,19 @@ impl GameState {
         {
             return false;
         }
-        let shown_id = self
-            .displayed_face_definition(object)
-            .map(|definition| definition.card.id);
+        // The face up is the linked partner of the face down. A copy effect
+        // rewrites the shown name (Lazotep Convert entering as a copy of a
+        // creature card), but the permanent is still its double-faced card
+        // with the back face up (CR 712.2, 707.2), so don't require the
+        // printed face's name to match.
+        let shown_id = object
+            .other_face
+            .and_then(|other| self.linked_face_definitions_by_id.get(&other))
+            .and_then(|other| other.card.other_face)
+            .or_else(|| {
+                self.displayed_face_definition(object)
+                    .map(|definition| definition.card.id)
+            });
         let other_id = match object.other_face {
             Some(other) => Some(other),
             None => self

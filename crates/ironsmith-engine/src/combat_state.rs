@@ -1160,7 +1160,29 @@ fn max_attackers_this_blocker_can_block(
         .iter()
         .filter_map(|ability| ability.additional_blockable_attackers_for_source(game, blocker_id))
         .fold(0usize, usize::saturating_add);
-    1usize.saturating_add(extra)
+    // "It ... can block an additional creature this turn" (Act of Heroism)
+    // from a resolved spell is an effect on that creature, not an ability it
+    // gains, so a later "loses all abilities" (Overwhelming Splendor) leaves
+    // it in place. Such grants are a subset of `abilities` unless removed, so
+    // the larger count is the creature's capacity.
+    let resolved_extra = effects
+        .iter()
+        .filter(|effect| {
+            effect.originating_static_ability.is_none()
+                && matches!(&effect.source_type,
+                    crate::continuous::EffectSourceType::Resolution { locked_targets }
+                        if locked_targets.contains(&blocker_id)
+                            || matches!(effect.applies_to,
+                                crate::continuous::EffectTarget::Specific(id) if id == blocker_id))
+        })
+        .filter_map(|effect| match &effect.modification {
+            crate::continuous::Modification::AddAbility(ability) => {
+                ability.additional_blockable_attackers_for_source(game, blocker_id)
+            }
+            _ => None,
+        })
+        .fold(0usize, usize::saturating_add);
+    1usize.saturating_add(extra.max(resolved_extra))
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

@@ -962,9 +962,10 @@ registerPortedMageTests({
           "name": "Glorious Anthem",
           "objectAlias": "@anthem",
           "methods": [
-            "play_from"
+            "alternative_price"
           ],
-          "priceSource": "Demon of Fate's Design"
+          "priceSource": "Demon of Fate's Design",
+          "note": "Yawgmoth's Will supplies the graveyard permission and Demon's life payment is a separate alternative cost for that cast (CR 118.9, 601.2b); Ironsmith names that pairing alternative_price."
         },
         {
           "op": "castSpell",
@@ -972,7 +973,7 @@ registerPortedMageTests({
           "phase": "PRECOMBAT_MAIN",
           "player": 0,
           "name": "Glorious Anthem",
-          "castingMethod": "play_from",
+          "castingMethod": "alternative_price",
           "priceSource": "Demon of Fate's Design",
           "objectAlias": "@anthem"
         },

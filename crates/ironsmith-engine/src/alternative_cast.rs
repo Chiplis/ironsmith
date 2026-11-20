@@ -153,6 +153,17 @@ pub struct GrantSelection {
     pub index: usize,
 }
 
+/// The casting-method name behind a selected independent price, when the
+/// price comes from a named alternative cost ("Web-slinging").
+pub fn independent_price_method_name(
+    game: &crate::game_state::GameState,
+    player: crate::ids::PlayerId,
+    spell: &crate::object::Object,
+    price: &GrantSelection,
+) -> Option<&'static str> {
+    price_routes::price_method_name(game, player, spell, price)
+}
+
 /// Which method is being used to cast a spell.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 #[cfg_attr(feature = "serialization", derive(serde::Serialize, serde::Deserialize))]

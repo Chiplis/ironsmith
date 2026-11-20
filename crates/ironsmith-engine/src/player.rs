@@ -12,12 +12,14 @@ use std::collections::HashMap;
     derive(serde::Serialize, serde::Deserialize)
 )]
 pub struct ManaPool {
-    pub white: u32,
-    pub blue: u32,
-    pub black: u32,
-    pub red: u32,
-    pub green: u32,
-    pub colorless: u32,
+    // CR 107.1: no maximum. u64 holds stacked multipliers exactly (3^30 green
+    // from thirty Nyxbloom Ancients) and saturates beyond that.
+    pub white: u64,
+    pub blue: u64,
+    pub black: u64,
+    pub red: u64,
+    pub green: u64,
+    pub colorless: u64,
 }
 
 /// Provenance retained for a single mana unit in a player's pool.
@@ -32,6 +34,21 @@ pub(crate) struct ManaSourceProvenance {
     pub(crate) snapshot: Option<ObjectSnapshot>,
     pub(crate) restricted: bool,
     pub(crate) retention: Option<ironsmith_core::ManaRetentionDuration>,
+    /// Identical units sharing this production record. Ordinary productions
+    /// record one unit per entry; only a counted production (a stacked
+    /// multiplier too large to materialize) records more than one.
+    pub(crate) count: u64,
+}
+
+impl ManaSourceProvenance {
+    /// Same production metadata, ignoring how many units remain.
+    pub(crate) fn same_production(&self, other: &Self) -> bool {
+        self.symbol == other.symbol
+            && self.source == other.source
+            && self.snapshot == other.snapshot
+            && self.restricted == other.restricted
+            && self.retention == other.retention
+    }
 }
 
 #[cfg_attr(feature = "serialization", derive(serde::Serialize, serde::Deserialize))]
@@ -163,19 +180,29 @@ impl ManaPool {
 
     /// Adds mana of the specified type.
     pub fn add(&mut self, symbol: ManaSymbol, amount: u32) {
+        self.add_wide(symbol, u64::from(amount));
+    }
+
+    /// Adds a (possibly very large) amount of mana of the specified type.
+    pub fn add_wide(&mut self, symbol: ManaSymbol, amount: u64) {
         match symbol {
-            ManaSymbol::White => self.white += amount,
-            ManaSymbol::Blue => self.blue += amount,
-            ManaSymbol::Black => self.black += amount,
-            ManaSymbol::Red => self.red += amount,
-            ManaSymbol::Green => self.green += amount,
-            ManaSymbol::Colorless => self.colorless += amount,
+            ManaSymbol::White => self.white = self.white.saturating_add(amount),
+            ManaSymbol::Blue => self.blue = self.blue.saturating_add(amount),
+            ManaSymbol::Black => self.black = self.black.saturating_add(amount),
+            ManaSymbol::Red => self.red = self.red.saturating_add(amount),
+            ManaSymbol::Green => self.green = self.green.saturating_add(amount),
+            ManaSymbol::Colorless => self.colorless = self.colorless.saturating_add(amount),
             _ => {} // Generic, Snow, Life, X don't add to pool directly
         }
     }
 
     /// Removes mana of the specified type. Returns true if successful.
     pub fn remove(&mut self, symbol: ManaSymbol, amount: u32) -> bool {
+        self.remove_wide(symbol, u64::from(amount))
+    }
+
+    /// Removes a (possibly very large) amount of mana of the specified type.
+    pub fn remove_wide(&mut self, symbol: ManaSymbol, amount: u64) -> bool {
         let pool = match symbol {
             ManaSymbol::White => &mut self.white,
             ManaSymbol::Blue => &mut self.blue,
@@ -194,16 +221,16 @@ impl ManaPool {
         }
     }
 
-    /// Exact aggregate for checked scalar/payment boundaries. Six u32 fields
-    /// can exceed u32 even though every individual field is representable.
+    /// Exact (saturating u64) aggregate for checked scalar/payment boundaries.
     pub fn total_wide(&self) -> u64 {
-        u64::from(self.white) + u64::from(self.blue) + u64::from(self.black)
-            + u64::from(self.red) + u64::from(self.green) + u64::from(self.colorless)
+        [self.white, self.blue, self.black, self.red, self.green, self.colorless]
+            .into_iter()
+            .fold(0u64, u64::saturating_add)
     }
 
-    /// Returns the total amount of mana in the pool.
+    /// Returns the total amount of mana in the pool, saturating at u32::MAX.
     pub fn total(&self) -> u32 {
-        self.white + self.blue + self.black + self.red + self.green + self.colorless
+        u32::try_from(self.total_wide()).unwrap_or(u32::MAX)
     }
 
     /// Empties the mana pool.
@@ -216,8 +243,13 @@ impl ManaPool {
         self.colorless = 0;
     }
 
-    /// Returns the amount of mana of a specific type.
+    /// Returns the amount of mana of a specific type, saturating at u32::MAX.
     pub fn amount(&self, symbol: ManaSymbol) -> u32 {
+        u32::try_from(self.amount_wide(symbol)).unwrap_or(u32::MAX)
+    }
+
+    /// Returns the exact amount of mana of a specific type.
+    pub fn amount_wide(&self, symbol: ManaSymbol) -> u64 {
         match symbol {
             ManaSymbol::White => self.white,
             ManaSymbol::Blue => self.blue,
@@ -460,7 +492,7 @@ impl ManaPool {
                 Some(if pass == PoolPaymentPass::CheckOnly {
                     0
                 } else {
-                    total + life
+                    total.saturating_add(life)
                 })
             });
             if let Some(life) = life {
@@ -534,8 +566,9 @@ impl ManaPool {
     }
 
     /// Pay generic mana using colorless first, then colored mana in WUBRG order.
-    fn pay_generic(&mut self, mut amount: u32) -> bool {
-        if self.total() < amount {
+    fn pay_generic(&mut self, amount: u32) -> bool {
+        let mut amount = u64::from(amount);
+        if self.total_wide() < amount {
             return false;
         }
         for pool in [
@@ -737,7 +770,8 @@ impl Player {
 
     /// Records combat damage dealt to this player by a commander.
     pub fn record_commander_damage(&mut self, commander: ObjectId, amount: u32) {
-        *self.commander_damage.entry(commander).or_insert(0) += amount;
+        let total = self.commander_damage.entry(commander).or_insert(0);
+        *total = total.saturating_add(amount);
     }
 
     pub(crate) fn add_unrestricted_mana(
@@ -756,13 +790,36 @@ impl Player {
         snapshot: Option<ObjectSnapshot>,
         retention: Option<ironsmith_core::ManaRetentionDuration>,
     ) {
-        self.mana_pool.add(symbol, 1);
+        self.add_unrestricted_mana_counted(symbol, 1, source, snapshot, retention);
+    }
+
+    /// Credit `count` identical unrestricted units as one production record,
+    /// so a geometric multiplier never materializes one record per unit.
+    pub(crate) fn add_unrestricted_mana_counted(
+        &mut self,
+        symbol: ManaSymbol,
+        count: u64,
+        source: ObjectId,
+        snapshot: Option<ObjectSnapshot>,
+        retention: Option<ironsmith_core::ManaRetentionDuration>,
+    ) {
+        if count == 0 {
+            return;
+        }
+        let before = self.mana_pool.amount_wide(symbol);
+        self.mana_pool.add_wide(symbol, count);
+        // A saturated pool records only the units it actually holds.
+        let added = self.mana_pool.amount_wide(symbol).saturating_sub(before);
+        if added == 0 {
+            return;
+        }
         self.mana_source_provenance.push(ManaSourceProvenance {
             symbol,
             source,
             snapshot,
             restricted: false,
             retention,
+            count: added,
         });
     }
 
@@ -791,6 +848,7 @@ impl Player {
             snapshot,
             restricted: true,
             retention,
+            count: 1,
         });
         self.restricted_mana.push(unit);
     }
@@ -813,7 +871,29 @@ impl Player {
             // Spend ordinary mana before longer-lived mana when both can pay.
             .min_by_key(|(_, unit)| unit.retention.is_some())
             .map(|(index, _)| index)?;
+        let record = &mut self.mana_source_provenance[index];
+        if record.count > 1 {
+            // Split one unit off a counted record.
+            record.count -= 1;
+            let mut unit = record.clone();
+            unit.count = 1;
+            return Some(unit);
+        }
         Some(self.mana_source_provenance.remove(index))
+    }
+
+    /// Remove `count` units from the provenance record at `index`, dropping the
+    /// record once it is exhausted. Returns false for an invalid index.
+    pub(crate) fn consume_mana_source_provenance(&mut self, index: usize, count: u64) -> bool {
+        let Some(record) = self.mana_source_provenance.get_mut(index) else {
+            return false;
+        };
+        if record.count > count {
+            record.count -= count;
+        } else {
+            self.mana_source_provenance.remove(index);
+        }
+        true
     }
 
     /// Count-only wire pools do not preserve production snapshots, exact
@@ -831,11 +911,13 @@ impl Player {
     /// which update `ManaPool` directly rather than selecting units one by one.
     pub(crate) fn trim_mana_source_provenance_to_pool(&mut self) {
         let mut remaining = self.mana_pool.clone();
-        self.mana_source_provenance.retain(|unit| {
-            if remaining.amount(unit.symbol) == 0 {
+        self.mana_source_provenance.retain_mut(|unit| {
+            let available = remaining.amount_wide(unit.symbol);
+            if available == 0 || unit.count == 0 {
                 return false;
             }
-            remaining.remove(unit.symbol, 1)
+            unit.count = unit.count.min(available);
+            remaining.remove_wide(unit.symbol, unit.count)
         });
     }
 
@@ -851,18 +933,18 @@ impl Player {
 
     /// Deals damage to this player. Returns the actual damage dealt.
     pub fn deal_damage(&mut self, amount: u32) -> u32 {
-        self.life -= amount as i32;
+        self.life = ironsmith_core::quantity::clamp_i32(i64::from(self.life) - i64::from(amount));
         amount
     }
 
     /// Gains life.
     pub fn gain_life(&mut self, amount: u32) {
-        self.life += amount as i32;
+        self.life = ironsmith_core::quantity::clamp_i32(i64::from(self.life) + i64::from(amount));
     }
 
     /// Loses life (different from damage - can't be prevented/redirected the same way).
     pub fn lose_life(&mut self, amount: u32) {
-        self.life -= amount as i32;
+        self.life = ironsmith_core::quantity::clamp_i32(i64::from(self.life) - i64::from(amount));
     }
 
     pub fn start_engines(&mut self) -> bool {
@@ -899,7 +981,7 @@ impl Player {
 
     /// Adds poison counters. Returns the new total.
     pub fn add_poison(&mut self, amount: u32) -> u32 {
-        self.poison_counters += amount;
+        self.poison_counters = self.poison_counters.saturating_add(amount);
         self.poison_counters
     }
 
@@ -1010,7 +1092,7 @@ impl Player {
 
     /// Records a land play.
     pub fn record_land_play(&mut self) {
-        self.lands_played_this_turn += 1;
+        self.lands_played_this_turn = self.lands_played_this_turn.saturating_add(1);
     }
 
     /// Returns true if this player is still in the game.
@@ -1327,7 +1409,7 @@ mod tests {
         use ManaSymbol::{Generic, X};
         let cost = crate::mana::ManaCost::from_symbols(vec![X, Generic(5), X]);
         let pool = ManaPool {
-            white: u32::MAX,
+            white: u64::from(u32::MAX),
             ..ManaPool::default()
         };
         assert_eq!(pool.max_x_for_cost(&cost), (u32::MAX - 5) / 2);
@@ -1433,20 +1515,40 @@ pub(crate) fn activation_mana_budget_spent(before: &Player, after: &Player) -> i
     let mut budget = ironsmith_core::mana::ManaPaymentBudget::default();
     let symbols = [ManaSymbol::White, ManaSymbol::Blue, ManaSymbol::Black, ManaSymbol::Red, ManaSymbol::Green, ManaSymbol::Colorless];
     for (index, symbol) in symbols.iter().enumerate() {
-        budget.units[index] = before.mana_pool.amount(*symbol).saturating_sub(after.mana_pool.amount(*symbol));
+        budget.units[index] = u32::try_from(
+            before.mana_pool.amount_wide(*symbol).saturating_sub(after.mana_pool.amount_wide(*symbol)),
+        )
+        .unwrap_or(u32::MAX);
     }
     let mut remaining = after.restricted_mana.clone();
     for unit in &before.restricted_mana {
         if let Some(index) = remaining.iter().position(|other| other == unit) { remaining.remove(index); }
-        else if let Some(index) = symbols.iter().position(|symbol| *symbol == unit.symbol) { budget.units[index] += 1; }
+        else if let Some(index) = symbols.iter().position(|symbol| *symbol == unit.symbol) { budget.units[index] = budget.units[index].saturating_add(1); }
     }
     let mut consumed_provenance = [0u32; 6];
     let mut remaining = after.mana_source_provenance.clone();
     for unit in &before.mana_source_provenance {
-        if let Some(index) = remaining.iter().position(|other| other == unit) { remaining.remove(index); }
-        else if let Some(index) = symbols.iter().position(|symbol| *symbol == unit.symbol) {
-            consumed_provenance[index] += 1;
-            if unit.snapshot.as_ref().is_some_and(|snapshot| snapshot.supertypes.contains(&crate::types::Supertype::Snow)) { budget.snow[index] += 1; }
+        // A counted record may survive with fewer units; only the difference
+        // was consumed.
+        let consumed = if let Some(index) = remaining.iter().position(|other| other == unit) {
+            remaining.remove(index);
+            0
+        } else if let Some(index) = remaining
+            .iter()
+            .position(|other| other.same_production(unit) && other.count < unit.count)
+        {
+            let kept = remaining.remove(index).count;
+            unit.count - kept
+        } else {
+            unit.count
+        };
+        if consumed == 0 {
+            continue;
+        }
+        let consumed = u32::try_from(consumed).unwrap_or(u32::MAX);
+        if let Some(index) = symbols.iter().position(|symbol| *symbol == unit.symbol) {
+            consumed_provenance[index] = consumed_provenance[index].saturating_add(consumed);
+            if unit.snapshot.as_ref().is_some_and(|snapshot| snapshot.supertypes.contains(&crate::types::Supertype::Snow)) { budget.snow[index] = budget.snow[index].saturating_add(consumed); }
         }
     }
     for index in 0..6 { budget.units[index] = budget.units[index].max(consumed_provenance[index]); }
@@ -1472,6 +1574,7 @@ mod sol_78_activation_budget_tests {
         });
         before.mana_source_provenance.push(ManaSourceProvenance {
             symbol: ManaSymbol::Green, source, snapshot: Some(snapshot), restricted: true, retention: None,
+            count: 1,
         });
         let mut after = before.clone();
         after.mana_pool.remove(ManaSymbol::White, 1);

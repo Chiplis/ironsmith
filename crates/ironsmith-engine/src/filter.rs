@@ -2125,9 +2125,14 @@ fn tagged_constraint_matches_subject(
         TaggedOpbjectRelation::BandedWithTagged => tagged_snapshots.iter().any(|snapshot| {
             objects_are_banded_together(game, snapshot.object_id, subject.subject_object_id())
         }),
-        TaggedOpbjectRelation::IsNotTaggedObject => tagged_snapshots
-            .iter()
-            .all(|snapshot| snapshot.object_id != subject.subject_object_id()),
+        // The exact negation of `IsTaggedObject`: a tagged card that a
+        // resolving instruction just moved ("exile that card. If you do,
+        // return each other card exiled with this artifact", Mimic Vat) is
+        // the same card under its stable identity, not an "other" card.
+        TaggedOpbjectRelation::IsNotTaggedObject => tagged_snapshots.iter().all(|snapshot| {
+            snapshot.object_id != subject.subject_object_id()
+                && snapshot.stable_id != subject.subject_stable_id()
+        }),
         // The tagged stack object's chosen object targets. A spell names its
         // own object id; an ability names its source's id (or its reserved
         // stack id), so either identity selects the entry.
@@ -2792,7 +2797,8 @@ fn resolve_filter_comparison_rhs_value(
         )),
         Value::X => resolve_x_value(game, ctx, stack_entry),
         Value::XTimes(multiplier) => {
-            resolve_x_value(game, ctx, stack_entry).map(|value| value * i64::from(*multiplier))
+            resolve_x_value(game, ctx, stack_entry)
+                .map(|value| value.saturating_mul(i64::from(*multiplier)))
         }
         value
             if !ctx
@@ -2835,18 +2841,19 @@ fn resolve_filter_comparison_rhs_value(
                         .map(|objects| objects.len() as i64)
                 })
             })
-            .map(|value| value + i64::from(*offset)),
+            .map(|value| value.saturating_add(i64::from(*offset))),
         Value::Add(left, right) => Some(
             resolve_filter_comparison_rhs_value(left, game, ctx, stack_entry)?
-                + resolve_filter_comparison_rhs_value(right, game, ctx, stack_entry)?,
+                .saturating_add(resolve_filter_comparison_rhs_value(right, game, ctx, stack_entry)?),
         ),
         Value::Scaled(inner, multiplier) => {
             resolve_filter_comparison_rhs_value(inner, game, ctx, stack_entry)
-                .map(|value| value * i64::from(*multiplier))
+                .map(|value| value.saturating_mul(i64::from(*multiplier)))
         }
         Value::DividedRoundedDown(inner, divisor) if *divisor != 0 => {
-            resolve_filter_comparison_rhs_value(inner, game, ctx, stack_entry)
-                .map(|value| value.div_euclid(i64::from(*divisor)))
+            resolve_filter_comparison_rhs_value(inner, game, ctx, stack_entry).map(|value| {
+                value.checked_div_euclid(i64::from(*divisor)).unwrap_or(i64::MAX)
+            })
         }
         Value::Min(left, right) => Some(
             resolve_filter_comparison_rhs_value(left, game, ctx, stack_entry)?.min(
@@ -2888,7 +2895,7 @@ fn resolve_filter_comparison_rhs_value(
             let objects = game.objects_in_deterministic_order();
             let matching = objects.iter().copied().filter(|object| filter.matches(object, ctx, game));
             let count = crate::static_abilities::set_constrained_count(filter, matching, game) as i64;
-            Some(count * i64::from(*factor))
+            Some(count.saturating_mul(i64::from(*factor)))
         }
         Value::GreatestSharedCreatureTypeCount(filter) => {
             let mut counts = std::collections::HashMap::new();
@@ -2906,7 +2913,8 @@ fn resolve_filter_comparison_rhs_value(
                 let mut types_on_object = std::collections::HashSet::new();
                 for subtype in subtypes {
                     if subtype.is_creature_type() && types_on_object.insert(subtype) {
-                        *counts.entry((controller_group, subtype)).or_insert(0i64) += 1;
+                        let count = counts.entry((controller_group, subtype)).or_insert(0i64);
+                        *count = count.saturating_add(1);
                     }
                 }
             }
@@ -3093,7 +3101,7 @@ fn resolve_filter_comparison_rhs_value(
                             .is_none_or(|team| seen_teams.insert(team))
                 })
                 .fold(0i64, |count, candidate| {
-                    count + i64::from(candidate.counter_count(*counter_type))
+                    count.saturating_add(i64::from(candidate.counter_count(*counter_type)))
                 });
             Some(count)
         }
@@ -3370,7 +3378,18 @@ fn creature_was_blocked_by_ref(
     attacker: ObjectId,
     blocker_ref: &ObjectRef,
 ) -> bool {
-    let blockers = resolve_object_ref_ids(blocker_ref, ctx);
+    let mut blockers = resolve_object_ref_ids(blocker_ref, ctx);
+    // "When this dies during combat, it deals 6 damage to each creature it
+    // blocked this combat" (Cathedral Membrane): the triggering reference was
+    // re-pointed at the graveyard card, but the block was declared by the
+    // battlefield incarnation, so consult its pre-move identity (CR 608.2h).
+    if let ObjectRef::Tagged(tag) = blocker_ref
+        && let Some(history) = ctx
+            .tagged_objects
+            .get(&crate::tag::TagKey::from(format!("__pre_move_history__{}", tag.as_str())))
+    {
+        blockers.extend(history.iter().map(|snapshot| snapshot.object_id));
+    }
     if blockers.is_empty() {
         return false;
     }
@@ -4079,9 +4098,9 @@ pub(crate) fn player_filter_matches_game(
                         controlled_matching_object_count(game, reference.id, object_filter, ctx);
                     let margin = (*minimum_difference).max(1) as usize;
                     if *fewer {
-                        reference_count >= candidate_count + margin
+                        reference_count >= candidate_count.saturating_add(margin)
                     } else {
-                        candidate_count >= reference_count + margin
+                        candidate_count >= reference_count.saturating_add(margin)
                     }
                 })
         }
@@ -5016,12 +5035,44 @@ impl ObjectFilterExt for ObjectFilter {
                 }
                 continue;
             }
+            // "a name chosen for this enchantment" (Day of the Moon) is every
+            // name chosen for the source so far, while the resolution tag holds
+            // only this resolution's choice (CR 607.2, 700.2).
+            if constraint.relation == TaggedOpbjectRelation::SameNameAsTagged
+                && self.chosen_name_source_surface().is_some()
+                && let Some(source) = ctx.source
+                && let Some(names) = game.chosen_named_option(source)
+                && names.lines().map(str::trim).any(|name| {
+                    !name.is_empty() && name.eq_ignore_ascii_case(subject.subject_name())
+                })
+            {
+                continue;
+            }
             if !tagged_constraint_matches_subject(
                 subject,
                 tagged_snapshots,
                 constraint.relation,
                 game,
             ) {
+                return false;
+            }
+            // "each other creature that shares a creature type with it"
+            // (Coat of Arms): "other" is relative to the compared object, so
+            // that object never counts as sharing with itself.
+            if self.other
+                && matches!(
+                    constraint.relation,
+                    TaggedOpbjectRelation::SharesCardType
+                        | TaggedOpbjectRelation::SharesPermanentType
+                        | TaggedOpbjectRelation::SharesColorWithTagged
+                        | TaggedOpbjectRelation::SharesSubtypeWithTagged
+                        | TaggedOpbjectRelation::SharesSubtypeWithEachTagged
+                        | TaggedOpbjectRelation::SharesProducibleManaTypeWithTagged
+                )
+                && tagged_snapshots
+                    .iter()
+                    .any(|snapshot| snapshot.object_id == subject.subject_object_id())
+            {
                 return false;
             }
         }
@@ -5190,7 +5241,10 @@ impl ObjectFilterExt for ObjectFilter {
             || self.targets_only_player.is_some()
             || self.targets_only_object.is_some()
         {
+            // A stack-object snapshot ("if it has a single target", Grip of
+            // Chaos) names an ability by its own stack id, not its source's.
             let Some(entry) = stack_entry
+                .or_else(|| game.stack.iter().find(|e| e.ability_id == Some(object_id)))
                 .or_else(|| game.stack.iter().find(|e| e.object_id == object_id))
                 .or_else(resolving_spell_entry)
             else {

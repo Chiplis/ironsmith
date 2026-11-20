@@ -93,13 +93,12 @@ impl SpellCastEvent {
                             crate::mana::ManaSymbol::X => x,
                             other => other.mana_value(),
                         })).max().unwrap_or(0)
-                    }).sum()
+                    }).fold(0u128, u128::saturating_add)
                 } else { 0 }
             }
         };
-        i64::try_from(amount).map_err(|_| ExecutionError::ResourceLimitExceeded {
-            resource: "completed spell-cast quantity", requested: amount, maximum: i64::MAX as u128,
-        })
+        // A cast quantity is a game quantity: it saturates at the i64 bound.
+        Ok(i64::try_from(amount).unwrap_or(i64::MAX))
     }
 
     /// Create a new spell cast event.

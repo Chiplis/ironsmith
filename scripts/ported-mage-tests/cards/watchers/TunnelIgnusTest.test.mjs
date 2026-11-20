@@ -56,6 +56,12 @@ registerPortedMageTests({
           "source": "Scalding Tarn"
         },
         {
+          "op": "addTarget",
+          "player": 0,
+          "target": "@fetch",
+          "note": "The port adds Island@fetch to the library; the fetch search must choose it, since the library is otherwise filled with Mountains (CR 701.23a: the searcher chooses)."
+        },
+        {
           "op": "assertStackObject",
           "turn": 1,
           "phase": "POSTCOMBAT_MAIN",

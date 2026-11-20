@@ -92,6 +92,23 @@ impl TriggerMatcher for PlayerSacrificesTrigger {
         }
     }
 
+    /// "Whenever you sacrifice one or more Foods" (Camellia, the Seedmiser)
+    /// triggers once for all of one player's sacrifices in one simultaneous
+    /// action, such as a "sacrifice two artifacts" cost (CR 603.2c).
+    fn simultaneous_trigger_key(
+        &self,
+        event: &TriggerEvent,
+    ) -> Option<crate::triggers::matcher_trait::SimultaneousTriggerKey> {
+        if !self.one_or_more_surface || event.kind() != EventKind::Sacrifice {
+            return None;
+        }
+        let e = event.downcast::<SacrificeEvent>()?;
+        let player = e
+            .sacrificing_player
+            .or_else(|| e.snapshot.as_ref().map(|snapshot| snapshot.controller))?;
+        Some(crate::triggers::matcher_trait::SimultaneousTriggerKey::SacrificeBatch(player))
+    }
+
     /// A sacrificed permanent leaves the battlefield, so this is a
     /// leaves-the-battlefield ability that looks back in time (CR 603.6c,
     /// 603.10a): a watcher sacrificed together with other permanents still

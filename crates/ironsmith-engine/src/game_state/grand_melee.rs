@@ -660,7 +660,8 @@ impl GameState {
             return;
         };
         for player in players {
-            *state.deferred_extra_turns.entry(player).or_default() += 1;
+            let tally = state.deferred_extra_turns.entry(player).or_default();
+            *tally = tally.saturating_add(1);
         }
     }
 
@@ -850,7 +851,7 @@ impl GameState {
                     .find(|marker| marker.number == next)
             })
         {
-            marker.removal_designations += extra_designations;
+            marker.removal_designations = marker.removal_designations.saturating_add(extra_designations);
         }
         self.focus_any_active_grand_melee_marker();
     }
@@ -1057,7 +1058,7 @@ impl GameState {
                         .iter_mut()
                         .find(|marker| marker.number == number)
                 }) {
-                marker.removal_designations += 1;
+                marker.removal_designations = marker.removal_designations.saturating_add(1);
                 marker.status == GrandMeleeMarkerStatus::Waiting
             } else {
                 false
@@ -1145,7 +1146,7 @@ impl GameState {
                 .iter_mut()
                 .find(|marker| marker.number == selected)
         }) {
-            marker.removal_designations += needed;
+            marker.removal_designations = marker.removal_designations.saturating_add(needed);
             marker.status == GrandMeleeMarkerStatus::Waiting
         } else {
             false

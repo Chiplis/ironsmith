@@ -1,5 +1,5 @@
 use super::TraitApplyResult;
-use crate::effects::tokens::resources::checked_token_count;
+use crate::effects::tokens::resources::token_count;
 use crate::events::{Event, EventKind};
 use crate::filter::ObjectFilterExt as _;
 use crate::game_state::{GameState, Target};
@@ -22,11 +22,11 @@ pub(super) fn turn_prevention_remaining(
     let mut used = 0u128;
     for record in game.turn_store.turn_history.projected_records() {
         if let Some(damage) = record.event.downcast::<crate::events::DamageEvent>() {
-            if damage.target == target { used += u128::from(damage.amount); }
+            if damage.target == target { used = used.saturating_add(u128::from(damage.amount)); }
         }
         if include_own_prevention {
             if let Some(prevented) = record.event.downcast::<crate::events::DamagePreventedEvent>() {
-                if prevented.target == target && prevented.prevention_effect.as_ref() == Some(&key) { used += u128::from(prevented.amount); }
+                if prevented.target == target && prevented.prevention_effect.as_ref() == Some(&key) { used = used.saturating_add(u128::from(prevented.amount)); }
             }
         }
     }
@@ -178,15 +178,17 @@ pub(super) fn apply_trait_replacement(
                     source: effect.source,
                     controller: effect.controller,
                     prevented,
+                    // Measured by the follow-up's damage amount so simultaneous
+                    // damage to this permanent merges into one removal (CR 510.2).
                     effects: vec![crate::effect::Effect::remove_counters(
                         *counter_type,
-                        crate::effect::Value::from(counters_to_remove),
+                        crate::effect::Value::EventValue(crate::effect::EventValueSpec::Amount),
                         crate::target::ChooseSpec::Source,
                     )],
                     targets: Vec::new(),
                     target_assignments: Vec::new(),
                 },
-                damage.with_amount(prevented),
+                damage.with_amount(counters_to_remove),
                 event.provenance(),
                 event.0.source_snapshot(),
             );
@@ -326,7 +328,7 @@ pub(super) fn apply_trait_replacement(
             {
                 let covers = token_groups_covered(game, effect, &create_tokens);
                 let modified =
-                    create_tokens.scaled_token_groups(covers, |count| u128::from(count) * 2)?;
+                    create_tokens.scaled_token_groups(covers, |count| u128::from(count).saturating_mul(2))?;
                 return Ok(TraitApplyResult::Modified(event.rewrap(modified)));
             }
             if let Some(modified) = apply_damage_result_modification(
@@ -498,27 +500,23 @@ pub(super) fn apply_trait_replacement(
             let chars = prospective
                 .calculated_characteristics(etb.object)
                 .ok_or(crate::effects::ExecutionError::ObjectNotFound(etb.object))?;
+            // CR 306.5b + CR 107.3m: a printed loyalty of "X" (Nissa, Steward
+            // of Elements) has no number; the entering spell's X is used, or 0
+            // when it entered without being cast.
+            let printed_x = || {
+                prospective
+                    .object(etb.object)
+                    .or_else(|| game.object(etb.object))
+                    .and_then(|object| object.own_entry_x_value())
+            };
             let count = match rule {
-                ironsmith_core::IntrinsicStartingCounter::Loyalty => chars.loyalty,
+                ironsmith_core::IntrinsicStartingCounter::Loyalty => {
+                    chars.loyalty.or_else(printed_x)
+                }
                 ironsmith_core::IntrinsicStartingCounter::Defense => chars.defense,
             }
             .unwrap_or(0);
             let counter = rule.counter_type();
-            let prior = etb
-                .enters_with_counters
-                .iter()
-                .filter(|(kind, _)| *kind == counter)
-                .try_fold(0_u32, |total, (_, value)| total.checked_add(*value))
-                .ok_or_else(|| {
-                    crate::effects::ExecutionError::InternalError(
-                        "entry counter contribution overflow".into(),
-                    )
-                })?;
-            prior.checked_add(count).ok_or_else(|| {
-                crate::effects::ExecutionError::InternalError(
-                    "intrinsic entry counter contribution overflow".into(),
-                )
-            })?;
             match apply_trait_enter_with_counters(&event, counter, count, &[], &[]) {
                 Some(modified) => TraitApplyResult::Modified(modified),
                 None => {
@@ -575,7 +573,19 @@ pub(super) fn apply_trait_replacement(
                 }
                 _ => count,
             };
-            let value_source = if etb_value_uses_entering_object(selected_count) {
+            // A static ability of another permanent ("each other creature you
+            // control enters with ... equal to Master Biomancer's power")
+            // reads its own source; only an entering object's own replacement
+            // reads the entering object's characteristics as `Source`.
+            let replacement_source_is_other_permanent = entering_object
+                .is_some_and(|entering| entering != effect.source)
+                && game
+                    .object(effect.source)
+                    .is_some_and(|source| source.zone == Zone::Battlefield);
+            let value_source = if etb_value_uses_entering_object(
+                selected_count,
+                !replacement_source_is_other_permanent,
+            ) {
                 condition_source
             } else {
                 effect.source
@@ -715,7 +725,7 @@ pub(super) fn apply_trait_replacement(
                 .with_amount(redirected_amount);
             if damage.amount > redirected_amount {
                 modified =
-                    modified.with_remainder(damage.target, damage.amount - redirected_amount);
+                    modified.with_remainder(damage.target, damage.amount.saturating_sub(redirected_amount));
             }
             TraitApplyResult::Modified(event.rewrap(modified))
         }
@@ -770,7 +780,7 @@ pub(super) fn apply_trait_replacement(
                 return Ok(TraitApplyResult::Unchanged(event));
             };
             let covers = token_groups_covered(game, effect, &tokens);
-            let count = checked_token_count(tokens.matching_count(&covers))?;
+            let count = token_count(tokens.matching_count(&covers));
             if count == 0 {
                 return Ok(TraitApplyResult::Unchanged(event));
             }
@@ -825,6 +835,9 @@ pub(super) fn apply_trait_replacement(
         }
 
         ReplacementAction::AddTokens { token, count } => {
+            if !game.claim_simultaneous_added_tokens(effect.source, *token) {
+                return Ok(TraitApplyResult::Unchanged(event));
+            }
             let modified = apply_trait_add_tokens(&event, *token, *count)?;
             match modified {
                 Some(e) => TraitApplyResult::Modified(e),
@@ -841,9 +854,9 @@ pub(super) fn apply_trait_replacement(
             };
             // "that many": every covered token, including ones an earlier
             // replacement added (CR 616.1).
-            let that_many = checked_token_count(
+            let that_many = token_count(
                 create_tokens.matching_count(token_groups_covered(game, effect, &create_tokens)),
-            )?;
+            );
             match apply_trait_add_tokens(&event, *token, that_many)? {
                 Some(e) => TraitApplyResult::Modified(e),
                 None => TraitApplyResult::Unchanged(event),
@@ -886,7 +899,7 @@ pub(super) fn apply_trait_replacement(
                 })
                 .collect();
             let count =
-                checked_token_count(create_tokens.matching_count(|key| covered.contains(&key)))?;
+                token_count(create_tokens.matching_count(|key| covered.contains(&key)));
             // "Instead create one of each" replaces each matching token's
             // definition too; it does not retain a custom Food/Clue/Treasure
             // prototype or omit template groups added by an earlier effect.
@@ -942,7 +955,7 @@ pub(super) fn apply_trait_replacement(
                 )
             })?;
             TraitApplyResult::Modified(
-                event.rewrap(mana.clone().with_mana(transform.apply(&mana.mana))),
+                event.rewrap(mana.clone().with_mana_transformation(transform)),
             )
         }
 
@@ -952,9 +965,9 @@ pub(super) fn apply_trait_replacement(
             let Some(mana_event) = downcast_event::<ManaAddedEvent>(event.inner()) else {
                 return Ok(TraitApplyResult::Unchanged(event));
             };
-            let replacement_mana =
-                crate::events::mana::ManaTransformation::ReplaceTypes(mana).apply(&mana_event.mana);
-            TraitApplyResult::Modified(event.rewrap(mana_event.clone().with_mana(replacement_mana)))
+            TraitApplyResult::Modified(event.rewrap(mana_event.clone().with_mana_transformation(
+                crate::events::mana::ManaTransformation::ReplaceTypes(mana),
+            )))
         }
 
         ReplacementAction::ReplaceManaExact(mana) => {
@@ -963,8 +976,8 @@ pub(super) fn apply_trait_replacement(
             let Some(mana_event) = downcast_event::<ManaAddedEvent>(event.inner()) else {
                 return Ok(TraitApplyResult::Unchanged(event));
             };
-            TraitApplyResult::Modified(event.rewrap(mana_event.clone().with_mana(
-                crate::events::mana::ManaTransformation::ReplaceExact(mana).apply(&mana_event.mana),
+            TraitApplyResult::Modified(event.rewrap(mana_event.clone().with_mana_transformation(
+                crate::events::mana::ManaTransformation::ReplaceExact(mana),
             )))
         }
 
@@ -1574,10 +1587,10 @@ fn modify_token_groups_checked(
     let covers = token_groups_covered(game, effect, &tokens);
     match modification {
         EventModification::Multiply(factor) => {
-            tokens.scaled_token_groups(covers, |count| u128::from(count) * u128::from(*factor))
+            tokens.scaled_token_groups(covers, |count| u128::from(count).saturating_mul(u128::from(*factor)))
         }
         EventModification::Add(delta) => tokens.adjusted_token_total(covers, |total| {
-            (i64::from(total) + i64::from(*delta)).max(0) as u128
+            i64::from(total).saturating_add(i64::from(*delta)).max(0) as u128
         }),
         EventModification::Subtract(delta) => {
             tokens.adjusted_token_total(covers, |total| u128::from(total.saturating_sub(*delta)))
@@ -1694,9 +1707,9 @@ fn apply_trait_modification(
             let EventModification::Multiply(factor) = modification else {
                 return None;
             };
-            let mana =
-                crate::events::mana::ManaTransformation::Multiply(*factor).apply(&mana_event.mana);
-            Some(event.rewrap(mana_event.clone().with_mana(mana)))
+            Some(event.rewrap(mana_event.clone().with_mana_transformation(
+                crate::events::mana::ManaTransformation::Multiply(*factor),
+            )))
         }
         EventKind::Draw => {
             let draw = downcast_event::<DrawEvent>(event.inner())?;
@@ -1735,9 +1748,11 @@ fn apply_trait_double_counters(
                     put_counters.with_count(
                         crate::events::damage::checked_damage_amount(
                             put_counters.maximum_count.map_or(
-                                u128::from(put_counters.count) * 2,
+                                u128::from(put_counters.count).saturating_mul(2),
                                 |maximum| {
-                                    (u128::from(put_counters.count) * 2).min(u128::from(maximum))
+                                    u128::from(put_counters.count)
+                                        .saturating_mul(2)
+                                        .min(u128::from(maximum))
                                 },
                             ),
                             "doubled counter result",
@@ -1757,7 +1772,7 @@ fn apply_trait_double_counters(
             for (existing_type, count) in &mut doubled.enters_with_counters {
                 if counter_type.is_none_or(|ct| ct == *existing_type) {
                     *count = crate::events::damage::checked_damage_amount(
-                        u128::from(*count) * 2,
+                        u128::from(*count).saturating_mul(2),
                         "doubled entry counters",
                     )?;
                     changed = true;
@@ -1813,7 +1828,7 @@ fn apply_trait_add_counters_to_placement(
                 && put_counters.count > 0
             {
                 let total =
-                    (i128::from(put_counters.count) + i128::from(additional)).max(0) as u128;
+                    i128::from(put_counters.count).saturating_add(i128::from(additional)).max(0) as u128;
                 let total = put_counters
                     .maximum_count
                     .map_or(total, |maximum| total.min(u128::from(maximum)));
@@ -1837,7 +1852,7 @@ fn apply_trait_add_counters_to_placement(
                     counters.iter_mut().find(|(existing, _)| *existing == kind)
                 {
                     *total = crate::events::damage::checked_damage_amount(
-                        u128::from(*total) + u128::from(count),
+                        u128::from(*total).saturating_add(u128::from(count)),
                         "entry counter total",
                     )?;
                 } else {
@@ -1849,7 +1864,7 @@ fn apply_trait_add_counters_to_placement(
             for (existing_type, count) in &mut increased.enters_with_counters {
                 if *count > 0 && counter_type.is_none_or(|ct| ct == *existing_type) {
                     *count = crate::events::damage::checked_damage_amount(
-                        (i128::from(*count) + i128::from(additional)).max(0) as u128,
+                        i128::from(*count).saturating_add(i128::from(additional)).max(0) as u128,
                         "entry counter addition",
                     )?;
                     changed = true;
@@ -2098,7 +2113,7 @@ fn apply_trait_enter_as_copy(
             etb=etb.with_base_power_toughness(power,toughness);
             contribution.base_power_toughness=Some((power,toughness));
         }
-        contribution.added_ability_count = etb.added_abilities.len() - abilities_before;
+        contribution.added_ability_count = etb.added_abilities.len().saturating_sub(abilities_before);
         etb.prior_copy_exceptions = Some(Box::new(contribution));
         Ok(etb)
     };
@@ -2309,7 +2324,10 @@ fn resolve_value_for_etb(
     resolve_value_for_replacement(count, game, source)
 }
 
-fn etb_value_uses_entering_object(value: &crate::effect::Value) -> bool {
+fn etb_value_uses_entering_object(
+    value: &crate::effect::Value,
+    source_characteristics_are_entering: bool,
+) -> bool {
     match value.unhinted() {
         crate::effect::Value::ManaSpentToCastThisSpell
         | crate::effect::Value::ManaFromSourceSpentToCastThisSpell { .. }
@@ -2321,14 +2339,17 @@ fn etb_value_uses_entering_object(value: &crate::effect::Value) -> bool {
         | crate::effect::Value::CountersOn(spec, _)
             if matches!(spec.base(), crate::target::ChooseSpec::Source) =>
         {
-            true
+            source_characteristics_are_entering
         }
         crate::effect::Value::Add(left, right) | crate::effect::Value::Min(left, right) => {
-            etb_value_uses_entering_object(left) || etb_value_uses_entering_object(right)
+            etb_value_uses_entering_object(left, source_characteristics_are_entering)
+                || etb_value_uses_entering_object(right, source_characteristics_are_entering)
         }
         crate::effect::Value::Scaled(inner, _)
         | crate::effect::Value::DividedRoundedDown(inner, _)
-        | crate::effect::Value::HalfRoundedDown(inner) => etb_value_uses_entering_object(inner),
+        | crate::effect::Value::HalfRoundedDown(inner) => {
+            etb_value_uses_entering_object(inner, source_characteristics_are_entering)
+        }
         _ => false,
     }
 }
@@ -2645,26 +2666,8 @@ mod quantitative_addition_range_tests {
             event_for(family, source, alice, amount),
             &mut dm,
         );
-        if family != 3 && i64::from(amount) + i64::from(delta) > i64::from(u32::MAX) {
-            assert!(
-                matches!(
-                    result,
-                    Err(crate::effects::ExecutionError::ResourceLimitExceeded {
-                        requested: 4294967296,
-                        maximum: 4294967295,
-                        ..
-                    })
-                ),
-                "{result:?}"
-            );
-            assert!(
-                game.effect_store
-                    .replacement_effects
-                    .get_effect(shield)
-                    .is_some()
-            );
-            return;
-        }
+        // Every family saturates at the unsigned carrier bound.
+        let _ = &shield;
         let result = result.unwrap();
         assert_eq!(
             quantity(family, &resolved(result)),

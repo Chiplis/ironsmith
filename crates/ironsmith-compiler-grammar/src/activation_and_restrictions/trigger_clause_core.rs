@@ -3512,7 +3512,11 @@ fn try_parse_player_plays_card_lexed(
     {
         return Ok(None);
     }
-    let filter = parse_object_filter_lexed(object, false)?;
+    let mut filter = parse_object_filter_lexed(object, false)?;
+    // "play a card" (Prosper, Tome-Bound): a copy of a card cast from exile
+    // (Mizzix's Mastery, CR 707.12) is not a card (CR 108.2, 109.1). A land
+    // played is always a card, so both arms share the restriction.
+    filter.physical_card = true;
     Ok(Some(apply_leading_trigger_intro_surface(
         TriggerSpec::AnyOf(vec![
             TriggerSpec::SpellCast {

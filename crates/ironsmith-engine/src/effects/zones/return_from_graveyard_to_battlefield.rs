@@ -34,13 +34,19 @@ fn resolve_graveyard_return_targets(
 
     let mut ids = Vec::with_capacity(tagged.len());
     for snapshot in tagged {
-        let Some(object) = game.object(snapshot.object_id) else {
+        // "Whenever a creature is put into your graveyard from the
+        // battlefield, ... return that card" (Angelic Renewal): the trigger
+        // looks in the zone the object moved to and finds the new graveyard
+        // object (CR 400.7, 603.6c). Other stale references stay invalid.
+        let object_id = crate::effects::helpers::resolve_tagged_object_id(game, ctx, snapshot)
+            .unwrap_or(snapshot.object_id);
+        let Some(object) = game.object(object_id) else {
             return Err(ExecutionError::InvalidTarget);
         };
         if object.stable_id != snapshot.stable_id || object.zone != Zone::Graveyard {
             return Err(ExecutionError::InvalidTarget);
         }
-        ids.push(snapshot.object_id);
+        ids.push(object_id);
     }
     Ok(ids)
 }

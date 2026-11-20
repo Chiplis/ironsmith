@@ -403,10 +403,7 @@ impl FightEffect {
             vec![(
                 creature1_id,
                 creature1_id,
-                crate::events::damage::checked_damage_amount(
-                    u128::from(power1) * 2,
-                    "self-fight damage",
-                )?,
+                power1.saturating_mul(2),
                 creature1_snapshot,
             )]
         } else {
@@ -430,8 +427,6 @@ impl FightEffect {
                 },
             )
             .collect::<Vec<_>>();
-        let total = events.iter().map(|event| u128::from(event.amount)).sum();
-        crate::events::damage::checked_damage_count(total, "fight damage outcome")?;
         crate::effects::capture_triggers_before_added_program(
             game,
             ctx,
@@ -921,7 +916,7 @@ mod tests {
     }
 
     #[test]
-    fn self_fight_overflow_is_an_incomplete_error_without_damage_or_keyword_receipts() {
+    fn self_fight_overflow_saturates_the_marked_damage() {
         let mut game = setup_game();
         let alice = PlayerId::from_index(0);
         let fighter = create_creature(&mut game, "Large fighter", i32::MAX, i32::MAX, alice);
@@ -936,22 +931,13 @@ mod tests {
                 ),
                 ReplacementAction::Modify(EventModification::Multiply(3)),
             ));
-        let history_before = game.turn_store.turn_history.event_records.len();
         let result = FightEffect::new(
             ChooseSpec::SpecificObject(fighter),
             ChooseSpec::SpecificObject(fighter),
         )
         .execute(&mut game, &mut ctx);
-        assert!(matches!(
-            result,
-            Err(ExecutionError::ResourceLimitExceeded { .. })
-        ));
-        assert_eq!(game.damage_on(fighter), 0);
-        assert_eq!(
-            game.turn_store.turn_history.event_records.len(),
-            history_before
-        );
-        assert!(!game.effect_store.has_pending_trigger_work());
+        assert!(result.is_ok(), "{result:?}");
+        assert_eq!(game.damage_on(fighter), u32::MAX);
     }
 
     #[test]

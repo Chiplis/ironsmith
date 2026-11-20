@@ -606,7 +606,7 @@ pub(crate) fn rewrite_effect_words(effect: &Effect, change: TextChange) -> Resul
             ironsmith_core::CardCreationSelection::RandomMatching{filter,..}=>*filter=rewrite_filter_words(filter,change)?,
             ironsmith_core::CardCreationSelection::Duplicate(target)=>*target=rewrite_choose_spec_words(target,change)?,
             // Names are real-card identity operands, not color/type words.
-            ironsmith_core::CardCreationSelection::Named(_) | ironsmith_core::CardCreationSelection::ChosenName{..}=>{},
+            ironsmith_core::CardCreationSelection::Named(_) | ironsmith_core::CardCreationSelection::Catalog(_) | ironsmith_core::CardCreationSelection::ChosenName{..}=>{},
         }
     });
     visit!(ExecuteWithSourceEffect, model, {

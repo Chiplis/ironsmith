@@ -587,7 +587,7 @@ pub(super) fn select_mode_program(
             ));
         }
         valid_chosen_indices.push(idx);
-        chosen_point_total += point_cost;
+        chosen_point_total = chosen_point_total.saturating_add(point_cost);
     }
 
     // CR 608.2c: chosen modes are followed in their printed order.

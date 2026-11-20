@@ -9,7 +9,7 @@ use crate::ids::PlayerId;
 use crate::object::Object;
 use ironsmith_core::AdditionalTokenKind;
 use crate::effects::ExecutionError;
-use crate::effects::tokens::resources::checked_token_count;
+use crate::effects::tokens::resources::token_count;
 
 /// Stable keys within one immutable token-creation proposal. Definitions are
 /// first-class groups, not a finite list of card-specific token kinds.
@@ -81,18 +81,33 @@ impl CreateTokensEvent {
     /// Every token group doubled, including tokens an earlier replacement
     /// added (CR 616.1: each replacement applies to the modified event).
     pub fn doubled(&self) -> Result<Self, ExecutionError> {
-        self.scaled_groups(|_| true, |count| u128::from(count) * 2)
+        self.scaled_groups(|_| true, |count| u128::from(count).saturating_mul(2))
     }
 
     /// Total number of tokens this event would create, across the original
     /// token and every group added by an earlier replacement.
     pub fn total_count(&self) -> u128 {
-        // Two Vec lengths fit usize; each count fits u32. Their combined
-        // mathematical total fits u128 on every supported architecture.
-        u128::from(self.count)
-            + self.additional_tokens.iter().map(|(_, count)| u128::from(*count)).sum::<u128>()
-            + self.additional_templates.iter().map(|group| u128::from(group.count)).sum::<u128>()
-            + self.additional_copies.iter().map(|group| u128::from(group.count)).sum::<u128>()
+        // Each count fits u32; the sum saturates rather than wrapping.
+        self.group_keys().into_iter().fold(0u128, |total, key| {
+            total.saturating_add(u128::from(self.group_count(key)))
+        })
+    }
+
+    /// This proposal limited to its first `granted` tokens, in group order.
+    /// Creation past the token budget creates what fits and then stops.
+    pub(crate) fn truncated_to(&self, granted: u128) -> Self {
+        let mut next = self.clone();
+        let mut remaining = granted;
+        for key in self.group_keys() {
+            let count = next.group_count_mut(key);
+            let kept = token_count(remaining.min(u128::from(*count)));
+            *count = kept;
+            remaining = remaining.saturating_sub(u128::from(kept));
+        }
+        next.additional_tokens.retain(|(_, count)| *count > 0);
+        next.additional_templates.retain(|group| group.count > 0);
+        next.additional_copies.retain(|group| group.count > 0);
+        next
     }
 
     pub fn group_keys(&self) -> Vec<TokenGroupKey> {
@@ -130,17 +145,16 @@ impl CreateTokensEvent {
     }
     pub fn matching_count(&self, matches: impl Fn(TokenGroupKey) -> bool) -> u128 {
         self.group_keys().into_iter().filter(|key| matches(*key))
-            .map(|key| u128::from(self.group_count(key))).sum()
+            .fold(0u128, |total, key| total.saturating_add(u128::from(self.group_count(key))))
     }
     pub fn scaled_token_groups(&self, matches: impl Fn(TokenGroupKey) -> bool, scale: impl Fn(u32) -> u128) -> Result<Self, ExecutionError> {
         let mut next = self.clone();
         for key in self.group_keys() {
-            if matches(key) { *next.group_count_mut(key) = checked_token_count(scale(self.group_count(key)))?; }
+            if matches(key) { *next.group_count_mut(key) = token_count(scale(self.group_count(key))); }
         }
         next.additional_tokens.retain(|(_, count)| *count > 0);
         next.additional_templates.retain(|group| group.count > 0);
         next.additional_copies.retain(|group| group.count > 0);
-        checked_token_count(next.total_count())?;
         Ok(next)
     }
     pub fn adjusted_token_total(&self, matches: impl Fn(TokenGroupKey) -> bool, adjust: impl Fn(u32) -> u128) -> Result<Self, ExecutionError> {
@@ -148,23 +162,26 @@ impl CreateTokensEvent {
         // Preserve the original unknown-prototype fallback of the legacy API.
         if keys.is_empty() && self.count > 0 && self.token.is_none() { keys.push(TokenGroupKey::Original); }
         let Some(first) = keys.first().copied() else { return Ok(self.clone()); };
-        let total = checked_token_count(keys.iter().map(|key| u128::from(self.group_count(*key))).sum())?;
-        let desired = checked_token_count(adjust(total))?;
+        // The covered total saturates for the adjustment, but the change is
+        // applied against the exact total so "none instead" removes every group.
+        let exact = keys.iter().fold(0u128, |total, key| total.saturating_add(u128::from(self.group_count(*key))));
+        let desired = adjust(token_count(exact));
         let mut next = self.clone();
-        if desired > total {
+        if desired > exact {
             let count = next.group_count_mut(first);
-            *count = checked_token_count(u128::from(*count) + u128::from(desired - total))?;
+            *count = token_count(u128::from(*count).saturating_add(desired.saturating_sub(exact)));
         } else {
-            let mut remove = total - desired;
+            let mut remove = exact.saturating_sub(desired);
             for key in keys {
                 let count = next.group_count_mut(key);
-                let removed = remove.min(*count); *count -= removed; remove -= removed;
+                let removed = token_count(remove.min(u128::from(*count)));
+                *count = count.saturating_sub(removed);
+                remove = remove.saturating_sub(u128::from(removed));
             }
         }
         next.additional_tokens.retain(|(_, count)| *count > 0);
         next.additional_templates.retain(|group| group.count > 0);
         next.additional_copies.retain(|group| group.count > 0);
-        checked_token_count(next.total_count())?;
         Ok(next)
     }
     /// Compatibility adapter for predefined-kind callers. Native replacement
@@ -182,19 +199,16 @@ impl CreateTokensEvent {
         }), adjust)
     }
     pub fn with_template(&self, definition: crate::cards::CardDefinition, count: u32) -> Result<Self, ExecutionError> {
-        checked_token_count(self.total_count() + u128::from(count))?;
         let mut next = self.clone();
         if count > 0 { next.additional_templates.push(TemplateTokenGroup { definition, count }); }
         Ok(next)
     }
 
     pub fn with_count(&self, count: u32) -> Result<Self, ExecutionError> {
-        checked_token_count(self.total_count() - u128::from(self.count) + u128::from(count))?;
         Ok(Self { count, ..self.clone() })
     }
 
     pub fn with_additional_tokens(&self, token: AdditionalTokenKind, count: u32) -> Result<Self, ExecutionError> {
-        checked_token_count(self.total_count() + u128::from(count))?;
         let mut next = self.clone();
         if count > 0 {
             next.additional_tokens.push((token, count));

@@ -644,7 +644,7 @@ impl GameState {
             })?;
         }
         for player in &participants {
-            let opening_size = (7_i32 + child.vanguard_hand_modifier(*player)).max(0) as usize;
+            let opening_size = ironsmith_core::quantity::clamp_usize(i64::from(7_i32.saturating_add(child.vanguard_hand_modifier(*player))));
             child.draw_cards(*player, opening_size);
         }
         child.subgame_starting_procedure_pending = true;
@@ -1059,6 +1059,15 @@ impl GameState {
         if object.zone == destination { return false; }
         if let Some(admission) = &self.auxiliary_tracking.zone_movement_admission {
             return self.zone_movement_admission_blocks(id, destination, admission);
+        }
+        // Capturing on a just-changed board builds a query view (a game copy
+        // and full restriction scan). When no source could produce any
+        // restriction, that scan yields no admission rules at all.
+        if !self.continuous_state_is_clean()
+            && let Ok(effects) = self.try_all_continuous_effects_arc()
+            && self.cant_effects_static_scan_can_stay_empty(effects.as_slice())
+        {
+            return false;
         }
         let admission = self.capture_zone_movement_admission();
         self.zone_movement_admission_blocks(id, destination, &admission)

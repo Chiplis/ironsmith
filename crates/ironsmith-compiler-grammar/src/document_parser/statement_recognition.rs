@@ -460,7 +460,23 @@ fn recognize_statement_line_general(
             &line.tokens,
         )
         .is_some();
-    let static_probe = !typed_source_gain_ability && probe_is_static_ability_line(&line.tokens);
+    // "Creatures and lands target opponent controls don't untap during their
+    // next untap step." (Exhaustion, Mana Vapors): the static untap-tail
+    // grammar accepts "their next untap step" word by word, but a named
+    // next untap step is a one-shot instruction on the targeted player's
+    // permanents (CR 115.1, 502.3), never a static rule of the card.
+    let typed_named_player_untap_step = crate::word_claims::probe_only(|| {
+        crate::parse_loss::capture(|| {
+            super::super::grammar::effects::parse_named_player_untap_restriction(
+                crate::util::trim_edge_punctuation_tokens(&line.tokens),
+            )
+        })
+        .0
+    })
+    .is_ok_and(|parsed| parsed.is_some());
+    let static_probe = !typed_source_gain_ability
+        && !typed_named_player_untap_step
+        && probe_is_static_ability_line(&line.tokens);
     let typed_effect_prefix_before_static =
         has_effect_prefix_before_trailing_static_sentence(&line.tokens);
     let typed_create_statement = line

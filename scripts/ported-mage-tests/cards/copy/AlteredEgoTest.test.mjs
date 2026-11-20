@@ -302,15 +302,16 @@ registerPortedMageTests({
           "op": "assertCounterCount",
           "player": 1,
           "name": "@ego",
-          "count": 3,
-          "counter": "+1/+1"
+          "count": 6,
+          "counter": "+1/+1",
+          "note": "Port correction (CR 107.3m): the copied 'enters with X +1/+1 counters' replacement uses the X chosen for the Altered Ego spell that became the permanent (3), plus Altered Ego's own X additional counters (3) = 6. XMage treats the copied X as 0 (3 counters)."
         },
         {
           "op": "assertPowerToughness",
           "player": 1,
           "name": "Endless One",
-          "power": 3,
-          "toughness": 3
+          "power": 6,
+          "toughness": 6
         },
         {
           "op": "assertCounterCount",

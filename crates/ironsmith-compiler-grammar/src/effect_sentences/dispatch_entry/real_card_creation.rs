@@ -90,3 +90,69 @@ pub(crate) fn read(tokens:&[OwnedLexToken])->Result<Option<EffectAst>,CardTextEr
  let result_tag=crate::tag::TagRef::of(crate::util::helper_tag_for_tokens(tokens,"created-real-cards"));
  Ok(Some(EffectAst::CreateCards {selection,count,player:*player,zone:*zone,library_position:*library_position,operation_label,result_tag}))
 }
+
+/// Arena "conjure": "conjure <count> <Name> card(s) into <zone>". Wizards'
+/// Alchemy rules: a conjured card is created from outside the game and put
+/// into the named zone; it is a real card (not a token) owned by the
+/// conjuring player.
+pub(crate) fn read_conjure(tokens:&[OwnedLexToken])->Result<Option<EffectAst>,CardTextError>{
+ let tokens=crate::util::trim_edge_punctuation_tokens(tokens);
+ let view=crate::lexer::TokenWordView::new(tokens);let words=view.word_refs();
+ if words.first()!=Some(&"conjure"){return Ok(None);}
+ let owners:[(&[&str],PlayerAst);4]=[
+  (&["your"],PlayerAst::You),(&["target","player's"],PlayerAst::Target),
+  (&["target","players"],PlayerAst::Target),(&["target","opponents"],PlayerAst::TargetOpponent),
+ ];
+ let mut destinations:Vec<(Vec<&str>,crate::zone::Zone,PlayerAst,ironsmith_core::CardCreationLibraryPosition)>=Vec::new();
+ for (owner,player) in owners {
+  for (prefix,suffix,zone,position) in [
+   (&["into"][..],"hand",crate::zone::Zone::Hand,ironsmith_core::CardCreationLibraryPosition::Top),
+   (&["into"][..],"graveyard",crate::zone::Zone::Graveyard,ironsmith_core::CardCreationLibraryPosition::Top),
+   (&["on","top","of"][..],"library",crate::zone::Zone::Library,ironsmith_core::CardCreationLibraryPosition::Top),
+   (&["on","the","bottom","of"][..],"library",crate::zone::Zone::Library,ironsmith_core::CardCreationLibraryPosition::Bottom),
+  ] {
+   let mut phrase=prefix.to_vec();phrase.extend(owner);phrase.push(suffix);
+   destinations.push((phrase,zone,player,position));
+  }
+ }
+ destinations.push((vec!["onto","the","battlefield"],crate::zone::Zone::Battlefield,PlayerAst::You,ironsmith_core::CardCreationLibraryPosition::Top));
+ destinations.push((vec!["into","exile"],crate::zone::Zone::Exile,PlayerAst::You,ironsmith_core::CardCreationLibraryPosition::Top));
+ let Some((phrase,zone,player,library_position))=destinations.iter().find(|(phrase,..)|words.ends_with(phrase.as_slice()))else{return Ok(None);};
+ let subject_end=words.len()-phrase.len();
+ if subject_end<3||!matches!(words[subject_end-1],"card"|"cards"){return Ok(None);}
+ let name_end=subject_end-1;
+ // Count: "a"/"an", a number word, or a value phrase of one word ("X").
+ let (count,name_start)=match words[1] {
+  "a"|"an"=>(crate::effect::Value::Fixed(1),2),
+  _=>{
+   let Some(span)=view.token_span_for_words(1,2)else{return Ok(None);};
+   let Some((value,used))=crate::util::parse_value(&tokens[span.clone()])else{return Ok(None);};
+   if used!=tokens[span].len(){return Ok(None);}
+   (value,2)
+  }
+ };
+ if name_end<=name_start{return Ok(None);}
+ let Some(name_span)=view.token_span_for_words(name_start,name_end)else{return Ok(None);};
+ let name=crate::lexer::render_token_slice(&tokens[name_span]).trim_matches('"').trim().to_string();
+ if name.is_empty(){return Ok(None);}
+ crate::word_claims::claim_tokens(tokens);
+ let result_tag=crate::tag::TagRef::of(crate::util::helper_tag_for_tokens(tokens,"conjured-cards"));
+ Ok(Some(EffectAst::CreateCards{selection:CardCreationSelectionAst::Catalog(name),count,player:*player,zone:*zone,library_position:*library_position,operation_label:None,result_tag}))
+}
+
+/// Arena "seek": "seek <count> <quality> card(s)". Wizards' Alchemy rules:
+/// put that many cards matching the quality at random from your library
+/// into your hand; if fewer match, seek only those. Read as the equivalent
+/// random library-to-hand move.
+pub(crate) fn read_seek(tokens:&[OwnedLexToken])->Result<Option<EffectAst>,CardTextError>{
+ let tokens=crate::util::trim_edge_punctuation_tokens(tokens);
+ let view=crate::lexer::TokenWordView::new(tokens);let words=view.word_refs();
+ if words.first()!=Some(&"seek")||words.len()<3{return Ok(None);}
+ if !matches!(words.last(),Some(&"card"|&"cards")){return Ok(None);}
+ let Some(span)=view.token_span_for_words(1,words.len())else{return Ok(None);};
+ let descriptor=crate::lexer::render_token_slice(&tokens[span]);
+ let rewritten=crate::lexer::lex_line(&format!("put {descriptor} at random from your library into your hand"),0)?;
+ let effect=crate::effect_sentences::parse_effect_clause_lexed(&rewritten)?;
+ crate::word_claims::claim_tokens(tokens);
+ Ok(Some(effect))
+}

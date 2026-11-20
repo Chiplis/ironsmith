@@ -393,6 +393,7 @@ pub fn compile_annotated_effects_with_context(
     }
 
     rebind_attachment_host_followups(&mut compiled, ctx);
+    tag_counter_recipients_this_way_by_outcome(&mut compiled);
     bind_exiled_host_before_its_attachments(&mut compiled);
     bind_exiled_target_host_before_its_attachments(&mut compiled);
     // "put a -1/-1 counter on each creature target player controls"
@@ -413,6 +414,39 @@ pub fn compile_annotated_effects_with_context(
             let mut filter_targets = Vec::new();
             effect_dispatch::collect_object_filter_player_target_choices(
                 &for_each.filter,
+                &mut filter_targets,
+            );
+            for choice in filter_targets {
+                push_choice(&mut choices, choice);
+            }
+        }
+        // "Creatures target player controls get -1/-1 until end of turn"
+        // (Marsh Casualties, Arms of Hadar): a continuous effect over a
+        // filter that names a player target must declare that target
+        // (CR 115.1); the prelude below exposes it.
+        if let Some(apply) = current.downcast_ref::<crate::effects::ApplyContinuousEffect>()
+            && apply.target_spec.is_none()
+            && let crate::continuous::EffectTarget::Filter(filter) = &apply.target
+        {
+            let mut filter_targets = Vec::new();
+            effect_dispatch::collect_object_filter_player_target_choices(
+                filter,
+                &mut filter_targets,
+            );
+            for choice in filter_targets {
+                push_choice(&mut choices, choice);
+            }
+        }
+        // "Deals 1 damage to each creature target player controls"
+        // (Aggravate, Simoon): the damaged set's filter names a player
+        // target that nothing else declares (CR 115.1, 601.2c). A card that
+        // already targets that player ("target player and each creature
+        // that player controls") keeps its single declaration; the prelude
+        // skips choices another top-level effect exposes.
+        if let Some(each) = current.downcast_ref::<crate::effects::DealDamageEachEffect>() {
+            let mut filter_targets = Vec::new();
+            effect_dispatch::collect_object_filter_player_target_choices(
+                &each.filter,
                 &mut filter_targets,
             );
             for choice in filter_targets {
@@ -674,6 +708,59 @@ fn rebind_attachment_host_followups(compiled: &mut Vec<Effect>, ctx: &mut Effect
             Effect::new(crate::effects::TargetOnlyEffect::new(destination)).tag(destination_tag),
         );
         index += 2;
+    }
+}
+
+/// "Put a +1/+1 counter on target creature you control, then double the
+/// number of +1/+1 counters on each creature that had +1/+1 counters put on
+/// it this way" (Fangs of Kalonia): the follow-up names only the recipients
+/// that actually received counters, not the announced target. When a
+/// replacement (Vorinclex halving one counter to zero) leaves the target
+/// without counters, no creature had counters put on it this way. The
+/// producer's tag must therefore record its successful outcome only.
+fn tag_counter_recipients_this_way_by_outcome(compiled: &mut [Effect]) {
+    fn spec_filter(spec: &ChooseSpec) -> Option<&ObjectFilter> {
+        match spec.base() {
+            ChooseSpec::Object(filter) | ChooseSpec::All(filter) => Some(filter),
+            _ => None,
+        }
+    }
+    for consumer in 1..compiled.len() {
+        let Some(filter) = compiled[consumer]
+            .downcast_ref::<crate::effects::DoubleCountersEffect>()
+            .and_then(|double| spec_filter(&double.target))
+        else {
+            continue;
+        };
+        if filter.prior_effect_action_surface()
+            != Some(ironsmith_core::PriorEffectAction::CountersPut)
+        {
+            continue;
+        }
+        let tags = filter
+            .tagged_constraints
+            .iter()
+            .filter(|constraint| constraint.relation == TaggedOpbjectRelation::IsTaggedObject)
+            .map(|constraint| constraint.tag.clone())
+            .collect::<Vec<_>>();
+        for producer in 0..consumer {
+            let Some(tagged) = compiled[producer].downcast_ref::<crate::effects::TaggedEffect>()
+            else {
+                continue;
+            };
+            if tagged.outcome_only
+                || !tags.contains(&tagged.tag)
+                || tagged
+                    .effect
+                    .downcast_ref::<crate::effects::PutCountersEffect>()
+                    .is_none()
+            {
+                continue;
+            }
+            let mut tagged = tagged.clone();
+            tagged.outcome_only = true;
+            compiled[producer] = Effect::new(tagged);
+        }
     }
 }
 

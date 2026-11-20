@@ -162,8 +162,11 @@ fn native_iterators_share_direct_and_dispatcher_resource_and_error_rollback() {
         let mut effects = vec![Effect::new(crate::effects::InvestigateEffect::you(1)), Effect::shuffle_library(), Effect::draw(1)];
         if !resource_failure { effects.push(Effect::lose_life(Value::X)); }
         let effect = iterator(tagged, "selected", effects);
+        // Token counts clamp to the creation budget, so the instruction work guard
+        // injects the failure: one Investigate (outer guard, one repetition, one
+        // clue instruction) fits; the next Investigate fails.
         game.set_token_creation_limits(crate::effects::tokens::resources::TokenCreationLimits {
-            max_created_tokens: 1, ..Default::default()
+            max_instructions: 3, ..Default::default()
         });
         game.take_pending_trigger_events();
         let library = game.player(alice).unwrap().library.clone();
@@ -617,8 +620,11 @@ fn resource_failure_after_retained_iterator_draw_restores_the_entire_shuffle() {
                 Effect::new(crate::effects::InvestigateEffect::you(1)),
             ])]),
         ));
+        // Token counts clamp to the creation budget, so the instruction work guard
+        // injects the failure: one Investigate (outer guard, one repetition, one
+        // clue instruction) fits; the next Investigate fails.
         game.set_token_creation_limits(crate::effects::tokens::resources::TokenCreationLimits {
-            max_created_tokens: 1, ..Default::default()
+            max_instructions: 3, ..Default::default()
         });
         game.take_pending_trigger_events();
         let before_ids = game.next_object_id_counter();

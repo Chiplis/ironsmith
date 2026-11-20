@@ -220,7 +220,8 @@ registerPortedMageTests({
           "player": 0,
           "name": "Silvercoat Lion",
           "kind": "static",
-          "textPattern": "^As this creature enters$",
+          "textPattern": "^Riot$",
+          "note": "Port correction: the Java original asserts assertAbility(new RiotAbility()). A granted riot is displayed by its keyword name (CR 702.136a), not as its reminder-text entry clause.",
           "count": 1
         },
         {
@@ -327,7 +328,8 @@ registerPortedMageTests({
           "player": 0,
           "name": "Silvercoat Lion",
           "kind": "static",
-          "textPattern": "^As this creature enters$",
+          "textPattern": "^Riot$",
+          "note": "Port correction: the Java original asserts assertAbility(new RiotAbility()). A granted riot is displayed by its keyword name (CR 702.136a), not as its reminder-text entry clause.",
           "count": 2
         },
         {
@@ -416,7 +418,8 @@ registerPortedMageTests({
           "player": 0,
           "name": "Silvercoat Lion",
           "kind": "static",
-          "textPattern": "^As this creature enters$",
+          "textPattern": "^Riot$",
+          "note": "Port correction: the Java original asserts assertAbility(new RiotAbility()). A granted riot is displayed by its keyword name (CR 702.136a), not as its reminder-text entry clause.",
           "count": 1
         },
         {
@@ -527,7 +530,8 @@ registerPortedMageTests({
           "player": 0,
           "name": "Silvercoat Lion",
           "kind": "static",
-          "textPattern": "^As this creature enters$",
+          "textPattern": "^Riot$",
+          "note": "Port correction: the Java original asserts assertAbility(new RiotAbility()). A granted riot is displayed by its keyword name (CR 702.136a), not as its reminder-text entry clause.",
           "count": 1
         },
         {
@@ -638,7 +642,8 @@ registerPortedMageTests({
           "player": 0,
           "name": "Silvercoat Lion",
           "kind": "static",
-          "textPattern": "^As this creature enters$",
+          "textPattern": "^Riot$",
+          "note": "Port correction: the Java original asserts assertAbility(new RiotAbility()). A granted riot is displayed by its keyword name (CR 702.136a), not as its reminder-text entry clause.",
           "count": 1
         },
         {

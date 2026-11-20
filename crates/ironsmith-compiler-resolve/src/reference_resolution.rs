@@ -3106,7 +3106,22 @@ fn advance_reference_frame_for_effect(
                         // Returning an object across zones creates a new object. A follow-up
                         // reference must name that result rather than propagate the pre-move
                         // tagged snapshot's identity.
-                        frame.last_object_tag = Some(result_tag.as_ref().map(|tag| tag.key.clone()).unwrap_or_else(|| next_reference_tag(id_gen, "returned")));
+                        let previous = frame.last_object_tag.clone();
+                        let returned = result_tag.as_ref().map(|tag| tag.key.clone()).unwrap_or_else(|| next_reference_tag(id_gen, "returned"));
+                        // "Exile target creature. ... return that card": the result is
+                        // the prior antecedent itself, so "that creature" can still name
+                        // it as it last existed on the battlefield (CR 608.2h).
+                        let marker = crate::tag::CompilerReferenceTag::ReturnedObjectAntecedent.key();
+                        frame.snapshot_bindings.remove_alias(&marker);
+                        if let (Some(previous), ChooseSpec::Tagged(moved)) = (previous, spec.base())
+                            && previous.as_str() == moved.as_str()
+                            && previous != returned
+                        {
+                            let prior = crate::tag::CompilerReferenceTag::PriorObjectAntecedent.key();
+                            frame.snapshot_bindings.replace_alias((prior, previous));
+                            frame.snapshot_bindings.add_alias((marker, returned.clone()));
+                        }
+                        frame.last_object_tag = Some(returned);
                     }
                     track_target_player(target, frame);
                 }
@@ -5018,6 +5033,26 @@ fn annotate_effect_sequence_with_env_internal(
                 resolution_env.last_object_tag = offer.in_env.last_object_tag.clone();
                 resolution_env.source_object_antecedent = offer.in_env.source_object_antecedent;
             }
+        }
+        // "You may return that card to the battlefield ... If you don't,
+        // return that card ... at the beginning of the next end step"
+        // (Gilraen, Dunedain Protector): the declined optional action never
+        // produced its result object, so the complement's "that card" is the
+        // object the offer itself named.
+        if is_otherwise_fallback
+            && let Some(offer) = annotated.last()
+            && matches!(
+                &offer.effect,
+                EffectAst::Permissions(
+                    PermissionEffectAst::May { .. } | PermissionEffectAst::MayByPlayer { .. }
+                )
+            )
+            && matches!(
+                &current_env.last_object_tag,
+                RefState::Known(tag) if RefState::Known(tag.clone()) != offer.in_env.last_object_tag
+            )
+        {
+            resolution_env.last_object_tag = offer.in_env.last_object_tag.clone();
         }
         if std::env::var_os("IRONSMITH_TRACE_GRANT_REFERENCES").is_some() && format!("{effect:?}").contains("GrantAbilitiesToTarget") {
             eprintln!("GRANT_BEFORE_DEFINITE effect={effect:?} env={resolution_env:?}");

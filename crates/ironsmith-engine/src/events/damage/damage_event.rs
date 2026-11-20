@@ -112,7 +112,7 @@ impl DamageEvent {
     /// Return a new event with doubled damage.
     pub fn doubled(&self) -> Result<Self, crate::effects::ExecutionError> {
         Ok(Self {
-            amount: super::checked_damage_amount(u128::from(self.amount) * 2, "doubled damage")?,
+            amount: self.amount.saturating_mul(2),
             received_amounts: None,
             ..self.clone()
         })
@@ -304,10 +304,8 @@ mod tests {
     }
 
     #[test]
-    fn doubling_does_not_cap_a_larger_mathematical_result() {
-        let error = effect_damage(u32::MAX).doubled().unwrap_err();
-        assert!(error.is_incomplete_execution());
-        assert!(matches!(error, crate::effects::ExecutionError::ResourceLimitExceeded { requested, .. } if requested == u128::from(u32::MAX) * 2));
+    fn doubling_saturates_at_the_damage_representation() {
+        assert_eq!(effect_damage(u32::MAX).doubled().unwrap().amount, u32::MAX);
     }
 
     #[test]

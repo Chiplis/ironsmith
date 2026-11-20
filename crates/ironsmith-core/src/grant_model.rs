@@ -1890,11 +1890,24 @@ where
             if self.cast_this_way_grants.is_empty() {
                 return String::new();
             }
+            // An added subtype shared by the spell and the permanent (The Tomb
+            // of Aclazotz) is spoken once, with the permanent's rider below.
             let grants = self
                 .cast_this_way_grants
                 .iter()
+                .filter(|ability| {
+                    ability.grant_source_added_subtypes().is_none_or(|added| {
+                        added.is_empty()
+                            || !self.permanent_this_way_grants.iter().any(|permanent| {
+                                permanent.grant_source_added_subtypes().as_ref() == Some(&added)
+                            })
+                    })
+                })
                 .map(GrantStaticAbility::grant_display)
                 .collect::<Vec<_>>();
+            if grants.is_empty() {
+                return String::new();
+            }
             let cast_filter = self.cast_this_way_filter.as_ref().unwrap_or(&self.filter);
             let entered_object_filter = if self
                 .source_exiled_surface

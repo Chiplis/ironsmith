@@ -23,10 +23,22 @@ impl EffectExecutor for RegisterNextBatchEnterAsCopyEffect {
         let Some(copy_source) = copy_source else {
             return Ok(EffectOutcome::target_invalid());
         };
+        // "Have this creature enter as a copy of ..." (a cast trigger): the
+        // source's own next entry, followed across its zone change by its
+        // stable identity rather than the object id it has now (CR 400.7).
+        let matcher = if self.filter.source
+            && let Some(stable_id) = game.object(ctx.source).map(|object| object.stable_id)
+        {
+            let mut filter = self.filter.clone();
+            filter.source = false;
+            WouldEnterBattlefieldMatcher::new(filter).with_stable_id(stable_id)
+        } else {
+            WouldEnterBattlefieldMatcher::new(self.filter.clone())
+        };
         let replacement = ReplacementEffect::with_matcher(
             ctx.source,
             ctx.controller,
-            WouldEnterBattlefieldMatcher::new(self.filter.clone()),
+            matcher,
             ReplacementAction::EnterAsCopy {
                 source: copy_source,
                 enters_tapped: false,

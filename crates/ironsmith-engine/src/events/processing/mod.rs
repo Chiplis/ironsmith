@@ -584,7 +584,25 @@ fn build_enter_as_copy_effects_for_spec(
                 }
             }
             let ctx = game.filter_context_for(controller, Some(entering_object));
-            filter.matches_non_recursive(&object, &ctx, game)
+            if filter.matches_non_recursive(&object, &ctx, game) {
+                return true;
+            }
+            // CR 614.12: the condition looks at the permanent as it would
+            // exist on the battlefield, including the copy's own
+            // characteristic-changing abilities (Spark Double copying Gideon
+            // Blackblade on your turn is a creature).
+            let Some(from) = game.object(entering_object).map(|entering| entering.zone) else {
+                return false;
+            };
+            let mut event = crate::events::zones::EnterBattlefieldEvent::new(entering_object, from);
+            event.enters_as_copy_of = Some(candidate);
+            event.added_card_types = spec.added_card_types.clone();
+            event.prospective_game_state(game).is_some_and(|prospective| {
+                prospective.object(entering_object).is_some_and(|entered| {
+                    let ctx = prospective.filter_context_for(controller, Some(entering_object));
+                    filter.matches(entered, &ctx, &prospective)
+                })
+            })
         })
     };
     let added_abilities_for_source = |candidate| {
@@ -2741,7 +2759,31 @@ fn find_applicable_trait_replacements(
         .continuous_query_snapshot()
         .map_err(crate::effects::ExecutionError::ContinuousDiscovery)?;
     let game = &query;
-    let mut applicable = Vec::new();
+
+    // A matcher's kind declaration proves it cannot observe other events.
+    // Matching itself first builds a complete query view (a game copy), so
+    // skipping those effects here keeps an entry from costing one copy per
+    // unrelated replacement. Entries and discards are also re-asked as zone
+    // changes below, so a zone-change matcher stays a candidate for them.
+    let kind = event.kind();
+    let may_observe = |effect: &ReplacementEffect| {
+        effect.matcher.as_ref().is_some_and(|matcher| {
+            matcher.may_match_event_kind(kind)
+                || matcher.may_match_event_kind(crate::events::EventKind::ZoneChange)
+        })
+    };
+    // Registered effects first, then this event's ephemeral ones; already
+    // applied effects are skipped (Rule 614.5).
+    let candidates: Vec<&ReplacementEffect> = game
+        .effect_store
+        .replacement_effects
+        .effects()
+        .iter()
+        .chain(additional_effects)
+        .filter(|effect| !state.was_applied_effect(effect) && may_observe(effect))
+        .collect();
+    // Built even with no candidates: its discovery errors are part of the
+    // replacement outcome for an entry.
     let prospective_etb_game =
         crate::events::downcast_event::<crate::events::EnterBattlefieldEvent>(event.inner())
             .map(|etb| etb.try_prospective_game_state(game))
@@ -2749,34 +2791,8 @@ fn find_applicable_trait_replacements(
             .map_err(crate::effects::ExecutionError::ContinuousDiscovery)?
             .flatten();
 
-    // Check registered replacement effects in the game
-    for effect in game.effect_store.replacement_effects.effects() {
-        // Skip if already applied (Rule 614.5)
-        if state.was_applied_effect(effect) {
-            continue;
-        }
-
-        // Check if effect matches using trait-based matcher
-        if let Some(priority) = trait_effect_matches_event(
-            game,
-            effect,
-            event,
-            event_source_snapshot,
-            prospective_etb_game.as_ref(),
-            state.zone_change_context.as_ref(),
-        )? {
-            applicable.push((effect.clone(), priority));
-        }
-    }
-
-    // Check additional ephemeral effects for this event.
-    for effect in additional_effects {
-        // Skip if already applied (Rule 614.5)
-        if state.was_applied_effect(effect) {
-            continue;
-        }
-
-        // Check if effect matches
+    let mut applicable = Vec::new();
+    for effect in candidates {
         if let Some(priority) = trait_effect_matches_event(
             game,
             effect,
@@ -7976,6 +7992,74 @@ fn assign_ephemeral_effect_ids(effects: &mut [ReplacementEffect], id_base: u64) 
     }
 }
 
+/// `true` proves `prepared_object_etb_replacement_effects` would find no
+/// static of the entrant's own that yields an entry replacement, without
+/// building its prospective world (a game copy per entrant). The entry must
+/// add nothing to the entrant, it must not be able to become a planeswalker
+/// or battle (rule-derived starting counters), its printed statics must
+/// neither yield one nor emit continuous effects, and nothing else may grant one.
+fn entrant_has_no_own_entry_replacements(
+    game: &GameState,
+    etb: &crate::events::EnterBattlefieldEvent,
+) -> bool {
+    let Some(object) = game.object(etb.object) else {
+        return false;
+    };
+    let controller = etb.controller_override.unwrap_or(object.owner);
+    let yields = |ability: &crate::static_abilities::StaticAbility| {
+        matches!(
+            ability.compiled_model().map(|model| &model.payload),
+            Some(ironsmith_core::StaticAbilityPayload::AsEntersEffectProgram { .. })
+        ) || ability.enter_as_copy_as_enters().is_some()
+            || ability
+                .generate_replacement_effect(etb.object, controller)
+                .is_some_and(|effect| {
+                    effect
+                        .matcher
+                        .as_ref()
+                        .is_some_and(|matcher| matcher.applies_from_entering_source())
+                })
+    };
+    // Planeswalkers and battles also get a rule-derived starting-counter
+    // static from their calculated card types (CR 306.5b, 310.4b).
+    let gets_starting_counters = |card_type: &crate::types::CardType| {
+        !crate::continuous::intrinsic_starting_counter_abilities(std::slice::from_ref(card_type))
+            .is_empty()
+    };
+    let may_gain_starting_counter_type = object.card_types.iter().any(gets_starting_counters)
+        || !etb.added_card_types.is_empty()
+        || etb.prepared_choices.as_ref().is_some_and(|choices| {
+            choices.power_toughness_choices.iter().any(|option| option.card_types.is_some())
+        })
+        || game.all_continuous_effects_arc().iter().any(|effect| match &effect.modification {
+            crate::continuous::Modification::AddCardTypes(types)
+            | crate::continuous::Modification::SetCardTypes(types) => {
+                types.iter().any(gets_starting_counters)
+            }
+            _ => false,
+        });
+    !may_gain_starting_counter_type
+        && etb.enters_as_copy_of.is_none()
+        && etb.added_abilities.is_empty()
+        && etb.copy_followups.is_empty()
+        && !etb.enters_face_down
+        // Prepared choices add abilities only through P/T options.
+        && etb.prepared_choices.as_ref().is_none_or(|choices| {
+            choices.power_toughness_choices.iter().all(|option| option.abilities.is_empty())
+        })
+        && etb.creation.is_none()
+        && object.other_face.is_none()
+        && object.other_face_name.is_none()
+        && game.merged_permanent(object.stable_id).is_none()
+        && object.abilities.iter().all(|ability| match &ability.kind {
+            crate::ability::AbilityKind::Static(static_ability) => {
+                !static_ability.may_generate_continuous_effects() && !yields(static_ability)
+            }
+            _ => true,
+        })
+        && !game.static_ability_may_be_granted_after_change(&yields)
+}
+
 /// Entry programs may change the entrant's text or characteristics. Re-read
 /// its abilities in the pending battlefield state, retaining a stable local
 /// effect ID for each static ability across replacement-loop iterations.
@@ -7994,6 +8078,9 @@ fn prepared_object_etb_replacement_effects(
     else {
         return Ok(None);
     };
+    if entrant_has_no_own_entry_replacements(game, etb) {
+        return Ok(Some(Vec::new()));
+    }
     // Entry replacements can be granted by another permanent. Inspect the
     // prospective characteristics, not only the entering card's printed text.
     let Some(prospective) = etb
@@ -9072,35 +9159,62 @@ fn process_simultaneous_damage_assignments_with_completion<R>(
     }
     result
 }
-/// CR 122.1c / 510.2: simultaneous damage to a permanent is one damage event,
-/// so its shield counter prevents all of it and only one shield counter is
-/// removed, however many sources dealt damage.
+/// CR 122.1c / 510.2 / 700.1: simultaneous damage to a permanent is one
+/// damage event for a self-protecting prevention ability, so its additional
+/// "remove counters from it" part happens once for the whole event. A fixed
+/// removal (shield counter, Phantom Wurm's "remove a +1/+1 counter") runs once;
+/// a removal measured by the damage (Magma Pummeler's "remove that many")
+/// runs once with the combined amount, so a "removed this way" trigger sees
+/// one removal.
 fn dedupe_shield_counter_follow_ups(
     follow_ups: &mut Vec<(usize, crate::prevention::PendingPreventionFollowUp)>,
 ) {
-    let shield_target = |pending: &crate::prevention::PendingPreventionFollowUp| {
+    let self_removal = |pending: &crate::prevention::PendingPreventionFollowUp| {
+        if !pending.follow_up.targets.is_empty() {
+            return None;
+        }
         let [effect] = pending.follow_up.effects.as_slice() else {
             return None;
         };
         let remove = effect.downcast_ref::<crate::effects::RemoveCountersEffect>()?;
-        match (remove.counter_type, &remove.target) {
-            (CounterType::Shield, crate::target::ChooseSpec::SpecificObject(id))
-                if *id == pending.follow_up.source =>
-            {
-                Some(*id)
-            }
-            _ => None,
+        let source = pending.follow_up.source;
+        if pending.damage.target != DamageTarget::Object(source) {
+            return None;
         }
+        match remove.target.unhinted() {
+            crate::target::ChooseSpec::SpecificObject(id) if *id == source => {}
+            crate::target::ChooseSpec::Source => {}
+            _ => return None,
+        }
+        let scales_with_damage = match remove.count.unhinted() {
+            crate::effect::Value::EventValue(crate::effect::EventValueSpec::Amount) => true,
+            crate::effect::Value::Fixed(_) => false,
+            _ => return None,
+        };
+        Some((source, remove.clone(), scales_with_damage))
     };
-    let mut seen: Vec<ObjectId> = Vec::new();
-    follow_ups.retain(|(_, pending)| match shield_target(pending) {
-        Some(id) if seen.contains(&id) => false,
-        Some(id) => {
-            seen.push(id);
-            true
+    let mut kept: Vec<(usize, ObjectId, crate::effects::RemoveCountersEffect, bool)> = Vec::new();
+    let mut merged = Vec::with_capacity(follow_ups.len());
+    for (owner, pending) in std::mem::take(follow_ups) {
+        let Some((source, remove, scales_with_damage)) = self_removal(&pending) else {
+            merged.push((owner, pending));
+            continue;
+        };
+        if let Some((slot, ..)) = kept.iter().find(|(_, kept_source, kept_remove, _)| {
+            *kept_source == source && *kept_remove == remove
+        }) {
+            if scales_with_damage {
+                let (_, existing) = &mut merged[*slot];
+                existing.damage.amount = existing.damage.amount.saturating_add(pending.damage.amount);
+                existing.follow_up.prevented =
+                    existing.follow_up.prevented.saturating_add(pending.follow_up.prevented);
+            }
+            continue;
         }
-        None => true,
-    });
+        kept.push((merged.len(), source, remove, scales_with_damage));
+        merged.push((owner, pending));
+    }
+    *follow_ups = merged;
 }
 
 fn coalesce_simultaneous_shield_prevention_events(
@@ -10994,7 +11108,7 @@ fn prepare_etb_replacements_inner(
                     crate::events::zones::matchers::ThisWouldEnterBattlefieldMatcher,
                     crate::replacement::ReplacementAction::AddCountersToPlacement {
                         counter_type: Some(CounterType::Loyalty),
-                        additional: -i64::from(compleated_life_payments) * 2,
+                        additional: i64::from(compleated_life_payments).saturating_mul(-2),
                     },
                 );
                 effect.id = ReplacementEffectId(u64::MAX - 1_250_000);
@@ -13021,7 +13135,8 @@ mod tests {
                 choice_b_source,
                 alice,
                 crate::events::damage::matchers::DamageToPlayerMatcher::to_any_player(),
-                ReplacementAction::Modify(EventModification::Add(100)),
+                // Not Add: two offsets commute and would need no choice.
+                ReplacementAction::Modify(EventModification::Multiply(2)),
             ),
         );
 
@@ -13080,7 +13195,7 @@ mod tests {
             crate::events::downcast_event::<crate::events::DamageEvent>(final_event.inner())
                 .expect("resumed choice should still be a damage event");
         assert_eq!(
-            final_damage.amount, 112,
+            final_damage.amount, 24,
             "CR 614.5 should prevent the first replacement from applying again after the choice"
         );
     }
@@ -16091,8 +16206,10 @@ mod sacrifice_gate_resource_failure_tests {
                 )]),
             ),
         );
+        // Token counts past the creation budget clamp; the instruction work
+        // guard is what still fails the payload.
         game.set_token_creation_limits(crate::effects::tokens::TokenCreationLimits {
-            max_created_tokens: 1,
+            max_instructions: 0,
             ..Default::default()
         });
         game.take_pending_trigger_events();

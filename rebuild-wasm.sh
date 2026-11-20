@@ -15,6 +15,7 @@ DEFAULT_FRONTEND_CARDS_DIR="$ROOT_DIR/web/ui/public/cards"
 FRONTEND_CARDS_CACHE_MANIFEST_NAME=".ironsmith_frontend_cards_checksum"
 
 FEATURES="wasm-lean"
+XMAGE_FIXTURES=0
 OPTIMIZE_WASM=0
 CARDS_FILE="${IRONSMITH_CARDS_FILE:-$DEFAULT_CARDS_FILE}"
 if [[ -n "${IRONSMITH_SCRYFALL_METADATA_FILE:-}" ]]; then
@@ -120,7 +121,7 @@ feature_enabled() {
 
 usage() {
   cat <<USAGE
-Usage: ./rebuild-wasm.sh [--features <csv>] [--cards-file <path>] [--scryfall-metadata-file <path>] [--frontend-scores-file <path>] [--frontend-cards-dir <path>] [--skip-scryfall-sync]
+Usage: ./rebuild-wasm.sh [--features <csv>] [--xmage-fixtures] [--cards-file <path>] [--scryfall-metadata-file <path>] [--frontend-scores-file <path>] [--frontend-cards-dir <path>] [--skip-scryfall-sync]
 
 Examples:
   ./rebuild-wasm.sh
@@ -156,6 +157,7 @@ Notes:
   - Frontend JSON assets are skipped when their checksum manifest matches the registry DB and generator inputs.
   - Default features are "wasm-lean" with crate default features disabled. The full card catalogue is embedded as indexed Brotli chunks in engine_bg.wasm; card definitions, source text, and metadata load locally on demand.
   - The package contains separate engine, compiler, and verifier modules behind one JavaScript facade.
+  - --xmage-fixtures writes the test package to target/xmage-wasm-pkg and skips copying it to the web app.
   - Custom-card compilation is always enabled in the engine, including lean builds with default features disabled.
   - IRONSMITH_WASM_OPT_LEVEL selects the shipped optimizer level (-O1, -O2, -Os, or -Oz; default -Oz).
   - Packaging uses a pinned, checksum-verified native Binaryen wasm-opt (see scripts/lib/wasm-opt.sh), downloaded once into the tools cache; IRONSMITH_WASM_OPT overrides the binary.
@@ -570,6 +572,10 @@ while [[ $# -gt 0 ]]; do
       FEATURES="$2"
       shift 2
       ;;
+    --xmage-fixtures)
+      XMAGE_FIXTURES=1
+      shift
+      ;;
     --dev)
       OPTIMIZE_WASM=0
       WASM_CARGO_PROFILE="wasm-release"
@@ -627,6 +633,11 @@ while [[ $# -gt 0 ]]; do
       ;;
   esac
 done
+
+if [[ "$XMAGE_FIXTURES" -eq 1 ]]; then
+  FEATURES="${FEATURES:+$FEATURES,}xmage-fixtures"
+  PKG_DIR="$ROOT_DIR/target/xmage-wasm-pkg"
+fi
 
 case "$WASM_OPT_LEVEL" in
   -O1|-O2|-Os|-Oz) ;;
@@ -987,6 +998,11 @@ ${catalog_runner[@]+"${catalog_runner[@]}"} cargo run --release -p ironsmith-car
 
 wait_wasm_cargo_build
 package_split_wasm
+
+if [[ "$XMAGE_FIXTURES" -eq 1 ]]; then
+  echo "[INFO] XMage test WASM package: $PKG_DIR"
+  return
+fi
 
 rm -rf -- "$DEMO_PKG_DIR"
 mkdir -p "$DEMO_PKG_DIR"

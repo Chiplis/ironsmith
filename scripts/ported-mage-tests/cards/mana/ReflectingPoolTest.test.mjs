@@ -616,6 +616,12 @@ registerPortedMageTests({
           "amount": 2
         },
         {
+          "op": "waitStackResolved",
+          "turn": 1,
+          "phase": "PRECOMBAT_MAIN",
+          "note": "Tapping City of Brass by hand before casting puts its damage trigger on the stack (CR 605.1b: not a mana ability), and a creature spell needs an empty stack (CR 307.1). XMage taps it during payment, after the spell is cast. Resolve the trigger first; Upwelling keeps the pool."
+        },
+        {
           "op": "castSpell",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",

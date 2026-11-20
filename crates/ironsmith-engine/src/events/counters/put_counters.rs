@@ -23,6 +23,10 @@ pub struct PutCountersEvent {
     pub maximum_count: Option<u32>,
     /// What caused these counters to be put.
     pub cause: EventCause,
+    /// CR 614.16: a replacement effect has already modified this placement,
+    /// so "if an effect would put counters" replacements (Doubling Season)
+    /// apply even when the original event (a loyalty cost) wasn't an effect.
+    pub replacement_modified: bool,
 }
 
 impl PutCountersEvent {
@@ -39,6 +43,7 @@ impl PutCountersEvent {
             count,
             maximum_count: None,
             cause,
+            replacement_modified: false,
         }
     }
 
@@ -58,6 +63,7 @@ impl PutCountersEvent {
             count: self
                 .maximum_count
                 .map_or(count, |maximum| count.min(maximum)),
+            replacement_modified: true,
             ..self.clone()
         }
     }
@@ -71,6 +77,7 @@ impl PutCountersEvent {
         Self {
             count: count.min(maximum),
             maximum_count: Some(maximum),
+            replacement_modified: true,
             ..self.clone()
         }
     }
@@ -79,6 +86,7 @@ impl PutCountersEvent {
     pub fn with_target(&self, target: Target) -> Self {
         Self {
             target,
+            replacement_modified: true,
             ..self.clone()
         }
     }

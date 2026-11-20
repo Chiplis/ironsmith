@@ -76,7 +76,7 @@ impl ThisBlocksObjectTrigger {
             if !matches {
                 continue;
             }
-            count += 1;
+            count = count.saturating_add(1);
             first = Some(first.map_or(*attacker, |current: ObjectId| {
                 if attacker.0 < current.0 {
                     *attacker

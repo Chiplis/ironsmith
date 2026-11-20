@@ -103,12 +103,18 @@ pub(super) fn bind_scalar_linked_exile(definition: &mut CardDefinition) {
         if consumes { consumers.push(slot); }
     }
     let Some(producer) = producer else { return; };
-    if total != 1 || compatible_total != 1 || !has_scalar_consumer || consumers.contains(&producer) {
+    // A saga chapter may read the card it just exiled ("exile a permanent
+    // card from your graveyard, then gain life equal to its mana value" --
+    // The Aesir Escape Valhalla): the producer is also a consumer of its own
+    // link (CR 607.2a). Other definitions keep the two-ability shape.
+    if total != 1 || compatible_total != 1 || !has_scalar_consumer
+        || (!is_saga && consumers.contains(&producer))
+    {
         return;
     }
     if let Some(chapters) = saga_chapters {
         let Some(last_producer_chapter) = chapters[producer].iter().max() else { return };
-        if consumers.iter().any(|slot| {
+        if consumers.iter().filter(|slot| **slot != producer).any(|slot| {
             chapters[*slot].is_empty()
                 || chapters[*slot].iter().any(|chapter| chapter <= last_producer_chapter)
         }) {
@@ -573,7 +579,9 @@ pub(super) fn bind_cost_linked_exile(definition: &mut CardDefinition) {
     fn cost_producer(effect: &Effect) -> usize {
         let mut count = usize::from(effect.downcast_ref::<crate::effects::ExileUntilEffect>()
             .is_some_and(|exile| exile.duration == ironsmith_core::ExileUntilDuration::SourceLeavesStackOrBattlefield
-                && exile.leave_watcher.is_none()));
+                && exile.leave_watcher.is_none()))
+            // "As an additional cost ..., exile a card from your graveyard."
+            + usize::from(effect.downcast_ref::<crate::effects::ExileEffect>().is_some());
         effect.visit_child_effects(&mut |child| count += cost_producer(child));
         count
     }
@@ -608,6 +616,10 @@ pub(super) fn bind_cost_linked_exile(definition: &mut CardDefinition) {
         if let Some(exile) = effect.downcast_ref::<crate::effects::ExileUntilEffect>() {
             if exile.duration != ironsmith_core::ExileUntilDuration::SourceLeavesStackOrBattlefield
                 || exile.leave_watcher.is_some() { return false; }
+            let mut exile = exile.clone(); exile.cost_linked_exile_pair = Some(pair);
+            *effect = Effect::new(exile); return true;
+        }
+        if let Some(exile) = effect.downcast_ref::<crate::effects::ExileEffect>() {
             let mut exile = exile.clone(); exile.cost_linked_exile_pair = Some(pair);
             *effect = Effect::new(exile); return true;
         }

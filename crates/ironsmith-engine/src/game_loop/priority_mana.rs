@@ -198,8 +198,13 @@ mod emerge_receipt_payment_boundary_tests {
         let spell = game.create_object_from_card(&spell, player, Zone::Stack);
         // Corrupt imported/derived state after announcement. The legacy
         // receipt snapshot may see it, but checked payment must reject the
-        // out-of-range final toughness before sacrificing or publishing tags.
-        game.object_mut(material).unwrap().counters.insert(crate::object::CounterType::PlusOnePlusOne, 1);
+        // unavailable final characteristics before sacrificing or publishing
+        // tags. (P/T overflow saturates now, so the missing evidence is a CDA
+        // reading a chosen number that has no linked pair.)
+        let chosen = crate::effect::Value::SourceChosenNumber { if_unset: Some(0), pair: None };
+        game.object_mut(material).unwrap().abilities_mut().push(crate::ability::Ability::static_ability(
+            crate::static_abilities::StaticAbility::characteristic_defining_pt(chosen.clone(), chosen)));
+        game.mark_continuous_state_dirty();
         let cost = crate::costs::Cost::sacrifice(ObjectFilter::creature().you_control());
         let tag = crate::tag::TagKey::from("sacrifice_cost_0");
         let mut tagged = std::collections::HashMap::new();
@@ -359,12 +364,12 @@ pub(super) fn record_immediate_cost_payment(
 }
 
 fn add_spent_pool_delta(spent: &mut ManaPool, before: &ManaPool, after: &ManaPool) {
-    spent.white += before.white.saturating_sub(after.white);
-    spent.blue += before.blue.saturating_sub(after.blue);
-    spent.black += before.black.saturating_sub(after.black);
-    spent.red += before.red.saturating_sub(after.red);
-    spent.green += before.green.saturating_sub(after.green);
-    spent.colorless += before.colorless.saturating_sub(after.colorless);
+    spent.white = spent.white.saturating_add(before.white.saturating_sub(after.white));
+    spent.blue = spent.blue.saturating_add(before.blue.saturating_sub(after.blue));
+    spent.black = spent.black.saturating_add(before.black.saturating_sub(after.black));
+    spent.red = spent.red.saturating_add(before.red.saturating_sub(after.red));
+    spent.green = spent.green.saturating_add(before.green.saturating_sub(after.green));
+    spent.colorless = spent.colorless.saturating_add(before.colorless.saturating_sub(after.colorless));
 }
 
 fn execute_planned_mana_activations(
@@ -1021,8 +1026,10 @@ pub(super) fn commit_prepared_activation_mana_payment(
         if let (Some(before), Some(after)) = (physical_mana_before.as_ref(), game.player(pending.activator)) {
             let spent = crate::player::activation_mana_budget_spent(before, after);
             for index in 0..6 {
-                pending.activation_mana_budget.units[index] += spent.units[index];
-                pending.activation_mana_budget.snow[index] += spent.snow[index];
+                pending.activation_mana_budget.units[index] =
+                    pending.activation_mana_budget.units[index].saturating_add(spent.units[index]);
+                pending.activation_mana_budget.snow[index] =
+                    pending.activation_mana_budget.snow[index].saturating_add(spent.snow[index]);
             }
         }
         pending.mana_cost_to_pay = None;
@@ -2150,7 +2157,7 @@ pub(super) fn apply_optional_costs_response(
         let (index,branch)=super::priority_cast::decode_optional_cost_branch_option(option);
         let start=pending.optional_costs_paid.times_paid(index);
         pending.optional_costs_paid.pay_times(index,times);
-        if let Some(branch)=branch {for occurrence in start..start+times {
+        if let Some(branch)=branch {for occurrence in start..start.saturating_add(times) {
             pending.optional_costs_paid.set_payment_branch_choice(index,occurrence,branch);
         }}
     }
@@ -4101,6 +4108,7 @@ fn propose_spell_cast_with_origin_and_dm(
                 source_id: grant.source.source_id(),
                 zone: grant.zone,
                 usage_limit: grant.usage_limit,
+                shared_usage_id: grant.shared_usage_id,
                 cast_this_way_grants: grant.cast_this_way_grants.clone(),
                 cast_this_way_filter: grant.cast_this_way_filter.clone(),
                 permanent_this_way_grants: grant.permanent_this_way_grants.clone(),
@@ -5079,12 +5087,12 @@ pub(super) fn finalize_spell_cast(
         }
         let after_pool = game.player(caster).map(|player| player.mana_pool.clone());
         if let (Some(before), Some(after)) = (before_pool, after_pool) {
-            mana_spent_to_cast.white += before.white.saturating_sub(after.white);
-            mana_spent_to_cast.blue += before.blue.saturating_sub(after.blue);
-            mana_spent_to_cast.black += before.black.saturating_sub(after.black);
-            mana_spent_to_cast.red += before.red.saturating_sub(after.red);
-            mana_spent_to_cast.green += before.green.saturating_sub(after.green);
-            mana_spent_to_cast.colorless += before.colorless.saturating_sub(after.colorless);
+            mana_spent_to_cast.white = mana_spent_to_cast.white.saturating_add(before.white.saturating_sub(after.white));
+            mana_spent_to_cast.blue = mana_spent_to_cast.blue.saturating_add(before.blue.saturating_sub(after.blue));
+            mana_spent_to_cast.black = mana_spent_to_cast.black.saturating_add(before.black.saturating_sub(after.black));
+            mana_spent_to_cast.red = mana_spent_to_cast.red.saturating_add(before.red.saturating_sub(after.red));
+            mana_spent_to_cast.green = mana_spent_to_cast.green.saturating_add(before.green.saturating_sub(after.green));
+            mana_spent_to_cast.colorless = mana_spent_to_cast.colorless.saturating_add(before.colorless.saturating_sub(after.colorless));
         }
     }
 
@@ -8140,7 +8148,7 @@ mod planned_mana_witness_tests {
                 ManaCost::from_pips(vec![vec![ManaSymbol::Blue]; amount]),
             );
             let plan = crate::mana_payment::plan_first_mana_payment(&game, &request).unwrap();
-            assert_eq!(plan.expected_pool_after_activations.blue, amount as u32);
+            assert_eq!(plan.expected_pool_after_activations.blue, amount as u64);
             assert!(plan.mana_ability_steps[0].replacement_witnesses.is_some());
             let mut payment = crate::mana_payment::PendingManaPayment::new(request, plan);
             let mut dm = WhiteChooser { prompts: 0 };
@@ -8155,7 +8163,7 @@ mod planned_mana_witness_tests {
                 )
                 .unwrap()
             );
-            assert_eq!(game.player(alice).unwrap().mana_pool.blue, amount as u32);
+            assert_eq!(game.player(alice).unwrap().mana_pool.blue, amount as u64);
             assert_eq!(game.player(alice).unwrap().mana_pool.green, 0);
             assert!(game.is_tapped(source));
             assert_eq!(dm.prompts, 0);

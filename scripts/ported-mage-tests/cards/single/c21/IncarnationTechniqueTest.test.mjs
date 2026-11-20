@@ -276,7 +276,8 @@ registerPortedMageTests({
           "op": "waitStackResolved",
           "turn": 1,
           "phase": "PRECOMBAT_MAIN",
-          "resolutions": 1
+          "resolutions": 2,
+          "note": "Port correction (CR 702.144a): demonstrate is a cast trigger above the spell, so the spell itself is the second resolution."
         },
         {
           "op": "assertPermanentCount",

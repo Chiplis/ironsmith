@@ -458,7 +458,8 @@ pub(crate) fn create_replacement_additional_tokens(
                 super::apply_named_action_grants_to_object(&mut token, &instructions.operation_grants);
                 token.zone = Zone::Command;
                 let is_creature = token.is_creature();
-                game.commit_token_resource_slot()?;
+                // Other allocations used the live-object budget: stop here.
+                if !super::resources::commit_token_slot_within_budget(game)? { break; }
                 game.add_object(token);
                 let attachment = None;
                 let entry = game.move_created_token_with_entry_instructions(

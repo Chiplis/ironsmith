@@ -2914,6 +2914,45 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
         let enters_origin = parsed_enters_origin
             .filter(|origin| !origin.excluded)
             .map(|origin| (origin.zone, origin.owner));
+        // "When this creature enters from anywhere other than a graveyard or
+        // exile" ("Name Sticker" Goblin): the source enters from any origin
+        // outside the excluded list (CR 603.6a).
+        if let Some(excluded_zones) = trigger_grammar::parse_enters_origin_exclusion_list_words(
+            &words[enters_word_idx + 1..],
+        ) {
+            let surface = if enters_word_idx == 0 {
+                None
+            } else {
+                source_reference_surface_for_trigger_subject(strip_leading_trigger_intro(
+                    &tokens[..enters_token_idx],
+                ))
+            };
+            if enters_word_idx == 0 || surface.is_some() {
+                crate::word_claims::claim_words(&words[enters_word_idx + 1..]);
+                let origins = [
+                    Zone::Library,
+                    Zone::Hand,
+                    Zone::Stack,
+                    Zone::Graveyard,
+                    Zone::Exile,
+                    Zone::Command,
+                    Zone::Ante,
+                    Zone::OutsideGame,
+                ]
+                .into_iter()
+                .filter(|zone| !excluded_zones.contains(zone))
+                .collect::<Vec<_>>();
+                let mut trigger = crate::triggers::ZoneChangeTrigger::new()
+                    .from_any_of(origins)
+                    .to(Zone::Battlefield)
+                    .this()
+                    .this_subject_number(subject_number);
+                if let Some(surface) = surface {
+                    trigger = trigger.this_surface(surface);
+                }
+                return Ok(TriggerSpec::ZoneChange(trigger));
+            }
+        }
         if enters_word_idx == 0 {
             crate::word_claims::claim_words(origin_words);
             return Ok(if let Some((from, owner)) = enters_origin.clone() {
@@ -5378,11 +5417,15 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
                         source_surface,
                     });
                 }
+                // "deals damage to one or more permanents and/or players"
+                // (The Red Terror): the quantifier covers both recipient
+                // kinds, so each arm groups by damage source and one source's
+                // simultaneous damage is a single occurrence (CR 603.2c).
                 let player_trigger = TriggerSpec::DealsDamageToPlayer {
                     source: source.clone(),
                     player,
                     source_surface,
-                    damaged_player_one_or_more: false,
+                    damaged_player_one_or_more: target_one_or_more,
                 };
                 let object_trigger = TriggerSpec::DealsDamageTo {
                     source,

@@ -56,6 +56,10 @@ impl ManaCreditContext {
     }
 }
 
+/// Restricted mana is tracked one unit per restriction record, so a counted
+/// (multiplied) restricted production is credited only up to this many units.
+const RESTRICTED_COUNTED_CREDIT_LIMIT: u64 = 1 << 20;
+
 #[derive(Clone, Debug)]
 pub(crate) struct ManaCredit {
     pub event: ManaAddedEvent,
@@ -87,10 +91,14 @@ impl ManaCredit {
             || game.current_has_supertype(self.event.source, crate::types::Supertype::Snow),
             |snapshot| snapshot.supertypes.contains(&crate::types::Supertype::Snow),
         );
+        // A payment never spends more units than its expanded pips, so a
+        // counted production is offered only up to that bound (identical
+        // units are interchangeable). Materialized productions are exact.
+        let bound = super::planner::expanded_pip_count(request)
+            .max(self.event.mana.len());
         self.event
-            .mana
-            .iter()
-            .copied()
+            .mana_units_up_to(bound)
+            .into_iter()
             .filter(|symbol| {
                 self.context.restrictions.is_empty()
                     || game.restricted_mana_unit_is_payable_for_transaction(
@@ -110,19 +118,6 @@ impl ManaCredit {
     /// The native event owner has already validated replacements. Both native
     /// execution and projected credits use this same provenance/context shape.
     pub fn commit(&self, game: &mut GameState) -> Result<(), crate::effects::ExecutionError> {
-        let exact: u128 = game
-            .players
-            .iter()
-            .map(|player| u128::from(player.mana_pool.total_wide()))
-            .sum::<u128>()
-            + self.event.mana.len() as u128;
-        if exact > i32::MAX as u128 {
-            return Err(crate::effects::ExecutionError::ResourceLimitExceeded {
-                resource: "unspent mana scalar domain",
-                requested: exact,
-                maximum: i32::MAX as u128,
-            });
-        }
         crate::effects::composition::execute_world_error_transaction(
             game,
             |error| {
@@ -133,6 +128,32 @@ impl ManaCredit {
             },
             |game| {
                 game.with_player_mana_mut(self.event.player, |player| {
+                    if self.event.mana_multiplier > 1 {
+                        // A counted production credits one record per type.
+                        for (symbol, count) in self.event.mana_counts() {
+                            if self.context.restrictions.is_empty() {
+                                player.add_unrestricted_mana_counted(
+                                    symbol,
+                                    count,
+                                    self.event.source,
+                                    self.event.snapshot.clone(),
+                                    self.context.retention,
+                                );
+                            } else {
+                                // Restricted units stay paired one by one with
+                                // their restriction record; bounded here.
+                                let units = count.min(RESTRICTED_COUNTED_CREDIT_LIMIT);
+                                for _ in 0..units {
+                                    player.add_restricted_mana_with_snapshot_and_retention(
+                                        self.restricted_unit(symbol),
+                                        self.event.snapshot.clone(),
+                                        self.context.retention,
+                                    );
+                                }
+                            }
+                        }
+                        return;
+                    }
                     for &symbol in &self.event.mana {
                         if self.context.restrictions.is_empty() {
                             player.add_unrestricted_mana_with_retention(

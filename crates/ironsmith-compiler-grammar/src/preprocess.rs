@@ -2607,6 +2607,74 @@ fn rewrite_entry_instead_then_put_line(text: &str) -> (String, bool) {
     (format!("as this {subject} enters, {program}."), true)
 }
 
+/// "When this Aura enters attached to a creature, each other nontoken
+/// creature you control becomes a copy of that creature." (Infinite
+/// Reflection): an Aura on the battlefield is always attached (CR
+/// 704.5m), so the trigger event is its entry; "that creature" is the object
+/// it is attached to, not the entering source, and "each other" is relative
+/// to that object. Read it as "enchanted <noun>" with the same identity
+/// exclusion "other than enchanted creature" carries. (An Equipment can enter
+/// unattached, so its "enters attached" stays a real event condition.)
+fn rewrite_enters_attached_trigger_line(text: &str) -> String {
+    let unchanged = || text.to_string();
+    let lower = text.to_ascii_lowercase();
+    let Some(rest) = lower.strip_prefix("when this ") else {
+        return unchanged();
+    };
+    let (subject, attached_word) = if rest.starts_with("aura ") {
+        ("aura", "enchanted")
+    } else {
+        return unchanged();
+    };
+    let after_subject = &rest[subject.len()..];
+    let Some(after_attached) = after_subject
+        .strip_prefix(" enters attached to a ")
+        .or_else(|| after_subject.strip_prefix(" enters attached to an "))
+    else {
+        return unchanged();
+    };
+    let Some(comma) = after_attached.find(", ") else {
+        return unchanged();
+    };
+    let noun = &after_attached[..comma];
+    if noun.is_empty() || noun.contains(' ') {
+        return unchanged();
+    }
+    let body_start = lower.len() - after_attached.len() + comma + 2;
+    let body = &lower[body_start..];
+    let sentence_end = body.find('.').unwrap_or(body.len());
+    let (sentence, tail) = body.split_at(sentence_end);
+    let anaphor = format!("that {noun}");
+    if !sentence.split(' ').collect::<Vec<_>>().windows(2).any(|pair| {
+        pair[0] == "that" && pair[1].trim_end_matches([',', ';']) == noun
+    }) {
+        return unchanged();
+    }
+    let attached = format!("{attached_word} {noun}");
+    let mut sentence = sentence.replace(anaphor.as_str(), attached.as_str());
+    for quantifier in ["each other ", "all other "] {
+        if let Some(at) = sentence.find(quantifier) {
+            let subject_start = at + quantifier.len();
+            let verb = [" becomes ", " become "]
+                .iter()
+                .filter_map(|verb| sentence[subject_start..].find(verb))
+                .min();
+            if let Some(verb) = verb {
+                let verb_at = subject_start + verb;
+                sentence = format!(
+                    "{}{}{} other than {attached}{}",
+                    &sentence[..at],
+                    &quantifier[..quantifier.len() - "other ".len()],
+                    &sentence[subject_start..verb_at],
+                    &sentence[verb_at..],
+                );
+            }
+            break;
+        }
+    }
+    format!("when this {subject} enters, {sentence}{tail}")
+}
+
 /// "At the beginning of your upkeep, this deals 2 damage to each opponent.
 /// This ability triggers only if this is on the battlefield or if this is in
 /// your graveyard and you control a Giant." (Quakebringer): the trailing
@@ -3400,6 +3468,23 @@ pub fn preprocess_document_with_provenance(
                 .then(|| format!("{}When you cast this spell, if it was cast using \"{name}\", {rest}", &raw_line[..start]))
         });
         let raw_line = named_cast_trigger.as_deref().unwrap_or(raw_line);
+        // "When you cast Zam Wesell, ..." is the older template of "When you
+        // cast this spell, ..." (CR 603.2, 601.2i): the card names itself as
+        // the spell being cast, whatever its permanent type.
+        let self_cast_trigger = (!full_name.text.is_empty())
+            .then(|| format!("when you cast {},", full_name.text.to_ascii_lowercase()))
+            .and_then(|needle| {
+                let start = raw_line.to_ascii_lowercase().find(&needle)?;
+                raw_line.is_char_boundary(start + needle.len()).then(|| {
+                    format!(
+                        "{}{}this spell,{}",
+                        &raw_line[..start],
+                        &raw_line[start..start + "when you cast ".len()],
+                        &raw_line[start + needle.len()..]
+                    )
+                })
+            });
+        let raw_line = self_cast_trigger.as_deref().unwrap_or(raw_line);
         // "Untap that permanent unless it's a creature. If it is, tap it."
         // (Migu's Totem): the elliptical "If it is," restates the preceding
         // "unless it's <noun phrase>" test as its own condition.
@@ -3568,6 +3653,8 @@ pub fn preprocess_document_with_provenance(
         let expanded_normalized = rewrite_personal_pronouns_line(expanded_normalized.as_str());
         let expanded_normalized =
             rewrite_dies_trigger_object_pronouns_line(expanded_normalized.as_str());
+        let expanded_normalized =
+            rewrite_enters_attached_trigger_line(expanded_normalized.as_str());
         let expanded_normalized =
             rewrite_has_and_is_type_addition_line(expanded_normalized.as_str());
         let expanded_normalized =

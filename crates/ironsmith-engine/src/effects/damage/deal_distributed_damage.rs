@@ -12,7 +12,6 @@ use crate::effects::helpers::{
     resolve_value,
 };
 use crate::effects::{ExecutionContext, ExecutionError};
-use crate::events::damage::{checked_damage_amount, checked_damage_count};
 use crate::events::processing::SimultaneousDamageEvent;
 use crate::game_state::{GameState, Target};
 use crate::snapshot::ObjectSnapshot;
@@ -22,6 +21,11 @@ use crate::target::PlayerFilter;
 pub use ironsmith_core::DamageDistributionMode;
 
 /// Effect that deals a total amount of damage divided among chosen targets.
+/// Damage amounts saturate at the unsigned event range.
+fn saturating_damage_sum(amounts: impl Iterator<Item = u32>) -> u32 {
+    amounts.fold(0u32, u32::saturating_add)
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct DealDistributedDamageEffect {
     /// The total amount of damage to distribute.
@@ -108,18 +112,10 @@ impl DealDistributedDamageEffect {
         // budget. Do not re-read a dynamic X/history/source value at resolution.
         // Keep the shares of illegal targets in that original budget too.
         let total = if let Some(announced) = &announced_distribution {
-            checked_damage_amount(
-                announced
-                    .allocations
-                    .iter()
-                    .map(|(_, amount)| u128::from(*amount))
-                    .sum(),
-                "announced damage distribution",
-            )?
+            saturating_damage_sum(announced.allocations.iter().map(|(_, amount)| *amount))
         } else {
             resolve_value(game, &self.amount, ctx)?.max(0) as u32
         };
-        checked_damage_count(u128::from(total), "distributed damage outcome")?;
         if total == 0 {
             return Ok(DamageInstructionPlan::Finished(EffectOutcome::count(0)));
         }
@@ -208,20 +204,11 @@ impl DealDistributedDamageEffect {
         for (target, amount) in distribution {
             if amount > 0 && available_targets.contains(&target) {
                 let slot = allocation_slot(&mut allocations, target);
-                *slot = checked_damage_amount(
-                    u128::from(*slot) + u128::from(amount),
-                    "coalesced damage allocation",
-                )?;
+                *slot = slot.saturating_add(amount);
             }
         }
 
-        let assigned_total = checked_damage_amount(
-            allocations
-                .iter()
-                .map(|(_, amount)| u128::from(*amount))
-                .sum(),
-            "assigned damage total",
-        )?;
+        let assigned_total = saturating_damage_sum(allocations.iter().map(|(_, amount)| *amount));
         if self.distribution == DamageDistributionMode::Chosen && assigned_total > total {
             return Ok(DamageInstructionPlan::Finished(EffectOutcome::impossible()));
         }
@@ -235,20 +222,14 @@ impl DealDistributedDamageEffect {
                 .filter(|count| *count > 0)
                 .unwrap_or(allocations.len())
                 .max(allocations.len());
-            let share = u128::from(total) / announced as u128;
-            let share = checked_damage_amount(share, "even damage allocation")?;
+            let share = u32::try_from(u128::from(total) / announced as u128).unwrap_or(u32::MAX);
             for (_, amount) in allocations.iter_mut() {
                 *amount = share;
             }
         }
 
-        let distributed_total = checked_damage_amount(
-            allocations
-                .iter()
-                .map(|(_, amount)| u128::from(*amount))
-                .sum(),
-            "distributed damage total",
-        )?;
+        let distributed_total =
+            saturating_damage_sum(allocations.iter().map(|(_, amount)| *amount));
 
         // CR 608.2b does not let a resolving spell reassign damage that was
         // announced for a target that has since become illegal.
@@ -259,10 +240,7 @@ impl DealDistributedDamageEffect {
             let remaining = total - distributed_total;
             if let Some(first_target) = available_targets.first().copied() {
                 let slot = allocation_slot(&mut allocations, first_target);
-                *slot = checked_damage_amount(
-                    u128::from(*slot) + u128::from(remaining),
-                    "remaining damage allocation",
-                )?;
+                *slot = slot.saturating_add(remaining);
             }
         }
 
@@ -684,7 +662,7 @@ mod tests {
     }
 
     #[test]
-    fn unrepresentable_announced_total_is_incomplete_and_preserves_announcement() {
+    fn unrepresentable_announced_total_saturates() {
         let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
         let a = PlayerId::from_index(0);
         let source = creature(&mut game, "Source", a, 1, None);
@@ -704,15 +682,11 @@ mod tests {
                 crate::effects::ResolvedTarget::Object(first),
                 crate::effects::ResolvedTarget::Object(second),
             ])
-            .with_target_distributions(vec![saved.clone()]);
+            .with_target_distributions(vec![saved]);
         let outcome =
             DealDistributedDamageEffect::new(Value::X, target).execute(&mut game, &mut ctx);
-        assert!(matches!(
-            outcome,
-            Err(ExecutionError::ResourceLimitExceeded { .. })
-        ));
-        assert_eq!(ctx.target_distributions, vec![saved]);
-        assert_eq!(game.damage_on(first), 0);
-        assert_eq!(game.damage_on(second), 0);
+        assert!(outcome.is_ok(), "{outcome:?}");
+        assert_eq!(game.damage_on(first), u32::MAX);
+        assert_eq!(game.damage_on(second), 1);
     }
 }

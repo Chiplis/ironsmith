@@ -40,12 +40,7 @@ impl GameState {
                     definition.name()
                 ));
             }
-            7_i32
-                .checked_add(definition.card.hand_modifier)
-                .ok_or_else(|| format!("{} has an invalid hand modifier", definition.name()))?;
-            20_i32
-                .checked_add(definition.card.life_modifier)
-                .ok_or_else(|| format!("{} has an invalid life modifier", definition.name()))?;
+            // Hand and life modifiers saturate when applied below.
         }
 
         let mut state = VanguardState {

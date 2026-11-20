@@ -131,9 +131,9 @@ pub(super) fn color_names(colors: ironsmith::color::ColorSet) -> Vec<&'static st
 /// Color identity (CR 903.4) as mana letters in WUBRG order; empty when
 /// colorless. Read from the object's own printed values, so a face-down
 /// permanent stays colorless instead of revealing its hidden face.
-fn color_identity_codes(object: &ironsmith::object::Object) -> Vec<&'static str> {
+fn color_identity_codes(game: &GameState, object: &ironsmith::object::Object) -> Vec<&'static str> {
     use ironsmith::color::Color;
-    let identity = object.color_identity();
+    let identity = game.object_color_identity(object);
     [
         (Color::White, "W"),
         (Color::Blue, "U"),
@@ -863,7 +863,7 @@ impl SnapshotObjectViewCache {
                     stable_id: object.stable_id.0.0,
                     name: object.name.to_string(),
                     mana_cost: object.mana_cost.as_ref().map(|cost| cost.to_oracle()),
-                    color_identity: color_identity_codes(object),
+                    color_identity: color_identity_codes(game, object),
                     oracle_text: object.compiled_card_text.to_string(),
                     power_toughness: match (object.power(), object.toughness()) {
                         (Some(power), Some(toughness)) => Some(format!("{power}/{toughness}")),
@@ -1071,7 +1071,7 @@ impl SnapshotObjectViewCache {
             pt_modified_by_effect,
             counters: counter_snapshots_for_object(obj),
             intrinsic_mana,
-            color_identity: color_identity_codes(obj),
+            color_identity: color_identity_codes(game, obj),
             card_types,
             colors,
         });
@@ -2384,7 +2384,7 @@ fn build_zone_card_snapshot_with_visibility(
         mana_cost: visible
             .then(|| object.mana_cost.as_ref().map(|mc| mc.to_oracle()))
             .flatten(),
-        color_identity: visible.then(|| color_identity_codes(object)),
+        color_identity: visible.then(|| color_identity_codes(game, object)),
         oracle_text: if visible {
             object.compiled_card_text.to_string()
         } else {
@@ -2968,12 +2968,12 @@ pub(super) struct PlanarCardSnapshot {
 
 #[derive(Debug, Clone, Serialize)]
 pub(super) struct ManaPoolSnapshot {
-    pub(super) white: u32,
-    pub(super) blue: u32,
-    pub(super) black: u32,
-    pub(super) red: u32,
-    pub(super) green: u32,
-    pub(super) colorless: u32,
+    pub(super) white: u64,
+    pub(super) blue: u64,
+    pub(super) black: u64,
+    pub(super) red: u64,
+    pub(super) green: u64,
+    pub(super) colorless: u64,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -3445,12 +3445,12 @@ impl GameSnapshot {
                         })
                         .collect(),
                     mana_pool: ManaPoolSnapshot {
-                        white: p.mana_pool.white,
-                        blue: p.mana_pool.blue,
-                        black: p.mana_pool.black,
-                        red: p.mana_pool.red,
-                        green: p.mana_pool.green,
-                        colorless: p.mana_pool.colorless,
+                        white: p.mana_pool.white.min(crate::MAX_JS_SAFE_MANA),
+                        blue: p.mana_pool.blue.min(crate::MAX_JS_SAFE_MANA),
+                        black: p.mana_pool.black.min(crate::MAX_JS_SAFE_MANA),
+                        red: p.mana_pool.red.min(crate::MAX_JS_SAFE_MANA),
+                        green: p.mana_pool.green.min(crate::MAX_JS_SAFE_MANA),
+                        colorless: p.mana_pool.colorless.min(crate::MAX_JS_SAFE_MANA),
                     },
                     hand_size: p.hand.len(),
                     library_size: p.library.len(),
@@ -3962,8 +3962,13 @@ pub(super) fn build_object_details_snapshot(
         type_line,
         type_line_display,
         type_line_badges,
-        mana_cost: obj.mana_cost.as_ref().map(|cost| cost.to_oracle()),
-        color_identity: color_identity_codes(obj),
+        // A permanent's current mana cost (CR 709.5: a locked Room door has
+        // none) comes from its calculated characteristics.
+        mana_cost: match current.as_ref().filter(|_| obj.zone == Zone::Battlefield) {
+            Some(chars) => chars.mana_cost.as_deref().map(|cost| cost.to_oracle()),
+            None => obj.mana_cost.as_ref().map(|cost| cost.to_oracle()),
+        },
+        color_identity: color_identity_codes(game, obj),
         colors: color_names(
             current.as_ref().map(|chars| chars.colors).unwrap_or_else(|| obj.colors()),
         ),

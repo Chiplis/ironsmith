@@ -141,29 +141,29 @@ impl GameState {
                     .add_static_ability_effect(decline);
             }
         }
-        // A pinned source that has left during the current simultaneous event
-        // keeps replacing that event's remaining parts.
+        // A pinned replacement keeps replacing the remaining parts of the
+        // current simultaneous event, whether its source left or merely lost
+        // the ability because a granting permanent left in the same event
+        // (CR 614.12 / 616.1: the event is evaluated against the state before
+        // it; Pulmonic Sliver dying to Damnation still grants Venom Sliver
+        // its replacement). Keys are taken before re-adding pins so that an
+        // optional pin's decline half (same key) is restored with it.
         if let Some(pins) = self
             .effect_store
             .replacement_effects
             .simultaneous_static_pins()
             .map(<[_]>::to_vec)
         {
+            let published_keys: Vec<_> = self
+                .effect_store
+                .replacement_effects
+                .effects()
+                .iter()
+                .map(|effect| effect.application_key())
+                .collect();
             for pin in pins {
-                if self
-                    .object(pin.source)
-                    .is_some_and(|object| object.zone == crate::zone::Zone::Battlefield)
-                {
-                    continue;
-                }
                 let key = pin.application_key();
-                if self
-                    .effect_store
-                    .replacement_effects
-                    .effects()
-                    .iter()
-                    .any(|effect| effect.application_key() == key)
-                {
+                if published_keys.contains(&key) {
                     continue;
                 }
                 self.effect_store
@@ -1185,7 +1185,15 @@ impl GameState {
             .permissions
             .iter()
             .any(|permission| {
-                permission.allows_for_mana_source(self, payer, payment_source, mana_source)
+                // Only a full any-color conversion widens a whole source.
+                // Single-symbol conversions ("colorless mana as though it were
+                // mana of any color", CR 609.4b), symbol-as-symbol, Celestial
+                // Dawn-style colorless-only and minimum-color waivers are
+                // already folded into the base spend policy per symbol.
+                permission.permission.mode.allows_any_color()
+                    && permission.permission.any_color_mana_symbol.is_none()
+                    && permission.permission.mana_symbol_as.is_none()
+                    && permission.allows_for_mana_source(self, payer, payment_source, mana_source)
             })
     }
 
@@ -1817,6 +1825,52 @@ impl GameState {
         modification: &Modification,
         ability_id: crate::static_abilities::StaticAbilityId,
     ) -> bool {
+        Self::modification_may_grant_static_ability(modification, &|ability| {
+            ability.id() == ability_id
+        })
+    }
+
+    /// Whether some live continuous effect may give a permanent a static
+    /// ability matching `matches` that its printed abilities lack. Copy and
+    /// text effects count (they can bring any ability), so `false` proves a
+    /// permanent's static abilities of that kind are exactly its printed ones.
+    pub(crate) fn static_ability_may_be_granted(
+        &self,
+        matches: &dyn Fn(&crate::static_abilities::StaticAbility) -> bool,
+    ) -> bool {
+        self.all_continuous_effects_arc()
+            .iter()
+            .any(|effect| Self::modification_may_grant_static_ability(&effect.modification, matches))
+    }
+
+    /// `static_ability_may_be_granted` for a world about to change (an entry
+    /// being prepared): a granter dormant now may switch on. Besides live
+    /// effects, any functioning static that may emit continuous effects, and
+    /// any level or temporary grant, counts as a possible granter. `false`
+    /// proves no object will have a matching static beyond its printed ones.
+    pub(crate) fn static_ability_may_be_granted_after_change(
+        &self,
+        matches: &dyn Fn(&crate::static_abilities::StaticAbility) -> bool,
+    ) -> bool {
+        let reaches = |ability: &crate::static_abilities::StaticAbility| {
+            matches(ability) || ability.may_generate_continuous_effects()
+        };
+        self.static_ability_may_be_granted(&reaches)
+            || self.objects.values().any(|object| {
+                !object.temporary_static_ability_grants.is_empty()
+                    || !object.level_granted_abilities().is_empty()
+                    || object.abilities.iter().any(|ability| {
+                        ability.functions_in(&object.zone)
+                            && matches!(&ability.kind, crate::ability::AbilityKind::Static(static_ability)
+                                if static_ability.may_generate_continuous_effects())
+                    })
+            })
+    }
+
+    pub(crate) fn modification_may_grant_static_ability(
+        modification: &Modification,
+        matches: &dyn Fn(&crate::static_abilities::StaticAbility) -> bool,
+    ) -> bool {
         match modification {
             Modification::CopyOf { .. } | Modification::MergeComponent { .. }
             | Modification::ChangeText { .. }
@@ -1826,26 +1880,26 @@ impl GameState {
             // text: either can bring any static ability along (fail-safe).
             | Modification::CopyStaticAbilityVariants { .. }
             | Modification::RemoveOptionalTextFragments(_) => true,
-            Modification::AddAbility(static_ability) => static_ability.id() == ability_id,
+            Modification::AddAbility(static_ability) => matches(static_ability),
             Modification::AddAbilityGeneric(ability) => {
-                Self::ability_may_grant_static_ability_id(ability, ability_id)
+                Self::ability_may_grant_static_ability(ability, matches)
             }
             Modification::SetAbilities(abilities) => abilities
                 .iter()
-                .any(|ability| Self::ability_may_grant_static_ability_id(ability, ability_id)),
+                .any(|ability| Self::ability_may_grant_static_ability(ability, matches)),
             // Restriction modifications materialize as static abilities in
             // calculated characteristics (see apply path in continuous.rs).
-            Modification::Restriction(restriction) => restriction.ability().id() == ability_id,
+            Modification::Restriction(restriction) => matches(&restriction.ability()),
             _ => false,
         }
     }
 
-    fn ability_may_grant_static_ability_id(
+    fn ability_may_grant_static_ability(
         ability: &crate::ability::Ability,
-        ability_id: crate::static_abilities::StaticAbilityId,
+        matches: &dyn Fn(&crate::static_abilities::StaticAbility) -> bool,
     ) -> bool {
         matches!(&ability.kind, crate::ability::AbilityKind::Static(static_ability)
-            if static_ability.id() == ability_id)
+            if matches(static_ability))
     }
 
     fn object_is_land_for_cost_restrictions(&self, object_id: ObjectId) -> bool {
@@ -1868,6 +1922,10 @@ impl GameState {
         let Some(object) = self.object(object_id) else {
             return false;
         };
+        if object.zone == Zone::Battlefield && object.linked_face_layout != LinkedFaceLayout::Split {
+            return self.copied_room_halves(object_id).is_some()
+                && self.copied_room_unlocked_halves(object_id) != (true, true);
+        }
         // Ordered cheapest-first. `current_has_subtype` reads calculated
         // characteristics, which is the expensive layered path whenever any
         // effect grants abilities board-wide, and this predicate is asked once
@@ -1886,6 +1944,80 @@ impl GameState {
                 )
                 .is_some_and(|def| def.card.subtypes.contains(&crate::types::Subtype::Room))
             && self.current_has_subtype(object_id, crate::types::Subtype::Room)
+    }
+
+    /// CR 707.2, 709.5: the copied halves of a permanent that is a Room only
+    /// through a layer-1 copy effect (Mirage Mirror copying a Room). The
+    /// envelope's own face is the first half (`RoomDoor::Current`), its
+    /// linked face the second (`RoomDoor::Linked`). Rooms whose own object
+    /// carries the split link use the designation sets below instead.
+    pub(crate) fn copied_room_halves(
+        &self,
+        object_id: ObjectId,
+    ) -> Option<std::sync::Arc<crate::snapshot::CopiableValues>> {
+        let object = self.object(object_id)?;
+        if object.zone != Zone::Battlefield || object.linked_face_layout == LinkedFaceLayout::Split {
+            return None;
+        }
+        // Cheap gate before the layered read: only a layer-1 copy effect
+        // that may apply to this object can make it a Room.
+        let store = &self.effect_store.continuous_effects;
+        let may_copy_room = store.effects().iter().chain(store.static_ability_effects().iter()).any(|effect| {
+            matches!(&effect.modification, crate::continuous::Modification::CopyOf { copiable_values, .. }
+                if copiable_values.copy_face_layout == LinkedFaceLayout::Split
+                    || effect.live_copy_source.is_some())
+                && match &effect.applies_to {
+                    crate::continuous::EffectTarget::Specific(id) => *id == object_id,
+                    crate::continuous::EffectTarget::Source => effect.source == object_id,
+                    _ => true,
+                }
+        });
+        if !may_copy_room {
+            return None;
+        }
+        let values = self.calculated_characteristics_arc(object_id)?.copy_values.clone()?;
+        crate::continuous::copied_values_are_room(&values).then_some(values)
+    }
+
+    /// CR 709.5c: (first half, second half) unlocked designations of a
+    /// permanent that is a Room only through a copy effect.
+    pub(crate) fn copied_room_unlocked_halves(&self, object_id: ObjectId) -> (bool, bool) {
+        let bits = self
+            .battlefield_flags
+            .copied_room_unlocked_halves
+            .get(&object_id)
+            .copied()
+            .unwrap_or(0);
+        (bits & 1 != 0, bits & 2 != 0)
+    }
+
+    /// Give or remove one copied-Room half's unlocked designation. Returns
+    /// whether the designation changed.
+    pub(crate) fn set_copied_room_half_unlocked(
+        &mut self,
+        object_id: ObjectId,
+        second_half: bool,
+        unlocked: bool,
+    ) -> bool {
+        let bit = if second_half { 2 } else { 1 };
+        let current = self
+            .battlefield_flags
+            .copied_room_unlocked_halves
+            .get(&object_id)
+            .copied()
+            .unwrap_or(0);
+        let next = if unlocked { current | bit } else { current & !bit };
+        if next == current {
+            return false;
+        }
+        let flags = self.battlefield_flags_mut();
+        if next == 0 {
+            flags.copied_room_unlocked_halves.remove(&object_id);
+        } else {
+            flags.copied_room_unlocked_halves.insert(object_id, next);
+        }
+        self.mark_continuous_state_dirty();
+        true
     }
 
     /// CR 709.5d: a Room entering without either half cast has neither
@@ -2316,7 +2448,17 @@ impl GameState {
             crate::ability::ManaPaymentPredicate::CostContains(symbol) => effective_cost
                 .is_some_and(|cost| cost.pips().iter().any(|pip| pip.contains(symbol))),
             crate::ability::ManaPaymentPredicate::CostContainsX => {
-                effective_cost.is_some_and(crate::mana::ManaCost::has_x)
+                // CR 601.2b/601.2f: once X is announced the locked total is
+                // priced as generic pips, but the spell's total cost (printed
+                // {X} or an announced Kicker {X}) still contains {X}. A spell
+                // on the stack carries an announced X only for such a cost.
+                effective_cost.is_some_and(crate::mana::ManaCost::contains_x_in_total_cost)
+                    || (reason == crate::costs::PaymentReason::CastSpell
+                        && payment_source
+                            .and_then(|source| self.object(source))
+                            .is_some_and(|spell| {
+                                spell.zone == Zone::Stack && spell.x_value.is_some()
+                            }))
             }
             crate::ability::ManaPaymentPredicate::SharesCreatureTypeWithPayersCommander => {
                 let Some(source_id) = payment_source else {
@@ -2474,9 +2616,13 @@ impl GameState {
                         }))
             }
             crate::ability::ManaUsageRestriction::ActivateAbility => {
+                // A source that left its zone as part of the activation's own
+                // cost (craft's "Exile this artifact", sacrifice-self) is still
+                // the ability being activated; CR 601.2h/602.2b let the mana be
+                // spent after the other costs are paid.
                 reason.is_ability() && payment_source.is_some_and(|source_id| {
                     self.object(source_id)
-                        .is_some_and(|source_obj| source_obj.zone != Zone::Stack)
+                        .is_none_or(|source_obj| source_obj.zone != Zone::Stack)
                 })
             }
             crate::ability::ManaUsageRestriction::PaymentTransaction {
@@ -2512,8 +2658,13 @@ impl GameState {
         reason: crate::costs::PaymentReason,
         cost: &crate::mana::ManaCost,
         required_pool_symbol: Option<crate::mana::ManaSymbol>,
+        x_value: u32,
     ) -> Vec<PayableManaUnit> {
         use crate::mana::ManaSymbol;
+        // One payment spends at most this many units, and units of one record
+        // are interchangeable: a counted record (or a large untracked pool)
+        // is offered only up to this bound, never expanded unit by unit.
+        let unit_bound = Self::payment_unit_bound(cost, x_value);
 
         const SYMBOLS: [ManaSymbol; 6] = [
             ManaSymbol::White,
@@ -2532,13 +2683,15 @@ impl GameState {
         let mut units = Vec::new();
 
         for (provenance_index, provenance) in player.mana_source_provenance.iter().enumerate() {
-            if !SYMBOLS.contains(&provenance.symbol)
-                || represented.amount(provenance.symbol)
-                    >= player.mana_pool.amount(provenance.symbol)
-            {
+            let available = player
+                .mana_pool
+                .amount_wide(provenance.symbol)
+                .saturating_sub(represented.amount_wide(provenance.symbol));
+            if !SYMBOLS.contains(&provenance.symbol) || available == 0 || provenance.count == 0 {
                 continue;
             }
-            represented.add(provenance.symbol, 1);
+            let record_units = provenance.count.min(available);
+            represented.add_wide(provenance.symbol, record_units);
 
             let restricted_index = if provenance.restricted {
                 player
@@ -2588,13 +2741,17 @@ impl GameState {
             ) {
                 continue;
             }
-            units.push(PayableManaUnit {
-                symbol: provenance.symbol,
-                source: Some(provenance.source),
-                provenance_index: Some(provenance_index),
-                restricted_index,
-                from_snow_source,
-            });
+            let copies = usize::try_from(record_units).unwrap_or(usize::MAX).min(unit_bound);
+            units.extend(std::iter::repeat_n(
+                PayableManaUnit {
+                    symbol: provenance.symbol,
+                    source: Some(provenance.source),
+                    provenance_index: Some(provenance_index),
+                    restricted_index,
+                    from_snow_source,
+                },
+                copies,
+            ));
         }
 
         for symbol in SYMBOLS {
@@ -2615,8 +2772,9 @@ impl GameState {
             }
             let untracked = player
                 .mana_pool
-                .amount(symbol)
-                .saturating_sub(represented.amount(symbol));
+                .amount_wide(symbol)
+                .saturating_sub(represented.amount_wide(symbol))
+                .min(unit_bound as u64);
             units.extend((0..untracked).map(|_| PayableManaUnit {
                 symbol,
                 source: None,
@@ -2641,6 +2799,7 @@ impl GameState {
             request.reason,
             &request.cost,
             None,
+            request.x_value,
         )
         .into_iter()
         .map(|unit| crate::mana_payment::resources::PaymentManaUnit {
@@ -2709,6 +2868,7 @@ impl GameState {
                 &request.cost,
                 request.reason,
             ),
+            request.x_value,
         );
         let edges: Vec<Vec<usize>> = units
             .iter()
@@ -2757,6 +2917,24 @@ impl GameState {
             .zip(owners)
             .map(|(pip, owner)| (pip, owner.is_some()))
             .collect()
+    }
+
+    /// Most units one payment of `cost` can spend (at least the
+    /// materialization bound, so ordinary pools are offered unit by unit).
+    fn payment_unit_bound(cost: &crate::mana::ManaCost, x_value: u32) -> usize {
+        Self::expanded_payment_pips(cost, x_value, false)
+            .iter()
+            .map(|pip| {
+                pip.iter()
+                    .filter_map(|symbol| match symbol {
+                        crate::mana::ManaSymbol::Generic(amount) => Some(*amount as usize),
+                        _ => None,
+                    })
+                    .max()
+                    .unwrap_or(1)
+            })
+            .fold(0usize, usize::saturating_add)
+            .max(crate::events::mana::MATERIALIZED_MANA_LIMIT)
     }
 
     pub(crate) fn expanded_payment_pips(
@@ -3116,7 +3294,7 @@ impl GameState {
         let allow_black_life = requested_black_life && engine_allows_black_life;
         let required_symbol = source
             .and_then(|source| self.chosen_color_activation_mana_restriction(source, cost, reason));
-        let units = self.payable_mana_units(payer, source, reason, cost, required_symbol);
+        let units = self.payable_mana_units(payer, source, reason, cost, required_symbol, x_value);
         let pips = Self::expanded_payment_pips(cost, x_value, allow_black_life);
         let minimum_mana_units = pips
             .iter()
@@ -3786,8 +3964,8 @@ impl GameState {
         restricted_indices.sort_unstable();
         restricted_indices.dedup();
         provenance_indices.sort_unstable();
-        provenance_indices.dedup();
-        // Freeze the selected production-time evidence in original bank order.
+        // Freeze the selected production-time evidence in original bank order,
+        // one snapshot per spent unit (a counted record supplies several).
         // Life-payment additions may replenish equivalent provenance before
         // the cast tags publish; that does not undo these original spends.
         let spent_source_snapshots = provenance_indices
@@ -3795,6 +3973,15 @@ impl GameState {
             .filter_map(|index| original_provenance.get(*index))
             .filter_map(|unit| unit.snapshot.clone())
             .collect::<Vec<_>>();
+        // Units spent from each provenance record, highest index first.
+        let mut provenance_spends: Vec<(usize, u64)> = Vec::new();
+        for index in provenance_indices.into_iter().rev() {
+            if let Some(entry) = provenance_spends.last_mut().filter(|entry| entry.0 == index) {
+                entry.1 += 1;
+            } else {
+                provenance_spends.push((index, 1));
+            }
+        }
 
         let committed = if let Some(player) = self.player_mut(payer) {
             let mut removed_all = true;
@@ -3805,8 +3992,8 @@ impl GameState {
                 for index in restricted_indices.into_iter().rev() {
                     player.restricted_mana.remove(index);
                 }
-                for index in provenance_indices.into_iter().rev() {
-                    player.mana_source_provenance.remove(index);
+                for (index, count) in provenance_spends {
+                    player.consume_mana_source_provenance(index, count);
                 }
                 player.trim_mana_source_provenance_to_pool();
             }
@@ -3958,6 +4145,73 @@ impl GameState {
                         enters_with_counter_values.clone(),
                     ))
                 }
+                // Spending-restricted mana can carry the same riders ("and
+                // that spell can't be countered", Cavern of Souls). They
+                // apply only when the unit pays for a matching spell.
+                crate::ability::ManaUsageRestriction::CastSpell {
+                    card_types,
+                    subtype_requirement,
+                    grant_uncounterable,
+                    enters_with_counters,
+                    granted_abilities,
+                    ..
+                } if (*grant_uncounterable
+                    || !enters_with_counters.is_empty()
+                    || !granted_abilities.is_empty())
+                    && self.cast_spell_mana_rule_matches_payment_source(
+                        unit,
+                        card_types,
+                        subtype_requirement,
+                        Some(spell_id),
+                    ) =>
+                {
+                    Some((
+                        *grant_uncounterable,
+                        enters_with_counters.clone(),
+                        granted_abilities
+                            .iter()
+                            .map(|ability| {
+                                (
+                                    ability.clone(),
+                                    crate::ability::ManaSpendAbilityGrantDuration::UntilEndOfTurn,
+                                )
+                            })
+                            .collect(),
+                        Vec::new(),
+                        Vec::new(),
+                    ))
+                }
+                crate::ability::ManaUsageRestriction::CastSpellMatching {
+                    filter,
+                    grant_uncounterable,
+                    enters_with_counters,
+                    granted_abilities,
+                    ..
+                } if (*grant_uncounterable
+                    || !enters_with_counters.is_empty()
+                    || !granted_abilities.is_empty())
+                    && self.cast_spell_filter_matches_payment_source(
+                        unit,
+                        filter,
+                        Some(spell_id),
+                    ) =>
+                {
+                    Some((
+                        *grant_uncounterable,
+                        enters_with_counters.clone(),
+                        granted_abilities
+                            .iter()
+                            .map(|ability| {
+                                (
+                                    ability.clone(),
+                                    crate::ability::ManaSpendAbilityGrantDuration::UntilEndOfTurn,
+                                )
+                            })
+                            .collect(),
+                        Vec::new(),
+                        Vec::new(),
+                    ))
+                }
                 _ => None,
             })
             .collect::<Vec<_>>();
@@ -4014,6 +4268,22 @@ impl GameState {
                             ability,
                             expires_end_of_turn,
                         );
+                    }
+                    crate::ability::ManaSpendAbilityGrantDuration::Indefinitely => {
+                        // The spell keeps the ability as it becomes a
+                        // permanent and for as long as that permanent
+                        // remains (Hall of the Bandit Lord).
+                        let acquired_at = self.effect_store.continuous_effects.next_timestamp();
+                        if let Some(object) = self.object_mut(spell_id) {
+                            object.temporary_static_ability_grants.push_at_timestamp(
+                                crate::object::TemporaryStaticAbilityGrant {
+                                    ability,
+                                    ability_payload: None,
+                                    expires_end_of_turn: None,
+                                },
+                                acquired_at,
+                            );
+                        }
                     }
                 }
             }
@@ -4602,7 +4872,7 @@ impl GameState {
             .iter()
             .copied()
             .map(|commander_id| self.commander_cast_count(commander_id))
-            .sum()
+            .fold(0u32, u32::saturating_add)
     }
 
     /// Returns how many times a player has cast any commander from the
@@ -4624,11 +4894,12 @@ impl GameState {
         caster: PlayerId,
     ) {
         if self.commander_identity(commander_id).is_some() {
-            *self
+            let tally = self
                 .commander_tracking_mut()
                 .commander_casts_from_command_zone_by_player
                 .entry(caster)
-                .or_insert(0) += 1;
+                .or_insert(0);
+            *tally = tally.saturating_add(1);
         }
         self.record_commander_cast_from_command_zone(commander_id);
     }
@@ -4636,11 +4907,12 @@ impl GameState {
     /// Records that a commander was cast from the command zone.
     pub fn record_commander_cast_from_command_zone(&mut self, commander_id: ObjectId) {
         if let Some(identity) = self.commander_identity(commander_id) {
-            *self
+            let tally = self
                 .commander_tracking_mut()
                 .commander_casts_from_command_zone
                 .entry(identity)
-                .or_insert(0) += 1;
+                .or_insert(0);
+            *tally = tally.saturating_add(1);
             // Commander-cast counts are read by dynamic continuous effects
             // (for example Commander's Insignia).  They do not change an
             // object's characteristics directly, so invalidate the cached

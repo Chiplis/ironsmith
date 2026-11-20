@@ -441,8 +441,10 @@ mod outer_transaction_tests {
             }
             sources.push(source);
         }
+        // Token counts clamp to the creation budget, so the shared instruction
+        // work guard admits the first manual source's token and fails the second.
         game.set_token_creation_limits(crate::effects::tokens::TokenCreationLimits {
-            max_created_tokens: 1, ..Default::default()
+            max_instructions: 1, ..Default::default()
         });
         game.take_pending_trigger_events();
         let next_object = game.next_object_id_counter();

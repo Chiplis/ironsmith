@@ -13,7 +13,31 @@ impl EffectExecutor for RegisterNextBatchEnterWithCountersEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
-        let mut matcher = WouldEnterBattlefieldMatcher::new(self.filter.clone());
+        let mut filter = self.filter.clone();
+        // The registered replacement outlives its source: Long List of the
+        // Ents is sacrificed after chapter VI before "that creature" enters,
+        // and its noted type leaves with it. Freeze the type chosen for this
+        // instance now (CR 603.7c, 614.12).
+        if filter.chosen_creature_type && !filter.has_chosen_type_this_way_surface() {
+            let noted = game.chosen_subtype(ctx.source).or_else(|| {
+                ctx.source_snapshot
+                    .as_ref()
+                    .and_then(|snapshot| snapshot.chosen_subtype)
+            });
+            match noted {
+                Some(noted) if filter.subtypes.is_empty() => {
+                    filter.chosen_creature_type = false;
+                    filter.subtypes = vec![noted];
+                }
+                // The exact spell is pinned by stable identity below and was
+                // already matched against the noted type when it was cast.
+                None if self.same_stable_id_tag.is_some() => {
+                    filter.chosen_creature_type = false;
+                }
+                _ => {}
+            }
+        }
+        let mut matcher = WouldEnterBattlefieldMatcher::new(filter);
         if let Some(tag) = &self.same_stable_id_tag {
             let stable_id = ctx
                 .tagged_objects

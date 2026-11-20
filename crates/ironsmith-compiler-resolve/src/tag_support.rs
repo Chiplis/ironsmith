@@ -1193,6 +1193,9 @@ pub fn choose_spec_references_exiled_tag(spec: &ChooseSpec) -> bool {
         ChooseSpec::Target(inner) | ChooseSpec::WithCount(inner, _) => {
             choose_spec_references_exiled_tag(inner)
         }
+        // "Return those cards to the battlefield" (Yorion, Sky Nomad): the
+        // surface-hinted demonstrative still names the exiled collection.
+        ChooseSpec::SurfaceHinted { spec, .. } => choose_spec_references_exiled_tag(spec),
         ChooseSpec::Object(filter) | ChooseSpec::All(filter) => {
             filter.tagged_constraints.iter().any(|constraint| {
                 matches!(constraint.relation, TaggedOpbjectRelation::IsTaggedObject)

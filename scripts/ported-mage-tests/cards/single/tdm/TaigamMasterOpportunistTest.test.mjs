@@ -111,10 +111,11 @@ registerPortedMageTests({
           "op": "execute"
         },
         {
-          "op": "assertExileCount",
+          "op": "assertLibraryCount",
           "player": 0,
           "name": "Twinmaw Stormbrood",
-          "count": 1
+          "count": 1,
+          "note": "CR 720.3d: Charring Bite cast as an Omen from suspend (CR 702.62a) is shuffled into its owner's library as it resolves, as the XMage original asserts."
         },
         {
           "op": "assertGraveyardCount",

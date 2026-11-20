@@ -356,6 +356,10 @@ impl CalculatedAbilities {
     pub fn origin(&self, index: usize) -> Option<&AbilityOrigin> {
         self.origins.get(index)
     }
+    /// The effect whose text box these abilities were last replaced from.
+    pub(super) fn current_effect_origin(&self) -> Option<AbilityEffectOrigin> {
+        self.current_effect.clone()
+    }
     pub fn begin_effect(&mut self, effect: &ContinuousEffect) {
         self.current_effect = Some(effect.into());
         self.next_effect_slot = 0;

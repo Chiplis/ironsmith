@@ -404,7 +404,11 @@ impl DerivedAlternativeCastRuntimeExt for DerivedAlternativeCast {
             // CR 702.170a: the plot cost is the card's own mana cost; the
             // plot special action decides where the card may be plotted from.
             Self::PlotFromCardManaCost => {
-                let mana_cost = card.mana_cost_owned()?;
+                // CR 709.4b: a split card being plotted (from hand or the
+                // library) has the combined mana cost of both halves.
+                let mana_cost = card
+                    .split_combined_mana_cost()
+                    .or_else(|| card.mana_cost_owned())?;
                 Some(AlternativeCastingMethod::Plot { cost: mana_cost })
             }
         }

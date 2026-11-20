@@ -81,11 +81,12 @@ impl GameState {
         if amount > 0 {
             self.object_store.changes.record(id);
             self.object_store.render_changes.record(id);
-            *self
+            let marked = self
                 .battlefield_flags_mut()
                 .damage_marked
                 .entry(id)
-                .or_insert(0) += amount;
+                .or_insert(0);
+            *marked = marked.saturating_add(amount);
         }
     }
 
@@ -284,11 +285,12 @@ impl GameState {
     /// Add regeneration shields to an object.
     pub fn add_regeneration_shield(&mut self, id: ObjectId, count: u32) {
         if count > 0 {
-            *self
+            let shields = self
                 .battlefield_flags_mut()
                 .regeneration_shields
                 .entry(id)
-                .or_insert(0) += count;
+                .or_insert(0);
+            *shields = shields.saturating_add(count);
         }
     }
 
@@ -317,11 +319,12 @@ impl GameState {
                     .regeneration_shields
                     .remove(&id);
             }
-            *self
+            let regenerated = self
                 .battlefield_flags_mut()
                 .regenerated_this_turn
                 .entry(id)
-                .or_insert(0) += 1;
+                .or_insert(0);
+            *regenerated = regenerated.saturating_add(1);
         }
 
         used_shield
@@ -767,8 +770,8 @@ impl GameState {
         // receipts can still be read by a queued intervening-if ability.
         let battlefield=self.battlefield.iter().copied().collect::<HashSet<_>>();
         self.battlefield_flags_mut().named_action_counts.retain(|actor,labels|battlefield.contains(actor)||labels.values().any(|entry|entry.turn==turn));
-        let total=if live{self.named_action_count(id,&label,false).checked_add(1).ok_or_else(||crate::effects::ExecutionError::Impossible("named action total overflow".into()))?}else{self.named_action_count(id,&label,false)};
-        let count=if live{self.named_action_count(id,&label,true).checked_add(1).ok_or_else(||crate::effects::ExecutionError::Impossible("named action turn total overflow".into()))?}else{self.named_action_count(id,&label,true)};
+        let total=if live{self.named_action_count(id,&label,false).saturating_add(1)}else{self.named_action_count(id,&label,false)};
+        let count=if live{self.named_action_count(id,&label,true).saturating_add(1)}else{self.named_action_count(id,&label,true)};
         let entry=self.battlefield_flags_mut().named_action_counts.entry(id).or_default().entry(label).or_default();
         if entry.turn!=turn{entry.recipients_this_turn.clear();}entry.turn=turn;entry.total=total;entry.turn_count=count;
         entry.recipients_this_turn.extend(objects.iter().map(|object|object.object_id));
@@ -1748,6 +1751,29 @@ impl GameState {
         true
     }
 
+    /// `false` proves the object has no daybound/nightbound behavior
+    /// (`has_day_night_transform_behavior` is false for both): it prints no
+    /// such ability on either face or component, and no live continuous
+    /// effect could grant one.
+    fn object_may_have_day_night_behavior(&self, object: &crate::object::Object) -> bool {
+        use crate::static_abilities::StaticAbilityId::{Daybound, Nightbound};
+        let day_night = |ability: &crate::static_abilities::StaticAbility| {
+            matches!(ability.id(), Daybound | Nightbound)
+                || matches!(
+                    ability.keyword_marker_mechanic(),
+                    Some(ironsmith_core::KeywordMarkerMechanic::DayNightTransformDefinition { .. })
+                )
+        };
+        object.other_face.is_some()
+            || object.other_face_name.is_some()
+            || self.commander_tracking.merged_permanents.contains_key(&object.stable_id)
+            || object.abilities.iter().any(|ability| {
+                matches!(&ability.kind, crate::ability::AbilityKind::Static(static_ability)
+                    if day_night(static_ability))
+            })
+            || self.static_ability_may_be_granted(&day_night)
+    }
+
     pub(crate) fn has_day_night_transform_behavior(&self, id: ObjectId, ability_id: crate::static_abilities::StaticAbilityId) -> bool {
         if self.current_has_static_ability_id(id, ability_id) { return true; }
         let day_face = ability_id == crate::static_abilities::StaticAbilityId::Daybound;
@@ -1948,15 +1974,21 @@ impl GameState {
 
     /// Apply day/night setup rules for a permanent that just entered the battlefield.
     pub fn handle_day_night_object_entered(&mut self, id: ObjectId) {
+        // Both keyword reads below calculate the entrant's characteristics,
+        // which on a just-changed board recomputes every permanent. Skip them
+        // only when the answer is provably "no".
+        let may_be_day_night = self.object(id).is_some_and(|object| {
+            self.object_may_have_day_night_behavior(object)
+        });
         let Some((sets_day_if_unset, daybound, nightbound)) = self.object(id).and_then(|object| {
             (object.zone == Zone::Battlefield).then(|| {
                 (
                     Self::object_starts_daytime_if_unset_as_enters(object),
-                    self.permanent_has_day_night_keyword_for_designation(
+                    may_be_day_night && self.permanent_has_day_night_keyword_for_designation(
                         id,
                         crate::static_abilities::StaticAbilityId::Daybound,
                     ),
-                    self.permanent_has_day_night_keyword_for_designation(
+                    may_be_day_night && self.permanent_has_day_night_keyword_for_designation(
                         id,
                         crate::static_abilities::StaticAbilityId::Nightbound,
                     ),
@@ -2608,6 +2640,58 @@ impl GameState {
         }
     }
 
+    /// Record that a foretold card's foretell cost is its mana cost reduced by
+    /// `reduction` generic mana, for each of its spell faces.
+    pub(crate) fn set_foretold_face_cost_reduction(&mut self, id: ObjectId, reduction: u32) {
+        self.cast_permission_flags_mut()
+            .foretold_face_cost_reductions
+            .insert(id, reduction);
+        self.mark_continuous_state_dirty();
+    }
+
+    /// CR 702.143a with Dream Devourer / Ethereal Valkyrie rulings: a foretold
+    /// split, Adventure, or modal double-faced card may be cast as its other
+    /// face for that face's mana cost reduced by the same amount. `card` is
+    /// the proposed face; the physical front keeps its stamped foretell cost,
+    /// so this applies only to a face without its own foretell method.
+    pub(crate) fn foretold_face_cast_permission(
+        &self,
+        card: &crate::object::Object,
+        zone: Zone,
+        player: PlayerId,
+    ) -> Option<crate::grant_registry::GrantedAlternativeCast> {
+        use crate::alternative_cast::AlternativeCastingMethod;
+        let reduction = *self
+            .cast_permission_flags
+            .foretold_face_cost_reductions
+            .get(&card.id)?;
+        if zone != Zone::Exile
+            || card.zone != Zone::Exile
+            || card.owner != player
+            || !self.is_foretold(card.id)
+            || card
+                .alternative_casts
+                .iter()
+                .any(|method| matches!(method, AlternativeCastingMethod::Foretell { .. }))
+        {
+            return None;
+        }
+        let cost = card.mana_cost_owned()?.reduce_generic(reduction);
+        Some(crate::grant_registry::GrantedAlternativeCast {
+            constraints: Default::default(),
+            permission_identity: None,
+            method: AlternativeCastingMethod::Foretell { cost },
+            source_id: card.id,
+            zone,
+            usage_limit: None,
+            shared_usage_id: None,
+            cast_this_way_grants: Vec::new(),
+            permanent_this_way_grants: Vec::new(),
+            on_use_effects: Vec::new(),
+            cast_this_way_filter: None,
+        })
+    }
+
     /// Clear foretell exiled status.
     pub fn clear_foretold(&mut self, id: ObjectId) {
         if self
@@ -2730,6 +2814,7 @@ impl GameState {
             source_id: id,
             zone,
             usage_limit: None,
+            shared_usage_id: None,
             cast_this_way_grants: Vec::new(),
             permanent_this_way_grants: Vec::new(),
             on_use_effects: Vec::new(),
@@ -2820,6 +2905,7 @@ impl GameState {
             flags.described_face_down.remove(&id);
             flags.fully_unlocked_rooms.remove(&id);
             flags.rooms_with_no_unlocked_door.remove(&id);
+            flags.copied_room_unlocked_halves.remove(&id);
             flags.transform_count.remove(&id);
             flags.mutation_count.remove(&id);
             flags.phased_out.remove(&id);
@@ -3224,7 +3310,12 @@ impl GameState {
             return false;
         };
         let controller = self.controller_of(object);
-        viewer == controller
+        // CR 708.9: at the end of each game, all face-down permanents are
+        // revealed to all players.
+        let game_ended = self.players.iter().any(|player| player.has_won)
+            || self.players.iter().all(|player| !player.is_in_game());
+        game_ended
+            || viewer == controller
             || viewer == self.controlling_player_for(controller)
             || self
                 .effect_store
@@ -5008,6 +5099,15 @@ impl GameState {
             .insert(source_id, result_ids);
     }
 
+    /// Every destination object one recorded zone change produced; a melded
+    /// permanent's departure produces one per component card (CR 713.8c).
+    pub fn zone_change_result_ids(&self, source_id: ObjectId) -> &[ObjectId] {
+        self.zone_change_result_objects
+            .get(&source_id)
+            .map(Vec::as_slice)
+            .unwrap_or(&[])
+    }
+
     /// Return the live object for a prior object id after a zone change, if known.
     pub fn current_object_id_after_zone_change(&self, source_id: ObjectId) -> Option<ObjectId> {
         let mut current = source_id;
@@ -5831,8 +5931,8 @@ impl GameState {
             && !mana_added.mana.is_empty()
         {
             let player = mana_added.player;
-            let count = mana_added.mana.len() as i64;
-            let text: String = mana_added
+            let count = i64::try_from(mana_added.mana_amount()).unwrap_or(i64::MAX);
+            let pattern: String = mana_added
                 .mana
                 .iter()
                 .map(|symbol| {
@@ -5853,6 +5953,12 @@ impl GameState {
                     )
                 })
                 .collect();
+            // A counted (multiplied) production names its pattern once.
+            let text = if mana_added.mana_multiplier > 1 {
+                format!("{pattern} x{}", mana_added.mana_multiplier)
+            } else {
+                pattern
+            };
             let stable_ids = self
                 .object(mana_added.source)
                 .map(|obj| vec![obj.stable_id])

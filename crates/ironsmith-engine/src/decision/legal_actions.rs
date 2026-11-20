@@ -533,6 +533,22 @@ fn append_granted_play_from_actions_for_card(
             if alternative.source_id != grant.source_id {
                 continue;
             }
+            // CR 702.170d: a plotted card (either half of a split card, or
+            // its other face) may be cast only by its owner, at sorcery
+            // timing, on a later turn than it became plotted. The physical
+            // card's validation below cannot resolve this face-local index
+            // to the Plot method, so enforce the timing here.
+            if alternative.method.prepares_face_up_sorcery()
+                && (card.owner != player
+                    || !game.is_active_player(player)
+                    || !crate::turn::is_sorcery_timing(game)
+                    || !game.is_prepared_face_up_by(card_id, player)
+                    || !game
+                        .plotted_turn(card_id)
+                        .is_some_and(|turn| turn < game.turn.turn_number))
+            {
+                continue;
+            }
             let casting_method = CastingMethod::SplitOtherHalfPlayFrom {
                 source: grant.source_id,
                 zone: grant.zone,
@@ -808,8 +824,15 @@ fn append_exile_granted_other_face_alternative_cast_actions_for_card(
     let base_alt_idx = card.alternative_casts.len()
         + view.granted_alternative_casts_for_card(card_id, Zone::Exile, player).len();
     for (offset, grant) in grants.into_iter().enumerate() {
-        if !matches!(&grant.method, crate::alternative_cast::AlternativeCastingMethod::FromZone {
+        let free_exile_cast = matches!(&grant.method, crate::alternative_cast::AlternativeCastingMethod::FromZone {
             zone: Zone::Exile, total_cost, .. } if total_cost.costs().is_empty())
+            // CR 702.170d: a plotted card is cast without paying its mana cost.
+            || matches!(&grant.method, crate::alternative_cast::AlternativeCastingMethod::Plot { cost }
+                if cost.is_empty())
+            // CR 702.143a: a foretold card's other face, for its own reduced
+            // foretell cost (`GameState::foretold_face_cast_permission`).
+            || matches!(&grant.method, crate::alternative_cast::AlternativeCastingMethod::Foretell { .. });
+        if !free_exile_cast
             || !grant_usage_limit_allows(game, player, grant.permission_identity.as_ref(), grant.usage_limit)
         {
             continue;
@@ -844,31 +867,36 @@ fn append_exile_granted_other_face_alternative_cast_actions_for_card(
     Ok(())
 }
 
+/// CR 715.3a / 601.3: a zone price granted to "spells" (Bolas's Citadel's
+/// top-of-library life price, graveyard flashback grants) also applies when
+/// the Adventure half is the proposed spell; index space matches
+/// `resolve_play_from_alternative_grant` (front grants, then this face's).
 fn append_graveyard_granted_adventure_alternative_cast_actions_for_card(
     game: &GameState,
     actions: &mut Vec<LegalAction>,
     player: PlayerId,
     card_id: ObjectId,
     card: &crate::object::Object,
+    zone: Zone,
     view: &DerivedGameView<'_>,
 ) {
     let Some(adventure_view) = spell_view_for_split_other_half_cast(game, card) else {
         return;
     };
     let front_granted_count = view
-        .granted_alternative_casts_for_card(card_id, Zone::Graveyard, player)
+        .granted_alternative_casts_for_card(card_id, zone, player)
         .len();
     let granted_casts = view.granted_alternative_casts_for_card_view(
         card_id,
         &adventure_view,
-        Zone::Graveyard,
+        zone,
         player,
     );
 
     let base_alt_idx = card.alternative_casts.len() + front_granted_count;
     for (offset, grant) in granted_casts.into_iter().enumerate() {
         let method = &grant.method;
-        if method.cast_from_zone() != Zone::Graveyard
+        if method.cast_from_zone() != zone
             || !grant_usage_limit_allows(
                 game,
                 player,
@@ -883,7 +911,7 @@ fn append_graveyard_granted_adventure_alternative_cast_actions_for_card(
         let mana_cost = get_mana_cost_for_method(method, &adventure_view);
         let casting_method = CastingMethod::SplitOtherHalfPlayFrom {
             source: grant.source_id,
-            zone: Zone::Graveyard,
+            zone,
             use_alternative: Some(base_alt_idx + offset),
         };
         if !can_cast_with_cost_with_view_for_casting_method(
@@ -907,11 +935,14 @@ fn append_graveyard_granted_adventure_alternative_cast_actions_for_card(
             continue;
         }
 
-        actions.push(LegalAction::CastSpell {
+        let action = LegalAction::CastSpell {
             spell_id: card_id,
-            from_zone: Zone::Graveyard,
+            from_zone: zone,
             casting_method,
-        });
+        };
+        if !actions.contains(&action) {
+            actions.push(action);
+        }
     }
 }
 
@@ -984,7 +1015,7 @@ fn append_cast_actions_from_zone_for_card(
             game, actions, player, card_id, card, view,
         );
         append_graveyard_granted_adventure_alternative_cast_actions_for_card(
-            game, actions, player, card_id, card, view,
+            game, actions, player, card_id, card, Zone::Graveyard, view,
         );
     }
     if from_zone == Zone::Exile
@@ -1008,6 +1039,9 @@ fn append_cast_actions_from_zone_for_card(
             Zone::Library,
             view,
         );
+        append_graveyard_granted_adventure_alternative_cast_actions_for_card(
+            game, actions, player, card_id, card, Zone::Library, view,
+        );
     }
     // A nonselected linked face can authorize its own cast from this zone.
     // Its static permission is absent from the physical front's registry, so
@@ -1022,6 +1056,14 @@ fn append_cast_actions_from_zone_for_card(
                 game, actions, player, card_id, card, view,
             )?;
         }
+    } else if from_zone == Zone::Exile
+        && game.plotted_cast_permission(card_id, from_zone, player).is_some()
+    {
+        // CR 702.170d / 715.3: a plotted card may be cast as either of its
+        // spell faces (an Adventure half included) without paying its mana cost.
+        append_exile_granted_other_face_alternative_cast_actions_for_card(
+            game, actions, player, card_id, card, view,
+        )?;
     }
     Ok(())
 }
@@ -2106,39 +2148,55 @@ fn compute_legal_actions_checked(
         .copied()
         .filter(|id| requested_action_source(*id))
         .collect();
-    // A resolving permission over another player's graveyard ("cast a
-    // creature spell from that player's graveyard this turn", "cast spells
-    // from other players' graveyards") offers exactly the covered cards.
-    if game.effect_store.grant_registry.grants.iter().any(|grant| {
-        grant.zone == Zone::Graveyard
-            && grant.player == player
-            && matches!(grant.grantable, crate::grant::Grantable::PlayFrom)
-    }) {
-        for other in game.players.iter().filter(|other| other.id != player) {
-            for &card_id in &other.graveyard {
-                if requested_action_source(card_id)
-                    && !game
-                        .effect_store
-                        .grant_registry
-                        .granted_play_from_for_card(game, card_id, Zone::Graveyard, player)
-                        .is_empty()
-                {
-                    filtered_graveyard.push(card_id);
-                }
-            }
-        }
-    }
     let hand = filtered_hand.as_slice();
-    let graveyard = filtered_graveyard.as_slice();
     let mut actions = Vec::with_capacity(
         1 + hand.len() * 6
-            + graveyard.len() * 2
+            + filtered_graveyard.len() * 2
             + game.exile.len() * 2
             + game.battlefield.len() * 4,
     );
     let view_started_at = PerfTimer::start();
     let view = DerivedGameView::new(game);
     perf.derived_view_ms = view_started_at.elapsed_ms();
+    // A permission over another player's graveyard offers exactly the covered
+    // cards: a resolving one ("cast a creature spell from that player's
+    // graveyard this turn", "cast spells from other players' graveyards") or
+    // a static one, including a card's own granted permission to be played
+    // from its owner's graveyard (an XMage "play this from graveyard"
+    // fixture granted to an opponent's card).
+    let resolving_graveyard_permission = game.effect_store.grant_registry.grants.iter().any(|grant| {
+        grant.zone == Zone::Graveyard
+            && grant.player == player
+            && matches!(grant.grantable, crate::grant::Grantable::PlayFrom)
+    });
+    if resolving_graveyard_permission
+        || view.player_has_active_grants_for_zone(player, Zone::Graveyard)
+    {
+        for other in game.players.iter().filter(|other| other.id != player) {
+            for &card_id in &other.graveyard {
+                if !requested_action_source(card_id) {
+                    continue;
+                }
+                // The memoized view covers static permissions without
+                // rebuilding static grants per card.
+                let covered = if resolving_graveyard_permission {
+                    !game
+                        .effect_store
+                        .grant_registry
+                        .granted_play_from_for_card(game, card_id, Zone::Graveyard, player)
+                        .is_empty()
+                } else {
+                    !view
+                        .granted_play_from_for_card(card_id, Zone::Graveyard, player)
+                        .is_empty()
+                };
+                if covered {
+                    filtered_graveyard.push(card_id);
+                }
+            }
+        }
+    }
+    let graveyard = filtered_graveyard.as_slice();
 
     let prewarm_started_at = PerfTimer::start();
     view.prewarm_characteristics(&game.battlefield);
@@ -2287,8 +2345,15 @@ fn compute_legal_actions_checked(
         && game.player_may_plot_nonland_from_top_of_library(player)
         && let Some(&top) = game.player(player).and_then(|state| state.library.last())
     {
-        let action = crate::special_actions::SpecialAction::Plot { card_id: top };
-        if !actions.contains(&LegalAction::SpecialAction(action.clone())) {
+        // A printed plot cost and a granted one ("The top card of your library
+        // has plot") are separate plot actions (CR 702.170a).
+        let granted = crate::special_actions::granted_plot_action(game, player, top);
+        for action in std::iter::once(crate::special_actions::SpecialAction::Plot { card_id: top })
+            .chain(granted)
+        {
+            if actions.contains(&LegalAction::SpecialAction(action.clone())) {
+                continue;
+            }
             match crate::special_actions::can_perform_check(&action, game, player) {
                 Ok(()) => actions.push(LegalAction::SpecialAction(action)),
                 Err(crate::special_actions::ActionError::ExecutionFailure { error, .. }) => {
@@ -2388,10 +2453,7 @@ fn compute_legal_actions_checked(
         .iter()
         .any(|grant| {
             grant.player == player
-                && matches!(
-                    grant.grantable,
-                    crate::grant::Grantable::AlternativePrice { .. }
-                )
+                && crate::alternative_cast::price_routes::grant_is_independent_price(grant)
         })
     {
         for id in priority_analysis_sources(game, player)
@@ -2716,12 +2778,13 @@ fn loyalty_activation_special_rules_allow(
 
     // CR 606.3: one loyalty activation per permanent each turn, unless an
     // effect this turn allows more ("twice this turn rather than only once").
-    let mut allowed = 1 + crate::effects::player::loyalty_activation_allowance::loyalty_allowance_count(
+    let mut allowed = crate::effects::player::loyalty_activation_allowance::loyalty_allowance_count(
         game,
         controller,
         source,
         crate::effects::LoyaltyActivationAllowance::ExtraActivation,
-    );
+    )
+    .saturating_add(1);
     // Oath of Teferi: twice each turn rather than once for planeswalkers its
     // controller controls; Urza, Planeswalker states the same for itself.
     // Multiple such statics are redundant.
@@ -2738,7 +2801,7 @@ fn loyalty_activation_special_rules_allow(
                 )
         })
     {
-        allowed += 1;
+        allowed = allowed.saturating_add(1);
     }
     game.loyalty_activations_this_turn(source) < allowed
         && ((game.is_active_player(controller)

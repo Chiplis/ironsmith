@@ -85,6 +85,7 @@ impl EffectExecutor for MoveCountersEffect {
                 let mut totals: std::collections::BTreeMap<crate::object::CounterType, u32> =
                     std::collections::BTreeMap::new();
                 let mut seen = std::collections::HashSet::new();
+                let mut candidates = Vec::new();
                 for from_id in donors {
                     if !seen.insert(from_id) || from_id == to_id || game.is_phased_out(from_id)
                         || game.object(from_id).is_none() {
@@ -118,9 +119,20 @@ impl EffectExecutor for MoveCountersEffect {
                         if available == 0 { continue; }
                         // CR 122.5: a counter that can't be removed can't be moved.
                         if !game.can_have_counter_type_removed(from_id, kind) { continue; }
+                        candidates.push((from_id, kind, available));
+                    }
+                }
+                let candidate_count = candidates.len();
+                for (candidate_index, (from_id, kind, available)) in candidates.into_iter().enumerate() {
                         if first_available.is_none() {
                             first_available = Some((from_id, kind));
                         }
+                        // "Move one or more counters": once every earlier kind
+                        // moved none, the last kind that can move must move at
+                        // least one, so zero is not a legal answer there.
+                        let minimum = u32::from(
+                            at_least_one && totals.is_empty() && candidate_index + 1 == candidate_count,
+                        );
                         let to_move = match &self.count {
                             ironsmith_core::effect::CounterMoveAmount::Exact(value) =>
                                 resolve_bounded_nonnegative_u32(game, value, ctx, available)?,
@@ -130,7 +142,7 @@ impl EffectExecutor for MoveCountersEffect {
                             | ironsmith_core::effect::CounterMoveAmount::AnyNumberOfAnyKind
                             | ironsmith_core::effect::CounterMoveAmount::OneOrMoreOfAnyKind => {
                                 let name = game.object(from_id).map(|object| object.name.as_str()).unwrap_or("the permanent");
-                                let spec = crate::decisions::NumberSpec::up_to(ctx.source, available,
+                                let spec = crate::decisions::NumberSpec::range(ctx.source, minimum, available,
                                     format!("Choose how many {} counters to move from {name}", kind.description()));
                                 let chosen = crate::decisions::make_decision_with_fallback(game, &mut ctx.decision_maker,
                                     ctx.controller, Some(ctx.source), spec, crate::decision::FallbackStrategy::Maximum);
@@ -140,10 +152,8 @@ impl EffectExecutor for MoveCountersEffect {
                         }.min(available);
                         if to_move == 0 { continue; }
                         let entry = totals.entry(kind).or_insert(0);
-                        *entry = entry.checked_add(to_move).ok_or_else(|| ExecutionError::InternalError(
-                            "counter transfer destination exceeds the supported counter count range".into()))?;
+                        *entry = entry.saturating_add(to_move);
                         allocations.push((from_id, kind, to_move));
-                    }
                 }
                 // "Move one or more counters": choosing zero everywhere still
                 // moves one counter when any could move.
@@ -188,10 +198,7 @@ impl EffectExecutor for MoveCountersEffect {
                                 game, ctx, removal,
                             )?;
                             if ctx.decision_maker.awaiting_choice() { return Ok(Vec::new()); }
-                            removed = removed.checked_add(receipt.outcome.outcome.instruction_result().count_or_zero())
-                                .ok_or_else(|| ExecutionError::InternalError(
-                                    "counter transfer receipt exceeds the supported count range".into(),
-                                ))?;
+                            removed = removed.saturating_add(receipt.outcome.outcome.instruction_result().count_or_zero());
                             committed.push(receipt);
                         }
                         for placement in placements {

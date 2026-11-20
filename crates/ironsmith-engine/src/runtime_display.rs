@@ -278,6 +278,16 @@ pub fn ability_surface_text(ability: &Ability) -> String {
     }
     let (text, generic) = match &ability.kind {
         AbilityKind::Static(static_ability) => {
+            // A keyword defined by its reminder program (riot: "As this
+            // creature enters, choose ...") reads as its keyword, as a
+            // keyword trigger does (CR 702.136).
+            if let Some(ironsmith_core::StaticAbilityPayload::AsEntersEffectProgram {
+                presentation_label: Some(PresentationLabel::Keyword(keyword)),
+                ..
+            }) = static_ability.compiled_model().map(|model| &model.payload)
+            {
+                return keyword.display();
+            }
             let mut text = static_ability.display();
             if text.to_ascii_lowercase().starts_with("equipped creature ") {
                 text = capitalize_first(&text);
@@ -611,7 +621,7 @@ pub fn describe_value(value: &Value) -> String {
             if let Value::Fixed(amount) = right.as_ref()
                 && *amount < 0
             {
-                return format!("{} minus {}", describe_value(left), -amount);
+                return format!("{} minus {}", describe_value(left), amount.unsigned_abs());
             }
             format!("{} plus {}", describe_value(left), describe_value(right))
         }

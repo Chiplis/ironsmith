@@ -60,11 +60,7 @@ impl PlayerDrawsNumberedCardsEachTurnTrigger {
                 .iter()
                 .filter(|number| total_before < i64::from(**number) && i64::from(**number) <= total_after)
                 .count();
-            u32::try_from(count).map_err(|_| ExecutionError::ResourceLimitExceeded {
-                resource: "numbered draw trigger count",
-                requested: count as u128,
-                maximum: u32::MAX as u128,
-            })
+            Ok(u32::try_from(count).unwrap_or(u32::MAX))
         })();
         match result {
             Ok(count) => count,
@@ -80,12 +76,8 @@ fn checked_draw_number_window(
 ) -> Result<(i64, i64), ExecutionError> {
     let mut before = 0i64;
     for (count, is_current) in draws {
-        let requested = before as u128 + count as u128;
-        let after = i64::try_from(requested).map_err(|_| ExecutionError::ResourceLimitExceeded {
-            resource: "draw-history ordinal",
-            requested,
-            maximum: i64::MAX as u128,
-        })?;
+        // Draw ordinals are game quantities: they saturate at the i64 bound.
+        let after = before.saturating_add(i64::try_from(count).unwrap_or(i64::MAX));
         if is_current {
             return Ok((before, after));
         }
@@ -266,12 +258,10 @@ mod tests {
 
     #[test]
     #[cfg(target_pointer_width = "64")]
-    fn ordinal_window_reports_wide_overflow_instead_of_saturating() {
-        assert!(matches!(checked_draw_number_window([
+    fn ordinal_window_saturates_at_the_wide_bound() {
+        assert_eq!(checked_draw_number_window([
             (usize::try_from(i64::MAX).unwrap(), false), (1, true),
-        ]), Err(ExecutionError::ResourceLimitExceeded {
-            resource: "draw-history ordinal", requested, maximum,
-        }) if requested == i64::MAX as u128 + 1 && maximum == i64::MAX as u128));
+        ]).unwrap(), (i64::MAX, i64::MAX));
     }
 
     #[test]

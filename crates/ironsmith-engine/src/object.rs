@@ -83,6 +83,11 @@ pub struct ObjectCounters {
     next_serial: Vec<u32>,
     named_ability_programs: std::collections::BTreeMap<CounterType, Vec<Ability>>,
 }
+/// Upper bound on per-counter ability occurrences held at once. Counter
+/// counts themselves saturate at `u32::MAX`; only the materialized
+/// occurrences (each carrying its own ability program) are bounded.
+pub(crate) const MAX_MATERIALIZED_COUNTER_OCCURRENCES: usize = 4_096;
+
 impl ObjectCounters {
     /// Bind a supplied compiled program to this counter identity. Counts and
     /// programs remain separate: one occurrence carries the whole program.
@@ -104,8 +109,11 @@ impl ObjectCounters {
         let old = self.counts.insert(kind, count);
         if kind.is_ability_counter() || self.named_ability_programs.contains_key(&kind) {
             let mut occurrences = self.occurrences.remove(&kind).unwrap_or_default();
-            occurrences.truncate(count as usize);
-            while occurrences.len() < count as usize {
+            // Counts saturate, but each occurrence is materialized work: keep
+            // the materialized set within the engine's object budget.
+            let materialized = (count as usize).min(MAX_MATERIALIZED_COUNTER_OCCURRENCES);
+            occurrences.truncate(materialized);
+            while occurrences.len() < materialized {
                 let serial = self.next_serial.clone();
                 let mut carry = true;
                 for digit in &mut self.next_serial {
@@ -137,7 +145,7 @@ impl ObjectCounters {
     pub fn add(&mut self, kind: CounterType, amount: u32) {
         if amount > 0 {
             let count = self.counts.get(&kind).copied().unwrap_or(0);
-            self.insert(kind, count + amount);
+            self.insert(kind, count.saturating_add(amount));
         }
     }
 
@@ -1375,7 +1383,7 @@ impl Object {
             LinkedFaceLayout::None if self.mana_cost.is_none() => Some(linked.mana_value()),
             LinkedFaceLayout::Split if !matches!(self.zone, Zone::Stack | Zone::Battlefield) => {
                 let own = self.mana_cost.as_deref().map_or(0, ManaCost::mana_value);
-                Some(own + linked.mana_value())
+                Some(own.saturating_add(linked.mana_value()))
             }
             LinkedFaceLayout::TransformLike if self.mana_cost.is_none() => {
                 Some(linked.mana_value())
@@ -1808,6 +1816,14 @@ impl Object {
                 Some(SplitCombinedCharacteristics::from_halves(self, &hidden).into());
         } else if self.linked_face_layout != LinkedFaceLayout::Split {
             self.split_combined = None;
+        }
+    }
+
+    /// Forget a fused stack overlay once the printed first half has been
+    /// restored: fused characteristics exist only on the stack (CR 702.102c).
+    pub(crate) fn clear_fused_split_overlay_marker(&mut self) {
+        if let Some(combined) = &mut self.split_combined {
+            Arc::make_mut(&mut combined.0).unfused_half = None;
         }
     }
 
@@ -2470,6 +2486,17 @@ impl Object {
                 crate::resolution::ResolutionProgram::unavailable_copied_definition().into()),
         };
         self.aura_attach_filter = values.aura_attach_filter.clone().map(Into::into);
+        // CR 709.5, 709.5b: a Room is copied with both halves, exactly as the
+        // object path (`copy_copiable_values_from`) keeps the Split link, so
+        // the copy has doors to unlock (CR 709.5d: it enters with neither
+        // unlocked designation unless that half was cast).
+        if values.copy_face_layout == LinkedFaceLayout::Split
+            && let Some(other) = values.other_copy_face.as_deref()
+        {
+            self.other_face = None;
+            self.other_face_name = Some(other.name.clone().into());
+            self.linked_face_layout = LinkedFaceLayout::Split;
+        }
     }
 
     /// Install a frozen stack envelope while keeping a Bestow overlay's
@@ -3226,7 +3253,9 @@ impl Object {
             self.base_power?.base_value()
         };
         let (power_delta, _) = self.pt_counter_deltas();
-        i32::try_from(i128::from(base) + power_delta).ok()
+        Some(ironsmith_core::quantity::clamp_i32(
+            ironsmith_core::quantity::clamp_i64_from_i128(i128::from(base).saturating_add(power_delta)),
+        ))
     }
 
     /// Returns the current toughness of this creature.
@@ -3239,7 +3268,11 @@ impl Object {
             self.base_toughness?.base_value()
         };
         let (_, toughness_delta) = self.pt_counter_deltas();
-        i32::try_from(i128::from(base) + toughness_delta).ok()
+        Some(ironsmith_core::quantity::clamp_i32(
+            ironsmith_core::quantity::clamp_i64_from_i128(
+                i128::from(base).saturating_add(toughness_delta),
+            ),
+        ))
     }
 
     pub fn pt_counter_deltas(&self) -> (i128, i128) {
@@ -3247,8 +3280,9 @@ impl Object {
         let mut toughness = 0i128;
         for (counter_type, count) in &self.counters {
             if let Some((dp, dt)) = counter_type.pt_delta() {
-                power += i128::from(dp) * i128::from(*count);
-                toughness += i128::from(dt) * i128::from(*count);
+                power = power.saturating_add(i128::from(dp).saturating_mul(i128::from(*count)));
+                toughness =
+                    toughness.saturating_add(i128::from(dt).saturating_mul(i128::from(*count)));
             }
         }
         (power, toughness)
@@ -3338,7 +3372,7 @@ impl Object {
     pub fn remove_counters(&mut self, counter_type: CounterType, amount: u32) -> u32 {
         let current = self.counters.get(&counter_type).copied().unwrap_or(0);
         let removed = current.min(amount);
-        let remaining = current - removed;
+        let remaining = current.saturating_sub(removed);
         if remaining == 0 && counter_type == CounterType::Loyalty && self.base_loyalty.is_some() {
             // CR 122.1e: a planeswalker whose last loyalty counter is removed
             // has 0 loyalty (until the SBA), not its printed loyalty.

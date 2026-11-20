@@ -32,6 +32,16 @@ impl EffectExecutor for ChooseNamedOptionEffect {
             return Ok(EffectOutcome::count(0));
         };
         let outcome = chosen.parse::<i32>().unwrap_or(1);
+        // "Choose artifact or enchantment. Destroy all permanents of the
+        // chosen type." A named option that is a card type is a card-type
+        // choice, so later "the chosen type" filters can read it.
+        if let Some(card_type) = crate::types::CardType::ALL
+            .iter()
+            .copied()
+            .find(|card_type| chosen.eq_ignore_ascii_case(card_type.name()))
+        {
+            game.set_chosen_card_type(ctx.source, card_type);
+        }
         game.set_chosen_named_option(ctx.source, chosen);
         Ok(EffectOutcome::count(outcome))
     }

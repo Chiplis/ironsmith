@@ -2857,7 +2857,8 @@ pub(crate) fn format_action_short(game: &GameState, action: &LegalAction, face_u
             crate::special_actions::SpecialAction::PrepareGrantedExile { grant,.. } => format!("Prepare exile ability from {}",grant.source.0),
             crate::special_actions::SpecialAction::PrepareExile { method_index, .. } => format!("Prepare exile ability {}",method_index+1),
             crate::special_actions::SpecialAction::Foretell { .. } => "Foretell".to_string(),
-            crate::special_actions::SpecialAction::Plot { .. } => "Plot".to_string(),
+            crate::special_actions::SpecialAction::Plot { .. }
+            | crate::special_actions::SpecialAction::PlotGranted { .. } => "Plot".to_string(),
             crate::special_actions::SpecialAction::ActivateManaAbility { .. } => {
                 "Activate mana ability".to_string()
             }
@@ -3510,7 +3511,7 @@ fn prompt_choose_counters(
                 break;
             }
 
-            total_removed += u64::from(amount);
+            total_removed = total_removed.saturating_add(u64::from(amount));
             result.push((available_counters[idx].0, amount));
         }
 

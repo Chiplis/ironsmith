@@ -145,8 +145,10 @@ mod tests {
             ),
             &mut ExecutionContext::new_default(source, A),
         );
-        assert!(result.is_err());
-        assert_eq!(game.player(B).unwrap().life, 20);
+        // Damage quantities saturate: the expanded amount clamps to u32::MAX and
+        // the life total clamps at its signed floor instead of failing.
+        assert!(result.is_ok(), "{result:?}");
+        assert_eq!(game.player(B).unwrap().life, i32::MIN);
     }
     #[test]
     fn live_counter_bonus_uses_registration_source_and_changes_between_damage_events() {
@@ -202,8 +204,9 @@ mod tests {
             &damage,
             &mut ExecutionContext::new_default(dealer, A),
         );
-        assert!(matches!(result, Err(ExecutionError::UnresolvableValue(_))));
-        assert_eq!(game.player(B).unwrap().life, 22);
+        // The live counter read saturates at i32::MAX rather than failing.
+        assert!(result.is_ok(), "{result:?}");
+        assert_eq!(i64::from(game.player(B).unwrap().life), 22 - (1 + i64::from(i32::MAX)));
     }
 
     #[test]
@@ -254,16 +257,16 @@ mod tests {
         let mut game = GameState::new(vec!["A".into(), "B".into()], 20);
         let source = object(&mut game, A, "Source");
         let before = game.effect_store.replacement_effects.effects().len();
-        assert!(matches!(
-            registration(Value::X).execute(
+        // An oversized announced X saturates and registers the clamped bonus.
+        registration(Value::X)
+            .execute(
                 &mut game,
-                &mut ExecutionContext::new_default(source, A).with_x(u32::MAX)
-            ),
-            Err(ExecutionError::UnresolvableValue(_))
-        ));
+                &mut ExecutionContext::new_default(source, A).with_x(u32::MAX),
+            )
+            .unwrap();
         assert_eq!(
             game.effect_store.replacement_effects.effects().len(),
-            before
+            before + 1
         );
         game.object_mut(source)
             .unwrap()
@@ -273,18 +276,19 @@ mod tests {
             Box::new(ChooseSpec::Source),
             Some(crate::object::CounterType::Named("fire".into())),
         );
-        assert!(matches!(
+        assert_eq!(
             crate::effects::helpers::resolve_value(
                 &game,
                 &value,
                 &ExecutionContext::new_default(source, A)
-            ),
-            Err(ExecutionError::UnresolvableValue(_))
-        ));
+            )
+            .unwrap(),
+            i32::MAX
+        );
     }
 
     #[test]
-    fn oversized_player_marker_event_is_not_a_wrapped_damage_amount() {
+    fn oversized_player_marker_event_saturates_instead_of_wrapping() {
         let mut game = GameState::new(vec!["A".into(), "B".into()], 20);
         let source = object(&mut game, A, "Source");
         let event = crate::triggers::TriggerEvent::new_with_provenance(
@@ -307,13 +311,14 @@ mod tests {
             .unwrap(),
             i64::from(u32::MAX)
         );
-        assert!(matches!(
+        assert_eq!(
             crate::effects::helpers::resolve_value(
                 &game,
                 &Value::EventValue(crate::effect::EventValueSpec::Amount),
                 &ctx
-            ),
-            Err(ExecutionError::ResourceLimitExceeded { requested, maximum, .. }) if requested == u128::from(u32::MAX) && maximum == i32::MAX as u128
-        ));
+            )
+            .unwrap(),
+            i32::MAX
+        );
     }
 }

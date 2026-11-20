@@ -83,12 +83,18 @@ impl FixtureAbility {
                         .in_zone(Zone::Graveyard)
                         .owned_by(PlayerFilter::Opponent),
                 ));
+                // The permission rides on the targeted graveyard card, so the
+                // granted static must function in the graveyard (CR 113.6);
+                // a plain `AddAbility` static functions only on the battlefield.
                 let effect = ApplyContinuousEffect::with_spec(
                     target,
-                    Modification::AddAbility(play_while_creature_exists(
-                        Zone::Graveyard,
-                        ObjectFilter::source(),
-                    )),
+                    Modification::AddAbilityGeneric(
+                        Ability::static_ability(play_while_creature_exists(
+                            Zone::Graveyard,
+                            ObjectFilter::source(),
+                        ))
+                        .in_zones(vec![Zone::Graveyard]),
+                    ),
                     Until::EndOfTurn,
                 );
                 let cost = TotalCost::mana(ManaCost::from_pips(vec![vec![ManaSymbol::Red]]));

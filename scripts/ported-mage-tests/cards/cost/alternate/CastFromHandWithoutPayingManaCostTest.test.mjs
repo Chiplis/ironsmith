@@ -627,7 +627,8 @@ registerPortedMageTests({
           "player": 0,
           "name": "fused Far // Away",
           "objectAlias": "@split.original",
-          "castingMethod": "fuse",
+          "priceSource": "Omniscience",
+          "note": "XMage setChoice picks Omniscience's free cost for the fused spell. Ironsmith offers it as the fuse cast priced by Omniscience (CR 702.102d, 118.9).",
           "target": {
             "groups": [
               [

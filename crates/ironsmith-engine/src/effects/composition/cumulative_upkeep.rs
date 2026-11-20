@@ -721,7 +721,8 @@ mod resource_failure_tests {
             source, player, crate::events::cards::matchers::WouldDiscardMatcher::you(),
             crate::replacement::ReplacementAction::Additionally(vec![Effect::gain_life(3), Effect::new(crate::effects::CreateTokenEffect::you(crate::cards::tokens::treasure_token_definition(), 2))]),
         ));
-        game.set_token_creation_limits(crate::effects::tokens::TokenCreationLimits { max_created_tokens: 1, ..Default::default() });
+        // Token counts clamp to the creation budget; the instruction work guard still fails.
+        game.set_token_creation_limits(crate::effects::tokens::TokenCreationLimits { max_instructions: 0, ..Default::default() });
         game.take_pending_trigger_events(); let next = game.next_object_id_counter();
         let effect = CumulativeUpkeepEffect::new(crate::target::PlayerFilter::You, vec![Effect::discard(1)], vec![Effect::sacrifice_source()]);
         let mut ctx = ExecutionContext::new_default(source, player);

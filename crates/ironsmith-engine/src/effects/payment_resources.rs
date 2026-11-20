@@ -63,9 +63,7 @@ pub(crate) fn can_pay_declared_resource_claims<'claims>(
                     }
                 };
                 let total = counters.entry((target.clone(), *counter_type)).or_default();
-                let Some(requested) = total.checked_add(u64::from(*count)) else {
-                    return false;
-                };
+                let requested = total.saturating_add(u64::from(*count));
                 *total = requested;
                 if requested > u64::from(available) {
                     return false;

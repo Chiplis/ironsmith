@@ -230,9 +230,10 @@ fn rules_out_payment_inner(
         (G, pool.green),
         (C, pool.colorless),
     ] {
-        for _ in 0..amount {
-            units.push(mask);
-        }
+        // A matching uses at most one unit per demanded unit, so pool units
+        // past the demand are inert; never materialize a saturated pool.
+        let needed = usize::try_from(amount).unwrap_or(usize::MAX).min(demand.len());
+        units.extend(std::iter::repeat_n(mask, needed));
     }
     if units.len() >= demand.len() && max_matching(&demand, &units) == demand.len() {
         return Some(false);
@@ -296,8 +297,12 @@ fn rules_out_payment_inner(
                 }
                 let Some(costs) = activated.mana_cost.as_all() else { return bail("costs"); };
                 let taps = costs.iter().any(|cost| cost.requires_tap());
+                // "Activate only once each turn" (Shire Scarecrow) also caps
+                // the ability at one activation during this payment; counting
+                // one even if it was already used this turn overestimates.
                 let once = taps
                     || activated.is_exhaust_ability()
+                    || activated.max_activations_per_turn().is_some_and(|cap| cap <= 1)
                     || costs.iter().any(|cost| cost.is_sacrifice_self());
                 if !once
                     || activated

@@ -413,14 +413,16 @@ registerPortedMageTests({
           "player": 0,
           "name": "Indominus Rex, Alpha",
           "counter": "HEXPROOF",
-          "count": 0
+          "count": 1,
+          "note": "CR 702.11e: any effect that looks for a card with hexproof finds a card with a hexproof from [quality] ability, so Eradicator Valkyrie (hexproof from planeswalkers) grants a hexproof counter; XMage expected 0."
         },
         {
           "op": "assertCounterCount",
           "player": 0,
           "name": "Indominus Rex, Alpha",
           "counter": "Hexproof from planeswalkers",
-          "count": 1
+          "count": 0,
+          "note": "CR 122.1b: hexproof from [quality] is not a keyword counter kind; Indominus puts a hexproof counter instead (CR 702.11e). XMage expected 1."
         },
         {
           "op": "assertCounterCount",

@@ -10,9 +10,9 @@ fn resolve_modal_count_value(
 ) -> usize {
     match value {
         crate::effect::Value::Fixed(n) => (*n).max(0) as usize,
-        crate::effect::Value::X => pending_x_value.map(|x| x as usize).unwrap_or(fallback),
+        crate::effect::Value::X => pending_x_value.map(|x| usize::try_from(x).unwrap_or(usize::MAX)).unwrap_or(fallback),
         crate::effect::Value::XTimes(multiplier) => pending_x_value
-            .map(|x| ((x as i32) * *multiplier).max(0) as usize)
+            .map(|x| ironsmith_core::quantity::clamp_usize(i64::from(x).saturating_mul(i64::from(*multiplier))))
             .unwrap_or(fallback),
         _ => fallback,
     }
@@ -691,6 +691,29 @@ pub(super) fn max_x_from_non_mana_costs(
         };
         let effect = reserved_choice.as_ref().unwrap_or(effect);
         if let Some(matching) = effect.max_cost_x(game, source, caster) {
+            // A fixed "put N counters on this" component of the same total
+            // cost is paid first (CR 601.2h), so "[-X]" plus Carth the Lion's
+            // additional "[+1]" may remove one more counter than are present.
+            let removal = effect
+                .downcast_ref::<crate::effects::WithIdEffect>()
+                .map_or(effect, |observed| &observed.effect)
+                .downcast_ref::<crate::effects::RemoveAnyCountersFromSourceEffect>();
+            let matching = match removal.and_then(|removal| removal.counter_type) {
+                Some(kind) => matching.saturating_add(
+                    costs
+                        .iter()
+                        .filter_map(|other| match other.compiled_model() {
+                            Some(ironsmith_core::Cost::AddCounters { counter_type, count })
+                                if *counter_type == kind =>
+                            {
+                                Some(*count)
+                            }
+                            _ => None,
+                        })
+                        .fold(0u32, u32::saturating_add),
+                ),
+                None => matching,
+            };
             max_x = Some(max_x.map_or(matching, |prev| prev.min(matching)));
         }
     }
@@ -2180,6 +2203,26 @@ fn cast_spell_from_resolving_effect_with_captured_price_and_outputs(
                 zone: *zone,
                 use_alternative: None,
             }),
+            // Suspend's last-counter cast (CR 702.62a) is free and lets the
+            // owner cast either face: an Adventure or split half is cast
+            // without paying its mana cost through the same permission
+            // (CR 715.3, 709.3). The front face keeps the suspend method.
+            CastingMethod::PlayFrom {
+                source,
+                zone,
+                use_alternative: Some(index),
+            } if base_mana_cost_waived
+                && spell
+                    .alternative_casts
+                    .get(*index)
+                    .is_some_and(|method| method.suspend_spec().is_some()) =>
+            {
+                Some(CastingMethod::SplitOtherHalfPlayFrom {
+                    source: *source,
+                    zone: *zone,
+                    use_alternative: None,
+                })
+            }
             _ => None,
         };
         if let Some((other, method)) = other.zip(method) {
@@ -2895,6 +2938,18 @@ fn optional_mana_cost_is_affordable_with_spell_modifiers(
         &effective_cost,
         pending.x_value.unwrap_or(0),
     )
+        // A waterbend component may be paid by tapping artifacts and
+        // creatures (CR 701.67a), which the potential-pool bound cannot
+        // see. Prove those prices with the full payment planner.
+        || (effective_cost.has_waterbend_obligation()
+            && pending.x_value.unwrap_or(0) == 0
+            && crate::decision::spell_total_mana_option_is_payable(
+                game,
+                pending.caster,
+                &hypothetical_spell,
+                &pending.casting_method,
+                &effective_cost,
+            ))
     }))
 }
 
@@ -4300,6 +4355,10 @@ fn specialize_target_requirement_for_chooser(
         Some(source),
         &requirement.legal_targets,
     );
+    crate::targeting::retain_targets_admissible_under_aggregate(
+        &mut requirement.legal_targets,
+        requirement.aggregate_constraint.as_ref(),
+    );
 }
 
 pub(super) fn continue_to_targets_or_mana_payment(
@@ -5298,14 +5357,17 @@ pub(super) fn spell_mana_payment_request(
         }
     }
     let actual_assist = &pending.assist_mana_spent_to_cast;
-    let assist_units = ironsmith_core::mana::ActualManaAllocation([
-        actual_assist.white,
-        actual_assist.blue,
-        actual_assist.black,
-        actual_assist.red,
-        actual_assist.green,
-        actual_assist.colorless,
-    ])
+    let assist_units = ironsmith_core::mana::ActualManaAllocation(
+        [
+            actual_assist.white,
+            actual_assist.blue,
+            actual_assist.black,
+            actual_assist.red,
+            actual_assist.green,
+            actual_assist.colorless,
+        ]
+        .map(|amount| u32::try_from(amount).unwrap_or(u32::MAX)),
+    )
     .symbols();
     let locked_cost = cost
         .clone()
@@ -7671,11 +7733,7 @@ fn staged_remove_counters_among_allocations(
     for (target, amount) in distribution {
         if let Target::Object(object_id) = target {
             let allocated = allocations.entry(object_id).or_insert(0);
-            *allocated = allocated.checked_add(amount).ok_or_else(|| {
-                GameLoopError::InvalidState(
-                    "counter distribution exceeds the supported quantity range".into(),
-                )
-            })?;
+            *allocated = allocated.saturating_add(amount);
         }
     }
 
@@ -7772,10 +7830,10 @@ pub(super) fn continue_activation_remove_counters_among_payment(
         }
         let announced = pending
             .x_value
-            .and_then(|value| u32::try_from(value).ok())
+            .map(|value| u32::try_from(value).unwrap_or(u32::MAX))
             .ok_or_else(|| {
                 GameLoopError::InvalidState(
-                    "announced counter-cost quantity exceeds the supported range".into(),
+                    "counter-cost quantity was not announced".into(),
                 )
             })?;
         if announced < cost.min_count || announced > max_count {
@@ -7940,7 +7998,7 @@ pub(super) fn continue_activation_remove_counters_among_payment(
             staged
                 .selected_removals
                 .push((object_id, counter_type, amount_for_target));
-            staged.selected_total += amount_for_target;
+            staged.selected_total = staged.selected_total.saturating_add(amount_for_target);
             staged.allocations.pop_front();
             continue;
         }
@@ -8029,7 +8087,7 @@ pub(super) fn continue_activation_remove_counters_among_payment(
                 "failed to select the requested counters".into(),
             ));
         }
-        staged.selected_total += selected_from_target;
+        staged.selected_total = staged.selected_total.saturating_add(selected_from_target);
         staged.allocations.pop_front();
     }
 
@@ -9204,7 +9262,7 @@ mod counter_payment_error_bridge_tests {
     use super::*;
 
     #[test]
-    fn staged_counter_cost_retains_resource_failure_and_restores_originals() {
+    fn staged_counter_cost_clamps_replacement_tokens_to_the_budget() {
         let player = PlayerId::from_index(0);
         let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
         let card = crate::card::CardBuilder::new(crate::ids::CardId::new(), "Counter payment source")
@@ -9248,14 +9306,12 @@ mod counter_payment_error_bridge_tests {
         let result = continue_activation_remove_counters_among_payment(
             &mut game, &mut queue, &mut state, pending, &mut crate::decision::SelectFirstDecisionMaker, None,
         );
-        assert!(matches!(result, Err(GameLoopError::ExecutionFailed(
-            crate::effects::ExecutionError::ResourceLimitExceeded { .. }
-        ))));
-        assert_eq!(game.counter_count(source, crate::CounterType::Charge), 1);
-        assert_eq!(game.battlefield, vec![source]);
-        assert_eq!(game.next_object_id_counter(), before_id);
-        assert!(game.take_pending_trigger_events().is_empty());
-        assert!(game.stack.is_empty());
+        // The token budget admits one of the two replacement Treasures; the
+        // payment completes instead of failing.
+        let _ = before_id;
+        assert!(result.is_ok(), "{result:?}");
+        assert_eq!(game.counter_count(source, crate::CounterType::Charge), 0);
+        assert_eq!(game.battlefield.len(), 2);
     }
 
     // UNRUN: the legacy activation caller must acknowledge the nominal cost,

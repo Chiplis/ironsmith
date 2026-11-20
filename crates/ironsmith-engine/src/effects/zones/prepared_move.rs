@@ -33,10 +33,15 @@ pub(crate) fn resolve_zone_move_objects(
             spec.base(),
         ) {
             // CR 609.3: a player with no eligible card performs none of this
-            // instruction. Other players' movements are still possible.
+            // instruction. Other players' movements are still possible. The
+            // same holds for a reference to an earlier result that found
+            // nothing for this player ("Then they each put the card they
+            // revealed into their hand" after one library was empty, Parker
+            // Luck).
             (Err(ExecutionError::InvalidTarget), ChooseSpec::Object(filter))
                 if !filter.source
-                    && filter.zone.is_some_and(|zone| zone.is_public())
+                    && (filter.zone.is_some_and(|zone| zone.is_public())
+                        || (filter.zone.is_none() && !filter.tagged_constraints.is_empty()))
                     && crate::effects::helpers::candidate_object_ids_for_filter(game, filter, ctx)
                         .is_empty() =>
             {
@@ -61,6 +66,15 @@ pub(crate) fn resolve_zone_move_objects(
     {
         objects.truncate(max);
     }
+    // CR 702.26b: a phased-out permanent is treated as though it doesn't
+    // exist, so "exile it at the beginning of the next end step" (Unearth,
+    // Teferi's Veil) can't move it.
+    objects.retain(|id| {
+        !(game.is_phased_out(*id)
+            && game
+                .object(*id)
+                .is_some_and(|object| object.zone == crate::zone::Zone::Battlefield))
+    });
     Ok(objects)
 }
 

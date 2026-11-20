@@ -13,14 +13,17 @@ use crate::snapshot::ObjectSnapshot;
 /// Complete receipt for a resolved mana operation. Additional instruction
 /// outcomes never substitute for the original instruction's mana quantity.
 pub(crate) struct ManaCreditReceipt {
+    /// Credited symbols; for a counted (multiplied) production, its pattern.
     pub(crate) mana: Vec<ManaSymbol>,
+    /// Units actually credited (`ManaAddedEvent::mana_amount`).
+    pub(crate) amount: u64,
     pub(crate) original_committed: bool,
     outputs: crate::effects::CompletedEffectOutputs,
 }
 
 impl ManaCreditReceipt {
     pub(crate) fn mana_count(&self) -> i32 {
-        self.mana.len() as i32
+        i32::try_from(self.amount).unwrap_or(i32::MAX)
     }
 }
 
@@ -217,6 +220,7 @@ where
     if ctx.decision_maker.awaiting_choice() {
         return Ok(ManaCreditReceipt {
             mana: Vec::new(),
+            amount: 0,
             original_committed: false,
             outputs: crate::effects::CompletedEffectOutputs::aggregate_only(EffectOutcome::count(
                 0,
@@ -230,6 +234,7 @@ where
     if mana.is_empty() {
         return Ok(ManaCreditReceipt {
             mana,
+            amount: 0,
             original_committed: true,
             outputs: crate::effects::CompletedEffectOutputs::aggregate_only(EffectOutcome::count(
                 0,
@@ -241,6 +246,7 @@ where
         ctx,
         || ManaCreditReceipt {
             mana: Vec::new(),
+            amount: 0,
             original_committed: false,
             outputs: crate::effects::CompletedEffectOutputs::aggregate_only(EffectOutcome::count(
                 0,
@@ -250,6 +256,7 @@ where
             if ctx.decision_maker.awaiting_choice() {
                 return Ok(ManaCreditReceipt {
                     mana: Vec::new(),
+                    amount: 0,
                     original_committed: false,
                     outputs: crate::effects::CompletedEffectOutputs::aggregate_only(
                         EffectOutcome::count(0),
@@ -281,6 +288,7 @@ where
             );
             let result = process_trait_event_with_execution_context(game, event, ctx)?;
             let mut primary_mana = Vec::new();
+            let mut primary_amount = 0u64;
             let mut primary_committed = false;
             let outputs = crate::effects::replacement::execute_event_expansion_with_outputs(
                 game,
@@ -289,6 +297,7 @@ where
                 |game, ctx, original| {
                     let receipt = commit_mana_result(game, ctx, original)?;
                     primary_mana = receipt.mana;
+                    primary_amount = receipt.amount;
                     primary_committed = receipt.original_committed;
                     Ok(receipt.outputs)
                 },
@@ -301,6 +310,7 @@ where
             )?;
             Ok(ManaCreditReceipt {
                 mana: primary_mana,
+                amount: primary_amount,
                 original_committed: primary_committed,
                 outputs,
             })
@@ -331,7 +341,7 @@ fn commit_mana_result(
             let outcome = if resolved.mana.is_empty() {
                 EffectOutcome::count(0)
             } else {
-                EffectOutcome::count(resolved.mana.len() as i32).with_event(
+                EffectOutcome::count(i64::try_from(resolved.mana_amount()).unwrap_or(i64::MAX)).with_event(
                     crate::triggers::TriggerEvent::new_with_provenance(
                         resolved.clone(),
                         event.provenance(),
@@ -340,6 +350,7 @@ fn commit_mana_result(
             };
             Ok(ManaCreditReceipt {
                 mana: resolved.mana.clone(),
+                amount: resolved.mana_amount(),
                 original_committed: true,
                 outputs: crate::effects::CompletedEffectOutputs::aggregate_only(outcome),
             })
@@ -369,12 +380,14 @@ fn commit_mana_result(
             );
             Ok(ManaCreditReceipt {
                 mana: Vec::new(),
+                amount: 0,
                 original_committed: false,
                 outputs,
             })
         }
         TraitEventResult::Prevented => Ok(ManaCreditReceipt {
             mana: Vec::new(),
+            amount: 0,
             original_committed: false,
             outputs: crate::effects::CompletedEffectOutputs::aggregate_only(
                 EffectOutcome::prevented(),
@@ -384,6 +397,7 @@ fn commit_mana_result(
             if ctx.decision_maker.awaiting_choice() {
                 Ok(ManaCreditReceipt {
                     mana: Vec::new(),
+                    amount: 0,
                     original_committed: false,
                     outputs: crate::effects::CompletedEffectOutputs::aggregate_only(
                         EffectOutcome::count(0),
@@ -415,6 +429,36 @@ pub(crate) fn choose_mana_symbols(
     if count == 0 {
         return Ok(Vec::new());
     }
+    // A colour restriction on the activation (the planner's per-colour
+    // variant, or a manual "add {G}" pick) narrows a type menu exactly as it
+    // narrows a colour menu in `choose_mana_colors`. Without it, "one mana of
+    // any type that land could produce" (Benthic Explorers) ignored the
+    // requested colour and always took the menu's first symbol.
+    let restricted: Vec<ManaSymbol>;
+    let available_symbols = match ctx.mana.mana_color_restriction.as_deref() {
+        Some(colors) => {
+            restricted = available_symbols
+                .iter()
+                .copied()
+                .filter(|symbol| {
+                    Color::ALL
+                        .into_iter()
+                        .any(|color| colors.contains(&color) && ManaSymbol::from_color(color) == *symbol)
+                })
+                .collect();
+            if restricted.is_empty() {
+                available_symbols
+            } else {
+                restricted.as_slice()
+            }
+        }
+        None => available_symbols,
+    };
+    let default_symbol = if available_symbols.contains(&default_symbol) {
+        default_symbol
+    } else {
+        available_symbols.first().copied().unwrap_or(default_symbol)
+    };
     let planned_choice = crate::mana_payment::ManaProductionChoice {
         purpose: crate::mana_payment::ManaChoicePurpose::Production,
         source: ctx.source,

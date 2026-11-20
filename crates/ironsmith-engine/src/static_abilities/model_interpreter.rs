@@ -1334,6 +1334,7 @@ impl StaticAbilityModelInterpreter {
                 .with_exclude_source_id(copy.exclude_source_id);
                 converted.excluded_ability_designations = copy.excluded_ability_designations.clone();
                 converted.copy_all = copy.copy_all;
+                converted.recipient = copy.recipient.clone();
                 StaticAbility::copy_static_ability_variants(converted)
             }
             ironsmith_core::StaticAbilityPayload::CopyTriggeredAbilities(copy) => {

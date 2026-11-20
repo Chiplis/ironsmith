@@ -103,8 +103,15 @@ fn ward_abilities_are_suppressed(game: &GameState, target_id: ObjectId, caster: 
     let Some(target) = game.object(target_id) else {
         return false;
     };
-    let filter_ctx = game.filter_context_for(caster, Some(target_id));
     game.battlefield.iter().copied().any(|source_id| {
+        // "Creatures your opponents control" is relative to the suppressing
+        // permanent's controller, not to the player whose spell targets the
+        // creature (Nowhere to Run leaves its controller's own ward intact).
+        let suppressor_controller = game
+            .object(source_id)
+            .map(|source| game.controller_of(source))
+            .unwrap_or(caster);
+        let filter_ctx = game.filter_context_for(suppressor_controller, Some(source_id));
         game.calculated_characteristics(source_id)
             .map(|c| c.static_abilities)
             .unwrap_or_else(|| {

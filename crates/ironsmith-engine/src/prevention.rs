@@ -144,7 +144,7 @@ impl PreventionShield {
         match self.amount_remaining {
             Some(remaining) => {
                 let prevented = remaining.min(amount);
-                self.amount_remaining = Some(remaining - prevented);
+                self.amount_remaining = Some(remaining.saturating_sub(prevented));
                 prevented
             }
             None => {
@@ -340,7 +340,8 @@ impl PreventionEffectManager {
 
     fn record_prevented(&mut self, id: PreventionShieldId, amount: u32) {
         if amount > 0 {
-            *self.prevented_totals.entry(id).or_default() += amount;
+            let total = self.prevented_totals.entry(id).or_default();
+            *total = total.saturating_add(amount);
         }
     }
 
@@ -383,7 +384,7 @@ impl PreventionEffectManager {
             self.cleanup_exhausted();
         }
         PreventionApplicationResult {
-            remaining: damage - prevented,
+            remaining: damage.saturating_sub(prevented),
             follow_ups,
         }
     }
@@ -741,7 +742,7 @@ impl PreventionEffectManager {
                 // Normal prevention - reduce damage and consume shield
                 let prevented = shield.reduce(remaining);
                 prevented_by_shield = prevented;
-                remaining -= prevented;
+                remaining = remaining.saturating_sub(prevented);
                 if prevented > 0 && !shield.follow_up_effects.is_empty() {
                     follow_ups.push(PreventionFollowUp {
                         source: shield.source,
@@ -848,7 +849,7 @@ impl PreventionEffectManager {
             {
                 let prevented = shield.reduce(remaining);
                 prevented_by_shield = prevented;
-                remaining -= prevented;
+                remaining = remaining.saturating_sub(prevented);
                 if prevented > 0 && !shield.follow_up_effects.is_empty() {
                     follow_ups.push(PreventionFollowUp {
                         source: shield.source,

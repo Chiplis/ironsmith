@@ -16,13 +16,13 @@ impl DamageAmounts {
         } else {
             &mut self.noncombat
         };
-        *total += u128::from(amount);
+        *total = total.saturating_add(u128::from(amount));
     }
     fn amount(&self, combat: Option<bool>) -> u128 {
         match combat {
             Some(true) => self.combat,
             Some(false) => self.noncombat,
-            None => self.combat + self.noncombat,
+            None => self.combat.saturating_add(self.noncombat),
         }
     }
 }

@@ -302,7 +302,7 @@ impl WasmGame {
     /// All accepted commands use the same lossless, per-command error boundary.
     /// A failed continuation cannot erase previously accepted payment choices,
     /// pending replacement context, or proof-required information commitments.
-    fn dispatch_typed_command(
+    pub(crate) fn dispatch_typed_command(
         &mut self,
         command: UiCommand,
         command_decode_ms: f64,

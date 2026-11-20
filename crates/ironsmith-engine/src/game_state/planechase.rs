@@ -13,6 +13,8 @@ use crate::triggers::{
 
 /// Structural identity of the CR 901.8 planeswalking game-rule ability.
 const PLANESWALKING_ABILITY_IDENTITY: TriggerIdentity = TriggerIdentity(0x9018);
+/// Physical planar dice one roll may use, extra replacement dice included.
+const MAX_PHYSICAL_PLANAR_DICE: u32 = 4_096;
 
 impl GameState {
     /// Enable ordinary per-player Planechase and create each supplementary deck.
@@ -818,11 +820,11 @@ impl GameState {
                 if decision_maker.awaiting_choice() { return Ok(None); }
                 index.ok_or(crate::effects::ExecutionError::InvalidTarget)?
             };
-            let rule = remaining.remove(index);
-            physical_count = physical_count.checked_add(rule.2).ok_or(
-                crate::effects::ExecutionError::ResourceLimitExceeded {
-                    resource: "physical planar dice", requested: u128::from(physical_count) + u128::from(rule.2), maximum: u32::MAX as u128,
-                })?;
+            let mut rule = remaining.remove(index);
+            // Planar dice are per-unit physical work: an extra-dice rule past
+            // the budget adds (and later ignores) only the dice it allows.
+            rule.2 = rule.2.min(MAX_PHYSICAL_PLANAR_DICE.saturating_sub(physical_count));
+            physical_count = physical_count.saturating_add(rule.2);
             applied.push(rule);
         }
         let mut rolls = Vec::new();

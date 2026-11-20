@@ -2027,4 +2027,4 @@ use bundle_rules_library_programs::{
 
 #[path = "effect_composition/entry_type_rider.rs"]
 mod entry_type_rider;
-pub(super) use entry_type_rider::parse_entry_type_rider;
+pub(super) use entry_type_rider::{attach_described_entry, parse_entry_type_rider};

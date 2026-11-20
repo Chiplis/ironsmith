@@ -445,6 +445,15 @@ pub fn parse_copy_modifier_words(tail_words: &[&str]) -> Result<CopyModifierSpec
         let explicit_colorless =
             crate::word_primitives::contains_word(&modifier_words[..descriptor_end], "colorless");
         spec.set_colors = (explicit_colorless || !colors.is_empty()).then_some(colors);
+        // CR 205.1a: setting subtypes replaces only the existing subtypes of
+        // the same set. "Except it's a 1/1 black and green Insect" (Grist)
+        // replaces creature types; a copied Dryad Arbor stays a Forest.
+        if card_types.is_empty()
+            && !subtypes.is_empty()
+            && subtypes.iter().all(|subtype| subtype.is_creature_type())
+        {
+            spec.preserve_noncreature_subtypes = true;
+        }
         spec.set_card_types = (!card_types.is_empty()).then_some(card_types);
         spec.set_subtypes = (!subtypes.is_empty()).then_some(subtypes);
     }

@@ -73,6 +73,7 @@ impl CostExecutableEffect for UnattachObjectsEffect {
                 .object(*id)
                 .filter(|object| {
                     object.attached_to.and_then(|target| target.object_id()) == Some(source)
+                        || (object.id == source && object.attached_to.is_some())
                 })
                 .map(|_| ())
                 .ok_or_else(|| {

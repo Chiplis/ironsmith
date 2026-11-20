@@ -3551,10 +3551,13 @@ pub fn parse_connive_clause(tokens: &[OwnedLexToken]) -> Result<Option<EffectAst
 
     let target_tokens = match shape.subject {
         clause_shapes::ConniveSubjectShape::ConvokedThisSpell => {
-            return Ok(Some(EffectAst::ForEach(ForEachEffectAst::ForEachTagged {
-                tag: crate::tag::CompilerReferenceTag::ConvokedThisSpell.bind(),
-                effects: vec![EffectAst::subject_verb_connive_iterated()],
-            })));
+            // CR 701.50c: the convoking creatures are instructed to connive at
+            // the same time, so their controller chooses which connives next.
+            // A per-object loop would fix that order instead.
+            return Ok(Some(EffectAst::subject_verb_connive(
+                TargetAst::Tagged(crate::tag::CompilerReferenceTag::ConvokedThisSpell.bind(), None),
+                count,
+            )));
         }
         clause_shapes::ConniveSubjectShape::Target(target_tokens) => target_tokens,
     };

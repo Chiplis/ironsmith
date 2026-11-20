@@ -232,6 +232,21 @@ fn tagged_characteristic_reference_tag(words: &[&str]) -> crate::tag::CompilerRe
     }
 }
 
+/// The object a tagged characteristic reads. A "that creature" demonstrative
+/// keeps its authored noun, so reference resolution can tell it from "its"
+/// (after "return that card", "that creature" still names the creature the
+/// card was before it left the battlefield, CR 608.2h).
+fn tagged_characteristic_reference_spec(words: &[&str]) -> ChooseSpec {
+    let spec = ChooseSpec::Tagged(tagged_characteristic_reference_tag(words).bind().into());
+    if matches!(words, ["that", "creature" | "creatures", ..]) {
+        spec.with_surface_hint(crate::target::ChooseSpecSurfaceHint::SourceReference(
+            crate::target::SourceReferenceSurface::ThisPermanentType("that creature".into()),
+        ))
+    } else {
+        spec
+    }
+}
+
 fn sacrificed_object_kind(words: &[&str]) -> Option<SacrificedObjectKind> {
     let sacrificed = crate::word_primitives::parse_sequence_start(words, &["sacrificed"])?;
     match words.get(sacrificed + 1).copied()? {

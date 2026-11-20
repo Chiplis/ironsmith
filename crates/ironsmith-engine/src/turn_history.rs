@@ -29,19 +29,14 @@ use crate::zone::Zone;
 use ironsmith_core::TurnHistoryCount;
 
 /// Keep draw-history leaves wide until the numeric interpreter reaches its
-/// scalar boundary. Empty retained history is a genuine zero; a total outside
-/// the wide range is an error rather than a wrapped or saturated count.
+/// scalar boundary. Empty retained history is a genuine zero; a total past the
+/// wide range saturates like every other game quantity.
 fn checked_draw_history_total(
     counts: impl IntoIterator<Item = usize>,
 ) -> Result<i64, ExecutionError> {
-    counts.into_iter().try_fold(0i64, |total, count| {
-        let requested = total as u128 + count as u128;
-        i64::try_from(requested).map_err(|_| ExecutionError::ResourceLimitExceeded {
-            resource: "draw-history count",
-            requested,
-            maximum: i64::MAX as u128,
-        })
-    })
+    Ok(counts.into_iter().fold(0i64, |total, count| {
+        total.saturating_add(i64::try_from(count).unwrap_or(i64::MAX))
+    }))
 }
 
 /// One ingested trigger/event observation for the current turn.
@@ -655,7 +650,7 @@ impl TurnHistory {
                     && seen.insert(attack.attacker))
                 .then_some(i64::from(snapshot.power.unwrap_or(0)))
             })
-            .sum()
+            .fold(0i64, i64::saturating_add)
     }
 
     pub fn remove_staged_event(&mut self, provenance: ProvNodeId) {
@@ -735,7 +730,8 @@ impl TurnHistory {
         }
         self.turn_counters.increment_event_kind(event.kind());
         if let Some(cast) = event.downcast::<SpellCastEvent>() {
-            *self.spells_cast_this_game.entry(cast.caster).or_insert(0) += 1;
+            let cast_count = self.spells_cast_this_game.entry(cast.caster).or_insert(0);
+            *cast_count = cast_count.saturating_add(1);
         }
         let record = Arc::new(TurnEventRecord {
             event: event.clone(),
@@ -857,7 +853,7 @@ impl TurnHistory {
             .filter_map(|record| record.event.downcast::<CardsDrawnEvent>())
             .filter(|event| event.player == player)
             .map(CardsDrawnEvent::amount)
-            .sum()
+            .fold(0u32, u32::saturating_add)
     }
 
     pub(crate) fn cards_drawn_matching_players_wide(
@@ -899,7 +895,7 @@ impl TurnHistory {
         players
             .iter()
             .map(|player| self.cards_discarded_by_player(*player))
-            .sum()
+            .fold(0u32, u32::saturating_add)
     }
 
     pub fn total_attractions_visited_for_players(&self, players: &[PlayerId]) -> u32 {
@@ -910,7 +906,7 @@ impl TurnHistory {
                     && players.contains(&event.player)
             })
             .map(|event| event.amount)
-            .sum()
+            .fold(0u32, u32::saturating_add)
     }
 
     /// The latest actual draw, not the latest attempted draw. Empty/replaced
@@ -966,7 +962,7 @@ impl TurnHistory {
         players
             .iter()
             .map(|player| self.spells_cast_by_player(*player))
-            .sum()
+            .fold(0u32, u32::saturating_add)
     }
 
     pub fn any_spell_was_cast_this_turn(&self) -> bool {
@@ -1033,7 +1029,7 @@ impl TurnHistory {
             .filter_map(|record| record.event.downcast::<LifeGainEvent>())
             .filter(|event| players.contains(&event.player))
             .map(|event| event.amount)
-            .sum()
+            .fold(0u32, u32::saturating_add)
     }
 
     pub fn total_life_lost_for_players(&self, players: &[PlayerId]) -> u32 {
@@ -1041,7 +1037,7 @@ impl TurnHistory {
             .filter_map(|record| record.event.downcast::<LifeLossEvent>())
             .filter(|event| players.contains(&event.player))
             .map(|event| event.amount)
-            .sum()
+            .fold(0u32, u32::saturating_add)
     }
 
     pub fn total_noncombat_damage_to_players(&self, players: &[PlayerId]) -> u32 {
@@ -1054,7 +1050,7 @@ impl TurnHistory {
                 }
                 _ => None,
             })
-            .sum()
+            .fold(0u32, u32::saturating_add)
     }
 
     pub fn total_noncombat_damage_dealt_by_sources_controlled_by(
@@ -1079,7 +1075,7 @@ impl TurnHistory {
                 }
                 Some(damage.amount)
             })
-            .sum()
+            .fold(0u32, u32::saturating_add)
     }
 
     pub fn total_combat_damage_to_player(&self, player: PlayerId) -> u32 {
@@ -1090,7 +1086,7 @@ impl TurnHistory {
                 crate::events::DamageTarget::Player(pid) if pid == player => Some(event.amount),
                 _ => None,
             })
-            .sum()
+            .fold(0u32, u32::saturating_add)
     }
 
     pub fn total_damage_to_player(&self, player: PlayerId) -> u32 {
@@ -1100,14 +1096,14 @@ impl TurnHistory {
                 crate::events::DamageTarget::Player(pid) if pid == player => Some(event.amount),
                 _ => None,
             })
-            .sum()
+            .fold(0u32, u32::saturating_add)
     }
 
     pub fn total_damage_to_players(&self, players: &[PlayerId]) -> u32 {
         players
             .iter()
             .map(|player| self.total_damage_to_player(*player))
-            .sum()
+            .fold(0u32, u32::saturating_add)
     }
 
     pub fn total_creature_damage_to_player(&self, player: PlayerId) -> u32 {
@@ -1125,7 +1121,33 @@ impl TurnHistory {
                     _ => None,
                 }
             })
-            .sum()
+            .fold(0u32, u32::saturating_add)
+    }
+
+    /// How many different creatures dealt damage to `player` this turn
+    /// ("if you've been dealt damage by two or more creatures this turn",
+    /// Inferno Trap). One creature dealing damage in both combat damage
+    /// steps (first strike and double strike) counts once.
+    pub fn distinct_creatures_that_dealt_damage_to_player(&self, player: PlayerId) -> u32 {
+        let mut sources = HashSet::new();
+        for record in self.projected_records() {
+            let Some(damage) = record.event.downcast::<DamageEvent>() else {
+                continue;
+            };
+            if damage.amount == 0
+                || !matches!(damage.target, crate::events::DamageTarget::Player(pid) if pid == player)
+            {
+                continue;
+            }
+            let source_is_creature = record
+                .source_snapshot
+                .as_ref()
+                .is_some_and(|snapshot| snapshot.card_types.contains(&CardType::Creature));
+            if source_is_creature {
+                sources.insert(damage.source);
+            }
+        }
+        u32::try_from(sources.len()).unwrap_or(u32::MAX)
     }
 
     pub fn player_was_dealt_damage_this_turn(&self, player: PlayerId) -> bool {
@@ -1227,6 +1249,10 @@ impl TurnHistory {
     }
 
     pub fn lands_entered_under_controller(&self, player: PlayerId) -> u32 {
+        // One entry can be observed as both an `EnterBattlefieldEvent` and an
+        // ETB `ZoneChangeEvent`; count each entered object once. A permanent
+        // that re-enters is a new object (CR 400.7) and still counts again.
+        let mut seen = HashSet::new();
         self.projected_records()
             .filter(|record| {
                 (record.event.downcast::<EnterBattlefieldEvent>().is_some()
@@ -1237,6 +1263,7 @@ impl TurnHistory {
                     && record.object_snapshot.as_ref().is_some_and(|snapshot| {
                         snapshot.controller == player
                             && snapshot.card_types.contains(&CardType::Land)
+                            && seen.insert(snapshot.object_id)
                     })
             })
             .count() as u32
@@ -1246,7 +1273,7 @@ impl TurnHistory {
         players
             .iter()
             .map(|player| self.lands_entered_under_controller(*player))
-            .sum()
+            .fold(0u32, u32::saturating_add)
     }
 
     /// Whether this permanent was turned face up during the current turn.
@@ -1737,12 +1764,43 @@ impl TurnHistory {
         source: ObjectId,
         source_stable_id: Option<StableId>,
     ) -> bool {
-        self.projected_records().any(|record| {
+        // CR 400.7: the stable-identity fallback must not reach damage dealt
+        // to an earlier incarnation. Only records after the creature's current
+        // battlefield entry this turn may match through it (Kumano's Pupils:
+        // a bounced and recast Pillarfield Ox is a new object).
+        let incarnation_start = self
+            .projected_records()
+            .enumerate()
+            .filter(|(_, record)| {
+                let entered_by_event = record
+                    .event
+                    .downcast::<EnterBattlefieldEvent>()
+                    .map(|event| event.object == creature)
+                    .or_else(|| {
+                        record
+                            .event
+                            .downcast::<ZoneChangeEvent>()
+                            .filter(|event| event.is_etb())
+                            .map(|event| event.result_objects.contains(&creature))
+                    });
+                match entered_by_event {
+                    Some(true) => true,
+                    Some(false) => record
+                        .object_snapshot
+                        .as_ref()
+                        .is_some_and(|snapshot| snapshot.object_id == creature),
+                    None => false,
+                }
+            })
+            .map(|(index, _)| index)
+            .last();
+        self.projected_records().enumerate().any(|(index, record)| {
             record.event.downcast::<DamageEvent>().is_some_and(|event| {
                 let target_matches = match event.target {
                     crate::events::DamageTarget::Object(target) if target == creature => true,
                     crate::events::DamageTarget::Object(_) => {
-                        creature_stable_id.is_some_and(|stable_id| {
+                        incarnation_start.is_none_or(|start| index > start)
+                            && creature_stable_id.is_some_and(|stable_id| {
                             event
                                 .target_snapshot
                                 .as_ref()
@@ -1952,15 +2010,12 @@ impl TurnHistory {
         player: PlayerId,
         count: usize,
     ) -> Result<u32, crate::effects::ExecutionError> {
-        let total = u128::from(self.completed_coin_flip_count(player)) + count as u128;
-        let after = i32::try_from(total).map_err(|_| {
-            crate::effects::ExecutionError::ResourceLimitExceeded {
-                resource: "completed coin-flip ordinal",
-                requested: total,
-                maximum: i32::MAX as u128,
-            }
-        })?;
-        Ok(after as u32)
+        // Ordinals saturate at the i32 domain the value interpreter reads.
+        let count = u32::try_from(count).unwrap_or(u32::MAX);
+        Ok(self
+            .completed_coin_flip_count(player)
+            .saturating_add(count)
+            .min(i32::MAX as u32))
     }
 
     pub(crate) fn record_completed_coin_flips(
@@ -1969,7 +2024,7 @@ impl TurnHistory {
         count: usize,
     ) -> Result<u32, crate::effects::ExecutionError> {
         let after = self.check_completed_coin_flip_capacity(player, count)?;
-        let first = self.completed_coin_flip_count(player) + 1;
+        let first = self.completed_coin_flip_count(player).saturating_add(1);
         self.completed_coin_flips_this_turn.insert(player, after);
         Ok(first)
     }
@@ -1990,14 +2045,9 @@ impl TurnHistory {
         count: usize,
     ) -> Result<(u32, u32), crate::effects::ExecutionError> {
         let before = self.completed_die_roll_count(player);
-        let total = u128::from(before) + count as u128;
-        let after = i32::try_from(total).map_err(|_| {
-            crate::effects::ExecutionError::ResourceLimitExceeded {
-                resource: "completed die-roll ordinal",
-                requested: total,
-                maximum: i32::MAX as u128,
-            }
-        })? as u32;
+        // Ordinals saturate at the i32 domain the value interpreter reads.
+        let count = u32::try_from(count).unwrap_or(u32::MAX);
+        let after = before.saturating_add(count).min(i32::MAX as u32);
         Ok((before, after))
     }
 
@@ -2019,7 +2069,7 @@ impl TurnHistory {
             history.extend_from_slice(results);
         }
         self.completed_die_rolls_this_turn.insert(player, after);
-        Ok(before + 1)
+        Ok(before.saturating_add(1))
     }
 
     pub fn record_die_roll(&mut self, player: PlayerId, result: u32) {
@@ -2098,7 +2148,7 @@ impl TurnHistory {
             .filter_map(|record| record.event.downcast::<ZoneChangeEvent>())
             .filter(|event| event.from == Zone::Battlefield)
             .map(|event| event.objects.len().max(event.snapshots().len()).max(1))
-            .sum::<usize>() as u32
+            .fold(0u32, |total, count| total.saturating_add(u32::try_from(count).unwrap_or(u32::MAX)))
     }
 
     pub fn nonland_permanents_left_battlefield_this_turn(&self) -> u32 {
@@ -2227,11 +2277,7 @@ impl TurnHistory {
             let Some(event) = record.event.downcast::<SpellCastEvent>() else {
                 continue;
             };
-            order = order.checked_add(1).ok_or_else(|| {
-                crate::effects::ExecutionError::IncompleteEvidence(
-                    "cast history order is not representable".into(),
-                )
-            })?;
+            order = order.saturating_add(1);
             if !players.contains(&event.caster) || exclude == Some(event.spell) {
                 continue;
             }
@@ -2283,7 +2329,7 @@ impl TurnHistory {
 
                 Some(damage.amount)
             })
-            .sum()
+            .fold(0u32, u32::saturating_add)
     }
 }
 
@@ -2395,6 +2441,30 @@ fn historical_cause_matches(
 /// Resolve a typed turn-history count against event snapshots.  This is shared
 /// by ordinary effect values and continuous/static values so both paths use the
 /// same retained-event semantics.
+/// The stack object that resolved into `source` this turn: the completed
+/// Stack-to-Battlefield move whose destination is `source` (CR 608.3).
+pub(crate) fn spell_resolved_into(game: &GameState, source: ObjectId) -> Option<ObjectId> {
+    game.turn_store.turn_history.projected_records()
+        .filter_map(|record| record.event.downcast::<ZoneChangeEvent>())
+        .find(|event| event.from == Zone::Stack
+            && event.to == Zone::Battlefield
+            && event.destination_objects() == [source])
+        .and_then(|event| {
+            let origins = event.original_objects();
+            (origins.len() == 1).then(|| origins[0])
+        })
+}
+
+/// The cast event of the spell that resolved into `source` this turn
+/// ("When this creature enters, if it was the second spell you cast this
+/// turn", Codespell Cleric).
+pub(crate) fn resolved_source_cast_event(game: &GameState, source: ObjectId) -> Option<&SpellCastEvent> {
+    let spell = spell_resolved_into(game, source)?;
+    game.turn_store.turn_history.projected_records()
+        .filter_map(|record| record.event.downcast::<SpellCastEvent>())
+        .find(|cast| cast.spell == spell)
+}
+
 pub(crate) fn resolve_turn_history_count(
     game: &GameState,
     query: &TurnHistoryCount,
@@ -2496,11 +2566,17 @@ pub(crate) fn resolve_turn_history_count(
         TurnHistoryCount::Died { filter, .. } => {
             let mut historical_filter = filter.clone();
             historical_filter.zone = None;
+            // CR 400.7: "another <creature> died" excludes only the source's
+            // own incarnation. A source that died and returned is a new
+            // object, so its earlier death is another creature's death
+            // (White Glove Gourmand); the live stable-id match must not hide it.
+            let exclude_source = std::mem::take(&mut historical_filter.other);
             history
                 .projected_records()
                 .filter_map(|record| record.event.downcast::<ZoneChangeEvent>())
                 .filter(|event| event.is_dies())
                 .flat_map(ZoneChangeEvent::snapshots)
+                .filter(|snapshot| !exclude_source || filter_ctx.source != Some(snapshot.object_id))
                 .filter(|snapshot| historical_filter.matches_snapshot(snapshot, filter_ctx, game))
                 .count() as i32
         }
@@ -2514,7 +2590,7 @@ pub(crate) fn resolve_turn_history_count(
                 .flat_map(ZoneChangeEvent::snapshots)
                 .filter(|snapshot| historical_filter.matches_snapshot(snapshot, filter_ctx, game))
                 .map(|snapshot| snapshot.power.unwrap_or(0))
-                .sum()
+                .fold(0i32, i32::saturating_add)
         }
         TurnHistoryCount::EnteredBattlefield(filter) => {
             let mut historical_filter = filter.clone();
@@ -2534,10 +2610,9 @@ pub(crate) fn resolve_turn_history_count(
             .filter_map(|record| record.event.downcast::<CreateTokensEvent>())
             .filter(|event| player_filter.matches_player(event.controller, filter_ctx))
             .map(|event| {
-                u32::try_from(event.total_count())
-                    .expect("published token groups passed checked creation preflight")
+                u32::try_from(event.total_count()).unwrap_or(u32::MAX)
             })
-            .sum::<u32>() as i32,
+            .fold(0i32, |total, amount| total.saturating_add(ironsmith_core::quantity::clamp_i32_from_u32(amount))),
         TurnHistoryCount::TokensCreatedMatching {
             player: player_filter,
             filter,
@@ -2554,10 +2629,9 @@ pub(crate) fn resolve_turn_history_count(
                             historical_filter.matches(&token, filter_ctx, game)
                         })
                     });
-                    u32::try_from(count)
-                        .expect("published token groups passed checked creation preflight")
+                    u32::try_from(count).unwrap_or(u32::MAX)
                 })
-                .sum::<u32>() as i32
+                .fold(0i32, |total, amount| total.saturating_add(ironsmith_core::quantity::clamp_i32_from_u32(amount)))
         }
         TurnHistoryCount::PutIntoGraveyard { owner, from } => history
             .projected_records()
@@ -2695,12 +2769,26 @@ pub(crate) fn resolve_turn_history_count(
                         && filter.matches_snapshot(snapshot, filter_ctx, game))
                     .then_some(event.amount);
                 }
-                let event = record.event.downcast::<CounterPlacedEvent>()?;
-                (counter_type.is_none_or(|counter_type| event.counter_type == counter_type)
+                // CR 122.6: counters an object is given as it enters (and
+                // counters put by effects, reported as added markers) are
+                // "put on" it just like a bare counter placement.
+                let (placed_type, amount) =
+                    if let Some(event) = record.event.downcast::<CounterPlacedEvent>() {
+                        (event.counter_type, event.amount)
+                    } else {
+                        let event = record
+                            .event
+                            .downcast::<crate::events::MarkersChangedEvent>()?;
+                        if !event.is_added() || event.object().is_none() {
+                            return None;
+                        }
+                        (event.marker.as_counter()?, event.amount)
+                    };
+                (counter_type.is_none_or(|counter_type| placed_type == counter_type)
                     && filter.matches_snapshot(snapshot, filter_ctx, game))
-                .then_some(event.amount)
+                .then_some(amount)
             })
-            .sum::<u32>() as i32,
+            .fold(0i32, |total, amount| total.saturating_add(ironsmith_core::quantity::clamp_i32_from_u32(amount))),
         TurnHistoryCount::CombatDamageSourcesToPlayers { player, recipients, filter } => {
             let mut seen = HashSet::new();
             for record in history.projected_records() {
@@ -2906,7 +2994,7 @@ pub(crate) fn resolve_turn_history_count(
             .filter_map(|record| record.event.downcast::<CardsDrawnEvent>())
             .filter(|event| player.matches_player(event.player, filter_ctx))
             .map(CardsDrawnEvent::amount)
-            .sum::<u32>() as i32,
+            .fold(0i32, |total, amount| total.saturating_add(ironsmith_core::quantity::clamp_i32_from_u32(amount))),
         TurnHistoryCount::KeywordActionsPerformed { player, actions } => history
             .projected_records()
             .filter_map(|record| record.event.downcast::<KeywordActionEvent>())
@@ -2939,7 +3027,7 @@ pub(crate) fn resolve_turn_history_count(
                         .matches_snapshot(snapshot, filter_ctx, game)
                         .then_some(event.amount)
                 })
-                .sum::<u32>() as i32
+                .fold(0i32, |total, amount| total.saturating_add(ironsmith_core::quantity::clamp_i32_from_u32(amount)))
         }
         TurnHistoryCount::Cycled(player) => {
             let mut seen = HashSet::new();
@@ -2988,13 +3076,13 @@ pub(crate) fn resolve_turn_history_count(
                     && player.matches_player(owner, filter_ctx))
                 .then_some(event.amount)
             })
-            .sum::<u32>() as i32,
+            .fold(0i32, |total, amount| total.saturating_add(ironsmith_core::quantity::clamp_i32_from_u32(amount))),
         TurnHistoryCount::LandsPlayed(player) => game
             .players
             .iter()
             .filter(|candidate| player.matches_player(candidate.id, filter_ctx))
-            .map(|candidate| candidate.lands_played_this_turn as i32)
-            .sum(),
+            .map(|candidate| ironsmith_core::quantity::clamp_i32_from_u32(candidate.lands_played_this_turn))
+            .fold(0i32, i32::saturating_add),
         TurnHistoryCount::PlayersLostLife(player) => history
             .projected_records()
             .filter_map(|record| record.event.downcast::<LifeLossEvent>())
@@ -3006,8 +3094,8 @@ pub(crate) fn resolve_turn_history_count(
             .untapped_lands_at_turn_start
             .iter()
             .filter(|(player_id, _)| player.matches_player(**player_id, filter_ctx))
-            .map(|(_, count)| *count as i32)
-            .sum(),
+            .map(|(_, count)| ironsmith_core::quantity::clamp_i32_from_u32(*count))
+            .fold(0i32, i32::saturating_add),
         TurnHistoryCount::Descended(player) => history
             .projected_records()
             .filter_map(|record| record.event.downcast::<ZoneChangeEvent>())
@@ -3029,7 +3117,7 @@ pub(crate) fn resolve_turn_history_count(
             .filter_map(|record| record.event.downcast::<DamageEvent>())
             .filter(|event| Some(event.source) == filter_ctx.source)
             .map(|event| event.amount)
-            .sum::<u32>() as i32,
+            .fold(0i32, |total, amount| total.saturating_add(ironsmith_core::quantity::clamp_i32_from_u32(amount))),
         TurnHistoryCount::DamageDealtToSource => {
             let source_object = filter_ctx.source.or_else(|| {
                 filter_ctx
@@ -3041,7 +3129,7 @@ pub(crate) fn resolve_turn_history_count(
                 .filter_map(|record| record.event.downcast::<DamageEvent>())
                 .filter(|event| matches!(event.target,DamageTarget::Object(target) if source_object == Some(target)))
                 .map(|event| event.amount)
-                .sum::<u32>() as i32
+                .fold(0i32, |total, amount| total.saturating_add(ironsmith_core::quantity::clamp_i32_from_u32(amount)))
         }
         TurnHistoryCount::SpellsCast {
             player,
@@ -3051,12 +3139,26 @@ pub(crate) fn resolve_turn_history_count(
             exclude_source,
             before_triggering_spell,
         } => {
+            // The spell that resolved into this permanent (a self-reference
+            // also identifies it). Use the completed move to distinguish it
+            // from earlier incarnations of the same physical card.
+            let resolved_source_spell = || {
+                filter_ctx.source.and_then(|source| spell_resolved_into(game, source))
+            };
             let triggering_cast = if *before_triggering_spell {
-                triggering_event.and_then(|event| {
-                    event
-                        .downcast::<SpellCastEvent>()
-                        .map(|cast| (event.provenance(), cast.spell))
-                })
+                triggering_event
+                    .and_then(|event| {
+                        event
+                            .downcast::<SpellCastEvent>()
+                            .map(|cast| (event.provenance(), cast.spell))
+                    })
+                    // "When this creature enters, if it was the second spell
+                    // you cast this turn" (Codespell Cleric): an enters
+                    // trigger has no cast event; "it" is the spell that
+                    // resolved into the source (CR 603.4, 608.3).
+                    .or_else(|| {
+                        resolved_source_spell().map(|spell| (ProvNodeId::default(), spell))
+                    })
             } else {
                 None
             };
@@ -3070,17 +3172,7 @@ pub(crate) fn resolve_turn_history_count(
             // this permanent. Use the completed move to distinguish it from
             // earlier incarnations of the same physical card.
             let source_spell = if *exclude_source {
-                filter_ctx.source.and_then(|source| {
-                    history.projected_records()
-                        .filter_map(|record| record.event.downcast::<ZoneChangeEvent>())
-                        .find(|event| event.from == Zone::Stack
-                            && event.to == Zone::Battlefield
-                            && event.destination_objects() == [source])
-                        .and_then(|event| {
-                            let origins = event.original_objects();
-                            (origins.len() == 1).then(|| origins[0])
-                        })
-                })
+                resolved_source_spell()
             } else {
                 None
             };
@@ -3713,14 +3805,10 @@ mod draw_scalar_tests {
 
     #[cfg(target_pointer_width = "64")]
     #[test]
-    fn draw_aggregation_rejects_wide_overflow_with_the_exact_requested_total() {
+    fn draw_aggregation_saturates_past_the_wide_range() {
         assert_eq!(checked_draw_history_total([i64::MAX as usize]).unwrap(), i64::MAX);
-        assert!(matches!(checked_draw_history_total([i64::MAX as usize, 1]),
-            Err(ExecutionError::ResourceLimitExceeded { resource: "draw-history count", requested, maximum })
-                if requested == i64::MAX as u128 + 1 && maximum == i64::MAX as u128));
-        assert!(matches!(checked_draw_history_total([usize::MAX]),
-            Err(ExecutionError::ResourceLimitExceeded { requested, .. })
-                if requested == usize::MAX as u128));
+        assert_eq!(checked_draw_history_total([i64::MAX as usize, 1]).unwrap(), i64::MAX);
+        assert_eq!(checked_draw_history_total([usize::MAX]).unwrap(), i64::MAX);
     }
 
     #[test]
@@ -3748,14 +3836,15 @@ mod draw_scalar_tests {
         for value in [count(PlayerFilter::You), maximum.clone()] {
             assert_eq!(value_eval::resolve_wide(&value,
                 &EvaluationContext::execution_context(&game, &execution)).unwrap(), exact);
-            assert!(value_eval::resolve(&value,
-                &EvaluationContext::execution_context(&game, &execution)).is_err());
+            // Narrowing to the signed scalar saturates instead of failing.
+            assert_eq!(value_eval::resolve(&value,
+                &EvaluationContext::execution_context(&game, &execution)).unwrap(), i32::MAX);
             let mut range_error = None;
             let mut evidence_error = None;
-            value_eval::resolve_continuous_characteristic(&value,
+            assert_eq!(value_eval::resolve_continuous_characteristic(&value,
                 LayerValueContext::new(&calculation, source, alice),
-                &mut range_error, &mut evidence_error);
-            assert_eq!(range_error, Some(("characteristic-defining scalar", i128::from(exact))));
+                &mut range_error, &mut evidence_error), i32::MAX);
+            assert!(range_error.is_none());
             assert!(evidence_error.is_none());
         }
         let difference = Value::Add(Box::new(count(PlayerFilter::Any)),
@@ -3777,9 +3866,9 @@ mod draw_scalar_tests {
             Box::new(Value::Scaled(Box::new(maximum.clone()), i32::MAX)),
             Box::new(maximum.clone()),
         );
-        assert!(matches!(value_eval::resolve_wide(&arithmetic_overflow,
-            &EvaluationContext::execution_context(&game, &execution)),
-            Err(ExecutionError::UnresolvableValue(_))));
+        assert_eq!(value_eval::resolve_wide(&arithmetic_overflow,
+            &EvaluationContext::execution_context(&game, &execution)).unwrap(), i64::MAX,
+            "wide arithmetic saturates");
 
         // Knowledge Is Power's admitted Dynamic anthem must retain this same
         // checked leaf through its generated layer-7c modification.
@@ -3797,8 +3886,8 @@ mod draw_scalar_tests {
                 crate::static_abilities::StaticAbility::new(anthem),
             )).build();
         anthem_game.create_object_from_definition(&definition, alice, Zone::Battlefield);
-        assert!(matches!(anthem_game.try_current_characteristics(source),
-            Err(StaticEffectDiscoveryError::ScalarRange { value, .. }) if value == i128::from(exact)));
+        let saturated = anthem_game.try_current_characteristics(source).unwrap().unwrap();
+        assert_eq!((saturated.power, saturated.toughness), (Some(i32::MAX), Some(i32::MAX)));
         anthem_game.next_turn();
         anthem_game.record_turn_history_event(&draw(alice, 2));
         let recovered = anthem_game.try_current_characteristics(source).unwrap().unwrap();
@@ -3809,9 +3898,8 @@ mod draw_scalar_tests {
                 value: maximum, sublayer: PtSublayer::CharacteristicDefining,
             },
         ));
-        assert!(matches!(game.try_current_characteristics(source),
-            Err(StaticEffectDiscoveryError::ScalarRange { value, .. })
-                if value == i128::from(exact)), "checked CDA queries must reject the provisional scalar");
+        let saturated = game.try_current_characteristics(source).unwrap().unwrap();
+        assert_eq!(saturated.power, Some(i32::MAX), "checked CDA queries publish the saturated scalar");
     }
 }
 

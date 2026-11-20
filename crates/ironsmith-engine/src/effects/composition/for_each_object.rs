@@ -160,6 +160,13 @@ fn object_iteration_cursor(
 
 impl EffectExecutor for ForEachObject {
     fn supports_prepared_action_program(&self) -> bool {
+        // A per-object token creation is one simultaneous instruction; the
+        // per-iteration cursor would publish each token as its own event.
+        // Execute it as a whole so `execute_object_iterations` can hold one
+        // simultaneous action open across the iterations.
+        if matches!(self.effects.as_slice(), [child] if is_token_creation_instruction(child)) {
+            return false;
+        }
         self.effects
             .iter()
             .all(super::action_program::action_program_child_is_prepared)
@@ -274,6 +281,19 @@ impl EffectExecutor for ForEachObject {
 
 }
 
+pub(super) fn is_token_creation_instruction(effect: &Effect) -> bool {
+    let mut operation = effect;
+    while let Some(child) = operation.transparent_child_effect() {
+        operation = child;
+    }
+    operation
+        .downcast_ref::<crate::effects::CreateTokenCopyEffect>()
+        .is_some()
+        || operation
+            .downcast_ref::<crate::effects::CreateTokenEffect>()
+            .is_some()
+}
+
 fn execute_object_iterations(
     effect: &ForEachObject,
     game: &mut GameState,
@@ -301,11 +321,13 @@ fn execute_object_iterations(
     let cursor = object_iteration_cursor(effect, game, ctx);
     // A compound body contains distinct authored actions. Only a direct
     // shared-damage child may keep one simultaneous instruction open.
+    // CR 603.2c / 608.2: "for each of them, create a token" is one creation
+    // instruction; its tokens enter simultaneously, so "one or more tokens
+    // enter" observers see one event (Kambal, Profiteering Mayor).
     let opened = effect.effects.len() <= 1
-        && effect
-            .effects
-            .iter()
-            .all(|child| child.0.shares_iterated_damage_action())
+        && effect.effects.iter().all(|child| {
+            child.0.shares_iterated_damage_action() || is_token_creation_instruction(child)
+        })
         && game.open_simultaneous_action();
     let result = super::action_program::execute_action_program_with_outputs(
         cursor,

@@ -622,12 +622,12 @@ pub(crate) fn mana_cost_is_obviously_unpayable(
     use crate::mana::ManaSymbol;
 
     let mut minimum_total = 0u32;
-    let mut required_white = 0u32;
-    let mut required_blue = 0u32;
-    let mut required_black = 0u32;
-    let mut required_red = 0u32;
-    let mut required_green = 0u32;
-    let mut required_colorless = 0u32;
+    let mut required_white = 0u64;
+    let mut required_blue = 0u64;
+    let mut required_black = 0u64;
+    let mut required_red = 0u64;
+    let mut required_green = 0u64;
+    let mut required_colorless = 0u64;
 
     for pip in cost.pips() {
         let mut minimum_for_pip: Option<u32> = None;
@@ -636,6 +636,8 @@ pub(crate) fn mana_cost_is_obviously_unpayable(
         for symbol in pip {
             let mana_needed = match symbol {
                 ManaSymbol::Life(_) => Some(0),
+                // K'rrik: each {B} may be paid with 2 life instead of mana.
+                ManaSymbol::Black if allow_black_life => Some(0),
                 ManaSymbol::White
                 | ManaSymbol::Blue
                 | ManaSymbol::Black
@@ -656,7 +658,7 @@ pub(crate) fn mana_cost_is_obviously_unpayable(
         }
 
         if has_mana_option {
-            minimum_total += minimum_for_pip.unwrap_or(0);
+            minimum_total = minimum_total.saturating_add(minimum_for_pip.unwrap_or(0));
         }
 
         if pip.len() == 1 {

@@ -17,6 +17,10 @@ pub enum CardCreationSelection {
     },
     /// Match an actual supplied identity to the selected object's names.
     Duplicate(ChooseSpec),
+    /// A real card with this name taken from the game's card catalog rather
+    /// than a supplied pool (Arena "conjure": the card is created outside the
+    /// game and put into the named zone; it is a card, not a token).
+    Catalog(String),
 }
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, TagKeyWalk)]

@@ -30,11 +30,45 @@ fn parse_entry_history_descriptor(clause: LexedClause<'_>) -> Option<Option<Play
     None
 }
 
+/// "you've paid or lost N or more {E} this turn" (Izzet Generatorium):
+/// energy counters that left the player this turn by payment or loss.
+fn parse_energy_paid_or_lost_this_turn_predicate(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
+    let mut parts: Vec<String> = Vec::new();
+    for token in tokens {
+        if token.kind == crate::lexer::TokenKind::ManaGroup {
+            parts.push(token.slice.to_ascii_lowercase());
+        } else if let Some(word) = token.as_word() {
+            parts.push(word.to_ascii_lowercase());
+        } else if !matches!(token.kind, crate::lexer::TokenKind::Comma | crate::lexer::TokenKind::Period) {
+            return None;
+        }
+    }
+    let parts: Vec<&str> = parts.iter().map(String::as_str).collect();
+    let rest = match parts.as_slice() {
+        ["you've" | "youve", rest @ ..] | ["you", "have" | "ve", rest @ ..] => rest,
+        _ => return None,
+    };
+    let ["paid", "or", "lost", amount, "or", "more", "{e}", "this", "turn"] = rest else {
+        return None;
+    };
+    let count = crate::util::parse_number_word_u32(amount)?;
+    crate::word_claims::claim_tokens(tokens);
+    Some(PredicateAst::Player(
+        crate::cards::builders::PlayerPredicateAst::PlayerPaidOrLostEnergyThisTurnOrMore {
+            player: crate::cards::builders::PlayerAst::You,
+            count,
+        },
+    ))
+}
+
 pub(super) fn read_player_life_change_this_turn_predicate(
     input: &Predicate<'_>,
 ) -> Result<Option<PredicateAst>, CardTextError> {
     let predicate_tokens = input.predicate_tokens;
     if let Some(predicate) = parse_player_life_change_this_turn_predicate(predicate_tokens) {
+        return Ok(Some(predicate));
+    }
+    if let Some(predicate) = parse_energy_paid_or_lost_this_turn_predicate(predicate_tokens) {
         return Ok(Some(predicate));
     }
     if let Some(predicate) = parse_opponent_dealt_damage_this_turn_predicate(predicate_tokens) {

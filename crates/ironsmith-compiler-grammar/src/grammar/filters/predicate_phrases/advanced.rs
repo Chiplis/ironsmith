@@ -382,10 +382,13 @@ fn parse_turn_history_intervening_predicate(
         &["you", "did", "not", "cast", "it", "from", "your", "hand"],
     ) {
         crate::word_claims::claim_tokens(tokens);
+        // Read exactly as the positive "you cast it from your hand": the
+        // source's own cast origin (Epochrasite's enters-with-counters
+        // replacement, Phage's self-enters trigger). Triggered-line lowering
+        // rebinds it to the entering object when that can be another object
+        // (Chainer, Nightmare Adept).
         return Ok(Some(PredicateAst::Not(Box::new(
-            PredicateAst::TurnHistory(TurnHistoryPredicateAst::TriggeringObjectWasCastFromZone(
-                Zone::Hand,
-            )),
+            PredicateAst::ThisSpellWasCastFromZone(Zone::Hand),
         ))));
     }
     // "if it was cast using \"relocate\"": the triggering object's cast

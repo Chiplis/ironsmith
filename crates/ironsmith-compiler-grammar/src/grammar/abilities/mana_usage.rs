@@ -306,13 +306,29 @@ pub fn parse_mana_spend_bonus_sentence_lexed(
         Vec::new()
     };
 
+    // "it gains haste" with no stated duration lasts indefinitely (Hall of
+    // the Bandit Lord); only an explicit "until end of turn" ends it.
+    let granted_indefinitely = !granted_abilities.is_empty()
+        && matches_any_exact_tokens(
+            bonus_tokens,
+            &[
+                &["it", "gains", "haste"],
+                &["that", "spell", "gains", "haste"],
+                &["that", "creature", "gains", "haste"],
+            ],
+        );
+    let granted_abilities_duration = if granted_indefinitely {
+        ManaSpendAbilityGrantDuration::Indefinitely
+    } else {
+        ManaSpendAbilityGrantDuration::UntilEndOfTurn
+    };
     let (counter_bonus_tokens, mut duration_grants) =
         strip_mana_spend_duration_grant_suffix(bonus_tokens);
     duration_grants.extend(
         granted_abilities
             .iter()
             .copied()
-            .map(|ability| (ability, ManaSpendAbilityGrantDuration::UntilEndOfTurn)),
+            .map(|ability| (ability, granted_abilities_duration)),
     );
     let enters_with_counters = parse_mana_spend_counter_shape(counter_bonus_tokens)
         .and_then(parse_mana_spend_counter_tail)
@@ -324,9 +340,9 @@ pub fn parse_mana_spend_bonus_sentence_lexed(
             parsed.condition,
             ManaSpendBonusCondition::WhenYouSpendThisManaToCast
         )
-        || duration_grants
-            .iter()
-            .any(|(_, duration)| *duration == ManaSpendAbilityGrantDuration::UntilYourNextTurn)
+        || duration_grants.iter().any(|(_, duration)| {
+            *duration != ManaSpendAbilityGrantDuration::UntilEndOfTurn
+        })
         || !granted_keywords.is_empty()
     {
         if !grant_uncounterable

@@ -449,7 +449,7 @@ impl EffectOutcome {
             match (*status, value) {
                 (OutcomeStatus::Succeeded, OutcomeValue::Count(n)) => {
                     saw_count = true;
-                    total_count += n;
+                    total_count = n.saturating_add(total_count);
                 }
                 (OutcomeStatus::Succeeded, OutcomeValue::None) => {}
                 // A canceled original event with an explicit zero quantity
@@ -2334,10 +2334,11 @@ impl RestrictionExt for Restriction {
                         && blockers.matches(obj, &ctx, game)
                     {
                         for &attacker_id in &attacker_ids {
-                            *tracker
+                            let tally = tracker
                                 .must_block_specific_attacker_counts
                                 .entry((obj_id, attacker_id))
-                                .or_default() += 1;
+                                .or_default();
+                            *tally = tally.saturating_add(1);
                         }
                         let required = tracker
                             .must_block_specific_attackers
@@ -2367,7 +2368,8 @@ impl RestrictionExt for Restriction {
                         && let Some(object) = game.object(object)
                         && filter.matches(object, &ctx, game)
                     {
-                        *tracker.must_attack.entry(object.id).or_default() += 1;
+                        let tally = tracker.must_attack.entry(object.id).or_default();
+                        *tally = tally.saturating_add(1);
                     }
                 }
             }
@@ -2403,7 +2405,8 @@ impl RestrictionExt for Restriction {
                         && let Some(object) = game.object(object)
                         && filter.matches(object, &ctx, game)
                     {
-                        *tracker.must_block.entry(object.id).or_default() += 1;
+                        let tally = tracker.must_block.entry(object.id).or_default();
+                        *tally = tally.saturating_add(1);
                     }
                 }
             }
@@ -2454,10 +2457,11 @@ impl RestrictionExt for Restriction {
                         && filter.matches(obj, &ctx, game)
                     {
                         tracker.must_be_blocked.insert(obj_id);
-                        *tracker
+                        let tally = tracker
                             .must_be_blocked_requirement_counts
                             .entry(obj_id)
-                            .or_default() += 1;
+                            .or_default();
+                        *tally = tally.saturating_add(1);
                     }
                 }
             }
@@ -2757,6 +2761,23 @@ impl RestrictionExt for Restriction {
             Restriction::BeCountered(filter) => {
                 for entry in &game.stack {
                     let obj_id = entry.object_id;
+                    // "Abilities can't be countered" (Spider-Punk): an
+                    // ability is its own stack object, evaluated through its
+                    // entry and recorded under its stack identity so the
+                    // spell it may share an object ID with stays unaffected.
+                    if entry.is_ability {
+                        let Some(ability_id) = entry.ability_id else {
+                            continue;
+                        };
+                        let mut entry_ctx = ctx.clone();
+                        entry_ctx.stack_entry = Some(ability_id);
+                        if let Some(obj) = game.object(obj_id)
+                            && filter.matches(obj, &entry_ctx, game)
+                        {
+                            tracker.cant_be_countered.insert(ability_id);
+                        }
+                        continue;
+                    }
                     if let Some(obj) = game.object(obj_id)
                         && filter.matches(obj, &ctx, game)
                     {

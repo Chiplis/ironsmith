@@ -108,14 +108,14 @@ fn place_sheet_ability_sticker(
 /// CR 118.11: its nominal quantity acknowledges payment even when a
 /// replacement changes the number removed or replaces removal altogether.
 fn pay_ticket_cost(game: &mut GameState, ctx: &mut ExecutionContext, cost: u32) -> Result<bool, ExecutionError> {
-    let amount = i32::try_from(cost).map_err(|_| ExecutionError::UnresolvableValue("sticker ticket cost exceeds supported range".into()))?;
+    let amount = ironsmith_core::quantity::clamp_i32_from_u32(cost);
     let payment = crate::effects::RemoveCountersEffect::new(
         crate::object::CounterType::Named("ticket".into()), amount,
         ChooseSpec::SpecificPlayer(ctx.controller),
     ).execute_child(game, ctx)?;
     if ctx.decision_maker.awaiting_choice() { return Ok(true); }
     Ok(payment.status != crate::effect::OutcomeStatus::Impossible
-        && payment.requested_amount() == Some(u64::from(cost)))
+        && payment.requested_amount() == Some(amount.unsigned_abs().into()))
 }
 
 fn place_sheet_pt_sticker(effect: &PutStickerEffect, game: &mut GameState,

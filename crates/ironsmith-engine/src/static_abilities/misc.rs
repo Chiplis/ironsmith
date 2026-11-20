@@ -311,7 +311,7 @@ fn describe_enters_with_counters_for_each_value(count: &Value, counter: &str) ->
             }
             Value::Scaled(inner, multiplier) => {
                 let (inner_multiplier, description) = basis(inner)?;
-                Some((inner_multiplier * *multiplier, description))
+                Some((inner_multiplier.checked_mul(*multiplier)?, description))
             }
             _ => None,
         }
@@ -2550,7 +2550,7 @@ impl StaticAbilityKind for Bloodthirst {
             ReplacementAction::EnterWithCounters {
                 counter_kinds_from: None,
                 counter_type: CounterType::PlusOnePlusOne,
-                count: Value::Fixed(self.amount as i32),
+                count: Value::Fixed(ironsmith_core::quantity::clamp_i32_from_u32(self.amount)),
                 count_condition: None,
                 otherwise_count: None,
                 added_subtypes: Vec::new(),
@@ -3291,13 +3291,15 @@ impl StaticAbilityKind for ManaSpendPermissionAbility {
         ironsmith_core::semantic_audit::retained("ManaSpendPermissionAbility", &self.display, self)
     }
 
-    fn apply_restrictions(&self, game: &mut GameState, _source: ObjectId, controller: PlayerId) {
+    fn apply_restrictions(&self, game: &mut GameState, source: ObjectId, controller: PlayerId) {
         game.effect_store.mana_spend_effects.permissions.push(
             crate::game_state::ActiveManaSpendPermission {
                 play_permission_identities: None,
                 permission: self.permission.clone(),
                 controller,
-                source: crate::game_state::ManaSpendPermissionSource::StaticAbility,
+                source: crate::game_state::ManaSpendPermissionSource::StaticAbilityOf {
+                    source_id: source,
+                },
             },
         );
     }
@@ -4455,7 +4457,7 @@ impl StaticAbilityKind for PreventDamageToSelfRemoveCounter {
             let count = if counters_per_removed == 1 {
                 removed_count
             } else {
-                Value::Scaled(Box::new(removed_count), counters_per_removed as i32)
+                Value::Scaled(Box::new(removed_count), ironsmith_core::quantity::clamp_i32_from_u32(counters_per_removed))
             };
             effects.push(Effect::for_players(
                 crate::target::PlayerFilter::Any,

@@ -175,7 +175,12 @@ fn bind_restriction_target_players(
                 || matches!(
                     reference,
                     crate::target::PlayerFilter::ControllerOf(crate::target::ObjectRef::Tagged(_))
-                ))
+                )
+                // "creatures that player controls don't untap" after a clash
+                // (Pollen Lullaby): the clashed opponent is a tagged player
+                // of this resolution only; the registered rule outlives it.
+                || matches!(reference, crate::target::PlayerFilter::TaggedPlayer(tag)
+                    if ctx.get_tagged_players(tag.as_str()).is_some_and(|players| players.len() == 1)))
                 && let Ok(id) =
                     crate::effects::helpers::resolve_player_filter(game, reference, ctx)
             {
@@ -344,7 +349,11 @@ fn bind_named_restriction_player(
         | crate::target::PlayerFilter::TargetPlayerOrRelatedPlayerOfTarget(_)
         | crate::target::PlayerFilter::IteratedPlayer
         | crate::target::PlayerFilter::TaggedPlayer(_)
-        | crate::target::PlayerFilter::ChosenPlayer => {
+        | crate::target::PlayerFilter::ChosenPlayer
+        // "If a player is dealt damage this way, that player can't gain life
+        // for the rest of the game" (Screaming Nemesis): the damaged player
+        // is a resolution-time referent that outlives this context.
+        | crate::target::PlayerFilter::DamagedPlayer => {
             crate::effects::helpers::resolve_player_filter(game, player, ctx)
                 .map(crate::target::PlayerFilter::Specific)
                 .unwrap_or_else(|_| player.clone())
@@ -554,6 +563,12 @@ fn normalize_restriction_for_resolution(
         Restriction::PhaseIn(filter) => {
             Restriction::phase_in(lock_filter_to_current_matching_objects(filter, ctx, game))
         }
+        // "Target permanent can't phase out" (Spatial Binding) binds the
+        // permanent this resolution named; after a blink the card is a new
+        // object the restriction never applied to (CR 400.7).
+        Restriction::PhaseOut(filter) => Restriction::phase_out(
+            collapse_tagged_filter_to_specific_objects(filter, ctx, game),
+        ),
         // "You gain protection from that player": the targeting sources are
         // the ones the player named by this resolution controls (CR 702.16k).
         Restriction::BeTargetedPlayerFrom(player, source_filter) => {
@@ -592,10 +607,49 @@ fn normalize_restriction_for_resolution(
         // name can't be cast and lands with the chosen name can't be played"
         // (Conjurer's Ban): the resolving spell's name choice is fixed now;
         // the spell itself leaves the stack before the restriction ends.
+        // "That player can't cast spells this turn" (Sen Triplets): a targeted
+        // player is fixed now. Left unbound, the tracker's player matcher
+        // treats a `Target` filter as matching every player, so the
+        // restriction also stopped the effect's controller.
         Restriction::CastSpellsMatching(player, spells) => Restriction::CastSpellsMatching(
-            player.clone(),
+            bind_named_restriction_player(player, ctx, game),
             bind_single_chosen_name(spells, ctx, game),
         ),
+        Restriction::CastMoreThanOneSpellEachTurn(player, spells) => {
+            Restriction::CastMoreThanOneSpellEachTurn(
+                bind_named_restriction_player(player, ctx, game),
+                spells.clone(),
+            )
+        }
+        Restriction::ActivateAbilities(player) => {
+            Restriction::ActivateAbilities(bind_named_restriction_player(player, ctx, game))
+        }
+        Restriction::ActivateNonManaAbilities(player) => Restriction::ActivateNonManaAbilities(
+            bind_named_restriction_player(player, ctx, game),
+        ),
+        Restriction::ActivateNonManaNonLoyaltyAbilities(player) => {
+            Restriction::ActivateNonManaNonLoyaltyAbilities(bind_named_restriction_player(
+                player, ctx, game,
+            ))
+        }
+        Restriction::CastSpellsOnlyAsSorcery(player) => Restriction::CastSpellsOnlyAsSorcery(
+            bind_named_restriction_player(player, ctx, game),
+        ),
+        Restriction::GainLife(player) => {
+            Restriction::GainLife(bind_named_restriction_player(player, ctx, game))
+        }
+        Restriction::SearchLibraries(player) => {
+            Restriction::SearchLibraries(bind_named_restriction_player(player, ctx, game))
+        }
+        Restriction::DrawCards(player) => {
+            Restriction::DrawCards(bind_named_restriction_player(player, ctx, game))
+        }
+        Restriction::DrawExtraCards(player) => {
+            Restriction::DrawExtraCards(bind_named_restriction_player(player, ctx, game))
+        }
+        Restriction::LoseLife(player) => {
+            Restriction::LoseLife(bind_named_restriction_player(player, ctx, game))
+        }
         Restriction::PlayLandsMatching(player, lands) => Restriction::PlayLandsMatching(
             player.clone(),
             bind_single_chosen_name(lands, ctx, game),

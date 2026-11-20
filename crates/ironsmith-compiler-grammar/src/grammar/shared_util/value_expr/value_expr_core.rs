@@ -899,20 +899,18 @@ pub(super) fn parse_value_expr_term_words(words: &[&str]) -> Option<(Value, usiz
         ));
     }
     if let Some(used) = prefix_len(words, TAGGED_POWER_PREFIXES) {
-        let tag = tagged_characteristic_reference_tag(&words[..used]);
         return Some((
             with_sacrificed_object_surface(
-                Value::PowerOf(Box::new(ChooseSpec::Tagged(tag.bind().into()))),
+                Value::PowerOf(Box::new(tagged_characteristic_reference_spec(&words[..used]))),
                 &words[..used],
             ),
             used,
         ));
     }
     if let Some(used) = prefix_len(words, TAGGED_TOUGHNESS_PREFIXES) {
-        let tag = tagged_characteristic_reference_tag(&words[..used]);
         return Some((
             with_sacrificed_object_surface(
-                Value::ToughnessOf(Box::new(ChooseSpec::Tagged(tag.bind().into()))),
+                Value::ToughnessOf(Box::new(tagged_characteristic_reference_spec(&words[..used]))),
                 &words[..used],
             ),
             used,

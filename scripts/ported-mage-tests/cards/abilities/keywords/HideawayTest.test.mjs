@@ -998,6 +998,16 @@ registerPortedMageTests({
           ]
         },
         {
+          "op": "setOptionChoices",
+          "player": 0,
+          "kind": "order",
+          "note": "XMage setChoice(\"Llanowar Elves^Auriok Champion\"): play Llanowar Elves first, so Auriok Champion (cast second) resolves first and sees the Elves enter.",
+          "choices": [
+            "Llanowar Elves",
+            "Auriok Champion"
+          ]
+        },
+        {
           "op": "waitStackResolved",
           "turn": 3,
           "phase": "DECLARE_BLOCKERS"

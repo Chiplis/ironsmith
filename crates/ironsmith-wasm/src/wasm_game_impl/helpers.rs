@@ -594,7 +594,8 @@ pub(super) fn action_drag_metadata(
             | ironsmith::special_actions::SpecialAction::PrepareExile { card_id, .. }
             | ironsmith::special_actions::SpecialAction::PrepareGrantedExile { card_id, .. }
             | ironsmith::special_actions::SpecialAction::Foretell { card_id }
-            | ironsmith::special_actions::SpecialAction::Plot { card_id } => (
+            | ironsmith::special_actions::SpecialAction::Plot { card_id }
+            | ironsmith::special_actions::SpecialAction::PlotGranted { card_id } => (
                 "special_action",
                 Some(card_id.0),
                 None,
@@ -782,6 +783,16 @@ fn describe_action_with_face_up_cost(game: &GameState, action: &LegalAction, fac
                         && let Some(object) = game.object(*spell_id)
                         && let Some(face) = game.linked_face_definition_by_name_or_id(object.other_face_name.as_deref(), object.other_face)
                     { name = face.card.name.clone(); }
+                    if matches!(origin.as_ref(), ironsmith::alternative_cast::CastingMethod::Fuse) {
+                        qualifiers.push("fuse".to_string());
+                    }
+                    if let Some(object) = game.object(*spell_id)
+                        && let Some(method) = ironsmith::alternative_cast::independent_price_method_name(
+                            game, object.owner, object, price,
+                        )
+                    {
+                        qualifiers.push(method.to_string());
+                    }
                     qualifiers.push(format!("using {}", object_name(game, price.source)));
                     if prototype.is_some() { qualifiers.push("prototyped".into()); }
                     if *from_zone != Zone::Hand { qualifiers.push(format!("from {}", zone_display_name(*from_zone))); }
@@ -963,8 +974,12 @@ fn describe_action_with_face_up_cost(game: &GameState, action: &LegalAction, fac
             ironsmith::special_actions::SpecialAction::Foretell { card_id } => {
                 format!("Foretell {}", object_name(game, *card_id))
             }
-            ironsmith::special_actions::SpecialAction::Plot { card_id } => {
-                format!("Plot {}", object_name(game, *card_id))
+            ironsmith::special_actions::SpecialAction::Plot { card_id }
+            | ironsmith::special_actions::SpecialAction::PlotGranted { card_id } => {
+                match ironsmith::special_actions::plot_action_cost_label(game, action) {
+                    Some(cost) => format!("Plot {} ({cost})", object_name(game, *card_id)),
+                    None => format!("Plot {}", object_name(game, *card_id)),
+                }
             }
             ironsmith::special_actions::SpecialAction::ActivateManaAbility {
                 permanent_id, ..
@@ -1299,6 +1314,9 @@ pub(super) fn object_visible_to_perspective(
             return obj.owner == perspective
                 || game.controlling_player_for(obj.owner) == perspective
                 || game.can_review_teammate_hand(perspective, obj.owner)
+                // A publicly revealed hand ("plays with their hand revealed",
+                // Sen Triplets) names its cards in every player's actions.
+                || crate::hand_revealed_by_static_ability(game, obj.owner)
                 || visible_via_view_effect;
         }
         Zone::Library => {
@@ -1486,6 +1504,9 @@ pub(super) fn special_action_ref(
         }
         ironsmith::special_actions::SpecialAction::Plot { card_id } => {
             SpecialActionRef::Plot { card_id: card_id.0 }
+        }
+        ironsmith::special_actions::SpecialAction::PlotGranted { card_id } => {
+            SpecialActionRef::PlotGranted { card_id: card_id.0 }
         }
         ironsmith::special_actions::SpecialAction::ActivateManaAbility {
             permanent_id,

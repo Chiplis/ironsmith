@@ -385,9 +385,12 @@ fn effect_references_prior_object_targets(effect: &Effect) -> bool {
     effect
         .downcast_ref::<crate::effects::FightEffect>()
         .is_some()
+        // "Attach target Aura you control to target creature" (Aura
+        // Finesse): the attached object is a target announced by an earlier
+        // declaration even when the host is read through a tag.
         || effect
             .downcast_ref::<crate::effects::AttachObjectsEffect>()
-            .is_some_and(|attach| attach.objects.is_target() && attach.target.is_target())
+            .is_some_and(|attach| attach.objects.is_target())
         || effect
             .downcast_ref::<crate::effects::ScheduleDelayedTriggerEffect>()
             .is_some_and(|schedule| schedule.target_tag.is_some())
@@ -1613,6 +1616,14 @@ pub(super) fn resolve_stack_entry_full_with_outputs(
                     }
                 } else {
                     game.finish_resolution_player_control(resolving_source);
+                    // CR 614.1 "the next time one or more ... enter": every
+                    // batch-scoped one-shot an entry event applied during
+                    // this resolution is spent once it finishes. Token
+                    // creation enters its batch one token at a time and
+                    // never reaches the battlefield-batch commit consume.
+                    game.effect_store
+                        .replacement_effects
+                        .consume_pending_batch_one_shot_effects();
                     // CR 603.8: a state trigger made true by the entry's last
                     // instruction triggers now, not only at the next
                     // state-based-action check.
@@ -2318,6 +2329,10 @@ fn resolve_stack_entry_full_inner(
                 // exile cost) stay "exiled with" the permanent it becomes
                 // (Skyway Robber: "cards exiled with this creature").
                 game.transfer_exiled_with_source_links(entry.object_id, new_id);
+                // CR 607.2q: the cost-linked pair ("exiled with it" readers of
+                // Redemptor Dreadnought) follows the spell to the permanent;
+                // a no-op when the entry move already transferred it.
+                game.transfer_cast_linked_exile_pairs(entry.object_id, new_id);
                 if let Some(attack_target) = sneak_attack_target.take()
                     && attack_target_still_valid(game, &attack_target)
                     && let Some(combat) = game.combat.as_mut()
@@ -4335,7 +4350,37 @@ fn link_enter_and_leave_trigger_players(
             game.set_linked_trigger_player(stable_id, *player);
         }
     } else if zone_change.from == Zone::Battlefield
-        && let Some(player) = game.linked_trigger_player(stable_id)
+        && let Some(player) = game.linked_trigger_player(stable_id).or_else(|| {
+            // The permanent left while its entering trigger is still on the
+            // stack: "that player" is the player that trigger targeted when
+            // it was put on the stack (CR 603.3d), so the leaving trigger
+            // still reads it (Laquatus's Champion rulings).
+            game.stack.iter().rev().find_map(|pending| {
+                if !pending.is_ability || pending.source_stable_id != Some(stable_id) {
+                    return None;
+                }
+                let entered = pending
+                    .triggering_event
+                    .as_ref()
+                    .and_then(|event| event.downcast::<crate::events::zones::ZoneChangeEvent>())
+                    .is_some_and(|change| change.to == Zone::Battlefield);
+                if !entered {
+                    return None;
+                }
+                let players = pending
+                    .targets
+                    .iter()
+                    .filter_map(|target| match target {
+                        crate::game_state::Target::Player(player) => Some(*player),
+                        _ => None,
+                    })
+                    .collect::<Vec<_>>();
+                match players.as_slice() {
+                    [player] => Some(*player),
+                    _ => None,
+                }
+            })
+        })
     {
         // The compiler binds the leaving trigger's "that player" to this
         // typed linked-player tag.

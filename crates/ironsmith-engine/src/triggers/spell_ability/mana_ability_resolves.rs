@@ -41,7 +41,8 @@ impl TriggerMatcher for SourceManaAbilityResolvesTrigger {
     }
 
     fn event_value_amount(&self, event: &TriggerEvent, _ctx: &TriggerContext) -> Option<i32> {
-        Self::mana_ability_event(event).map(|added| added.mana.len() as i32)
+        Self::mana_ability_event(event)
+            .map(|added| i32::try_from(added.mana_amount()).unwrap_or(i32::MAX))
     }
 
     fn display(&self) -> String {

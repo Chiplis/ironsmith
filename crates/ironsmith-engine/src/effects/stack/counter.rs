@@ -442,7 +442,15 @@ fn commit_countered_ability(game: &mut GameState, index: usize) -> EffectOutcome
     if game.stack[index].ability_effects.as_ref().is_some_and(|program| program.ability_cant_be_countered) {
         return EffectOutcome::protected();
     }
+    // A rule restriction such as "Abilities can't be countered" (Spider-Punk)
+    // records the ability under its own stack identity.
+    if game.stack[index].ability_id.is_some()
+        && !game.can_be_countered(game.stack[index].target_id())
+    {
+        return EffectOutcome::protected();
+    }
     let entry = game.stack.remove(index);
+    super::copy_spell::record_departed_ability_entry(game, &entry);
     let outcome = countered_ability_outcome(game, &entry);
     super::copy_spell::discard_departed_ability_copy_object(game, &entry);
     outcome

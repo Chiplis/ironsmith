@@ -97,7 +97,10 @@ function PaymentCardName({ objectId, onInspect, children, className = "" }) {
 }
 
 function outputText(source) {
-  const mana = poolEntries(source.expected_mana).map(({ symbol, amount }) => `{${symbol}}`.repeat(amount)).join("");
+  // Stacked multipliers can project astronomically many units; count those.
+  const mana = poolEntries(source.expected_mana)
+    .map(({ symbol, amount }) => (amount > 16 ? `{${symbol}}×${amount}` : `{${symbol}}`.repeat(amount)))
+    .join("");
   return mana || sourceActionLabel(source);
 }
 

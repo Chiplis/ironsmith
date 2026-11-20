@@ -24,6 +24,7 @@ impl EffectExecutor for BecomePlottedEffect {
             Err(error) => return Err(error),
         };
         let mut count = 0;
+        let mut events = Vec::new();
         for id in objects {
             let Some(card) = game.object(id) else {
                 continue;
@@ -36,9 +37,25 @@ impl EffectExecutor for BecomePlottedEffect {
             if game.plotted_by(id).is_none() {
                 game.set_plotted(id, owner);
                 count += 1;
+                // CR 702.170c: "When this card becomes plotted" also observes
+                // a card that becomes plotted by an effect, not only by the
+                // plot special action (Longhorn Sharpshooter + Kellan Joins Up).
+                let observation = game.alloc_child_event_provenance(
+                    ctx.provenance,
+                    crate::events::EventKind::KeywordAction,
+                );
+                events.push(crate::triggers::TriggerEvent::new_with_provenance(
+                    crate::events::KeywordActionEvent::new(
+                        crate::events::KeywordActionKind::Plot,
+                        owner,
+                        id,
+                        1,
+                    ),
+                    observation,
+                ));
             }
         }
-        Ok(EffectOutcome::count(count))
+        Ok(EffectOutcome::count(count).with_events(events))
     }
     fn get_target_spec(&self) -> Option<&ChooseSpec> {
         Some(&self.target)
@@ -99,6 +116,7 @@ impl EffectExecutor for BecomeForetoldEffect {
                             cost: mana_cost.reduce_generic(reduction),
                         },
                     );
+                    game.set_foretold_face_cost_reduction(id, reduction);
                 }
             }
         }

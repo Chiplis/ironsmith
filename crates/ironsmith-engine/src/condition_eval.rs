@@ -162,10 +162,21 @@ fn source_was_cast(
     {
         return zc.from == Zone::Stack && !resolved_from_uncast_spell_copy(game, source, None);
     }
-    game.turn_store
+    if game.turn_store
         .turn_history
         .spell_cast_order(source)
         .is_some()
+    {
+        return true;
+    }
+    // "as long as it was cast" (The Tarrasque): a permanent that resolved
+    // from a cast spell keeps that spell's completed-payment receipt for
+    // this incarnation (CR 400.7, 608.3); every other entry resets it, and
+    // an uncast spell copy resolves into a token (CR 707.10).
+    game.object(source).is_some_and(|object| {
+        object.zone == Zone::Battlefield
+            && object.optional_costs_paid.cast_payment_turn.is_some()
+    }) && !resolved_from_uncast_spell_copy(game, source, None)
 }
 
 /// Match the actual actor of the cast, not the object's later controller.
@@ -337,17 +348,45 @@ fn target_objects_have_different_color_sets(game: &GameState, ctx: &ExecutionCon
 
 fn mana_pool_amount(
     spent: &crate::player::ManaPool,
+    snow_spent: &crate::player::ManaPool,
     symbol: Option<crate::mana::ManaSymbol>,
 ) -> u32 {
-    if let Some(symbol) = symbol {
-        spent.amount(symbol)
-    } else {
-        spent.total()
+    match symbol {
+        // CR 107.4h / 601.2h: {S} counts mana produced by a snow source; the
+        // payment records those units separately at spend time.
+        Some(crate::mana::ManaSymbol::Snow) => snow_spent.total(),
+        Some(symbol) => spent.amount(symbol),
+        None => spent.total(),
     }
 }
 
+/// Mana spent to cast the source: the live object, else its last-known
+/// information (CR 603.4 / 608.2h: an intervening "if {G} was spent to cast
+/// this spell" rechecked after the permanent left the battlefield).
+fn source_mana_spent_to_cast(
+    game: &GameState,
+    ctx: &ConditionContext<'_, '_>,
+    source: crate::ids::ObjectId,
+) -> Option<(crate::player::ManaPool, crate::player::ManaPool)> {
+    if let Some(object) = game.object(source) {
+        return Some((object.mana_spent_to_cast.clone(), object.snow_mana_spent_to_cast.clone()));
+    }
+    let retained = ctx.execution().and_then(|execution| execution.source_snapshot.as_ref());
+    game.source_departure_snapshot(source)
+        .or_else(|| retained.filter(|snapshot| snapshot.object_id == source))
+        .map(|snapshot| (snapshot.mana_spent_to_cast.clone(), snapshot.snow_mana_spent_to_cast.clone()))
+}
+
 fn mana_pool_colored_total(spent: &crate::player::ManaPool) -> u32 {
-    spent.white + spent.blue + spent.black + spent.red + spent.green
+    u32::try_from(
+        spent
+            .white
+            .saturating_add(spent.blue)
+            .saturating_add(spent.black)
+            .saturating_add(spent.red)
+            .saturating_add(spent.green),
+    )
+    .unwrap_or(u32::MAX)
 }
 
 fn triggering_spell_mana_spent_at_least(
@@ -363,10 +402,10 @@ fn triggering_spell_mana_spent_at_least(
         return false;
     };
     if let Some(snapshot) = spell_cast.snapshot.as_ref() {
-        return mana_pool_amount(&snapshot.mana_spent_to_cast, symbol) >= amount;
+        return mana_pool_amount(&snapshot.mana_spent_to_cast, &snapshot.snow_mana_spent_to_cast, symbol) >= amount;
     }
     game.object(spell_cast.spell)
-        .is_some_and(|obj| mana_pool_amount(&obj.mana_spent_to_cast, symbol) >= amount)
+        .is_some_and(|obj| mana_pool_amount(&obj.mana_spent_to_cast, &obj.snow_mana_spent_to_cast, symbol) >= amount)
 }
 
 /// "Whenever you clash, ... If you won, ...": the triggering clash event
@@ -2036,31 +2075,25 @@ fn resolve_comparison_operand(
     value: &Value,
     ctx: &ExecutionContext,
 ) -> Result<i64, ExecutionError> {
-    let overflow = || {
-        ExecutionError::UnresolvableValue(
-            "comparison arithmetic is outside the supported integer range".into(),
-        )
-    };
+    // Game quantities saturate in the wide domain instead of failing.
     match value.unhinted() {
         Value::DamageHistory(query) => {
             crate::effects::helpers::resolve_damage_history_for_comparison(game, query, ctx)
         }
 
-        Value::Add(left, right) => resolve_comparison_operand(game, left, ctx)?
-            .checked_add(resolve_comparison_operand(game, right, ctx)?)
-            .ok_or_else(overflow),
-        Value::Scaled(inner, multiplier) => resolve_comparison_operand(game, inner, ctx)?
-            .checked_mul(i64::from(*multiplier))
-            .ok_or_else(overflow),
+        Value::Add(left, right) => Ok(resolve_comparison_operand(game, left, ctx)?
+            .saturating_add(resolve_comparison_operand(game, right, ctx)?)),
+        Value::Scaled(inner, multiplier) => Ok(resolve_comparison_operand(game, inner, ctx)?
+            .saturating_mul(i64::from(*multiplier))),
         Value::Min(left, right) => Ok(resolve_comparison_operand(game, left, ctx)?
             .min(resolve_comparison_operand(game, right, ctx)?)),
         Value::HalfRoundedDown(inner) => {
             Ok(resolve_comparison_operand(game, inner, ctx)?.div_euclid(2))
         }
         Value::DividedRoundedDown(inner, divisor) if *divisor != 0 => {
-            resolve_comparison_operand(game, inner, ctx)?
+            Ok(resolve_comparison_operand(game, inner, ctx)?
                 .checked_div_euclid(i64::from(*divisor))
-                .ok_or_else(overflow)
+                .unwrap_or(i64::MAX))
         }
         _ => crate::effects::helpers::resolve_value_wide(game, value, ctx),
     }
@@ -2091,10 +2124,14 @@ fn compare_resolved_values(
     ) = (left.unhinted(), operator, right.unhinted())
         && *prior_count >= 0
     {
+        // An enters trigger ("if it was the second spell you cast this
+        // turn", Codespell Cleric) has no cast event: "it" is the spell that
+        // resolved into the source, which must itself be in the category.
         let Some(cast) = ctx
             .triggering_event
             .as_ref()
             .and_then(|event| event.downcast::<crate::events::SpellCastEvent>())
+            .or_else(|| crate::turn_history::resolved_source_cast_event(game, ctx.source))
         else {
             return Ok(false);
         };
@@ -5024,6 +5061,14 @@ fn evaluate_condition_in_context(
             }
             Ok(false)
         }
+        Condition::PlayerPaidOrLostEnergyThisTurnOrMore { player, count } => {
+            for player_id in ctx.matching_players(game, player)? {
+                if game.energy_paid_or_lost_this_turn(player_id) >= *count {
+                    return Ok(true);
+                }
+            }
+            Ok(false)
+        }
         Condition::PlayerGainedLifeThisTurnOrMore { player, count } => {
             for player_id in ctx.matching_players(game, player)? {
                 // A quantified player ("an opponent", "a player") matches
@@ -5289,7 +5334,7 @@ fn evaluate_condition_in_context(
                 if let crate::effects::ResolvedTarget::Object(id) = target
                     && let Some(obj) = game.object(*id)
                 {
-                    return Ok(mana_pool_amount(&obj.mana_spent_to_cast, *symbol) >= *amount);
+                    return Ok(mana_pool_amount(&obj.mana_spent_to_cast, &obj.snow_mana_spent_to_cast, *symbol) >= *amount);
                 }
             }
             Ok(false)
@@ -5298,10 +5343,10 @@ fn evaluate_condition_in_context(
             triggering_spell_mana_spent_at_least(game, shared.triggering_event, *amount, *symbol),
         ),
         Condition::ColoredManaSpentToCastThisSpellAtLeast(amount) => {
-            let Some(source_obj) = game.object(shared.source) else {
+            let Some((spent, _)) = source_mana_spent_to_cast(game, ctx, shared.source) else {
                 return Ok(false);
             };
-            Ok(mana_pool_colored_total(&source_obj.mana_spent_to_cast) >= *amount)
+            Ok(mana_pool_colored_total(&spent) >= *amount)
         }
         Condition::TriggeringSpellColoredManaSpentToCastAtLeast(amount) => Ok(
             triggering_spell_colored_mana_spent_at_least(game, shared.triggering_event, *amount),
@@ -6538,7 +6583,7 @@ fn evaluate_condition_in_context(
                     .filter_map(|id| game.object(*id))
                     .filter(|object| filter.matches(object, &filter_ctx, game));
                 let exact = crate::static_abilities::set_constrained_count(filter, matching, game);
-                let value = crate::events::damage::checked_scalar_count(exact as u128, "cast-time battlefield count")?;
+                let value = i32::try_from(exact).unwrap_or(i32::MAX);
                 return Ok(comparison.evaluate(value));
             }
             // A resolving ability's count keeps its bound references
@@ -6945,7 +6990,10 @@ fn evaluate_condition_in_context(
             shared.source,
             shared.triggering_event,
         )),
-        Condition::NoSpellsWereCastLastTurn => Ok(game.turn_store.spells_cast_last_turn_total == 0),
+        // The game's first turn has no "last turn" to inspect, so the
+        // look-back predicate has nothing to be true about.
+        Condition::NoSpellsWereCastLastTurn => Ok(game.turn.turn_number > 1
+            && game.turn_store.spells_cast_last_turn_total == 0),
         Condition::SpellsWereCastLastTurnOrMore(count) => {
             Ok(game.turn_store.spells_cast_last_turn_total >= *count)
         }
@@ -7003,10 +7051,10 @@ fn evaluate_condition_in_context(
             .object(shared.source)
             .is_some_and(|obj| obj.zone == *zone)),
         Condition::ManaSpentToCastThisSpellAtLeast { amount, symbol } => {
-            let Some(source_obj) = game.object(shared.source) else {
+            let Some((spent, snow_spent)) = source_mana_spent_to_cast(game, ctx, shared.source) else {
                 return Ok(false);
             };
-            Ok(mana_pool_amount(&source_obj.mana_spent_to_cast, *symbol) >= *amount)
+            Ok(mana_pool_amount(&spent, &snow_spent, *symbol) >= *amount)
         }
 Condition::SnowManaOfAnySpellColorSpentToCastThisSpell => {
             Ok(game.object(shared.source).is_some_and(|object| {
@@ -7037,7 +7085,7 @@ Condition::TriggeringSpellSnowManaOfAnySpellColorSpentToCast => {
                     .into_iter()
                     .max()
                     .unwrap_or(0);
-            Ok(most_spent_of_one_color >= *amount)
+            Ok(most_spent_of_one_color >= u64::from(*amount))
         }
         Condition::ColorsOfManaSpentToCastThisSpellOrMore(amount) => {
             let Some(source_obj) = game.object(shared.source) else {

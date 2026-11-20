@@ -5660,7 +5660,22 @@ fn parse_where_x_y_bindings(tokens: &[OwnedLexToken]) -> Option<(Value, Value)> 
     let x_words = crate::lexer::token_word_refs(shape.x_tokens);
     let y_words = crate::lexer::token_word_refs(shape.y_tokens);
     let (x_value, x_used) = parse_value_expr_words(&x_words)?;
-    let (y_value, y_used) = parse_value_expr_words(&y_words)?;
+    let (mut y_value, y_used) = parse_value_expr_words(&y_words)?;
+    // "where X is the exiled creature card's power and Y is its toughness"
+    // (Phyrexian Ingester): the pronoun in the coordinated binding names the
+    // object of the preceding power binding, not the anthem's source.
+    if y_words == ["its", "toughness"] {
+        fn power_reference(value: &Value) -> Option<&crate::target::ChooseSpec> {
+            match value {
+                Value::SurfaceHinted { value, .. } => power_reference(value),
+                Value::PowerOf(spec) => Some(spec),
+                _ => None,
+            }
+        }
+        if let Some(reference) = power_reference(&x_value) {
+            y_value = Value::ToughnessOf(Box::new(reference.clone()));
+        }
+    }
     (x_used == x_words.len() && y_used == y_words.len()).then_some((x_value, y_value))
 }
 

@@ -470,6 +470,16 @@ fn parse_keyword_untap_restriction_lexed_words<'a>(
 
     let mut saw_during = false;
     let mut saw_step = false;
+    // "... target opponent controls don't untap during their next untap
+    // step" (Exhaustion, Mana Vapors) names one player's next untap step: a
+    // one-shot duration owned by the effect reader, not this static tail
+    // (CR 502.3). "your next untap step" (exert reminders) stays here.
+    if input.windows(2).any(|pair| pair == ["their", "next"]) {
+        return Err(primitives::backtrack_err(
+            "untap restriction",
+            "untap step not named for one player",
+        ));
+    }
     while !input.is_empty() {
         let word: &str = any.parse_next(input)?;
         if !matches!(

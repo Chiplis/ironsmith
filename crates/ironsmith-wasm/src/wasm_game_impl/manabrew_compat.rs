@@ -685,7 +685,7 @@ fn manabrew_mana_pool_entries(pool: &ironsmith::player::ManaPool) -> Vec<Mana> {
     .filter(|(_, amount)| *amount > 0)
     .map(|(color, amount)| Mana {
         color,
-        amount: amount.min(i32::MAX as u32) as i32,
+        amount: amount.min(i32::MAX as u64) as i32,
     })
     .collect()
 }
@@ -1335,9 +1335,13 @@ impl WasmGame {
                     || viewer == Some(self.manabrew_game().controlling_player_for(object.owner))
             }
             Zone::Library => false,
-            Zone::Battlefield if self.manabrew_game().is_face_down(id) => viewer.is_some_and(|viewer| {
-                self.manabrew_game().can_player_look_at_face_down_permanent(id, viewer)
-            }),
+            // CR 708.9: at the end of the game all face-down permanents are
+            // revealed to all players. A concession ends the match in the host
+            // result without marking an engine player as the winner.
+            Zone::Battlefield if self.manabrew_game().is_face_down(id) => self.game_over.is_some()
+                || viewer.is_some_and(|viewer| {
+                    self.manabrew_game().can_player_look_at_face_down_permanent(id, viewer)
+                }),
             Zone::Exile if self.manabrew_game().is_face_down(id) => viewer.is_some_and(|viewer| {
                 self.manabrew_game()
                     .can_player_look_at_face_down_exiled_card(id, viewer)
@@ -1583,6 +1587,8 @@ impl WasmGame {
                     (ManaColor::Colorless, mana_pool_view.colorless),
                 ]
                 .into_iter()
+                // The protocol carries u32 counts; larger pools saturate.
+                .map(|(color, amount)| (color, u32::try_from(amount).unwrap_or(u32::MAX)))
                 .collect();
                 let commander_damage = player
                     .commander_damage
@@ -1822,6 +1828,7 @@ impl WasmGame {
                 | SpecialAction::PrepareGrantedExile { card_id, .. }
                 | SpecialAction::Foretell { card_id }
                 | SpecialAction::Plot { card_id }
+                | SpecialAction::PlotGranted { card_id }
                 | SpecialAction::Companion { card_id }
                 | SpecialAction::DiscardFromHand { card_id } => Some(*card_id),
                 SpecialAction::TurnFaceUp { permanent_id, .. }

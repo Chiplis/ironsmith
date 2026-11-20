@@ -103,6 +103,70 @@ impl EffectExecutor for CastTaggedEffect {
                 EffectOutcome::count(0),
             ));
         }
+        // CR 607.2a: "the exiled card" of a linked ability refers to every
+        // card the linked ability exiled (Hideaway triggering more than once
+        // links each exiled card). Play each linked card in turn, under the
+        // one permission this instruction grants.
+        if self.tag.as_str() == ironsmith_core::tag::SOURCE_EXILED_TAG
+            && !ctx.exact_object_reference_tags.contains(&self.tag)
+            && ctx
+                .get_tagged_all(self.tag.as_str())
+                .is_some_and(|linked| linked.len() > 1)
+        {
+            // The player plays them one at a time in the order they choose
+            // (each is played during resolution, so the last one cast ends
+            // up on top of the stack).
+            let linked = ctx
+                .get_tagged_all(self.tag.as_str())
+                .cloned()
+                .unwrap_or_default();
+            let chooser =
+                crate::effects::helpers::resolve_player_filter_as_chooser(game, &self.player, ctx)?;
+            let ids: Vec<crate::ids::ObjectId> =
+                linked.iter().map(|snapshot| snapshot.object_id).collect();
+            let order_ctx = crate::decisions::context::OrderContext::new(
+                chooser,
+                Some(ctx.source),
+                "Choose the order to play the exiled cards. The first option is played first.",
+                // Linked hideaway snapshots are public placeholders (empty
+                // names); the chooser may look at the cards (CR 702.75a), and
+                // the client gates each label by decision visibility.
+                linked
+                    .iter()
+                    .map(|snapshot| {
+                        let name = game
+                            .object(snapshot.object_id)
+                            .map(|object| object.name.to_string())
+                            .filter(|name| !name.is_empty())
+                            .unwrap_or_else(|| snapshot.name.clone());
+                        (snapshot.object_id, name)
+                    })
+                    .collect(),
+            );
+            let order = crate::effects::cards::normalize_order_response(
+                ctx.decision_maker.decide_order(game, &order_ctx),
+                &ids,
+            );
+            if ctx.decision_maker.awaiting_choice() {
+                return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
+                    EffectOutcome::count(0),
+                ));
+            }
+            let ordered: Vec<crate::snapshot::ObjectSnapshot> = order
+                .iter()
+                .filter_map(|id| linked.iter().find(|snapshot| snapshot.object_id == *id))
+                .cloned()
+                .collect();
+            let order_tag = crate::tag::TagKey::from("__linked_play_order__");
+            ctx.set_tagged_objects(order_tag.clone(), ordered);
+            let mut each = self.clone();
+            each.tag = crate::tag::TagKey::from("__it__");
+            return crate::effects::ForEachTaggedEffect::new(
+                order_tag,
+                vec![crate::effect::Effect::new(each)],
+            )
+            .execute_child_with_outputs(game, ctx);
+        }
         let mut retained_children = Vec::new();
         let instruction = crate::effects::tokens::execute_resource_transaction_atomically(
             game,
@@ -288,6 +352,54 @@ impl EffectExecutor for CastTaggedEffect {
                 let without_paying_mana_cost = self.without_paying_mana_cost;
 
                 if self.as_copy {
+                    // CR 712.12 / 707.12: "you may play the copy" of a modal
+                    // DFC whose front isn't a land lets the caster choose its
+                    // land face instead, if they could play a land now
+                    // (CR 305.2a).
+                    let land_face_choice = if !is_land
+                        && self.allow_land
+                        && game.is_active_player(caster)
+                        && game
+                            .player(caster)
+                            .is_some_and(|player| player.can_play_land())
+                    {
+                        retained_copy
+                            .as_ref()
+                            .or_else(|| game.object(object_id))
+                            .and_then(|obj| {
+                                crate::decision::linked_other_face_land_definition(game, obj)
+                                    .map(|land| (obj.name.to_string(), land.card.name.to_string()))
+                            })
+                    } else {
+                        None
+                    };
+                    let play_land_face = if let Some((spell_name, land_name)) = land_face_choice {
+                        let options = vec![
+                            crate::decisions::context::SelectableOption::new(
+                                0,
+                                format!("Cast {spell_name}"),
+                            ),
+                            crate::decisions::context::SelectableOption::new(
+                                1,
+                                format!("Play {land_name}"),
+                            ),
+                        ];
+                        let question = crate::decisions::context::SelectOptionsContext::new(
+                            caster,
+                            Some(ctx.source),
+                            "Choose how to play the copy",
+                            options,
+                            1,
+                            1,
+                        );
+                        let choice = ctx.decision_maker.decide_options(game, &question);
+                        if ctx.decision_maker.awaiting_choice() {
+                            return Ok(EffectOutcome::count(0));
+                        }
+                        choice.first() == Some(&1)
+                    } else {
+                        false
+                    };
                     let copy_id = game.new_object_id();
 
                     let source_obj = match retained_copy.as_ref().or_else(|| game.object(object_id))
@@ -298,6 +410,17 @@ impl EffectExecutor for CastTaggedEffect {
                     let mut copy_obj =
                         crate::object::Object::token_copy_of(&source_obj, copy_id, caster);
 
+                    if play_land_face {
+                        copy_obj.zone = Zone::Command;
+                        game.add_object(copy_obj);
+                        return crate::effects::zones::play_land_face_from_resolving_effect_with_outputs(
+                            game, ctx, copy_id, caster, from_zone, true, true,
+                        ).map(|outputs| {
+                            let outcome = outputs.outcome.clone();
+                            retained_children.push(outputs);
+                            outcome
+                        });
+                    }
                     if is_land {
                         if !self.allow_land {
                             return Ok(EffectOutcome::target_invalid());

@@ -32,7 +32,7 @@ pub fn consume_this_turn(
     }
     game.effect_store
         .named_action_uses
-        .insert(key.clone(), (game.turn.turn_number, used + 1));
+        .insert(key.clone(), (game.turn.turn_number, used.saturating_add(1)));
     game.mark_object_state_changed_keeping_characteristics(key.source);
     game.mark_continuous_state_dirty();
     Ok(())

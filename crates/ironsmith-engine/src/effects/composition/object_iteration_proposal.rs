@@ -108,11 +108,11 @@ pub(super) fn summarize_tagged_iterations(
     outcomes: Vec<EffectOutcome>,
     ranges: &[(PlayerId, usize, usize)],
 ) -> EffectOutcome {
-    let mut counts = Vec::new();
+    let mut counts: Vec<(PlayerId, i64)> = Vec::new();
     for &(player, start, end) in ranges {
         let count = correlated_player_count(&outcomes[start..end]);
         if let Some((_, total)) = counts.iter_mut().find(|(actor, _)| *actor == player) {
-            *total += count;
+            *total = total.saturating_add(count);
         } else {
             counts.push((player, count));
         }

@@ -1794,71 +1794,19 @@ registerPortedMageTests({
           "op": "assertPlayableAbility",
           "player": 0,
           "label": "Cast Treats to Share using Retrace",
-          "expected": true,
+          "expected": false,
           "turn": 1,
-          "phase": "PRECOMBAT_MAIN"
+          "phase": "PRECOMBAT_MAIN",
+          "note": "Port correction (CR 715.4): outside the stack an adventurer card has only its normal characteristics, so Curious Pair in the graveyard is a creature card and the emblem's 'Instant and sorcery cards in your graveyard have retrace' does not apply. XMage grants retrace to the Adventure; the port asserts it is not castable."
         },
         {
-          "op": "castSpell",
-          "name": "Treats to Share using Retrace",
-          "player": 0,
-          "turn": 1,
-          "phase": "PRECOMBAT_MAIN"
-        },
-        {
-          "op": "setChoice",
-          "player": 0,
-          "value": "Forest"
-        },
-        {
-          "op": "assertStackObject",
-          "source": "Treats to Share",
+          "op": "assertGraveyardCount",
+          "name": "Curious Pair",
           "count": 1,
-          "turn": 1,
-          "phase": "PRECOMBAT_MAIN"
-        },
-        {
-          "op": "waitStackResolved",
-          "turn": 1,
-          "phase": "PRECOMBAT_MAIN"
+          "player": 0
         },
         {
           "op": "assertHandCount",
-          "player": 0,
-          "count": 0
-        },
-        {
-          "op": "assertPermanentCount",
-          "name": "Food Token",
-          "count": 1,
-          "player": 0
-        },
-        {
-          "op": "assertPermanentCount",
-          "name": "Curious Pair",
-          "count": 0,
-          "player": 0
-        },
-        {
-          "op": "assertPermanentCount",
-          "name": "Wrenn and Six",
-          "count": 1,
-          "player": 0
-        },
-        {
-          "op": "assertExileCount",
-          "name": "Curious Pair",
-          "count": 1,
-          "player": 0
-        },
-        {
-          "op": "assertGraveyardCount",
-          "name": "Forest",
-          "count": 1,
-          "player": 0
-        },
-        {
-          "op": "assertGraveyardCount",
           "player": 0,
           "count": 1
         }

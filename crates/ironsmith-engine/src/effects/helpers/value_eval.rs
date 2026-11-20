@@ -26,13 +26,7 @@ pub(crate) fn resolve_continuous_characteristic(
 ) -> i32 {
     let context = EvaluationContext::continuous(layer);
     match resolve_wide(value, &context) {
-        Ok(exact) => match i32::try_from(exact) {
-            Ok(value) => value,
-            Err(_) => {
-                error.get_or_insert(("characteristic-defining scalar", i128::from(exact)));
-                0
-            }
-        },
+        Ok(exact) => ironsmith_core::quantity::clamp_i32(exact),
         Err(ExecutionError::ResourceLimitExceeded {
             resource,
             requested,
@@ -48,10 +42,7 @@ pub(crate) fn resolve_continuous_characteristic(
         Err(_) => match resolve_wide_zeroing_unavailable(value, &context) {
             // CR 208.2a: a number the ability uses that can't be determined
             // is zero; the rest of the arithmetic still applies.
-            Some(exact) => i32::try_from(exact).unwrap_or_else(|_| {
-                error.get_or_insert(("characteristic-defining scalar", i128::from(exact)));
-                0
-            }),
+            Some(exact) => ironsmith_core::quantity::clamp_i32(exact),
             None => {
                 evidence_error.get_or_insert("the continuous characteristic value is unavailable");
                 0
@@ -69,11 +60,13 @@ fn resolve_wide_zeroing_unavailable(
 ) -> Option<i64> {
     let operand = |value: &Value| resolve_wide_zeroing_unavailable(value, context);
     match value {
-        Value::Add(left, right) => operand(left)?.checked_add(operand(right)?),
-        Value::Scaled(value, multiplier) => operand(value)?.checked_mul(i64::from(*multiplier)),
+        Value::Add(left, right) => Some(operand(left)?.saturating_add(operand(right)?)),
+        Value::Scaled(value, multiplier) => {
+            Some(operand(value)?.saturating_mul(i64::from(*multiplier)))
+        }
         Value::Min(left, right) => Some(operand(left)?.min(operand(right)?)),
         Value::DividedRoundedDown(value, divisor) if *divisor != 0 => {
-            operand(value)?.checked_div_euclid(i64::from(*divisor))
+            Some(ironsmith_core::quantity::div_floor(operand(value)?, i64::from(*divisor)))
         }
         _ => match resolve_wide(value, context) {
             Ok(value) => Some(value),
@@ -93,31 +86,8 @@ pub(crate) fn resolve(
     value: &Value,
     context: &EvaluationContext<'_, '_>,
 ) -> Result<i32, ExecutionError> {
-    let resolved = resolve_wide(value, context)?;
-    i32::try_from(resolved).map_err(|_| {
-        if matches!(
-            value.unhinted(),
-            Value::UnspentMana(_)
-                | Value::EventValue(
-                    crate::effect::EventValueSpec::Amount
-                        | crate::effect::EventValueSpec::LifeAmount
-                )
-        ) {
-            ExecutionError::ResourceLimitExceeded {
-                resource: if matches!(value.unhinted(), Value::UnspentMana(_)) {
-                    "unspent mana scalar"
-                } else {
-                    "effect scalar"
-                },
-                requested: resolved.max(0) as u128,
-                maximum: i32::MAX as u128,
-            }
-        } else {
-            ExecutionError::UnresolvableValue(
-                "resolved value exceeds the signed characteristic or cost range".into(),
-            )
-        }
-    })
+    // Game quantities saturate at the signed characteristic range.
+    resolve_wide(value, context).map(ironsmith_core::quantity::clamp_i32)
 }
 
 pub(crate) fn resolve_wide(
@@ -156,42 +126,24 @@ pub(crate) fn resolve_wide(
             }
         Value::SurfaceHinted { value, .. } => resolve_wide(value, context),
         Value::Fixed(n) => Ok(i64::from(*n)),
-        Value::Add(left, right) => resolve_wide(left, context)?
-            .checked_add(resolve_wide(right, context)?)
-            .ok_or_else(|| {
-                ExecutionError::UnresolvableValue(
-                    "numeric addition exceeds the wide value range".into(),
-                )
-            }),
+        Value::Add(left, right) => {
+            Ok(resolve_wide(left, context)?.saturating_add(resolve_wide(right, context)?))
+        }
         Value::X => context.x(),
         Value::XTimes(multiplier) => {
-            context
-                .x()?
-                .checked_mul(i64::from(*multiplier))
-                .ok_or_else(|| {
-                    ExecutionError::UnresolvableValue(
-                        "numeric multiplication exceeds the wide value range".into(),
-                    )
-                })
+            Ok(context.x()?.saturating_mul(i64::from(*multiplier)))
         }
-        Value::Scaled(value, multiplier) => resolve_wide(value, context)?
-            .checked_mul(i64::from(*multiplier))
-            .ok_or_else(|| {
-                ExecutionError::UnresolvableValue(
-                    "numeric multiplication exceeds the wide value range".into(),
-                )
-            }),
+        Value::Scaled(value, multiplier) => {
+            Ok(resolve_wide(value, context)?.saturating_mul(i64::from(*multiplier)))
+        }
         Value::DividedRoundedDown(value, divisor) => {
             if *divisor == 0 {
                 return context.division_by_zero(value);
             }
-            resolve_wide(value, context)?
-                .checked_div_euclid(i64::from(*divisor))
-                .ok_or_else(|| {
-                    ExecutionError::UnresolvableValue(
-                        "numeric division exceeds the wide value range".into(),
-                    )
-                })
+            Ok(ironsmith_core::quantity::div_floor(
+                resolve_wide(value, context)?,
+                i64::from(*divisor),
+            ))
         }
         Value::Min(left, right) => Ok(i64::from(
             resolve_wide(left, context)?.min(resolve_wide(right, context)?),
@@ -248,7 +200,7 @@ pub(crate) fn resolve_wide(
             ))
         }
         Value::CountScaled(filter, multiplier) => Ok(i64::from(
-            i64::from(context.count_objects(filter, false)) * i64::from(*multiplier),
+            i64::from(context.count_objects(filter, false)).saturating_mul(i64::from(*multiplier)),
         )),
         Value::GreatestCount(filter) => {
             Ok(i64::from(context.greatest_per_controller(filter, false)))
@@ -478,24 +430,40 @@ pub(crate) fn resolve_wide(
             let mut seen = HashSet::new();
             context.visit_property_objects(filter, |object| {
                 let cost = match object {
+                    // CR 709.4b: a split card outside the stack and the
+                    // battlefield has the combined cost of both halves.
                     context::PropertyObject::Live(object)
-                    | context::PropertyObject::LayerBaseline(object) => {
-                        object.mana_cost_owned()
-                    }
+                    | context::PropertyObject::LayerBaseline(object) => object
+                        .split_combined_mana_cost()
+                        .or_else(|| object.mana_cost_owned()),
                     context::PropertyObject::Snapshot(snapshot) => snapshot.mana_cost.clone(),
                 };
                 let Some(cost) = cost else {
                     return;
                 };
+                // Compare costs, not their spelling: combined halves such as
+                // {2}{U} + {1}{R} are the cost {3}{U}{R} (CR 202.1, 709.4b).
+                let generic: u32 = cost
+                    .pips()
+                    .iter()
+                    .filter_map(|pip| match pip.as_slice() {
+                        [crate::mana::ManaSymbol::Generic(amount)] => Some(u32::from(*amount)),
+                        _ => None,
+                    })
+                    .sum();
                 let mut key = cost
                     .pips()
                     .iter()
+                    .filter(|pip| !matches!(pip.as_slice(), [crate::mana::ManaSymbol::Generic(_)]))
                     .map(|pip| {
                         let mut symbols = pip.iter().map(|symbol| format!("{symbol:?}")).collect::<Vec<_>>();
                         symbols.sort();
                         symbols.join("/")
                     })
                     .collect::<Vec<_>>();
+                if generic > 0 {
+                    key.push(format!("Generic({generic})"));
+                }
                 key.sort();
                 seen.insert(key);
             });
@@ -509,8 +477,8 @@ pub(crate) fn resolve_wide(
                 else {
                     return;
                 };
-                doors += i64::from(crate::effects::helpers::room_unlocked_door_count(
-                    game, object,
+                doors = doors.saturating_add(i64::from(
+                    crate::effects::helpers::room_unlocked_door_count(game, object),
                 ));
             });
             Ok(i64::from(doors))
@@ -553,10 +521,11 @@ pub(crate) fn resolve_wide(
                 if !player_filter.matches_player(player.id, &filter_ctx) {
                     continue;
                 }
-                total += game
-                    .turn_store
-                    .turn_history
-                    .creatures_died_under_controller(player.id) as i64;
+                total = total.saturating_add(i64::from(
+                    game.turn_store
+                        .turn_history
+                        .creatures_died_under_controller(player.id),
+                ));
             }
             Ok(i64::from(total))
         }
@@ -848,7 +817,7 @@ pub(crate) fn resolve_wide(
                     .filter(|pip| pip.len() == 1 && matches!(pip[0], crate::mana::ManaSymbol::X))
                     .count() as i64;
                 i64::from(cost.generic_mana_total())
-                    + x_pips * i64::from(x_value.unwrap_or(0))
+                    .saturating_add(x_pips.saturating_mul(i64::from(x_value.unwrap_or(0))))
             };
             if let Some(total) = context.linked_exile_characteristic_sum(target_spec, |chars| {
                 chars.mana_cost.as_ref().map_or(0, |cost| generic(cost, None))
@@ -1033,10 +1002,9 @@ pub(crate) fn resolve_wide(
         Value::LifeTotalAsTurnBegan(player_spec) => {
             let player = context.single_player(value, player_spec)?;
             let history = &game.turn_store.turn_history;
-            Ok(i64::from(
-                i64::from(player.life) + history.total_life_lost_for_players(&[player.id]) as i64
-                    - history.total_life_gained_for_players(&[player.id]) as i64,
-            ))
+            Ok(i64::from(player.life)
+                .saturating_add(i64::from(history.total_life_lost_for_players(&[player.id])))
+                .saturating_sub(i64::from(history.total_life_gained_for_players(&[player.id]))))
         }
         Value::LifeTotalDifference(player_spec) => {
             let players = context.player_ids(value, player_spec)?;
@@ -1057,7 +1025,7 @@ pub(crate) fn resolve_wide(
                 minimum = minimum.min(life);
                 maximum = maximum.max(life);
             }
-            Ok(i64::from(maximum - minimum))
+            Ok(i64::from(maximum).saturating_sub(i64::from(minimum)))
         }
         Value::Speed(player_spec) => {
             let player = context.single_player(value, player_spec)?;
@@ -1084,7 +1052,8 @@ pub(crate) fn resolve_wide(
         Value::StartingDeckSize(player_spec) => {
             let player = context.single_player(value, player_spec)?;
             Ok(i64::from(player.starting_deck_size.unwrap_or_else(|| {
-                (player.library.len() + player.commanders.len()) as u32
+                u32::try_from(player.library.len().saturating_add(player.commanders.len()))
+                    .unwrap_or(u32::MAX)
             })))
         }
         Value::HalfLifeTotalRoundedUp(player_spec) => {
@@ -1279,7 +1248,7 @@ pub(crate) fn resolve_wide(
                 return Ok(i64::from(count as i64));
             }
             let count = history.total_spells_cast_for_players(&player_ids) as i64;
-            Ok(i64::from((count - 1).max(0)))
+            Ok(count.saturating_sub(1).max(0))
         }
         Value::SpellsCastThisTurnMatching {
             player,
@@ -1505,20 +1474,20 @@ pub(crate) fn resolve_wide(
                     "actual mana allocated to X was not retained".into(),
                 )
             })?;
-            let amount = allocation.of_color(*color);
-            i64::try_from(amount).map_err(|_| ExecutionError::ResourceLimitExceeded {
-                resource: "actual mana spent on X",
-                requested: u128::from(amount),
-                maximum: i64::MAX as u128,
-            })
+            Ok(i64::from(allocation.of_color(*color)))
         }
         Value::ManaSymbolSpentToCastThisSpell { symbol, .. } => {
             let Some(source_obj) = game.object(context.source) else {
                 return Ok(i64::from(0));
             };
-            Ok(i64::from(
-                source_obj.mana_spent_to_cast.amount(*symbol) as i64
-            ))
+            // CR 107.4h: {S} counts units produced by snow sources, which the
+            // payment records separately at spend time.
+            let amount = if *symbol == crate::mana::ManaSymbol::Snow {
+                source_obj.snow_mana_spent_to_cast.total()
+            } else {
+                source_obj.mana_spent_to_cast.amount(*symbol)
+            };
+            Ok(i64::from(amount as i64))
         }
         Value::ManaFromSourceSpentToCastThisSpell {
             source_filter,
@@ -1575,11 +1544,7 @@ pub(crate) fn resolve_wide(
                     "triggering spell has no captured caster payment evidence".into(),
                 )
             })?;
-            i64::try_from(spent).map_err(|_| {
-                ExecutionError::UnresolvableValue(
-                    "triggering spell caster payment exceeds the integer value range".into(),
-                )
-            })
+            Ok(i64::from(spent))
         }
         Value::ManaSpentToCastTriggeringObject => {
             let ctx = context.require_execution(value, RESOLUTION_ONLY);
@@ -1736,7 +1701,19 @@ pub(crate) fn resolve_wide(
                 Ok(i64::from(ctx.get_outcome(*effect_id).map_or(
                     0,
                     |outcome| {
-                        outcome.as_count().unwrap_or_else(|| {
+                        // "You may pay {X}{R}. If you do, ... deals X damage"
+                        // (Flameblast Dragon): the result is the X paid
+                        // (CR 107.3), not the mana the payment's own mana
+                        // abilities added (four Mountains for X=3 plus {R}).
+                        let paid_x = outcome.instruction_result().execution_facts().iter().rev().find_map(
+                            |fact| match fact {
+                                crate::effect::ExecutionFact::ManaPaid { x_value } => {
+                                    Some(i64::from(*x_value))
+                                }
+                                _ => None,
+                            },
+                        );
+                        paid_x.or_else(|| outcome.as_count()).unwrap_or_else(|| {
                             outcome
                                 .explicit_objects()
                                 .map(|objects| objects.len() as i64)
@@ -1792,7 +1769,7 @@ pub(crate) fn resolve_wide(
                                 .explicit_objects()
                                 .map_or(0, |objects| objects.len() as i64)
                         })
-                    }) + i64::from(*offset),
+                    }).saturating_add(i64::from(*offset)),
                 ))
             }
         }
@@ -1813,7 +1790,7 @@ pub(crate) fn resolve_wide(
             let ctx = context.require_execution(value, RESOLUTION_ONLY);
             Ok(i64::from(
                 resolve_effect_metric(game, ctx, *effect_id, *source, *metric)?
-                    + i64::from(*offset),
+                    .saturating_add(i64::from(*offset)),
             ))
         }
         Value::PriorEffectMetric { effect_id, query } => {
@@ -1846,12 +1823,16 @@ pub(crate) fn resolve_wide(
         Value::HalfRoundedDown(inner) => Ok(i64::from(resolve_wide(inner, context)?.div_euclid(2))),
         Value::PowerOfTwo(inner) => {
             let exponent = resolve_wide(inner, context)?;
-            if !(0..=62).contains(&exponent) {
+            if exponent < 0 {
                 return Err(ExecutionError::UnresolvableValue(
-                    "power-of-two exponent is outside the wide value range".into(),
+                    "power-of-two exponent is negative".into(),
                 ));
             }
-            Ok(1i64 << exponent)
+            // Game quantities saturate: an exponent past the wide range is i64::MAX.
+            Ok(ironsmith_core::quantity::pow(
+                2,
+                u32::try_from(exponent).unwrap_or(u32::MAX),
+            ))
         }
         Value::EventValue(spec) => resolve_event_value(
             game,
@@ -1863,7 +1844,8 @@ pub(crate) fn resolve_wide(
                 game,
                 context.require_execution(value, RESOLUTION_ONLY),
                 spec,
-            )? + i64::from(*offset),
+            )?
+            .saturating_add(i64::from(*offset)),
         )),
         Value::WasKicked => {
             // Check if kicker or multikicker was paid
@@ -1984,7 +1966,7 @@ pub(crate) fn resolve_wide(
             if let Some(ctx)=context.execution() {
                 if matches!(object.base(),ChooseSpec::Source) && ctx.replacement.entry_counter_source==Some(ctx.source) {
                     let pending=ctx.replacement.entry_named_actions.iter().filter(|(name,_)|name.trim().eq_ignore_ascii_case(label.trim())).count();
-                    return i64::try_from(pending).map_err(|_|ExecutionError::Impossible("staged named action count exceeds value vocabulary".into()));
+                    return Ok(i64::try_from(pending).unwrap_or(i64::MAX));
                 }
                 if matches!(object.base(),ChooseSpec::Source) && game.object(ctx.source).is_none()
                     && let Some(snapshot)=source_characteristic_lki_for_execution(game,ctx) {
@@ -2137,7 +2119,7 @@ pub(crate) fn resolve_wide(
                 tag.as_str().starts_with("__entry_action_").then(||filter_ctx.tagged_objects.get(tag)).flatten())};
             let count = snapshots.into_iter().flatten()
                 .filter(|snapshot| filter.matches_snapshot(snapshot, &filter_ctx, game)).count();
-            i64::try_from(count).map_err(|_| ExecutionError::UnresolvableValue("snapshot count exceeds the wide value range".into()))
+            Ok(i64::try_from(count).unwrap_or(i64::MAX))
         }
         Value::TaggedCount => {
             let ctx = context.require_execution(value, RESOLUTION_ONLY);
@@ -2296,7 +2278,7 @@ fn resolve_event_value(
             for color in [crate::color::Color::White, crate::color::Color::Blue,
                 crate::color::Color::Black, crate::color::Color::Red, crate::color::Color::Green] {
                 if colors.contains(color) {
-                    amount += i64::from(event.mana_spent.amount(crate::mana::ManaSymbol::from_color(color)));
+                    amount = amount.saturating_add(i64::from(event.mana_spent.amount(crate::mana::ManaSymbol::from_color(color))));
                 }
             }
             Ok(amount)
@@ -2340,11 +2322,7 @@ fn resolve_event_value(
                     "life quantity names another participant".into(),
                 ));
             }
-            crate::events::damage::checked_damage_count(
-                u128::from(amount),
-                "life-change event scalar",
-            )
-            .map(i64::from)
+            Ok(i64::try_from(u128::from(amount)).unwrap_or(i64::MAX))
         }
         EventValueSpec::LoyaltyCountersRemovedToActivate => {
             let activation = ctx
@@ -2380,9 +2358,9 @@ fn resolve_event_value(
                         let Value::Fixed(count) = &effect.count else {
                             return None;
                         };
-                        Some((*count).max(0) as u32)
+                        Some((*count).max(0).unsigned_abs())
                     })
-                    .sum::<u32>(),
+                    .fold(0u32, u32::saturating_add),
                 _ => 0,
             };
             Ok(i64::from(removed))
@@ -2437,9 +2415,9 @@ fn resolve_event_value(
                             let Value::Fixed(amount) = &effect.amount else {
                                 return None;
                             };
-                            Some((*amount).max(0) as u32)
+                            Some((*amount).max(0).unsigned_abs())
                         })
-                        .sum::<u32>(),
+                        .fold(0u32, u32::saturating_add),
                     _ => 0,
                 },
                 _ => 0,
@@ -2457,18 +2435,17 @@ fn resolve_event_value(
                     )
                 })?;
             let amount: u128 = match spec {
-                EventValueSpec::DieBatchTotal => roll.numeric_batch_results().map(u128::from).sum(),
+                EventValueSpec::DieBatchTotal => roll
+                    .numeric_batch_results()
+                    .map(u128::from)
+                    .fold(0u128, u128::saturating_add),
                 EventValueSpec::DieResultsAtLeast(minimum) => roll
                     .numeric_batch_results()
                     .filter(|result| i64::from(*result) >= i64::from(*minimum))
                     .count() as u128,
                 _ => unreachable!(),
             };
-            i64::try_from(amount).map_err(|_| ExecutionError::ResourceLimitExceeded {
-                resource: "die-roll batch quantity",
-                requested: amount,
-                maximum: i64::MAX as u128,
-            })
+            Ok(i64::try_from(amount).unwrap_or(i64::MAX))
         }
         EventValueSpec::DieResult => {
             let roll = ctx
@@ -2482,11 +2459,7 @@ fn resolve_event_value(
                             .to_string(),
                     )
                 })?;
-            i64::try_from(roll.result).map_err(|_| {
-                ExecutionError::UnresolvableValue(
-                    "die-roll result exceeds the supported value range".to_string(),
-                )
-            })
+            Ok(i64::from(roll.result))
         }
         EventValueSpec::Amount | EventValueSpec::LifeAmount => {
             if let Some(amount) = ctx.event_value_amount {
@@ -2498,11 +2471,7 @@ fn resolve_event_value(
                 ));
             };
             if let Some(payment) = triggering_event.downcast::<crate::events::LifePaidEvent>() {
-                return crate::events::damage::checked_damage_count(
-                    u128::from(payment.amount),
-                    "life payment event amount",
-                )
-                .map(i64::from);
+                return Ok(i64::try_from(u128::from(payment.amount)).unwrap_or(i64::MAX));
             }
             if let Some(life_loss_event) = triggering_event.downcast::<LifeLossEvent>() {
                 return Ok(i64::from(life_loss_event.amount as i64));
@@ -2520,11 +2489,7 @@ fn resolve_event_value(
             }
             if let Some(placement) = triggering_event.downcast::<crate::events::PutCountersEvent>()
             {
-                return i64::try_from(placement.count).map_err(|_| {
-                    ExecutionError::UnresolvableValue(
-                        "counter placement amount exceeds the supported value range".into(),
-                    )
-                });
+                return Ok(i64::from(placement.count));
             }
             if triggering_event.downcast::<MarkersChangedEvent>().is_some() {
                 return triggering_event.counter_trigger_amount();
@@ -2542,11 +2507,7 @@ fn resolve_event_value(
                 return Ok(i64::from(keyword_action_event.amount as i64));
             }
             if let Some(created) = triggering_event.downcast::<crate::events::CreateTokensEvent>() {
-                return i64::try_from(created.total_count()).map_err(|_| {
-                    ExecutionError::UnresolvableValue(
-                        "token creation amount exceeds the supported value range".into(),
-                    )
-                });
+                return Ok(i64::try_from(created.total_count()).unwrap_or(i64::MAX));
             }
             Err(ExecutionError::UnresolvableValue(
                 "EventValue(Amount) requires a numeric triggering event".to_string(),
@@ -2575,7 +2536,7 @@ fn resolve_event_value(
                     })
                     .unwrap_or(event.blocker_count);
                 let beyond_first = blocker_count.saturating_sub(1) as i64;
-                return Ok(i64::from(beyond_first * i64::from(*multiplier)));
+                return Ok(beyond_first.saturating_mul(i64::from(*multiplier)));
             }
             Err(ExecutionError::UnresolvableValue(
                 "EventValue(BlockersBeyondFirst) requires a creature-becomes-blocked event"

@@ -11,6 +11,8 @@ const POOL_FIELDS = ["white", "blue", "black", "red", "green", "colorless"];
 const MANA_SYMBOL_CODES = new Map(POOL_FIELDS.map((field, index) =>
   [field[0].toUpperCase() + field.slice(1), TYPES[index]]));
 const MAX_PROBE_BRANCHES = 6144;
+// The engine allows 16 live savepoints; leave room for the caller's probes.
+const MAX_HELD_SAVEPOINTS = 12;
 
 function poolCounts(player, auditRestrictions = false) {
   assert(player?.manaPool, "unsupported mana-option assertion (native mana pool required)");
@@ -225,8 +227,25 @@ export function assertNativeManaOptions(game, player, operation) {
   const branchLimit = operation.branchLimit ?? MAX_PROBE_BRANCHES;
   let branchCount = 0;
 
+  // Each branching decision with several answers normally holds one native
+  // savepoint. The engine caps live savepoints, and legal but pointless
+  // activations (such as X=0 storage-counter mana) can nest deeper than that
+  // cap. Past the budget, a branch restores its nearest held ancestor and
+  // replays the deterministic command trail recorded since that savepoint.
+  const trail = [];
+  const anchors = [];
+
   function follow(command) {
     assert(++branchCount <= branchLimit, "mana-option probe branch limit reached before completing the search");
+    trail.push(command);
+    try {
+      dispatchAndVisit(command);
+    } finally {
+      trail.pop();
+    }
+  }
+
+  function dispatchAndVisit(command) {
     if (process.env.MAGE_PORT_TRACE_MANA === "1" && branchCount % 2048 === 0) {
       console.error(`[XMage mana probe] ${branchCount} commands, ${visited.size} states, ${pools.size} pools`);
     }
@@ -251,16 +270,25 @@ export function assertNativeManaOptions(game, player, operation) {
       follow(next.value);
       return;
     }
-    const saved = captureRuntimeState(game);
+    const ownsSavepoint = anchors.length < MAX_HELD_SAVEPOINTS;
+    const anchor = ownsSavepoint
+      ? { saved: captureRuntimeState(game), depth: trail.length }
+      : anchors[anchors.length - 1];
+    const depth = trail.length;
+    if (ownsSavepoint) anchors.push(anchor);
     try {
       while (!following.done) {
         follow(next.value);
-        restoreRuntimeState(game, saved);
+        restoreRuntimeState(game, anchor.saved);
+        for (const command of trail.slice(anchor.depth, depth)) game.dispatch(command);
         next = following;
         following = choices.next();
       }
     } finally {
-      releaseRuntimeState(saved);
+      if (ownsSavepoint) {
+        anchors.pop();
+        releaseRuntimeState(anchor.saved);
+      }
     }
     follow(next.value);
   }

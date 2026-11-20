@@ -150,7 +150,8 @@ pub(crate) fn capture_event_choices(game:&GameState,event:&TriggerEvent)->Result
     matcher.compiled_model().ok_or_else(||ExecutionError::IncompleteEvidence(
      "trigger-class event rule has no complete typed event model".into()))?;
     let occurrences=matcher.trigger_count_with_context(&event,&context);
-    if occurrences>10000 {return Err(ExecutionError::ResourceLimitExceeded {resource:"event-trigger program choices",requested:u128::from(occurrences),maximum:10000});}
+    // Each occurrence is materialized choice work: clamp to the budget.
+    let occurrences=occurrences.min(10000);
     rules.push(Rule {controller:provider.controller,class:class.clone(),official_keyword:*official_keyword,sources:sources.clone(),include_subject:*include_event_source,
      destination:*destination_subject,maximum:*maximum,optional:*optional,automatic:*automatic,caused_by_event:*caused_by_event,occurrences,provider:provider.clone()});
    }

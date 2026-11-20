@@ -103,7 +103,20 @@ pub(crate) fn apply_outcome_tags(
     }
     apply_tagged_runtime_state(game, ctx, effect.tag.clone(), outcome, runtime.clone());
     if effect.tag.as_str() != "__it__" && effect.tag.as_str() != "__copied_stack_object__" {
+        let subject_binding = keyword_action_subject_binding(ctx);
         apply_tagged_runtime_state(game, ctx, TagKey::from("__it__"), outcome, runtime);
+        // CR 614.6 / 616.1: within a keyword-action replacement program, "it"
+        // names the replaced action's subject. When this instruction's own
+        // action was itself replaced (Topography Tracker's first explore
+        // becoming Twists and Turns' scry-then-explore), its empty result does
+        // not unbind that subject for the program's later "it" instructions.
+        if let Some(subject) = subject_binding
+            && ctx
+                .get_tagged_all("__it__")
+                .is_none_or(|snapshots| snapshots.is_empty())
+        {
+            ctx.set_tagged_objects(TagKey::from("__it__"), subject);
+        }
     }
     if !drawn_snapshots.is_empty() {
         ctx.set_tagged_objects(effect.tag.clone(), drawn_snapshots.clone());
@@ -111,6 +124,27 @@ pub(crate) fn apply_outcome_tags(
             ctx.set_tagged_objects(TagKey::from("__it__"), drawn_snapshots);
         }
     }
+}
+
+/// The current implicit-subject binding when it names the subject of the
+/// keyword action whose replacement program is executing.
+fn keyword_action_subject_binding(ctx: &ExecutionContext) -> Option<Vec<ObjectSnapshot>> {
+    let action = ctx
+        .triggering_event
+        .as_ref()?
+        .downcast::<crate::events::KeywordActionEvent>()?;
+    if ctx.replacement.suppressed_replacement_effects.is_empty()
+        && ctx.replacement.suppressed_replacement_effect_keys.is_empty()
+    {
+        return None;
+    }
+    ctx.get_tagged_all("__it__")
+        .filter(|snapshots| {
+            snapshots
+                .iter()
+                .any(|snapshot| snapshot.object_id == action.source)
+        })
+        .cloned()
 }
 
 /// A tagged wrapper around another effect's simultaneous proposal: committing

@@ -76,14 +76,15 @@ impl EffectExecutor for TriggerAbilitiesByClassEffect{
      let accept=ctx.decision_maker.decide_boolean(game,&prompt);
      if ctx.decision_maker.awaiting_choice(){return Ok(EffectOutcome::count(0));}
      if accept {
-      copies=copies.checked_mul(multiplier as usize).filter(|n|*n<=10000).ok_or(ExecutionError::ResourceLimitExceeded{resource:"triggered occurrences",requested:(copies as u128)*(multiplier as u128),maximum:10000})?;
+      // Occurrences become objects: clamp to the existing occurrence budget.
+      copies=copies.saturating_mul(multiplier as usize).min(10000);
       if once_each_turn{game.increment_named_turn_counter(receipt);}
      }
     }
     expanded.extend(std::iter::repeat_n(entry,copies));
    }
    let selected=expanded;
-   let count=i32::try_from(selected.len()).map_err(|_|ExecutionError::ResourceLimitExceeded{resource:"selected triggered occurrences",requested:selected.len() as u128,maximum:i32::MAX as u128})?;
+   let count=i32::try_from(selected.len()).unwrap_or(i32::MAX);
    crate::game_loop::defer_forced_trigger_occurrences(game,selected);Ok(EffectOutcome::count(count))
   })
  }

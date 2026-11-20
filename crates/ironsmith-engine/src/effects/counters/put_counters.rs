@@ -270,6 +270,48 @@ fn resolve_counter_inputs(
     ctx: &mut ExecutionContext,
 ) -> Result<CounterInputPlan, ExecutionError> {
     let zero_amount = matches!(effect.amount, Value::Fixed(0));
+    // "Put an energy counter on target permanent or player": a chosen
+    // player recipient receives the counters (CR 122.1). Object recipients
+    // keep the object path below.
+    if effect.target.is_target()
+        && !effect.distributed
+        && !effect
+            .amount
+            .has_surface_hint(ironsmith_core::ValueSurfaceHint::UpTo)
+    {
+        let players = crate::effects::helpers::matching_player_targets_for_spec(
+            game,
+            &effect.target,
+            ctx,
+        );
+        if !players.is_empty()
+            && !ctx
+                .targets
+                .iter()
+                .any(|target| matches!(target, crate::effects::ResolvedTarget::Object(_)))
+        {
+            let count = resolve_nonnegative_u32(game, &effect.amount, ctx)?;
+            if count == 0 {
+                return Ok(CounterInputPlan::Finished {
+                    outcome: EffectOutcome::count(0),
+                    count: 0,
+                });
+            }
+            let requests = players
+                .into_iter()
+                .map(|player| {
+                    crate::events::Event::put_player_counters(
+                        player,
+                        effect.counter_type,
+                        count,
+                        ctx.cause.clone(),
+                    )
+                    .with_provenance(ctx.provenance)
+                })
+                .collect();
+            return Ok(CounterInputPlan::Placements { requests, count });
+        }
+    }
     // Handle Source target specially (for abilities like level-up that target themselves).
     let target_ids = match effect.target.base() {
         ChooseSpec::Object(filter)
@@ -495,8 +537,7 @@ fn resolve_counter_inputs(
             let share: u32 = division
                 .iter()
                 .filter(|(target, _)| *target == Target::Object(*target_id))
-                .map(|(_, amount)| *amount)
-                .sum();
+                .fold(0u32, |total, (_, amount)| total.saturating_add(*amount));
             let share = share.min(remaining);
             remaining -= share;
             allocations.push((*target_id, share));
@@ -527,11 +568,20 @@ fn resolve_counter_inputs(
         if assigned_count == 0 {
             continue;
         }
+        // "Each opponent blights 1": the blighting player puts the counters
+        // on their own creature (CR 701.68a), so "whenever you put counters"
+        // (Nest of Scarabs) credits that player, not the ability's controller.
+        let mut cause = ctx.cause.clone();
+        if effect.completion_action == Some(crate::events::KeywordActionKind::Blight)
+            && let Some(performer) = ctx.iteration.iterated_player
+        {
+            cause.source_controller = Some(performer);
+        }
         let event = crate::events::Event::put_counters(
             target_id,
             effect.counter_type,
             assigned_count,
-            ctx.cause.clone(),
+            cause,
         )
         .with_provenance(ctx.provenance);
         requests.push(event);

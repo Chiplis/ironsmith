@@ -151,13 +151,7 @@ pub(super) fn commit_player_counter_placement_with_outputs(
                 .player(player)
                 .ok_or(ExecutionError::PlayerNotFound(player))?
                 .counter_count(resolved.counter_type);
-            let proposed_after = before.checked_add(resolved.count).ok_or_else(|| {
-                ExecutionError::ResourceLimitExceeded {
-                    resource: "player counter placement",
-                    requested: u128::from(before) + u128::from(resolved.count),
-                    maximum: u128::from(u32::MAX),
-                }
-            })?;
+            let proposed_after = before.saturating_add(resolved.count);
             if resolved.counter_type == CounterType::Poison {
                 game.write_shared_poison(player, proposed_after);
             } else {
@@ -366,7 +360,7 @@ mod range_tests {
     use crate::effects::EffectExecutor;
 
     #[test]
-    fn player_counter_range_errors_restore_replacements_and_shared_poison() {
+    fn player_counter_placement_saturates_including_shared_poison() {
         for counter_type in [
             CounterType::Energy,
             CounterType::Experience,
@@ -374,18 +368,10 @@ mod range_tests {
             CounterType::Poison,
         ] {
             for shared in [false, true] {
-                for (before, amount, expected_error) in [
-                    (
-                        u32::MAX - 2,
-                        2,
-                        Some("player counter placement exceeds the supported counter range"),
-                    ),
-                    (
-                        i32::MAX as u32 + 1,
-                        i32::MAX / 2 + 1,
-                        Some("player counter placement exceeds the supported counter range"),
-                    ),
-                    (u32::MAX - 4, 2, None),
+                for (before, amount) in [
+                    (u32::MAX - 2, 2),
+                    (i32::MAX as u32 + 1, i32::MAX / 2 + 1),
+                    (u32::MAX - 4, 2),
                 ] {
                     let alice = crate::ids::PlayerId::from_index(0);
                     let bob = crate::ids::PlayerId::from_index(1);
@@ -440,28 +426,13 @@ mod range_tests {
                         crate::target::PlayerFilter::Specific(alice),
                     )
                     .execute(&mut game, &mut ctx);
-                    let expected_count = if expected_error.is_some() {
-                        assert_eq!(
-                            result.unwrap_err(),
-                            ExecutionError::ResourceLimitExceeded {
-                                resource: "player counter placement",
-                                requested: u128::from(before) + (amount as u128) * 2,
-                                maximum: u128::from(u32::MAX),
-                            }
-                        );
-                        assert!(
-                            game.effect_store
-                                .replacement_effects
-                                .get_effect(one_shot)
-                                .is_some()
-                        );
-                        before
-                    } else {
+                    let expected_count = {
+                        let added = u32::MAX - before;
                         let outcome = result.unwrap();
-                        assert_eq!(outcome.count_or_zero(), 4);
+                        assert_eq!(outcome.count_or_zero(), i64::from(added));
                         assert_eq!(outcome.events.len(), 1);
                         let marker = outcome.events[0].downcast::<MarkersChangedEvent>().unwrap();
-                        assert_eq!(marker.amount, 4);
+                        assert_eq!(marker.amount, added);
                         assert_eq!(marker.count_after, Some(u32::MAX));
                         assert_eq!(
                             marker.location,

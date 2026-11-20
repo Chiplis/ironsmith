@@ -89,12 +89,13 @@ struct ManaQueryRef<'a> {
 }
 
 fn hash_pool<H: Hasher>(pool: &crate::player::ManaPool, state: &mut H) {
-    pool.white.hash(state);
-    pool.blue.hash(state);
-    pool.black.hash(state);
-    pool.red.hash(state);
-    pool.green.hash(state);
-    pool.colorless.hash(state);
+    // Hash as the historical u32 fields whenever the amount fits.
+    for amount in [pool.white, pool.blue, pool.black, pool.red, pool.green, pool.colorless] {
+        match u32::try_from(amount) {
+            Ok(amount) => amount.hash(state),
+            Err(_) => amount.hash(state),
+        }
+    }
 }
 
 fn hash_policy<H: Hasher>(policy: &crate::player::ManaSpendPolicy, state: &mut H) {
@@ -1085,7 +1086,8 @@ mod tests {
             source, player, crate::events::mana::matchers::ManaProducedBySourceMatcher::new(crate::target::ObjectFilter::specific(source)),
             crate::replacement::ReplacementAction::Additionally(vec![crate::effect::Effect::new(crate::effects::CreateTokenEffect::you(crate::cards::tokens::treasure_token_definition(), 2))]),
         ));
-        game.set_token_creation_limits(crate::effects::tokens::TokenCreationLimits { max_created_tokens: 1, ..Default::default() });
+        // Token counts clamp to the creation budget; the instruction work guard still fails.
+        game.set_token_creation_limits(crate::effects::tokens::TokenCreationLimits { max_instructions: 0, ..Default::default() });
         let request = crate::mana_payment::ManaPaymentRequest::new(player, source, crate::costs::PaymentReason::Effect,
             crate::mana::ManaCost::from_symbols(vec![ManaSymbol::Green]));
         (game, player, source, request)

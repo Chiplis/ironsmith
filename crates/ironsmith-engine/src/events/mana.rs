@@ -25,6 +25,12 @@ pub enum ManaProductionProvenance {
     ManaAbility,
 }
 
+/// Largest production kept as one symbol per unit. A multiplier that would
+/// exceed it scales the event instead (`ManaAddedEvent::mana_multiplier`), so
+/// geometric replacement chains (thirty Nyxbloom Ancients make 3^30 mana,
+/// CR 107.1 sets no limit) stay exact without allocating per unit.
+pub const MATERIALIZED_MANA_LIMIT: usize = 1 << 12;
+
 /// A pure rewrite of one pending production event. Applying this instruction
 /// does not credit a pool or emit a trigger; the replacement procedure owns
 /// ordering, optional choices and the once-per-event application history.
@@ -70,6 +76,9 @@ impl ManaTransformation<'_> {
                 }
             }
             Self::Multiply(factor) => {
+                // Materialized form only; `ManaAddedEvent::apply_mana_transformation`
+                // scales the event instead once this would exceed
+                // MATERIALIZED_MANA_LIMIT.
                 let mut output = Vec::with_capacity(original.len() * factor as usize);
                 for _ in 0..factor {
                     output.extend_from_slice(original);
@@ -89,8 +98,13 @@ pub struct ManaAddedEvent {
     pub controller: PlayerId,
     /// Player who received the mana.
     pub player: PlayerId,
-    /// Mana symbols added by this event.
+    /// Mana symbols added by this event. With `mana_multiplier > 1` this is
+    /// the pattern that the event adds `mana_multiplier` times.
     pub mana: Vec<ManaSymbol>,
+    /// How many times `mana` is added (CR 614.5/616.1: each multiplying
+    /// replacement scales the production once). 1 for every production small
+    /// enough to be materialized one symbol per unit.
+    pub mana_multiplier: u64,
     /// Last-known snapshot of the source when the mana was added.
     pub snapshot: Option<ObjectSnapshot>,
     /// How this mana was produced, when relevant to replacement effects.
@@ -113,6 +127,7 @@ impl ManaAddedEvent {
             controller,
             player,
             mana,
+            mana_multiplier: 1,
             snapshot: None,
             provenance: ManaProductionProvenance::Unknown,
             tap_occurrence_continuation: false,
@@ -131,6 +146,142 @@ impl ManaAddedEvent {
 
     pub fn with_mana(mut self, mana: Vec<ManaSymbol>) -> Self {
         self.mana = mana;
+        self.mana_multiplier = 1;
+        self
+    }
+
+    /// Total units this event adds.
+    pub fn mana_amount(&self) -> u64 {
+        (self.mana.len() as u64).saturating_mul(self.mana_multiplier)
+    }
+
+    /// Units per symbol, in first-appearance order of the pattern.
+    pub fn mana_counts(&self) -> Vec<(ManaSymbol, u64)> {
+        let mut counts: Vec<(ManaSymbol, u64)> = Vec::new();
+        for &symbol in &self.mana {
+            match counts.iter_mut().find(|(existing, _)| *existing == symbol) {
+                Some((_, count)) => *count = count.saturating_add(self.mana_multiplier),
+                None => counts.push((symbol, self.mana_multiplier)),
+            }
+        }
+        counts
+    }
+
+    /// The produced units one by one, stopping after `limit` units. Exact for
+    /// every materialized production; a counted production is truncated.
+    pub fn mana_units_up_to(&self, limit: usize) -> Vec<ManaSymbol> {
+        let mut units = Vec::new();
+        if self.mana.is_empty() {
+            return units;
+        }
+        'outer: for _ in 0..self.mana_multiplier {
+            for &symbol in &self.mana {
+                if units.len() >= limit {
+                    break 'outer;
+                }
+                units.push(symbol);
+            }
+        }
+        units
+    }
+
+    /// Apply one replacement rewrite. Small productions keep the materialized
+    /// one-symbol-per-unit form; a multiplier that would exceed
+    /// MATERIALIZED_MANA_LIMIT scales the event instead, exactly.
+    pub fn apply_mana_transformation(&mut self, transformation: ManaTransformation<'_>) {
+        if self.mana_multiplier <= 1 {
+            self.mana_multiplier = 1;
+            if let ManaTransformation::Multiply(factor) = transformation
+                && (self.mana.len() as u64).saturating_mul(u64::from(factor))
+                    > MATERIALIZED_MANA_LIMIT as u64
+            {
+                // One repeated type collapses to a single counted symbol.
+                if let Some(&first) = self.mana.first()
+                    && self.mana.iter().all(|symbol| *symbol == first)
+                {
+                    self.mana_multiplier =
+                        (self.mana.len() as u64).saturating_mul(u64::from(factor));
+                    self.mana = vec![first];
+                } else {
+                    self.mana_multiplier = u64::from(factor);
+                }
+                return;
+            }
+            self.mana = transformation.apply(&self.mana);
+            return;
+        }
+        match transformation {
+            ManaTransformation::Multiply(0) => {
+                self.mana.clear();
+                self.mana_multiplier = 1;
+            }
+            ManaTransformation::Multiply(factor) => {
+                self.mana_multiplier = self.mana_multiplier.saturating_mul(u64::from(factor));
+            }
+            // Same unit count, new type: the pattern keeps its multiplier.
+            ManaTransformation::ReplaceTypes([symbol]) => {
+                self.mana = vec![*symbol; self.mana.len()];
+            }
+            ManaTransformation::ReplaceTypes(symbols) | ManaTransformation::ReplaceExact(symbols) => {
+                self.mana = symbols.to_vec();
+                self.mana_multiplier = 1;
+            }
+            ManaTransformation::Rewrite {
+                input,
+                symbol,
+                quantity,
+            } => {
+                if !self.mana.iter().any(|mana| input.matches(*mana)) {
+                    return;
+                }
+                match quantity {
+                    ironsmith_core::ManaRewriteQuantity::Preserve => {
+                        for mana in &mut self.mana {
+                            if input.matches(*mana) {
+                                *mana = symbol;
+                            }
+                        }
+                    }
+                    ironsmith_core::ManaRewriteQuantity::Exact(amount) => {
+                        let rest: Vec<_> = self
+                            .mana
+                            .iter()
+                            .copied()
+                            .filter(|mana| !input.matches(*mana))
+                            .collect();
+                        let amount = u64::from(amount);
+                        if rest.is_empty() {
+                            self.mana = vec![symbol; amount as usize];
+                            self.mana_multiplier = 1;
+                        } else if amount % self.mana_multiplier == 0 {
+                            let mut pattern = rest;
+                            pattern.extend(std::iter::repeat_n(
+                                symbol,
+                                (amount / self.mana_multiplier) as usize,
+                            ));
+                            self.mana = pattern;
+                        } else {
+                            // Not one scaled pattern: keep the unmatched part
+                            // up to the materialization limit (inexact only
+                            // for a huge mixed production).
+                            let repeats = (MATERIALIZED_MANA_LIMIT / rest.len()).max(1) as u64;
+                            let repeats = repeats.min(self.mana_multiplier) as usize;
+                            let mut output = Vec::with_capacity(rest.len() * repeats);
+                            for _ in 0..repeats {
+                                output.extend_from_slice(&rest);
+                            }
+                            output.extend(std::iter::repeat_n(symbol, amount as usize));
+                            self.mana = output;
+                            self.mana_multiplier = 1;
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    pub fn with_mana_transformation(mut self, transformation: ManaTransformation<'_>) -> Self {
+        self.apply_mana_transformation(transformation);
         self
     }
 
@@ -215,7 +366,7 @@ impl ManaEventPredicate<'_> {
         filter_ctx: &crate::target::FilterContext,
     ) -> bool {
         if event.mana.is_empty()
-            || event.mana.len() < self.minimum_amount
+            || event.mana_amount() < self.minimum_amount as u64
             || self
                 .required_provenance
                 .is_some_and(|required| event.provenance != required)
@@ -562,13 +713,8 @@ impl ManaSpendEvidence {
     }
 
     pub(crate) fn total(&self) -> Result<u32, crate::effects::ExecutionError> {
-        u32::try_from(self.units.len()).map_err(|_| {
-            crate::effects::ExecutionError::ResourceLimitExceeded {
-                resource: "mana-spend receipt count",
-                requested: self.units.len() as u128,
-                maximum: u32::MAX as u128,
-            }
-        })
+        // A spend count is a game quantity: it saturates rather than fails.
+        Ok(u32::try_from(self.units.len()).unwrap_or(u32::MAX))
     }
 
     pub(crate) fn source_matches(

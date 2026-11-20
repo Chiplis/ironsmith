@@ -113,7 +113,7 @@ impl Verdict {
                     })
                     .filter_map(|payer| game.player(*payer))
                     .map(|player| (player.life.max(0) as u32 / ransom.life) as usize)
-                    .sum();
+                    .fold(0usize, usize::saturating_add);
                 count > affordable
             })
     }
@@ -250,10 +250,11 @@ impl Forecast<'_> {
             };
             payers.sort();
             payers.dedup();
-            *verdict
+            let tally = verdict
                 .life_ransoms
                 .entry(LifeRansom { payers, life })
-                .or_default() += 1;
+                .or_default();
+            *tally = tally.saturating_add(1);
         } else {
             match effect.0.forecast_children() {
                 fx::ForecastChildren::Immediate => {

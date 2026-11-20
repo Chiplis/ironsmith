@@ -48,7 +48,7 @@ impl EffectExecutor for ProliferateEffect {
                     ));
                 }
 
-                let mut proliferated_total = 0;
+                let mut proliferated_total = 0i32;
                 let mut outcome = EffectOutcome::count(0);
                 let mut outputs = CompletedEffectOutputs::aggregate_only(outcome.clone());
 
@@ -77,7 +77,7 @@ impl EffectExecutor for ProliferateEffect {
                                 let mut body_outputs =
                                     CompletedEffectOutputs::aggregate_only(outcome.clone());
 
-                                let mut proliferated_count = 0;
+                                let mut proliferated_count = 0i32;
                                 let mut proliferated_permanents = Vec::new();
 
                                 let eligible_permanents: Vec<crate::ids::ObjectId> = game
@@ -268,10 +268,19 @@ impl EffectExecutor for ProliferateEffect {
                                 }
                                 proliferated_permanents.sort_unstable();
                                 proliferated_permanents.dedup();
-                                proliferated_count +=
-                                    (proliferated_permanents.len() + counted_players.len()) as i32;
+                                proliferated_count = ironsmith_core::quantity::clamp_i32(
+                                    i64::from(proliferated_count).saturating_add(
+                                        i64::try_from(
+                                            proliferated_permanents
+                                                .len()
+                                                .saturating_add(counted_players.len()),
+                                        )
+                                        .unwrap_or(i64::MAX),
+                                    ),
+                                );
 
-                                proliferated_total += proliferated_count;
+                                proliferated_total =
+                                    i32::saturating_add(proliferated_total, proliferated_count);
                                 outcome = outcome.with_affected_objects(proliferated_permanents);
                                 outcome.set_value(crate::effect::OutcomeValue::Count(i64::from(
                                     proliferated_count,

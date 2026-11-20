@@ -273,16 +273,27 @@ pub(crate) fn activation_reference_preflight(
     payer: PlayerId,
     activated: &crate::ability::ActivatedAbility,
 ) -> Option<bool> {
+    activation_reference_preflight_announced(game, source, ability_index, payer, activated, false)
+}
+
+/// `x_announced` is true only for the isolated witness previews below. A
+/// permanent's `x_value` left behind by an earlier activation of the same
+/// ability is not an announcement for the activation being checked (CR 602.2b,
+/// 601.2b): X is announced anew each time.
+fn activation_reference_preflight_announced(
+    game: &GameState,
+    source: ObjectId,
+    ability_index: usize,
+    payer: PlayerId,
+    activated: &crate::ability::ActivatedAbility,
+    x_announced: bool,
+) -> Option<bool> {
     if let Some(result) = super::counter_declaration::preflight(game, source, ability_index, payer, activated) { return Some(result); }
     let effects = activated.effects.flattened_default_effects();
     if !needs_activation_reference_context(&activated.mana_cost, effects) {
         return None;
     }
-    if effects.iter().any(target_has_exact_mana_x)
-        && game
-            .object(source)
-            .is_some_and(|object| object.x_value.is_none())
-    {
+    if effects.iter().any(target_has_exact_mana_x) && !x_announced {
         // Equality to a target's mana value has a finite complete set of X
         // witnesses. Price those announcements on isolated game copies; an
         // unresolved X is never accepted as a wildcard and the caller's
@@ -303,7 +314,7 @@ pub(crate) fn activation_reference_preflight(
                     Cost::mana(crate::decision::mana_cost_with_locked_x_and_generic_reduction(mana, x, 0))
                 } else { component })
             }).unwrap();
-            activation_reference_preflight(&preview, source, ability_index, payer, &announced).unwrap_or(false)
+            activation_reference_preflight_announced(&preview, source, ability_index, payer, &announced, true).unwrap_or(false)
         }));
     }
     let tags = activation_reference_context(game, source, ability_index);
@@ -673,8 +684,10 @@ mod tests {
                     )]),
                 ),
             );
+            // Token counts clamp to the creation budget; the instruction work guard
+            // is what still fails the payload.
             game.set_token_creation_limits(crate::effects::tokens::TokenCreationLimits {
-                max_created_tokens: 1,
+                max_instructions: 0,
                 ..Default::default()
             });
             let objects = game.next_object_id_counter();

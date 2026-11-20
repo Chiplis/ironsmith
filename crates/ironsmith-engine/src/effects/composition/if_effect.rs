@@ -278,6 +278,27 @@ pub(super) fn predicate_matches_with_context(
     if matches!(surface.action, crate::effect::PriorEffectAction::CountersMoved(_)) {
         return outcome.count_or_zero() > 0;
     }
+    // "When it connives this way" (Psychic Pickpocket): the instructed object
+    // is the actor, not a player. CR 701.50c: an object that left the
+    // battlefield still connives, and "when [it] connives" abilities trigger,
+    // so the connive instruction's own success decides, never the object's
+    // current zone. A zero/invalid connive reports no action (CR 701.50e).
+    if matches!(surface.actor, crate::effect::PriorEffectResultActor::It)
+        && surface.action == crate::effect::PriorEffectAction::Connived
+    {
+        let instruction = outcome.instruction_result();
+        let connived = |result: &EffectOutcome| {
+            result
+                .events_of_type::<crate::events::KeywordActionEvent>()
+                .any(|event| event.action == crate::events::KeywordActionKind::Connive)
+        };
+        let acted = |result: &EffectOutcome| {
+            !result.status.is_failure()
+                && matches!(&result.value,
+                    crate::effect::OutcomeValue::Objects(objects) if !objects.is_empty())
+        };
+        return connived(outcome) || connived(instruction) || acted(outcome) || acted(instruction);
+    }
     if surface.action == crate::effect::PriorEffectAction::Died {
         let filter_ctx = ctx.filter_context(game);
         let recorded =

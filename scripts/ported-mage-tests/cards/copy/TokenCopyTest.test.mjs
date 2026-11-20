@@ -332,10 +332,12 @@ registerPortedMageTests({
         },
         {
           "op": "assertEachObject",
+          "note": "Port correction (CR 202.3b, 712.8e): the transformed card keeps its front face mana value (1), but the Rite of Replication token copies only the back face, so its mana value is 0. XMage gives both mana value 1.",
           "selector": {
             "zone": "battlefield",
             "player": 0,
-            "name": "Sinuous Predator"
+            "name": "Sinuous Predator",
+            "token": false
           },
           "checks": [
             {
@@ -378,7 +380,58 @@ registerPortedMageTests({
               "expected": 1
             }
           ],
-          "count": 2
+          "count": 1
+        },
+        {
+          "op": "assertEachObject",
+          "selector": {
+            "zone": "battlefield",
+            "player": 0,
+            "name": "Sinuous Predator",
+            "token": true
+          },
+          "checks": [
+            {
+              "property": "power",
+              "expected": 4
+            },
+            {
+              "property": "toughness",
+              "expected": 4
+            },
+            {
+              "property": "colorCount",
+              "expected": 0
+            },
+            {
+              "property": "subtype",
+              "expected": true,
+              "value": "Werewolf"
+            },
+            {
+              "property": "subtype",
+              "expected": false,
+              "value": "Horror"
+            },
+            {
+              "property": "subtype",
+              "expected": true,
+              "value": "Eldrazi"
+            },
+            {
+              "property": "doubleFaced",
+              "expected": true
+            },
+            {
+              "property": "transformed",
+              "expected": true
+            },
+            {
+              "property": "manaValue",
+              "expected": 0
+            }
+          ],
+          "count": 1
         }
       ]
     },

@@ -25,7 +25,10 @@ pub(crate) fn execute_real_card_battlefield_creation(
     let lookback = game.try_trigger_source_lookback_snapshots()?;
     let mut entries = Vec::new();
     for _ in 0..creation.amount {
-        game.commit_token_resource_slot()?;
+        // A live-object budget miss stops creation at the cards that fit.
+        if !crate::effects::tokens::resources::commit_token_slot_within_budget(game)? {
+            break;
+        }
         let object = game.stage_originless_card_entry(definition, creation.clone());
         entries.push((object, None));
     }
@@ -167,8 +170,12 @@ mod tests {
             game, ctx, pending, |game, ctx| {
                 let (_, meter) = game.begin_token_resource_scope();
                 let _guard = crate::effects::tokens::resources::TokenInstructionGuard::enter(meter)?;
-                game.reserve_token_creation(u128::from(creation.amount))?;
-                execute_real_card_battlefield_creation(game, ctx, definition, creation)
+                let granted = crate::effects::tokens::resources::reserve_token_creation_up_to(
+                    game, u128::from(creation.amount),
+                )?;
+                let mut creation = creation.clone();
+                creation.amount = u32::try_from(granted).unwrap_or(u32::MAX).min(creation.amount);
+                execute_real_card_battlefield_creation(game, ctx, definition, &creation)
             },
         )
     }

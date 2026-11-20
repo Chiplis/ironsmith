@@ -232,11 +232,6 @@ pub(super) fn commit_object_counter_placement_with_limit_outputs(
                     EffectOutcome::count(0),
                 ));
             }
-            before.checked_add(count).ok_or_else(|| {
-                ExecutionError::InternalError(
-                    "object counter placement exceeds the supported counter range".into(),
-                )
-            })?;
             let Some(mut notification) = game.add_counters_with_cause(
                 object,
                 resolved.counter_type,
@@ -323,19 +318,8 @@ mod range_tests {
     use crate::effects::EffectExecutor;
 
     #[test]
-    fn replacement_counter_range_errors_restore_the_instruction_and_one_shot() {
-        for (before, amount, expected_error) in [
-            (
-                u32::MAX - 2,
-                2,
-                "object counter placement exceeds the supported counter range",
-            ),
-            (
-                i32::MAX as u32 + 1,
-                i32::MAX / 2 + 1,
-                "object counter placement exceeds the supported counter range",
-            ),
-        ] {
+    fn replacement_counter_placement_saturates_at_the_counter_range() {
+        for (before, amount) in [(u32::MAX - 2, 2), (i32::MAX as u32 + 1, i32::MAX / 2 + 1)] {
             let alice = crate::ids::PlayerId::from_index(0);
             let bob = crate::ids::PlayerId::from_index(1);
             let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
@@ -376,22 +360,18 @@ mod range_tests {
                 crate::target::ChooseSpec::SpecificObject(recipient),
             )
             .execute(&mut game, &mut ctx);
-            assert_eq!(
-                result.unwrap_err(),
-                ExecutionError::InternalError(expected_error.into())
-            );
+            result.expect("counter placement saturates instead of failing");
             assert_eq!(
                 game.counter_count(recipient, crate::object::CounterType::Charge),
-                before
+                u32::MAX
             );
             assert!(
                 game.effect_store
                     .replacement_effects
                     .get_effect(one_shot)
-                    .is_some()
+                    .is_none()
             );
             assert_eq!(ctx.get_tagged_players("retained"), Some(&vec![bob]));
-            assert!(game.take_pending_trigger_events().is_empty());
         }
     }
 }

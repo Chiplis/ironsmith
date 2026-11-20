@@ -19,7 +19,13 @@ impl TriggerMatcher for PlayerAttackDeclarationTrigger {
         if !event.directly_attacked_player && self.grouping != PlayerAttackGrouping::AttackerAnyTarget {
             return false;
         }
-        player_filter_matches_game(&self.attacker, event.attacker, ctx.game, &ctx.filter_ctx)
+        // CR 801.7 example: "whenever enchanted player is attacked" names no
+        // attacker, so an attacker outside the observer's range of influence
+        // must not fail an unconstrained `Any` (Curse of Opulence).
+        let unnamed_attacker = self.grouping == PlayerAttackGrouping::Defender
+            && self.attacker == crate::target::PlayerFilter::Any;
+        (unnamed_attacker
+            || player_filter_matches_game(&self.attacker, event.attacker, ctx.game, &ctx.filter_ctx))
             && player_filter_matches_game(&self.defender, event.defender, ctx.game, &ctx.filter_ctx)
     }
     fn subscribed_kinds(&self) -> Option<Vec<EventKind>> {

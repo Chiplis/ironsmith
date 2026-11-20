@@ -410,6 +410,12 @@ pub enum CompilerReferenceTag {
     /// latest instruction moved out of a graveyard, hand, or library. Such a
     /// card has no controller, so "that creature's controller" skips it.
     OffBattlefieldCardAntecedent,
+    /// Parse-time marker alias: the newest object antecedent is the result of
+    /// returning the prior object antecedent itself to the battlefield
+    /// ("exile target creature ... return that card"). A demonstrative that
+    /// repeats the original noun ("that creature's toughness") still names
+    /// the object as it last existed before it left (CR 608.2h).
+    ReturnedObjectAntecedent,
     /// Parse-time alias group: one entry per token-creation member of the
     /// latest coordinated creation ("create a Cat, a Bird, and an Ox"), so a
     /// plural "those tokens" can name every member's result.
@@ -577,6 +583,7 @@ impl CompilerReferenceTag {
             Self::TappedThisWay => "__tapped_this_way__",
             Self::TappedThisWayResult => "__tapped_this_way_result__",
             Self::OffBattlefieldCardAntecedent => "__off_battlefield_card_antecedent__",
+            Self::ReturnedObjectAntecedent => "__returned_object_antecedent__",
             Self::CoordinatedCreatedResult => "__coordinated_created_result__",
             Self::SurveilKeptOnTop => "__surveil_kept_on_top__",
         }

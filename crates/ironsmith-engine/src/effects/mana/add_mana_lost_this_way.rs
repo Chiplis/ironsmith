@@ -18,6 +18,8 @@ type LostUnit = (
 
 /// The mana the producer behind `amount` removed, as symbols. Tracked units
 /// come first, in the order of the returned unit list.
+const LOST_UNIT_LIMIT: u64 = crate::events::mana::MATERIALIZED_MANA_LIMIT as u64;
+
 fn lost_mana(
     amount: &Value,
     ctx: &ExecutionContext,
@@ -43,7 +45,7 @@ fn lost_mana(
     {
         let mut pool = loss.mana.clone();
         for unit in &loss.lost_units {
-            if pool.remove(unit.0.symbol, 1) {
+            if pool.remove_wide(unit.0.symbol, unit.0.count) {
                 units.push(unit.clone());
             }
         }
@@ -55,10 +57,15 @@ fn lost_mana(
             (pool.green, ManaSymbol::Green),
             (pool.colorless, ManaSymbol::Colorless),
         ] {
-            untracked.extend(std::iter::repeat_n(symbol, count as usize));
+            untracked.extend(std::iter::repeat_n(symbol, count.min(LOST_UNIT_LIMIT) as usize));
         }
     }
-    let mut symbols: Vec<ManaSymbol> = units.iter().map(|unit| unit.0.symbol).collect();
+    // A counted (multiplied) lost record is re-added up to the
+    // materialization bound; ordinary records are one unit each.
+    let mut symbols: Vec<ManaSymbol> = units
+        .iter()
+        .flat_map(|unit| std::iter::repeat_n(unit.0.symbol, unit.0.count.min(LOST_UNIT_LIMIT) as usize))
+        .collect();
     symbols.extend(untracked);
     Ok((symbols, units))
 }
@@ -80,7 +87,11 @@ impl EffectExecutor for AddManaLostThisWayEffect {
         // CR 106.13: the same mana moves to the new pool. Its original
         // producer, snapshot (snow, card types) and spending restrictions
         // stay with it; this effect is not its producer.
-        if receipt.original_committed && receipt.mana == symbols && !units.is_empty() {
+        if receipt.original_committed
+            && receipt.mana == symbols
+            && !units.is_empty()
+            && units.iter().all(|unit| unit.0.count == 1)
+        {
             game.with_player_mana_mut(player, |data| {
                 if data.mana_source_provenance.len() != before + symbols.len() {
                     return;

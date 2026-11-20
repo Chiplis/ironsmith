@@ -14,13 +14,15 @@ usage() {
 Usage: ./run-mage-tests.sh [--no-build] [--concurrency N] [--log PATH] [--help]
 
 Runs all ported MAGE .mjs tests with the release WASM build and prints a short
-summary. The full Node test output is written to reports/ by default.
+summary. Each test file gets its own process and WASM instance. The full Node
+test output is written to reports/ by default.
 
 Environment:
   MAGE_TEST_CONCURRENCY=N   Same as --concurrency.
   TEST_CONCURRENCY=N        Fallback concurrency setting.
   MAGE_TEST_LOG=PATH        Same as --log.
   MAGE_TEST_BUILD_WASM=0    Same as --no-build.
+  IRONSMITH_TEST_WASM_PKG   Package to use with --no-build.
 USAGE
 }
 
@@ -74,10 +76,13 @@ cd "$ROOT" || exit 1
 
 if [[ "$BUILD_WASM" != "0" ]]; then
   echo "Building release WASM..."
-  if ! ./rebuild-wasm.sh; then
+  if ! ./rebuild-wasm.sh --xmage-fixtures; then
     echo "error: release WASM build failed" >&2
     exit 1
   fi
+  export IRONSMITH_TEST_WASM_PKG="$ROOT/target/xmage-wasm-pkg"
+elif [[ -z "${IRONSMITH_TEST_WASM_PKG:-}" && -d "$ROOT/target/xmage-wasm-pkg" ]]; then
+  export IRONSMITH_TEST_WASM_PKG="$ROOT/target/xmage-wasm-pkg"
 fi
 
 TEST_ARGS=()
@@ -100,11 +105,16 @@ echo
 START_SECONDS="$(date +%s)"
 
 node --test \
-  --test-isolation=none \
+  --test-reporter=tap \
   --test-concurrency="$CONCURRENCY" \
   "${TEST_ARGS[@]}" 2>&1 | tee "$LOG_FILE"
 
-STATUS="${PIPESTATUS[0]}"
+PIPELINE_STATUS=("${PIPESTATUS[@]}")
+STATUS="${PIPELINE_STATUS[0]}"
+if [[ "${PIPELINE_STATUS[1]}" != "0" ]]; then
+  echo "error: writing test log failed: $LOG_FILE" >&2
+  STATUS="${PIPELINE_STATUS[1]}"
+fi
 END_SECONDS="$(date +%s)"
 ELAPSED_SECONDS="$((END_SECONDS - START_SECONDS))"
 

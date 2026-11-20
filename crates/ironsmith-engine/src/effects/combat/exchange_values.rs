@@ -412,9 +412,10 @@ mod tests {
         let mut game = crate::tests::test_helpers::setup_two_player_game();
         let alice = PlayerId::from_index(0);
         let source = create_creature(&mut game, "Exchange", alice, 0, 13);
-        for _ in 0..2 {
+        // Scale and offset do not commute, so their order is a real choice.
+        for action in [ReplacementAction::Double, ReplacementAction::Modify(crate::replacement::EventModification::Add(1))] {
             game.effect_store.replacement_effects.add_resolution_effect(
-                ReplacementEffect::with_matcher(source, alice, WouldLoseLifeMatcher::you(), ReplacementAction::Double),
+                ReplacementEffect::with_matcher(source, alice, WouldLoseLifeMatcher::you(), action),
             );
         }
         let mut dm = Pending { pending: false, source };

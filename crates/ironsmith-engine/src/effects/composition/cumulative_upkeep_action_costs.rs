@@ -81,9 +81,7 @@ impl<'a> ActionCost<'a> {
             Self::Mana(_) => Ok(true),
             Self::Draw(_, draw) => {
                 let count = crate::effects::helpers::resolve_value(game, &draw.count, ctx)?.max(0) as usize;
-                let total = count.checked_mul(repetitions).ok_or_else(|| ExecutionError::IncompleteEvidence(
-                    "cumulative draw cost exceeds the supported count range".into(),
-                ))?;
+                let total = count.saturating_mul(repetitions);
                 // CR 121.2b/121.3: a prohibition is different from a draw
                 // replacement. An empty library is not a prohibition.
                 Ok(total == 0 || (game.can_draw(ctx.controller)

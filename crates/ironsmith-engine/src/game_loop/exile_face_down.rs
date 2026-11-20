@@ -107,7 +107,7 @@ mod tests {
     fn setup(tracked: bool, kind: Option<FaceDownCastKind>, mana: u32) -> (GameState, ObjectId) {
         let mut game = GameState::new(vec!["A".into(), "B".into()], 20);
         game.turn.active_player = B; game.turn.priority_player = Some(B); game.turn.phase = crate::game_state::Phase::FirstMain; game.turn.step = None;
-        game.player_mut(B).unwrap().mana_pool.red = mana;
+        game.player_mut(B).unwrap().mana_pool.red = u64::from(mana);
         let source = game.create_object_from_card(&CardBuilder::new(CardId::new(), "Public origin").card_types(vec![CardType::Enchantment]).build(), A, Zone::Battlefield);
         let card = if tracked { game.create_hidden_card_placeholder(A, Zone::Exile, 0, "blind-morph-commitment".into()) }
         else { game.create_object_from_definition(&definition(kind), A, Zone::Exile) };
@@ -161,7 +161,7 @@ mod tests {
                 let cancel = state.pending_exile_face_down.as_ref().unwrap().kinds.len();
                 apply_priority_response_with_dm(&mut game, &mut queue, &mut state, &PriorityResponse::ExileFaceDownChoice(cancel), &mut SelectFirstDecisionMaker).unwrap();
                 assert!(!state.has_pending_action()); assert!(game.is_face_down(card)); assert!(game.hidden_face_down_cast_claim(card).is_none());
-                assert_eq!(game.player(B).unwrap().mana_pool.red, mana); assert!(game.stack.is_empty());
+                assert_eq!(game.player(B).unwrap().mana_pool.red, u64::from(mana)); assert!(game.stack.is_empty());
             }
         }
     }

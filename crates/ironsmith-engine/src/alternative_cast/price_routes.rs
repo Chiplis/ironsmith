@@ -79,6 +79,87 @@ fn grant_allows_separate_price(grant: &Grant) -> bool {
     ) || matches!(&grant.grantable, Grantable::AlternativeCast(method) if method_allows_separate_price(method))
 }
 
+/// An unconditional free "cast spells from your hand without paying their
+/// mana costs" permission (Omniscience) is a CR 118.9 price for a fused split
+/// spell too: the fused spell is cast from hand and its combined mana cost is
+/// what goes unpaid (CR 702.102c-d). Only the fuse route reads it as a price.
+pub(crate) fn free_hand_cast_prices_fuse(grant: &Grant) -> bool {
+    grant.zone == Zone::Hand
+        && matches!(&grant.grantable, Grantable::AlternativeCast(AlternativeCastingMethod::Composed {
+            total_cost, condition: None, prototype_power_toughness: None, uses_land_play: false, ..
+        }) if total_cost.costs().is_empty())
+}
+
+/// "Each legendary spell you cast ... has web-slinging" (Amazing Spider-Man),
+/// "you may cast an enchantment spell by paying life ..." (Demon of Fate's
+/// Design): a spell-scoped alternative cost compiles as a hand-zone grant
+/// whose card filter names no zone. Off the hand it is still a CR 118.9
+/// price for a spell another permission lets you cast (CR 601.2b, 601.2f).
+fn spell_scoped_price_costs(grant: &Grant) -> Option<Vec<crate::costs::Cost>> {
+    if grant.zone != Zone::Hand || grant.filter.as_ref().is_none_or(|filter| filter.zone.is_some()) {
+        return None;
+    }
+    match &grant.grantable {
+        Grantable::AlternativeCast(AlternativeCastingMethod::Composed {
+            total_cost, condition: None, prototype_power_toughness: None, uses_land_play: false, ..
+        }) => Some(total_cost.costs().to_vec()),
+        Grantable::DerivedAlternativeCast(DerivedAlternativeCast::LifeEqualManaValueFromHand { .. }) => {
+            crate::costs::Cost::try_from_runtime_effect(crate::effect::Effect::new(
+                crate::effects::PayLifeEffect::you(crate::effect::Value::ManaValueOf(Box::new(
+                    crate::target::ChooseSpec::Source,
+                ))),
+            ))
+            .ok()
+            .map(|cost| vec![cost])
+        }
+        _ => None,
+    }
+}
+
+/// Whether a grant can be offered as an independent price at all.
+pub(crate) fn grant_is_independent_price(grant: &Grant) -> bool {
+    matches!(grant.grantable, Grantable::AlternativePrice { .. })
+        || free_hand_cast_prices_fuse(grant)
+        || spell_scoped_price_costs(grant).is_some()
+}
+
+/// The grants a price selection indexes: the card's own zone first (so origin
+/// indices are unchanged), then spell-scoped hand prices for a card elsewhere.
+fn price_pool(game: &GameState, spell: &Object, player: PlayerId) -> Vec<Grant> {
+    let registry = &game.effect_store.grant_registry;
+    let mut grants = registry.get_grants_for_card(game, spell.id, spell.zone, player);
+    // A commander already reads hand-zone casting grants as its own
+    // (`alternative_cast_grant_zone`), so only other zones add them here.
+    if !matches!(spell.zone, Zone::Hand | Zone::Command) {
+        grants.extend(
+            registry
+                .get_grants_for_card(game, spell.id, Zone::Hand, player)
+                .into_iter()
+                .filter(|grant| spell_scoped_price_costs(grant).is_some()),
+        );
+    }
+    grants
+}
+
+/// The casting-method name a price grant (not a bare `AlternativePrice`)
+/// carries, for action labels ("Web-slinging").
+pub(crate) fn price_method_name(
+    game: &GameState,
+    player: PlayerId,
+    spell: &Object,
+    price: &GrantSelection,
+) -> Option<&'static str> {
+    let grants = price_pool(game, spell, player);
+    let grant = grants
+        .get(price.index)
+        .filter(|grant| grant.permission_identity.as_ref() == Some(&price.identity))?;
+    match &grant.grantable {
+        Grantable::AlternativeCast(method) => Some(method.name()),
+        Grantable::DerivedAlternativeCast(spec) => Some(spec.display_name()),
+        _ => None,
+    }
+}
+
 /// Install the proposed face for both source-relative filters and ordinary
 /// characteristic lookups. The whole query stays fallible and side-effect free.
 pub(crate) fn proposed_face<'a>(
@@ -199,10 +280,7 @@ pub(crate) fn resolve_announcement_with_effect_authority(
     let face = game
         .object(spell.id)
         .ok_or(ExecutionError::ObjectNotFound(spell.id))?;
-    let grants = game
-        .effect_store
-        .grant_registry
-        .get_grants_for_card(game, spell.id, spell.zone, player);
+    let grants = price_pool(game, spell, player);
     let selected = |key: &GrantSelection| {
         grants.get(key.index).filter(|grant| {
             grant.permission_identity.as_ref() == Some(&key.identity)
@@ -210,9 +288,11 @@ pub(crate) fn resolve_announcement_with_effect_authority(
                 && grant_available(game, player, grant)
         })
     };
-    let Some(price_grant) =
-        selected(price).filter(|g| matches!(g.grantable, Grantable::AlternativePrice { .. }))
-    else {
+    let Some(price_grant) = selected(price).filter(|g| {
+        matches!(g.grantable, Grantable::AlternativePrice { .. })
+            || (matches!(origin.as_ref(), CastingMethod::Fuse) && free_hand_cast_prices_fuse(g))
+            || (spell.zone != Zone::Hand && spell_scoped_price_costs(g).is_some())
+    }) else {
         return Ok(None);
     };
     let origin_grant = match origin.as_ref() {
@@ -415,13 +495,15 @@ pub(crate) fn price_receipt(
 
 pub(crate) fn receipt_from_route(route: &PriceRoute) -> Option<PriceReceipt> {
     let grant = &route.price;
-    let Grantable::AlternativePrice { costs, .. } = &grant.grantable else {
-        return None;
+    let costs = match &grant.grantable {
+        Grantable::AlternativePrice { costs, .. } => costs.clone(),
+        Grantable::AlternativeCast(_) if free_hand_cast_prices_fuse(grant) => Vec::new(),
+        _ => spell_scoped_price_costs(grant)?,
     };
     Some(CastPriceReceipt {
         identity: grant.permission_identity.clone()?,
         source: grant.source.source_id(),
-        total_cost: crate::cost::TotalCost::from_costs(costs.clone()),
+        total_cost: crate::cost::TotalCost::from_costs(costs),
         origin_mana_surcharge: route.origin_mana_surcharge.clone(),
         prototype: route.prototype,
         constraints: grant.play_from_constraints.clone(),
@@ -467,15 +549,13 @@ pub(crate) fn candidates(
             let Some(query) = face_query(game, spell, &face_method, prototype)? else {
                 continue;
             };
-            let grants = query
-                .effect_store
-                .grant_registry
-                .get_grants_for_card(&query, spell.id, spell.zone, player);
+            let grants = price_pool(&query, spell, player);
             let prices = grants
                 .iter()
                 .enumerate()
                 .filter(|(_, grant)| {
-                    matches!(grant.grantable, Grantable::AlternativePrice { .. })
+                    (matches!(grant.grantable, Grantable::AlternativePrice { .. })
+                        || (spell.zone != Zone::Hand && spell_scoped_price_costs(grant).is_some()))
                         && grant_available(&query, player, grant)
                 })
                 .filter_map(|(index, grant)| selection(grant, index))
@@ -542,7 +622,8 @@ pub(crate) fn candidates(
                 .iter()
                 .enumerate()
             {
-                if matches!(grant.grantable, Grantable::AlternativePrice { .. })
+                if (matches!(grant.grantable, Grantable::AlternativePrice { .. })
+                    || free_hand_cast_prices_fuse(grant))
                     && grant_available(&query, player, grant)
                     && let Some(price) = selection(grant, index)
                 {

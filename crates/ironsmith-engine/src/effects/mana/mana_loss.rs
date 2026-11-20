@@ -35,17 +35,9 @@ pub(crate) struct ManaLossProposal {
     prepared: Option<TraitEventResult>,
 }
 
-fn add_checked(pool: &mut ManaPool, symbol: ManaSymbol, amount: u32) -> Result<(), ExecutionError> {
-    let total = u128::from(pool.amount(symbol)) + u128::from(amount);
-    if total > u128::from(u32::MAX) {
-        return Err(ExecutionError::ResourceLimitExceeded {
-            resource: "mana pool units of one type",
-            requested: total,
-            maximum: u128::from(u32::MAX),
-        });
-    }
-    pool.add(symbol, amount);
-    Ok(())
+/// Mana amounts saturate: a pool already holding `u64::MAX` of a type stays there.
+fn add_checked(pool: &mut ManaPool, symbol: ManaSymbol, amount: u64) {
+    pool.add_wide(symbol, amount);
 }
 fn nonempty(pool: &ManaPool) -> bool {
     POOL_SYMBOLS.iter().any(|symbol| pool.amount(*symbol) != 0)
@@ -84,7 +76,8 @@ impl ManaLossProposal {
         let mut units = Vec::new();
         let mut lost = ManaPool::default();
         for provenance in &data.mana_source_provenance {
-            if !POOL_SYMBOLS.contains(&provenance.symbol) || !remaining.remove(provenance.symbol, 1)
+            if !POOL_SYMBOLS.contains(&provenance.symbol)
+                || !remaining.remove_wide(provenance.symbol, provenance.count)
             {
                 return Err(ExecutionError::InternalError(
                     "mana loss found a detached production unit".into(),
@@ -133,7 +126,7 @@ impl ManaLossProposal {
                         None => false,
                     });
             if !retained {
-                add_checked(&mut lost, provenance.symbol, 1)?;
+                add_checked(&mut lost, provenance.symbol, provenance.count);
             }
             units.push(Unit {
                 provenance,
@@ -149,12 +142,12 @@ impl ManaLossProposal {
         let mut untracked_retained = ManaPool::default();
         let mut untracked_lost = ManaPool::default();
         for symbol in POOL_SYMBOLS {
-            let amount = remaining.amount(symbol);
+            let amount = remaining.amount_wide(symbol);
             if globally_retained(symbol) {
-                untracked_retained.add(symbol, amount);
+                untracked_retained.add_wide(symbol, amount);
             } else {
-                untracked_lost.add(symbol, amount);
-                add_checked(&mut lost, symbol, amount)?;
+                untracked_lost.add_wide(symbol, amount);
+                add_checked(&mut lost, symbol, amount);
             }
         }
         let lost_units = units
@@ -215,7 +208,7 @@ impl ManaLossProposal {
                 let mut pool = self.untracked_retained;
                 if let Some(symbol) = loss.converted_to {
                     for old in POOL_SYMBOLS {
-                        add_checked(&mut pool, symbol, self.untracked_lost.amount(old))?;
+                        add_checked(&mut pool, symbol, self.untracked_lost.amount_wide(old));
                     }
                 }
                 let mut provenance = Vec::new();
@@ -230,7 +223,7 @@ impl ManaLossProposal {
                             restriction.symbol = symbol;
                         }
                     }
-                    add_checked(&mut pool, unit.provenance.symbol, 1)?;
+                    add_checked(&mut pool, unit.provenance.symbol, unit.provenance.count);
                     if let Some(restriction) = unit.restriction {
                         restricted.push(restriction);
                     }
@@ -245,7 +238,7 @@ impl ManaLossProposal {
                     crate::events::damage::checked_damage_count(
                         POOL_SYMBOLS
                             .iter()
-                            .map(|symbol| u128::from(loss.mana.amount(*symbol)))
+                            .map(|symbol| u128::from(loss.mana.amount_wide(*symbol)))
                             .sum(),
                         "lost mana receipt",
                     )?
@@ -507,6 +500,19 @@ fn lose_life_for_lost_mana(
                 ability.id() == crate::static_abilities::StaticAbilityId::LoseLifeForUnspentMana
             })
         })
+    }) || game.command_zone.iter().any(|&id| {
+        // CR 114.4: an emblem's abilities function in the command zone.
+        game.object(id).is_some_and(|object| {
+            object.abilities.iter().any(|ability| {
+                ability.functions_in(&crate::zone::Zone::Command)
+                    && matches!(
+                        &ability.kind,
+                        crate::ability::AbilityKind::Static(static_ability)
+                            if static_ability.id()
+                                == crate::static_abilities::StaticAbilityId::LoseLifeForUnspentMana
+                    )
+            })
+        })
     });
     if !burn_active {
         return Ok(None);
@@ -590,14 +596,14 @@ mod tests {
         assert_eq!(player.mana_source_provenance[0].retention, None);
     }
     #[test]
-    fn representation_exhaustion_rolls_back_instead_of_truncating_conversion() {
+    fn representation_exhaustion_saturates_converted_mana() {
         let mut game = game(); converter(&mut game, A, ManaSymbol::Colorless);
-        game.player_mut(A).unwrap().mana_pool.blue = u32::MAX;
+        game.player_mut(A).unwrap().mana_pool.blue = u64::MAX;
         game.player_mut(A).unwrap().mana_pool.red = 1;
-        let before = game.player(A).unwrap().mana_pool.clone();
-        let result = execute_mana_losses(&mut game, &mut ExecutionContext::new_default(ObjectId::from_raw(92), A), vec![A], false);
-        assert!(result.as_ref().err().is_some_and(ExecutionError::is_incomplete_execution));
-        assert_eq!(game.player(A).unwrap().mana_pool, before);
+        execute_mana_losses(&mut game, &mut ExecutionContext::new_default(ObjectId::from_raw(92), A), vec![A], false)
+            .expect("converted mana saturates instead of failing");
+        let pool = &game.player(A).unwrap().mana_pool;
+        assert_eq!((pool.colorless, pool.blue, pool.red), (u64::MAX, 0, 0));
     }
     struct Pause { pending: bool, players: Vec<PlayerId> }
     impl DecisionMaker for Pause {
@@ -660,7 +666,9 @@ mod direct_owner_resource_tests {
     use crate::target::PlayerFilter;
     #[test]
     fn direct_boundary_shares_one_budget_across_all_players_added_programs() {
-        for limit in [1, 2] {
+        // `None` clamps the shared token-count budget; `Some(n)` caps the shared
+        // instruction work guard, which still fails the whole boundary.
+        for limit in [None, Some(1), Some(2)] {
             let mut game = crate::tests::test_helpers::setup_two_player_game();
             let token = crate::cards::CardDefinitionBuilder::new(CardId::new(), "Loss token")
                 .token().card_types(vec![crate::CardType::Artifact]).build();
@@ -672,9 +680,16 @@ mod direct_owner_resource_tests {
                     ReplacementAction::Additionally(vec![crate::effect::Effect::create_tokens(token.clone(), 1)])));
             }
             let before_id = game.next_object_id_counter();
-            game.set_token_creation_limits(crate::effects::tokens::TokenCreationLimits { max_created_tokens: limit, ..Default::default() });
+            game.set_token_creation_limits(match limit {
+                Some(instructions) => crate::effects::tokens::TokenCreationLimits { max_instructions: instructions, ..Default::default() },
+                None => crate::effects::tokens::TokenCreationLimits { max_created_tokens: 1, ..Default::default() },
+            });
             let result = game.empty_mana_pools_with_dm(&mut SelectFirstDecisionMaker);
-            if limit == 1 {
+            if limit.is_none() {
+                // Both players' programs share one budget: one token fits, no error.
+                result.unwrap(); assert_eq!(game.battlefield.len(), 1);
+                assert!(game.players.iter().all(|player| player.mana_pool.total() == 0));
+            } else if limit == Some(1) {
                 assert!(matches!(result, Err(ExecutionError::ResourceLimitExceeded { .. })));
                 assert!(game.battlefield.is_empty()); assert_eq!(game.next_object_id_counter(), before_id);
                 assert!(game.players.iter().all(|player| player.mana_pool.green == 1));

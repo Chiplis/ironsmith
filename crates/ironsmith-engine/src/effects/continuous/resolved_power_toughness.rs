@@ -62,8 +62,8 @@ impl ResolvedPowerToughness {
     ) -> Result<Self, ExecutionError> {
         let count = resolve_value(game, count, ctx)?;
         Ok(Self {
-            power: power * count,
-            toughness: toughness * count,
+            power: power.saturating_mul(count),
+            toughness: toughness.saturating_mul(count),
         })
     }
 

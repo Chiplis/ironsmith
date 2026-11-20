@@ -80,6 +80,30 @@ pub(crate) fn attachment_destinations(
         return crate::effects::helpers::resolve_objects_from_spec(game, spec, ctx)
             .map(|objects| objects.into_iter().map(AttachmentTarget::Object).collect());
     }
+    // "As this permanent transforms into Curse of Leeches, attach it to a
+    // player." An untargeted player host is chosen by the attachment's
+    // controller among every player in the game (CR 303.4f, 701.3a); it is
+    // not the first player that matches.
+    if let ChooseSpec::Player(filter) = spec.base()
+        && matches!(filter, crate::target::PlayerFilter::Any | crate::target::PlayerFilter::Opponent)
+        && !spec.is_target()
+    {
+        let filter_ctx = ctx.filter_context(game);
+        let players = game
+            .players
+            .iter()
+            .filter(|player| player.is_in_game())
+            .map(|player| player.id)
+            .filter(|&player| {
+                crate::filter::player_filter_matches_game(filter, player, game, &filter_ctx)
+            })
+            .map(AttachmentTarget::Player)
+            .collect::<Vec<_>>();
+        if players.is_empty() {
+            return Err(ExecutionError::InvalidTarget);
+        }
+        return Ok(players);
+    }
     resolve_attachment_target(game, spec, ctx).map(|target| vec![target])
 }
 
@@ -98,7 +122,7 @@ pub(crate) fn choose_attachment_destination(
     }).map(|target| {
         let name = match target {
             AttachmentTarget::Object(id) => game.object(id).map(|object| object.name.to_string()).unwrap_or_else(|| "permanent".into()),
-            AttachmentTarget::Player(id) => format!("player {id:?}"),
+            AttachmentTarget::Player(id) => game.player(id).map(|player| player.name.clone()).unwrap_or_else(|| format!("player {id:?}")),
         };
         (target, name)
     }).collect::<Vec<_>>();
@@ -137,6 +161,22 @@ pub(crate) fn entry_attachment_for_move(
     effect: &crate::effect::Effect,
     next: Option<&crate::effect::Effect>,
 ) -> Option<ChooseSpec> {
+    // "Create a Monster Role token attached to it" lowers the attach as a
+    // tagged (and possibly identified) instruction so a later "that
+    // creature" can name the host. Those wrappers don't change which
+    // instruction names the entering object's host (CR 303.4i).
+    fn peel(mut effect: &crate::effect::Effect) -> &crate::effect::Effect {
+        loop {
+            if let Some(tagged) = effect.downcast_ref::<crate::effects::TaggedEffect>() {
+                effect = &*tagged.effect;
+            } else if let Some(with_id) = effect.downcast_ref::<crate::effects::WithIdEffect>() {
+                effect = &*with_id.effect;
+            } else {
+                return effect;
+            }
+        }
+    }
+    let next = next.map(peel);
     // "Create an Aura token attached to X": the creation's attachment choice
     // is suppressed and the following instruction names its host.
     if let Some(tagged) = effect.downcast_ref::<crate::effects::TaggedEffect>()

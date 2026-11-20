@@ -21,15 +21,10 @@ impl CollectManaPaymentsEffect {
     }
 }
 
-fn add_accepted_payment(total: u32, amount: u32) -> Result<u32, ExecutionError> {
-    total
-        .checked_add(amount)
-        .filter(|sum| *sum <= i32::MAX as u32)
-        .ok_or_else(|| {
-            ExecutionError::UnresolvableValue(
-                "collective mana total exceeds the value domain".into(),
-            )
-        })
+/// Value::X is signed at its consumers, so the accepted total saturates at
+/// the signed boundary instead of wrapping.
+fn add_accepted_payment(total: u32, amount: u32) -> u32 {
+    total.saturating_add(amount).min(i32::MAX as u32)
 }
 
 impl EffectExecutor for CollectManaPaymentsEffect {
@@ -67,24 +62,12 @@ impl EffectExecutor for CollectManaPaymentsEffect {
                     let mut receipts = Vec::with_capacity(players.len() + 1);
                     for player in players {
                         ctx.x_value = None;
-                        // Value::X is signed at its consumers. Never wrap, saturate,
-                        // or silently publish a partial total at that boundary.
-                        let pooled = game
-                            .player(player)
-                            .map_or(0, |player| player.mana_pool.total_wide());
-                        if pooled > i32::MAX as u64 {
-                            return Err(ExecutionError::UnresolvableValue(
-                                "collective contribution exceeds the value domain".into(),
-                            ));
-                        }
+                        // Value::X is signed at its consumers: the offered
+                        // maximum saturates at that boundary.
                         let potential = crate::derived_view::DerivedGameView::new(game)
                             .potential_mana(player)
                             .total_wide();
-                        let maximum = i32::try_from(potential).map_err(|_| {
-                            ExecutionError::UnresolvableValue(
-                                "collective contribution exceeds the value domain".into(),
-                            )
-                        })?;
+                        let maximum = i32::try_from(potential).unwrap_or(i32::MAX);
                         let payment = PayManaEffect::new(
                             ManaCost::from_symbols(vec![ManaSymbol::X]),
                             ChooseSpec::SpecificPlayer(player),
@@ -107,7 +90,7 @@ impl EffectExecutor for CollectManaPaymentsEffect {
                         // remains a successful payment receipt.
                         for fact in receipt.outcome.instruction_result().execution_facts() {
                             if let ExecutionFact::ManaPaid { x_value } = fact {
-                                total = add_accepted_payment(total, *x_value)?;
+                                total = add_accepted_payment(total, *x_value);
                             }
                         }
                         receipts.push(receipt);
@@ -147,10 +130,10 @@ impl EffectExecutor for CollectManaPaymentsEffect {
 mod tests {
     use super::*;
     #[test]
-    fn total_checks_both_unsigned_overflow_and_the_signed_value_boundary() {
-        assert_eq!(add_accepted_payment(i32::MAX as u32, 0).unwrap(), i32::MAX as u32);
-        assert!(matches!(add_accepted_payment(i32::MAX as u32, 1), Err(ExecutionError::UnresolvableValue(_))));
-        assert!(matches!(add_accepted_payment(u32::MAX, 1), Err(ExecutionError::UnresolvableValue(_))));
-        assert_eq!(add_accepted_payment(2, 3).unwrap(), 5);
+    fn total_saturates_at_the_signed_value_boundary() {
+        assert_eq!(add_accepted_payment(i32::MAX as u32, 0), i32::MAX as u32);
+        assert_eq!(add_accepted_payment(i32::MAX as u32, 1), i32::MAX as u32);
+        assert_eq!(add_accepted_payment(u32::MAX, 1), i32::MAX as u32);
+        assert_eq!(add_accepted_payment(2, 3), 5);
     }
 }
