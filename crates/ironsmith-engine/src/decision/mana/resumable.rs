@@ -720,6 +720,25 @@ pub(super) fn bounding_payments() -> bool {
 /// Use the authoritative planner's resumable search for a query against the
 /// bound root. Pending remains provisional and prevents publishing a complete
 /// menu. Other games retain the synchronous oracle, never a cached root answer.
+pub(super) fn check_payment_result(
+    game: &GameState,
+    request: &crate::mana_payment::ManaPaymentRequest,
+) -> Result<(), crate::mana_payment::ManaPaymentFailure> {
+    if !mana_payment_is_assumed()
+        && !BOUNDED_RECHECK.with(std::cell::Cell::get)
+        && !SESSION.with(|slot| slot.borrow().is_some())
+    {
+        return crate::mana_payment::check_mana_payment(game, request);
+    }
+    if check_payment(game, request) {
+        return Ok(());
+    }
+    Err(match analysis_failure().or_else(|| game.token_resource_failure()) {
+        Some(error) => crate::mana_payment::ManaPaymentFailure::EffectExecutionFailed(error),
+        None => crate::mana_payment::ManaPaymentFailure::NoLegalPlan,
+    })
+}
+
 pub(super) fn check_payment(game: &GameState, request: &crate::mana_payment::ManaPaymentRequest) -> bool {
     if mana_payment_is_assumed() { return true; }
     // A menu, and the re-check of an action picked from it, first ask the

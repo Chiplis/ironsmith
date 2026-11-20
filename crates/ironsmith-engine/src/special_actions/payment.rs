@@ -140,7 +140,7 @@ pub(super) fn check_special_action_payment(
                     Some(payment.source),
                     payment.reason,
                 );
-            return crate::mana_payment::check_mana_payment(game, &request).map_err(|error| {
+            return crate::decision::check_scoped_mana_payment_result(game, &request).map_err(|error| {
                 match error {
                     crate::mana_payment::ManaPaymentFailure::EffectExecutionFailed(error) => {
                         game.record_token_resource_failure(&error);
@@ -432,6 +432,60 @@ mod tests {
                 plan_id: ctx.plan.id,
                 request_hash: ctx.plan.request_hash,
             }
+        }
+    }
+
+    #[test]
+    fn special_action_payment_respects_and_resumes_the_analysis_budget() {
+        for kind in 0..4 {
+            let (mut game, player, _, action) = setup(kind);
+            for land in game.battlefield.iter().copied().collect::<Vec<_>>() {
+                let abilities = game.object_mut(land).unwrap().abilities_mut();
+                abilities.clear();
+                abilities.push(crate::ability::Ability::mana_with_effects(
+                    crate::cost::TotalCost::from_cost(crate::costs::Cost::life(1)),
+                    vec![crate::effect::Effect::add_mana_of_any_color_restricted(
+                        1,
+                        vec![crate::color::Color::White, crate::color::Color::Blue],
+                    )],
+                ));
+            }
+            let mut session = crate::decision::ManaAnalysisSession::default();
+            let (_, complete) = session.run_for_game(&game, 1, || {
+                can_perform_check(&action, &game, player)
+            });
+            assert!(!complete, "kind {kind}: payment bypassed the analysis budget");
+            assert!(session.last_slice_nodes() <= 1);
+            assert!(session.failure().is_none());
+
+            let (result, complete) = session.run_for_game(&game, 128, || {
+                can_perform_check(&action, &game, player)
+            });
+            assert!(complete, "kind {kind}: payment did not resume");
+            assert_eq!(result, Ok(()));
+            assert_eq!(can_perform_check(&action, &game, player), Ok(()));
+        }
+    }
+
+    #[test]
+    fn special_action_payment_bound_does_not_allow_unfunded_execution() {
+        for kind in 0..4 {
+            let (mut game, player, card, action) = setup(kind);
+            for land in game.battlefield.iter().copied().collect::<Vec<_>>() {
+                game.tap(land);
+            }
+            let zone = game.object(card).unwrap().zone;
+            assert_eq!(
+                crate::decision::with_bounded_payment_recheck(true, || {
+                    can_perform_check(&action, &game, player)
+                }),
+                Err(ActionError::CantPayCost)
+            );
+            assert_eq!(
+                perform(action, &mut game, player, &mut PaymentDm::default()),
+                Err(ActionError::CantPayCost)
+            );
+            assert_eq!(game.object(card).unwrap().zone, zone);
         }
     }
 

@@ -27,6 +27,13 @@ pub(crate) fn check_scoped_mana_payment(game: &GameState, request: &crate::mana_
     resumable::check_payment(game, request)
 }
 
+pub(crate) fn check_scoped_mana_payment_result(
+    game: &GameState,
+    request: &crate::mana_payment::ManaPaymentRequest,
+) -> Result<(), crate::mana_payment::ManaPaymentFailure> {
+    resumable::check_payment_result(game, request)
+}
+
 pub(crate) fn mana_cost_has_black_symbol(cost: &crate::mana::ManaCost) -> bool {
     cost.pips()
         .iter()
