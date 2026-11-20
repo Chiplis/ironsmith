@@ -18,7 +18,8 @@ use manabrew_protocol::prompts::{
     ChooseActionInput, ChooseActionOutput, ChooseAttackersInput, ChooseAttackersOutput,
     ChooseBlockersInput, ChooseBlockersOutput, ChooseBoardTargetsInput, ChooseBoardTargetsOutput,
     ChooseBooleanInput, ChooseBooleanOutput, ChooseCardsInput, ChooseCardsOutput, ChooseColorInput,
-    ChooseColorOutput, ChooseFromSelectionInput, ChooseFromSelectionOutput, ChooseNumberInput,
+    ChooseColorOutput, ChooseCombatDamageAssignmentInput, ChooseCombatDamageAssignmentOutput,
+    ChooseFromSelectionInput, ChooseFromSelectionOutput, ChooseNumberInput,
     ChooseNumberOutput, MulliganInput, MulliganOutput, MulliganPutBackInput,
     MulliganPutBackOutput, PayManaCostInput, PayManaCostOutput,
     PromptInput, PromptOutput, ReorderInput, ReorderItem, ReorderOutput, ResponseViolation,
@@ -2532,10 +2533,152 @@ impl WasmGame {
         }), ManabrewPromptBinding::Number { minimum_remaining, maximum_remaining, accumulated, description }))
     }
 
+    fn manabrew_combat_damage_prompt(
+        &self,
+        combat: &ironsmith::game_loop::CombatDamageAssignmentPrompt,
+    ) -> Result<(PromptInput, ManabrewPromptBinding), ProtocolError> {
+        let game = self.manabrew_game();
+        let targets = combat.division.targets();
+        let total_damage = i32::try_from(combat.total).map_err(|_| {
+            protocol_error(
+                ProtocolErrorCode::InvalidShape,
+                "combat damage exceeds the Manabrew assignment range",
+                None,
+            )
+        })?;
+        let defender = targets
+            .iter()
+            .find(|target| matches!(target, Target::Player(_)))
+            .copied()
+            .or(combat.division.excess_target);
+        let blocker_ids = targets
+            .iter()
+            .filter_map(|target| match target {
+                Target::Object(id) if Some(*target) != defender => Some(object_id(game, *id)),
+                _ => None,
+            })
+            .collect();
+        Ok((
+            PromptInput::ChooseCombatDamageAssignment(ChooseCombatDamageAssignmentInput {
+                attacker_id: object_id(game, combat.source),
+                blocker_ids,
+                defender_id: defender.map(|target| protocol_target(game, target).id),
+                total_damage,
+                attacker_has_deathtouch: combat.division.deathtouch,
+            }),
+            ManabrewPromptBinding::CombatDamage {
+                targets: targets
+                    .into_iter()
+                    .map(|target| protocol_target(game, target).id)
+                    .collect(),
+            },
+        ))
+    }
+
+    fn manabrew_target_prefix_valid(state: &ManabrewTargetState, chosen: &[Target]) -> bool {
+        let index = state.selections.len();
+        let mut requirements = state.requirements[..=index].to_vec();
+        for (requirement, selection) in requirements.iter_mut().zip(
+            state
+                .selections
+                .iter()
+                .map(Vec::as_slice)
+                .chain(std::iter::once(chosen)),
+        ) {
+            requirement.min_targets = selection.len();
+            requirement.max_targets = Some(selection.len());
+            requirement.additional_target_budget = 0;
+        }
+        let selected = state
+            .selections
+            .iter()
+            .flatten()
+            .copied()
+            .chain(chosen.iter().copied())
+            .collect::<Vec<_>>();
+        validate_flat_target_assignment(&requirements, &selected)
+    }
+
+    fn manabrew_targets_prompt(
+        &self,
+        state: ManabrewTargetState,
+        source: Option<String>,
+    ) -> Result<(PromptInput, ManabrewPromptBinding), ProtocolError> {
+        let requirement = state.requirements.get(state.selections.len());
+        let mut targets = HashMap::new();
+        let mut candidates = Vec::new();
+        if let Some(requirement) = requirement {
+            for target in &requirement.legal_targets {
+                if requirement.max_targets == Some(1)
+                    && !Self::manabrew_target_prefix_valid(&state, &[*target])
+                {
+                    continue;
+                }
+                let reference = protocol_target(self.manabrew_game(), *target);
+                let key = format!("{:?}:{}", reference.kind, reference.id);
+                if targets.insert(key, *target).is_none() {
+                    candidates.push(reference);
+                }
+            }
+        }
+        let min = requirement.map_or(0, |requirement| requirement.min_targets);
+        let max = requirement.map_or(0, |requirement| {
+            requirement
+                .max_targets
+                .map(|max| {
+                    max.saturating_sub(requirement.additional_target_budget)
+                        .saturating_add(
+                            state
+                                .additional_remaining
+                                .min(requirement.additional_target_budget),
+                        )
+                })
+                .unwrap_or(candidates.len())
+                .min(candidates.len())
+        });
+        let description = requirement.map_or_else(
+            || state.context.clone(),
+            |requirement| format!("{}: {}", state.context, requirement.description),
+        );
+        Ok((
+            PromptInput::ChooseBoardTargets(ChooseBoardTargetsInput {
+                presentation: presentation("Choose targets", Some(description), source),
+                candidates,
+                hostile: false,
+                intent: manabrew_protocol::game::TargetingIntent::Friendly,
+                min_targets: i32::try_from(min).map_err(|_| {
+                    protocol_error(
+                        ProtocolErrorCode::InvalidShape,
+                        "target minimum exceeds protocol range",
+                        None,
+                    )
+                })?,
+                max_targets: i32::try_from(max).map_err(|_| {
+                    protocol_error(
+                        ProtocolErrorCode::InvalidShape,
+                        "target maximum exceeds protocol range",
+                        None,
+                    )
+                })?,
+                chosen_targets: 0,
+                cancellable: state.cancellable,
+            }),
+            ManabrewPromptBinding::Targets { targets, state },
+        ))
+    }
+
     fn build_manabrew_prompt(
         &self,
         context: &DecisionContext,
     ) -> Result<(PromptInput, ManabrewPromptBinding), ProtocolError> {
+        if matches!(context, DecisionContext::Distribute(_))
+            && self.runner_pending_decision
+            && let Some(runner) = self.runner.as_ref()
+            && !runner.has_pending_replay_choice()
+            && let Some(combat) = runner.current_combat_damage_assignment_prompt(self.manabrew_game())
+        {
+            return self.manabrew_combat_damage_prompt(&combat);
+        }
         let source = self.manabrew_source_card_id(context);
         let unsupported = |name: &str| {
             protocol_error(
@@ -3002,47 +3145,21 @@ impl WasmGame {
                     ManabrewPromptBinding::Blockers { objects },
                 ))
             }
-            DecisionContext::Targets(ctx) => {
-                let min_targets = ctx
-                    .requirements
-                    .iter()
-                    .map(|req| req.min_targets)
-                    .sum::<usize>();
-                let max_targets = ctx
-                    .requirements
-                    .iter()
-                    .map(|req| req.max_targets.map_or(req.legal_targets.len(),|max|max.saturating_sub(req.additional_target_budget)))
-                    .sum::<usize>()
-                    .saturating_add(ctx.requirements.iter().map(|req|req.additional_target_budget).max().unwrap_or(0));
-                let mut targets = HashMap::new();
-                let mut candidates = Vec::new();
-                for requirement in &ctx.requirements {
-                    for target in &requirement.legal_targets {
-                        let reference = protocol_target(self.manabrew_game(), *target);
-                        let key = format!("{:?}:{}", reference.kind, reference.id);
-                        if targets.insert(key, *target).is_none() {
-                            candidates.push(reference);
-                        }
-                    }
-                }
-                Ok((
-                    PromptInput::ChooseBoardTargets(ChooseBoardTargetsInput {
-                        presentation: presentation(
-                            "Choose targets",
-                            Some(ctx.context.clone()),
-                            source,
-                        ),
-                        candidates,
-                        hostile: false,
-                        intent: manabrew_protocol::game::TargetingIntent::Friendly,
-                        min_targets: min_targets.min(i32::MAX as usize) as i32,
-                        max_targets: max_targets.min(i32::MAX as usize) as i32,
-                        chosen_targets: 0,
-                        cancellable: self.is_cancelable(),
-                    }),
-                    ManabrewPromptBinding::Targets { targets },
-                ))
-            }
+            DecisionContext::Targets(ctx) => self.manabrew_targets_prompt(
+                ManabrewTargetState {
+                    requirements: ctx.requirements.clone(),
+                    selections: Vec::new(),
+                    additional_remaining: ctx
+                        .requirements
+                        .iter()
+                        .map(|requirement| requirement.additional_target_budget)
+                        .max()
+                        .unwrap_or(0),
+                    context: ctx.context.clone(),
+                    cancellable: self.is_cancelable(),
+                },
+                source,
+            ),
             DecisionContext::TextInput(ctx) => {
                 if !ctx.require_known_value {
                     return Err(unsupported("free-form text input"));
@@ -3668,6 +3785,33 @@ impl WasmGame {
                 }))
             }
             (
+                ManabrewPromptBinding::CombatDamage { targets },
+                PromptOutput::ChooseCombatDamageAssignment(
+                    ChooseCombatDamageAssignmentOutput::CombatDamageAssignmentDecision {
+                        assignments,
+                    },
+                ),
+            ) => {
+                let mut option_indices = Vec::new();
+                for assignment in assignments {
+                    let index = targets
+                        .iter()
+                        .position(|target| target == &assignment.assignee_id)
+                        .ok_or_else(|| {
+                            invalid(format!(
+                                "unknown combat damage recipient {}",
+                                assignment.assignee_id
+                            ))
+                        })?;
+                    let amount = usize::try_from(assignment.damage)
+                        .map_err(|_| invalid("combat damage must be non-negative".to_string()))?;
+                    option_indices.extend(std::iter::repeat_n(index, amount));
+                }
+                Ok(ManabrewResponseAction::Dispatch(UiCommand::SelectOptions {
+                    option_indices,
+                }))
+            }
+            (
                 ManabrewPromptBinding::DistributionNumber { state },
                 PromptOutput::ChooseNumber(ChooseNumberOutput::NumberDecision { chosen_number }),
             ) => {
@@ -3755,23 +3899,51 @@ impl WasmGame {
                 Ok(ManabrewResponseAction::Cancel)
             }
             (
-                ManabrewPromptBinding::Targets { targets },
+                ManabrewPromptBinding::Targets { targets, state },
                 PromptOutput::ChooseBoardTargets(ChooseBoardTargetsOutput::BoardTargets { chosen }),
             ) => {
-                let targets = chosen
+                let selected = chosen
                     .into_iter()
                     .map(|target| {
                         let key = format!("{:?}:{}", target.kind, target.id);
-                        match targets
+                        targets
                             .get(&key)
                             .copied()
-                            .ok_or_else(|| invalid(format!("unknown target {}", target.id)))?
-                        {
-                            Target::Player(player) => Ok(TargetInput::Player { player: player.0 }),
-                            Target::Object(object) => Ok(TargetInput::Object { object: object.0 }),
-                        }
+                            .ok_or_else(|| invalid(format!("unknown target {}", target.id)))
                     })
-                    .collect::<Result<Vec<_>, ProtocolError>>()?;
+                    .collect::<Result<Vec<_>, _>>()?;
+                let PromptInput::ChooseBoardTargets(input) = &open.input else {
+                    return Err(invalid("target binding requires a target prompt".into()));
+                };
+                if selected.len() < input.min_targets as usize
+                    || selected.len() > input.max_targets as usize
+                    || (!state.requirements.is_empty() && !Self::manabrew_target_prefix_valid(state, &selected))
+                {
+                    return Err(invalid(
+                        "targets do not satisfy this targeting requirement".into(),
+                    ));
+                }
+                let mut next = state.clone();
+                if let Some(requirement) = state.requirements.get(state.selections.len()) {
+                    if let Some(max) = requirement.max_targets {
+                        let base_max = max.saturating_sub(requirement.additional_target_budget);
+                        next.additional_remaining -= selected.len().saturating_sub(base_max);
+                    }
+                    next.selections.push(selected);
+                }
+                if next.selections.len() < next.requirements.len() {
+                    let (input, binding) = self.manabrew_targets_prompt(next, open.source_card_id.clone())?;
+                    return Ok(ManabrewResponseAction::Continue { input, binding });
+                }
+                let targets = next
+                    .selections
+                    .into_iter()
+                    .flatten()
+                    .map(|target| match target {
+                        Target::Player(player) => TargetInput::Player { player: player.0 },
+                        Target::Object(object) => TargetInput::Object { object: object.0 },
+                    })
+                    .collect();
                 Ok(ManabrewResponseAction::Dispatch(UiCommand::SelectTargets {
                     targets,
                 }))
@@ -4392,6 +4564,307 @@ mod manabrew_tests {
             input,
             binding,
         }
+    }
+
+    fn target_output(targets: &[Target], game: &WasmGame) -> PromptOutput {
+        PromptOutput::ChooseBoardTargets(ChooseBoardTargetsOutput::BoardTargets {
+            chosen: targets
+                .iter()
+                .map(|target| protocol_target(&game.game, *target))
+                .collect(),
+        })
+    }
+
+    #[test]
+    fn manabrew_target_roles_preserve_order_and_reject_wrong_role() {
+        use ironsmith::decisions::context::{TargetRequirementContext, TargetsContext};
+        let _guard = crate::test_id_counter_guard();
+        let mut game = game();
+        let card = ironsmith::card::CardBuilder::new(
+            ironsmith::ids::CardId::from_raw(990_011),
+            "Target role fixture",
+        )
+        .build();
+        let player = PlayerId::from_index(0);
+        let spell = Target::Object(
+            game.game
+                .create_object_from_card(&card, player, Zone::Stack),
+        );
+        let permanent = Target::Object(game.game.create_object_from_card(
+            &card,
+            player,
+            Zone::Battlefield,
+        ));
+        let source = ObjectId::from_raw(990_012);
+        let context = DecisionContext::Targets(TargetsContext::new(
+            player,
+            source,
+            "Cryptic Command",
+            vec![
+                TargetRequirementContext::single("target spell", vec![spell]),
+                TargetRequirementContext::single("target permanent", vec![permanent]),
+            ],
+        ));
+        let (input, binding) = game.build_manabrew_prompt(&context).unwrap();
+        let open = open_prompt(input, binding);
+        let PromptInput::ChooseBoardTargets(input) = &open.input else {
+            panic!("target prompt")
+        };
+        assert_eq!(serde_json::to_value(&input.candidates).unwrap(), serde_json::to_value(vec![protocol_target(&game.game, spell)]).unwrap());
+        assert_eq!((input.min_targets, input.max_targets), (1, 1));
+        assert!(
+            game.manabrew_response_action(&open, target_output(&[permanent], &game))
+                .is_err()
+        );
+        assert!(
+            game.manabrew_response_action(&open, target_output(&[], &game))
+                .is_err()
+        );
+        let response = game
+            .manabrew_response_action(&open, target_output(&[spell], &game))
+            .unwrap();
+        let ManabrewResponseAction::Continue { input, binding } = response else {
+            panic!("second role required")
+        };
+        let open = open_prompt(input, binding);
+        let PromptInput::ChooseBoardTargets(input) = &open.input else {
+            panic!("target prompt")
+        };
+        assert_eq!(
+            serde_json::to_value(&input.candidates).unwrap(),
+            serde_json::to_value(vec![protocol_target(&game.game, permanent)]).unwrap()
+        );
+        let response = game
+            .manabrew_response_action(&open, target_output(&[permanent], &game))
+            .unwrap();
+        let ManabrewResponseAction::Dispatch(command) = response else {
+            panic!("complete target command")
+        };
+        let answer = game.command_to_replay_answer(&context, command).unwrap();
+        let ReplayDecisionAnswer::Targets(targets) = answer else {
+            panic!("target replay answer")
+        };
+        assert_eq!(targets, vec![spell, permanent]);
+    }
+
+    #[test]
+    fn manabrew_target_roles_allow_reuse_except_when_distinct() {
+        use ironsmith::decisions::context::TargetRequirementContext;
+        let _guard = crate::test_id_counter_guard();
+        let game = game();
+        let alice = Target::Player(PlayerId::from_index(0));
+        let bob = Target::Player(PlayerId::from_index(1));
+        for distinct in [false, true] {
+            let mut requirement =
+                TargetRequirementContext::single("target player", vec![alice, bob]);
+            requirement.distinct_player_group = distinct.then_some(0);
+            let state = ManabrewTargetState {
+                requirements: vec![requirement.clone(), requirement],
+                selections: vec![vec![alice]],
+                additional_remaining: 0,
+                context: "Two targets".into(),
+                cancellable: true,
+            };
+            let (input, binding) = game.manabrew_targets_prompt(state, None).unwrap();
+            let open = open_prompt(input, binding);
+            let PromptInput::ChooseBoardTargets(input) = &open.input else {
+                panic!("target prompt")
+            };
+            assert_eq!(input.candidates.len(), if distinct { 1 } else { 2 });
+            assert!(matches!(
+                game.manabrew_response_action(
+                    &open,
+                    PromptOutput::ChooseBoardTargets(ChooseBoardTargetsOutput::Cancel)
+                )
+                .unwrap(),
+                ManabrewResponseAction::Cancel
+            ));
+            let selected = if distinct { bob } else { alice };
+            assert!(matches!(
+                game.manabrew_response_action(&open, target_output(&[selected], &game))
+                    .unwrap(),
+                ManabrewResponseAction::Dispatch(UiCommand::SelectTargets { .. })
+            ));
+        }
+    }
+
+    #[test]
+    fn manabrew_target_roles_share_extra_target_budget() {
+        use ironsmith::decisions::context::TargetRequirementContext;
+        let _guard = crate::test_id_counter_guard();
+        let game = game();
+        let alice = Target::Player(PlayerId::from_index(0));
+        let bob = Target::Player(PlayerId::from_index(1));
+        let mut requirement = TargetRequirementContext::single("target player", vec![alice, bob]);
+        requirement.max_targets = Some(2);
+        requirement.additional_target_budget = 1;
+        let state = ManabrewTargetState {
+            requirements: vec![requirement.clone(), requirement],
+            selections: Vec::new(),
+            additional_remaining: 1,
+            context: "Extra target".into(),
+            cancellable: false,
+        };
+        let (input, binding) = game.manabrew_targets_prompt(state, None).unwrap();
+        let open = open_prompt(input, binding);
+        let response = game
+            .manabrew_response_action(&open, target_output(&[alice, bob], &game))
+            .unwrap();
+        let ManabrewResponseAction::Continue { input, binding } = response else {
+            panic!("second role required")
+        };
+        let open = open_prompt(input, binding);
+        let PromptInput::ChooseBoardTargets(input) = &open.input else {
+            panic!("target prompt")
+        };
+        assert_eq!((input.min_targets, input.max_targets), (1, 1));
+        assert!(
+            game.manabrew_response_action(&open, target_output(&[alice, bob], &game))
+                .is_err()
+        );
+        assert!(matches!(
+            game.manabrew_response_action(&open, target_output(&[alice], &game))
+                .unwrap(),
+            ManabrewResponseAction::Dispatch(UiCommand::SelectTargets { .. })
+        ));
+    }
+
+    fn combat_assignment_game(deathtouch: bool) -> (WasmGame, DecisionContext, ObjectId, ObjectId) {
+        let mut game = game();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let mut make_creature = |name: &str, power, toughness, owner| {
+            let id = game.game.new_object_id();
+            let card = ironsmith::card::CardBuilder::new(
+                ironsmith::ids::CardId::from_raw(id.0 as u32),
+                name,
+            )
+            .card_types(vec![ironsmith::types::CardType::Creature])
+            .power_toughness(ironsmith::card::PowerToughness::fixed(power, toughness))
+            .build();
+            game.game.add_object(ironsmith::object::Object::from_card(
+                id,
+                &card,
+                owner,
+                ironsmith::zone::Zone::Battlefield,
+            ));
+            id
+        };
+        let attacker = make_creature("Trampler", 4, 6, alice);
+        let blocker = make_creature("Blocker", 2, 2, bob);
+        let object = game.game.object_mut(attacker).unwrap();
+        object
+            .abilities_mut()
+            .push(ironsmith::ability::Ability::static_ability(
+                ironsmith::static_abilities::StaticAbility::trample(),
+            ));
+        if deathtouch {
+            object
+                .abilities_mut()
+                .push(ironsmith::ability::Ability::static_ability(
+                    ironsmith::static_abilities::StaticAbility::deathtouch(),
+                ));
+        }
+        game.game.refresh_continuous_state().unwrap();
+        let mut runner = ironsmith::turn_runner::TurnRunner::from_state_for_sync(
+            ironsmith::turn_runner::TurnState::CombatDamageRegularAssign,
+        );
+        runner
+            .combat_mut()
+            .attackers
+            .push(ironsmith::combat_state::AttackerInfo {
+                creature: attacker,
+                target: AttackTarget::Player(bob),
+            });
+        runner.combat_mut().blockers.insert(attacker, vec![blocker]);
+        let combat = runner
+            .current_combat_damage_assignment_prompt(&game.game)
+            .unwrap();
+        let context = DecisionContext::Distribute(combat.decision_context(&game.game));
+        game.runner = Some(runner);
+        game.runner_pending_decision = true;
+        game.pending_decision = Some(context.clone());
+        (game, context, attacker, blocker)
+    }
+
+    #[test]
+    fn manabrew_combat_damage_uses_one_complete_assignment() {
+        let _guard = crate::test_id_counter_guard();
+        let (game, context, attacker, blocker) = combat_assignment_game(false);
+        let (input, _) = game.build_manabrew_prompt(&context).unwrap();
+        let PromptInput::ChooseCombatDamageAssignment(input) = input else {
+            panic!("combat damage must not be split into independent number choices");
+        };
+        assert_eq!(input.attacker_id, object_id(&game.game, attacker));
+        assert_eq!(input.blocker_ids, vec![object_id(&game.game, blocker)]);
+        assert_eq!(input.defender_id.as_deref(), Some("player-1"));
+        assert_eq!(input.total_damage, 4);
+        assert!(!input.attacker_has_deathtouch);
+    }
+
+    #[test]
+    fn manabrew_combat_damage_can_correct_an_illegal_trample_split() {
+        let _guard = crate::test_id_counter_guard();
+        let (mut game, context, _, blocker) = combat_assignment_game(false);
+        let (input, binding) = game.build_manabrew_prompt(&context).unwrap();
+        let open = open_prompt(input, binding);
+        for (to_blocker, legal) in [(1, false), (2, true), (4, true)] {
+            let output = PromptOutput::ChooseCombatDamageAssignment(
+                ChooseCombatDamageAssignmentOutput::CombatDamageAssignmentDecision {
+                    assignments: vec![
+                        manabrew_protocol::prompts::common::CombatDamageAssignmentEntry {
+                            assignee_id: object_id(&game.game, blocker),
+                            damage: to_blocker,
+                        },
+                        manabrew_protocol::prompts::common::CombatDamageAssignmentEntry {
+                            assignee_id: "player-1".into(),
+                            damage: 4 - to_blocker,
+                        },
+                    ],
+                },
+            );
+            let action = game.manabrew_response_action(&open, output).unwrap();
+            let ManabrewResponseAction::Dispatch(command) = action else {
+                panic!("the entire assignment must dispatch at once");
+            };
+            let ReplayDecisionAnswer::Distribute(distribution) =
+                game.command_to_replay_answer(&context, command).unwrap()
+            else {
+                panic!("combat response must remain a distribution");
+            };
+            assert_eq!(
+                game.runner
+                    .as_ref()
+                    .unwrap()
+                    .validate_combat_damage_distribution(&game.game, &distribution)
+                    .is_ok(),
+                legal
+            );
+        }
+    }
+
+    #[test]
+    fn manabrew_combat_damage_preserves_deathtouch() {
+        let _guard = crate::test_id_counter_guard();
+        let (game, context, _, blocker) = combat_assignment_game(true);
+        let (input, _) = game.build_manabrew_prompt(&context).unwrap();
+        let PromptInput::ChooseCombatDamageAssignment(input) = input else {
+            panic!("combat assignment required");
+        };
+        assert!(input.attacker_has_deathtouch);
+        assert!(
+            game.runner
+                .as_ref()
+                .unwrap()
+                .validate_combat_damage_distribution(
+                    &game.game,
+                    &[
+                        (Target::Object(blocker), 1),
+                        (Target::Player(PlayerId::from_index(1)), 3)
+                    ],
+                )
+                .is_ok()
+        );
     }
 
     #[test]
