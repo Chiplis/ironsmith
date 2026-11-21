@@ -3124,7 +3124,8 @@ fn describe_sacrifice_then_controller_chosen_attachment(effects: &[Effect]) -> O
         || choose.reveal
         || choose.count.is_random()
         || choose_primary_zone(choose) != Some(Zone::Battlefield)
-        || !matches!(attach.objects.base(), ChooseSpec::Source)
+        || !(matches!(attach.objects.base(), ChooseSpec::Source)
+            || matches!(attach.objects.base(), ChooseSpec::Tagged(tag) if tag.as_str() == crate::tag::GRANTING_SOURCE_TAG))
         || !matches!(&attach.target, ChooseSpec::Tagged(tag) if tag == &choose.tag)
     {
         return None;
@@ -3960,6 +3961,9 @@ fn describe_comma_then_sequence(sequence: &crate::effects::SequenceEffect) -> Op
         return None;
     }
     if let Some(compact) = describe_draw_then_same_cards_top_or_bottom(sequence) {
+        return Some(compact);
+    }
+    if let Some(compact) = describe_looked_keep_one_rest_bottom_then_draw(&sequence.effects) {
         return Some(compact);
     }
     // "Choose up to one target creature, then airbend all other creatures."
@@ -4842,7 +4846,7 @@ pub(super) fn describe_coordinated_search_exile_face_down_pile_shuffle(
         return None;
     }
     Some(format!(
-        "{}, exile them in a face-down pile, and shuffle your library",
+        "{}, exile them in a face-down pile, and shuffle that pile",
         capitalize_first(&search)
     ))
 }
@@ -5155,6 +5159,11 @@ pub(super) fn describe_coordinated_sequence(
     if sequence.surface == ironsmith_core::SequenceSurface::Coordinated
         && sequence.result_label.is_none()
         && let Some(rendered) = describe_coordinated_without_restated_player_declarations(sequence)
+    {
+        return Some(rendered);
+    }
+    if sequence.result_label.is_none()
+        && let Some(rendered) = describe_exile_source_then_return_under_chosen_opponent(sequence)
     {
         return Some(rendered);
     }
@@ -9040,6 +9049,7 @@ pub(crate) fn describe_exile_then_return(
         Some(ironsmith_core::SearchResultReferenceSurface::Them) => "them",
         Some(ironsmith_core::SearchResultReferenceSurface::ThoseCards) => "those cards",
         Some(ironsmith_core::SearchResultReferenceSurface::TheCard) => "the card",
+        Some(ironsmith_core::SearchResultReferenceSurface::TopCardOfExiledPile) => "that card",
         None if target_is_source => "it",
         None if choose_spec_allows_multiple(&exile_move.target) => "those cards",
         None => "that card",
@@ -10415,6 +10425,21 @@ pub(crate) fn describe_inline_ability_with_self_subject(
             if let Some(x_definition) = trailing_x_definition {
                 append_sentence_clause(&mut line, &x_definition);
             }
+            // The activation's own typed discount ("This ability costs {X}
+            // less to activate, where X is this creature's power"), read as
+            // the printed-line cost-reduction static reads.
+            if let Some(value) = &activated.effects.activation_self_cost_reduction {
+                let mut reduction = crate::static_abilities::ActivatedAbilityCostReduction::new(
+                    ObjectFilter::source(),
+                    1,
+                );
+                reduction.multiplier = Some(value.clone());
+                let clause = crate::static_abilities::StaticAbility::new(reduction).display();
+                let clause = clause.trim().trim_end_matches('.');
+                if !clause.is_empty() {
+                    append_activation_clause(&mut line, clause);
+                }
+            }
             let mut restriction_clauses = collect_activation_restriction_clauses(
                 &activated.timing,
                 &activated.additional_restrictions,
@@ -10425,6 +10450,21 @@ pub(crate) fn describe_inline_ability_with_self_subject(
                 && !restriction_clauses
                     .iter()
                     .any(|clause| clause.to_ascii_lowercase().starts_with("activate only if "))
+            {
+                push_activation_restriction_clause(
+                    &mut restriction_clauses,
+                    describe_mana_activation_condition(&condition),
+                );
+            }
+            // "Activate only during your turn and only if this card is
+            // exiled" (Q, Stacking the Deck's granted ability): an exile-zone
+            // activation gate with no authored clause reads from the typed
+            // condition, joined to the timing clause.
+            if let Some(condition @ crate::ConditionExpr::SourceIsInZone(Zone::Exile)) =
+                activation_condition_without_presentation_label(activated)
+                && !restriction_clauses
+                    .iter()
+                    .any(|clause| clause.to_ascii_lowercase().contains("only if "))
             {
                 push_activation_restriction_clause(
                     &mut restriction_clauses,
@@ -10497,7 +10537,7 @@ pub(super) fn activated_presentation_label(
         .or_else(|| inferred_throw_activation_label(activated))
 }
 
-pub(super) fn activation_condition_without_presentation_label(
+pub(crate) fn activation_condition_without_presentation_label(
     activated: &crate::ability::ActivatedAbility,
 ) -> Option<crate::ConditionExpr> {
     let condition = activated.activation_condition.as_ref()?;
@@ -10727,10 +10767,14 @@ pub(super) fn describe_other_player_adds_any_color(
         }
         _ => return None,
     };
-    let color_phrase = if any_one_color {
-        "mana of any one color they choose"
-    } else {
-        "mana of any color they choose"
+    // "Target player adds one mana of any color" (The Warring Triad): a
+    // targeted adder prints no chooser.
+    let targeted = matches!(player, PlayerFilter::Target(_));
+    let color_phrase = match (any_one_color, targeted) {
+        (true, false) => "mana of any one color they choose",
+        (false, false) => "mana of any color they choose",
+        (true, true) => "mana of any one color",
+        (false, true) => "mana of any color",
     };
     Some(format!(
         "{subject} adds {} {color_phrase}",
@@ -11285,7 +11329,7 @@ pub(crate) fn describe_static_ability_with_subject(
             } if filter.source && additional_restrictions.is_empty() => {
                 return format!("{} can't be blocked", capitalize_first(subject));
             }
-            ironsmith_core::StaticAbilityPayload::SetCardTypes { filter, card_types }
+            ironsmith_core::StaticAbilityPayload::SetCardTypes { filter, card_types, .. }
                 if filter.source && !card_types.is_empty() =>
             {
                 let types = card_types
@@ -11535,7 +11579,7 @@ pub(crate) fn describe_static_ability_with_subject(
                     );
                 }
                 if matches!(&ability.payload,
-                    ironsmith_core::StaticAbilityPayload::SetCardTypes { filter, card_types }
+                    ironsmith_core::StaticAbilityPayload::SetCardTypes { filter, card_types, .. }
                         if filter.source && !card_types.is_empty())
                 {
                     // Turn-gated animation reads with a "During ..." lead-in
@@ -13582,6 +13626,29 @@ pub(super) fn describe_trigger_surface_with_frequency(
             trigger_surface = format!("{base} for the first time during each of your turns");
         } else {
             trigger_surface.push_str(" for the first time each turn");
+        }
+    }
+    // "When this Aura enters attached to a creature" (Infinite Reflection):
+    // the resolution's attachment capture carries the authored host noun.
+    if let Some(zone_change) = triggered
+        .trigger
+        .downcast_ref::<crate::triggers::zone_changes::ZoneChangeTrigger>()
+        && zone_change.this_object
+        && zone_change.to == crate::triggers::zone_changes::ZonePattern::Specific(Zone::Battlefield)
+        && let Some(host) = triggered
+            .effects
+            .segments
+            .first()
+            .and_then(|segment| segment.default_effects.first())
+            .and_then(|effect| effect.downcast_ref::<crate::effects::TagAttachedToSourceEffect>())
+            .and_then(|tag_attached| tag_attached.entered_attached_host_surface)
+    {
+        let base = trigger_surface
+            .strip_suffix(" the battlefield")
+            .unwrap_or(trigger_surface.as_str());
+        if base.ends_with(" enters") {
+            trigger_surface =
+                format!("{base} attached to {}", with_indefinite_article(host.name()));
         }
     }
     rewrite_source_bound_trigger_subject(triggered, trigger_surface, self_subject)
@@ -17866,7 +17933,9 @@ pub(super) fn describe_non_owner_controller_state_trigger_sacrifice(
     let sacrifice = with_id
         .effect
         .downcast_ref::<crate::effects::SacrificeTargetEffect>()?;
-    if !matches!(sacrifice.target, ChooseSpec::Source) || sacrifice.player.is_some() {
+    if !matches!(sacrifice.target.unhinted(), ChooseSpec::Source)
+        || !matches!(sacrifice.player, None | Some(PlayerFilter::You))
+    {
         return None;
     }
     let if_effect = if_effect.downcast_ref::<crate::effects::IfEffect>()?;
@@ -19051,6 +19120,7 @@ pub(super) fn describe_triggered_inline_ability(
         line = line.replace("combat damage to a player", "combat damage to an opponent");
     }
     apply_attacks_while_most_life_surface(triggered, &mut line, &mut intervening_condition);
+    fold_first_time_your_turn_frequency(&mut line, trigger_frequency, &mut intervening_condition);
     if line.to_ascii_lowercase().ends_with("becomes tapped") {
         let mut conjuncts = Vec::new();
         if let Some(condition) = intervening_condition.take() {
@@ -21080,4 +21150,105 @@ fn replacement_reflexive_followup_preserves_multisentence_payment_and_reward() {
     assert!(rendered.contains("you may pay {2}"), "{rendered}");
     assert!(rendered.contains("Pest creature token"), "{rendered}");
     assert!(rendered.contains("you gain 1 life"), "{rendered}");
+}
+
+/// "look at the top X cards of your library, put all but one of them on the
+/// bottom of your library in a random order, then draw a card" (Aladdin's
+/// Lamp): the looked cards are pooled, one is kept, the rest go to the
+/// bottom, and the draw then takes the kept card.
+fn describe_looked_keep_one_rest_bottom_then_draw(effects: &[Effect]) -> Option<String> {
+    let [look_effect, pool_effect, choose_effect, remainder_effect, draw_effect] = effects else {
+        return None;
+    };
+    let look = structural_unwrap_render_wrappers(look_effect)
+        .downcast_ref::<crate::effects::LookAtTopCardsEffect>()?;
+    let pool = structural_unwrap_render_wrappers(pool_effect)
+        .downcast_ref::<crate::effects::TagMatchingObjectsEffect>()?;
+    let choose = structural_unwrap_render_wrappers(choose_effect)
+        .downcast_ref::<crate::effects::ChooseObjectsEffect>()?;
+    let remainder = structural_unwrap_render_wrappers(remainder_effect)
+        .downcast_ref::<crate::effects::PutTaggedRemainderOnLibraryBottomEffect>()?;
+    let draw = structural_unwrap_render_wrappers(draw_effect)
+        .downcast_ref::<crate::effects::DrawCardsEffect>()?;
+    let only_tagged = |filter: &ObjectFilter, tag: &TagKey| {
+        let mut rest = filter.clone();
+        rest.zone = None;
+        rest.union_surface = Default::default();
+        let constraints = std::mem::take(&mut rest.tagged_constraints);
+        matches!(constraints.as_slice(), [constraint]
+            if &constraint.tag == tag
+                && constraint.relation == crate::filter::TaggedOpbjectRelation::IsTaggedObject)
+            && rest == ObjectFilter::default()
+    };
+    if look.player != PlayerFilter::You
+        || look.viewer != PlayerFilter::You
+        || look.reveal
+        || !pool.additional_zones.is_empty()
+        || !only_tagged(&pool.filter, &look.tag)
+        || choose.chooser != PlayerFilter::You
+        || choose.is_search
+        || choose.reveal
+        || choose.count_value.is_some()
+        || choose.aggregate_constraint.is_some()
+        || !choose.additional_zones.is_empty()
+        || choose.count.dynamic_x
+        || choose.count.min != 1
+        || choose.count.max != Some(1)
+        || !only_tagged(&choose.filter, &pool.tag)
+        || remainder.tag != pool.tag
+        || remainder.keep_tagged.as_ref() != Some(&choose.tag)
+        || remainder.player != PlayerFilter::You
+        || draw.player != PlayerFilter::You
+        || !matches!(draw.count.unhinted(), Value::Fixed(1))
+    {
+        return None;
+    }
+    let (look_count, noun, where_clause) = describe_top_count_noun_and_where_clause(&look.count);
+    let order = match remainder.order {
+        crate::effects::consult_helpers::LibraryBottomOrder::Random => " in a random order",
+        crate::effects::consult_helpers::LibraryBottomOrder::ChooserChooses => " in any order",
+    };
+    Some(format!(
+        "Look at the top {look_count} {noun} of your library{where_clause}, put all but one of them on the bottom of your library{order}, then draw a card"
+    ))
+}
+
+/// "Exile Sol'Kanar, then return it to the battlefield under an opponent's
+/// control." (Sol'Kanar the Tainted): the source's own exile, your choice of
+/// an opponent, and the source-exiled card's return under that chosen
+/// player's control are Oracle's single return clause.
+fn describe_exile_source_then_return_under_chosen_opponent(
+    sequence: &crate::effects::SequenceEffect,
+) -> Option<String> {
+    if sequence.surface != ironsmith_core::SequenceSurface::CommaThen {
+        return None;
+    }
+    let [exile_effect, choose_effect, put_effect] = sequence.effects.as_slice() else {
+        return None;
+    };
+    let exile = exile_effect.downcast_ref::<crate::effects::ExileEffect>()?;
+    let choose = choose_effect.downcast_ref::<crate::effects::ChoosePlayerEffect>()?;
+    let put = put_effect.downcast_ref::<crate::effects::PutOntoBattlefieldEffect>()?;
+    if exile.face_down
+        || !matches!(exile.spec.base(), ChooseSpec::Source)
+        || choose.chooser != PlayerFilter::You
+        || choose.filter != PlayerFilter::Opponent
+        || choose.random
+        || !choose.excluded_tags.is_empty()
+        || put.tapped
+        || !put.enters_with_counters.is_empty()
+        || !matches!(put.target.base(), ChooseSpec::Tagged(tag) if tag.as_str() == crate::tag::SOURCE_EXILED_TAG)
+        || !matches!(&put.controller, PlayerFilter::TaggedPlayer(tag)
+            if *tag == choose.tag || tag.as_str() == "__it__")
+    {
+        return None;
+    }
+    let exile_text = describe_effect(exile_effect);
+    let exile_text = exile_text.trim().trim_end_matches('.');
+    if !exile_text.starts_with("Exile ") || exile_text.contains(',') {
+        return None;
+    }
+    Some(format!(
+        "{exile_text}, then return it to the battlefield under an opponent's control"
+    ))
 }

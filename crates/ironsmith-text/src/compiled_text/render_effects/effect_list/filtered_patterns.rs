@@ -186,8 +186,14 @@
     {
         return compact;
     }
+    // "You choose a nonland card from it. Exile that card." (Doomfall): an
+    // unwrapped exile is its own authored sentence; the coordinated "and exile
+    // that card" lowers through the source-exiled tag wrapper.
     if filtered.len() == 3
-        && let Some(compact) = describe_look_hand_choose_then_discard_or_exile(&filtered)
+        && let Some(compact) = describe_look_hand_choose_action_with_exile_boundary(
+            &filtered,
+            filtered[2].downcast_ref::<crate::effects::ExileEffect>().is_some(),
+        )
     {
         return compact;
     }

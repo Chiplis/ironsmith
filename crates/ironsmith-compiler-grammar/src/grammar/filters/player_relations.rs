@@ -734,7 +734,19 @@ pub(super) fn try_apply_negated_you_relation_clause(
     let (verb, consumed) = parse_negated_you_relation_shape(words)?;
     match verb {
         PlayerRelationVerb::Control => filter.controller = Some(PlayerFilter::NotYou),
-        PlayerRelationVerb::Own => filter.owner = Some(PlayerFilter::NotYou),
+        PlayerRelationVerb::Own => {
+            filter.owner = Some(PlayerFilter::NotYou);
+            // "target card you don't own in exile" (Sentinel of Lost Lore):
+            // the authored ownership clause precedes the zone.
+            if words.get(consumed) == Some(&"in")
+                && matches!(
+                    words.get(consumed + 1),
+                    Some(&("exile" | "graveyard" | "hand" | "library"))
+                )
+            {
+                filter.set_owner_before_zone_surface(true);
+            }
+        }
         PlayerRelationVerb::Cast | PlayerRelationVerb::Protect => return None,
     }
     Some(consumed)

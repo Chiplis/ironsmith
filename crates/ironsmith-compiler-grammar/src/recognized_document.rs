@@ -204,6 +204,8 @@ pub struct RecognizedModalBlock {
 pub struct RecognizedModalMode {
     pub info: LineInfo,
     pub text: String,
+    /// The mode's flavor label ("Follow the 3rd Rule"), without its dash.
+    pub flavor_label: Option<String>,
     pub point_cost: Option<u32>,
     pub additional_mana_cost: Option<crate::mana::ManaCost>,
     pub effects_ast: Vec<EffectAst>,

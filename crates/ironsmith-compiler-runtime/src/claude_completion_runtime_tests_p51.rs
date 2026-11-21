@@ -279,7 +279,10 @@ fn p51_label_driven_rules_compile_to_typed_values() {
     );
     assert!(lore_seeker.iter().any(|ability| ability
         .draft_rule()
-        .is_some_and(|rule| rule.revealed && rule.unmodeled)));
+        // "Add a booster pack to the draft" is a typed draft action now.
+        .is_some_and(|rule| rule.revealed
+            && !rule.unmodeled
+            && rule.draft_actions().eq([ironsmith_core::DraftAction::AddBoosterPack]))));
     // Draft notes are looked up case-insensitively.
     assert!(tracker.iter().any(|ability| ability
         .must_attack_draft_noted_card_name()

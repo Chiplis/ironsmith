@@ -956,6 +956,7 @@ fn public_payment_query_preserves_an_unanswered_foreign_color_decision_as_typed_
         input: ironsmith_core::ManaRewriteInput::Any,
         output: ironsmith_core::ManaRewriteOutput::ChooseColor,
         quantity: ironsmith_core::ManaRewriteQuantity::Preserve,
+        surface: ironsmith_core::ManaOutputRewriteSurface::Passive,
     };
     let host = CardDefinitionBuilder::new(CardId::new(), "Foreign choice owner").card_types(vec![CardType::Enchantment])
         .with_ability(ironsmith::ability::Ability::static_ability(ironsmith::static_abilities::StaticAbility::mana_production_rewrite(rule,

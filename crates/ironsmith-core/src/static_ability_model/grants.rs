@@ -154,6 +154,11 @@ pub struct AttachedAbilityGrant<T, E, C, Cond, ICond = Condition> {
     pub display: String,
     pub condition: Option<ICond>,
     pub protection_does_not_remove_controlled_attachments: bool,
+    /// The grant's subject was authored as the generic "enchanted
+    /// permanent" (Hardlight Containment: "Enchant artifact you control ...
+    /// Enchanted permanent has ward {1}."). Compiled-text surface only.
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub permanent_subject_surface: bool,
 }
 
 impl<T, E, C, Cond, ICond> AttachedAbilityGrant<T, E, C, Cond, ICond> {
@@ -164,7 +169,12 @@ impl<T, E, C, Cond, ICond> AttachedAbilityGrant<T, E, C, Cond, ICond> {
             display: display.into(),
             condition: None,
             protection_does_not_remove_controlled_attachments: false,
+            permanent_subject_surface: false,
         }
+    }
+    pub fn with_permanent_subject_surface(mut self, authored: bool) -> Self {
+        self.permanent_subject_surface = authored;
+        self
     }
     pub fn with_additional_abilities(
         mut self,

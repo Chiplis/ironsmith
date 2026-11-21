@@ -283,6 +283,7 @@ where
         converted.cost_choice_keywords = payload.cost_choice_keywords.clone();
         converted.announced_modes = payload.announced_modes.clone();
         converted.allowed_mode_counts = payload.allowed_mode_counts.clone();
+        converted.mode_flavor_labels = payload.mode_flavor_labels.clone();
         return Ok(Effect::new(converted));
     }
     if let Some(payload) =
@@ -681,6 +682,7 @@ where
             resolve_set_pt_values_at_resolution: payload.resolve_set_pt_values_at_resolution,
             require_creature_target: payload.require_creature_target,
             grant_only_if_absent: payload.grant_only_if_absent,
+            clause_surface: payload.clause_surface,
         };
         if converted.modification.is_none()
             && converted.additional_modifications.is_empty()

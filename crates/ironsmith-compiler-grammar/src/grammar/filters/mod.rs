@@ -77,6 +77,7 @@ pub use predicate_phrases::{
     WinnowCaptureRole as PermissionCaptureRole, WinnowSequence as PermissionSequence,
     parse_intrinsic_source_counter_condition,
     parse_source_keyword_condition_filter as parse_source_keyword_condition_filter_lexed,
+    parse_there_are_source_counters_at_least_predicate,
 };
 
 pub fn parse_condition_predicate_lexed(
@@ -105,7 +106,8 @@ pub use decorations::{
     apply_filter_tail_decoration, apply_parity_filter_phrases, parse_filter_distinct_names_tokens,
     parse_filter_lexed_envelope, parse_filter_tail_decoration_split_words,
     parse_filter_tail_decoration_tokens, parse_filter_word_envelope,
-    strip_not_on_battlefield_phrase, trim_vote_winner_suffix,
+    strip_not_on_battlefield_or_stack_phrase, strip_not_on_battlefield_phrase,
+    trim_vote_winner_suffix,
 };
 pub use meld_and_special_subjects::parse_same_color_mana_spent_to_cast_predicate;
 pub use reference_tag_stage::{

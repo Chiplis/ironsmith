@@ -132,13 +132,10 @@ fn ward_abilities_are_suppressed(game: &GameState, target_id: ObjectId, caster: 
             .into_iter()
             .any(|ability| {
                 ability
-                    .display()
-                    .to_ascii_lowercase()
-                    .contains("ward abilities")
-                    && ability
-                        .trigger_suppression_spec()
-                        .and_then(|spec| spec.source_filter)
-                        .is_some_and(|filter| filter.matches(target, &filter_ctx, game))
+                    .trigger_suppression_spec()
+                    .filter(|spec| spec.ward_only)
+                    .and_then(|spec| spec.source_filter)
+                    .is_some_and(|filter| filter.matches(target, &filter_ctx, game))
             })
     })
 }

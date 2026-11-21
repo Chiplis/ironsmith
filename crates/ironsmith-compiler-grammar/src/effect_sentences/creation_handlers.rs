@@ -1051,6 +1051,10 @@ fn parse_inline_copy_granted_abilities(tokens: &[OwnedLexToken]) -> Vec<GrantedA
     for rule_tokens in double_quoted_rule_bodies(tokens) {
         if token_definition_grammar::parse_token_reminder_facts_tokens(rule_tokens)
             .sacrifice_at_next_end_step
+            // A conditional end-step sacrifice has no delayed-flag form (the
+            // creator clears that flag for an intervening `if`); it exists
+            // only as this granted triggered ability (CR 603.4).
+            && !token_word_refs(rule_tokens).contains(&"if")
         {
             // Copy-token delayed-sacrifice text has a dedicated AST field and
             // must not also be installed as an ordinary granted ability.

@@ -75,15 +75,21 @@ pub(super) fn parse_value_expr_term_words(words: &[&str]) -> Option<(Value, usiz
     if words.get(offset..offset + 2) == Some(&["chosen", "number"][..])
         || words == ["that", "number"] || words == ["the", "number"]
     {
+        let demonstrative = words == ["that", "number"] || words == ["the", "number"];
+        let chosen = Value::PendingPriorEffectMetric(
+            ironsmith_core::PriorEffectMetricQuery::new(
+                ironsmith_core::EffectMetricSource::Outcome,
+                ironsmith_core::EffectMetric::Count,
+            )
+            .with_action(ironsmith_core::PriorEffectAction::ChosenNumber),
+        );
         return Some((
-            Value::PendingPriorEffectMetric(
-                ironsmith_core::PriorEffectMetricQuery::new(
-                    ironsmith_core::EffectMetricSource::Outcome,
-                    ironsmith_core::EffectMetric::Count,
-                )
-                .with_action(ironsmith_core::PriorEffectAction::ChosenNumber),
-            ),
-            if words == ["that", "number"] || words == ["the", "number"] { 2 } else { offset + 2 },
+            if demonstrative {
+                chosen.with_surface_hint(ValueSurfaceHint::ThatChosenNumber)
+            } else {
+                chosen
+            },
+            if demonstrative { 2 } else { offset + 2 },
         ));
     }
     // A named option is a vote-result scalar, not an object filter. Keeping

@@ -144,6 +144,13 @@ pub fn semantic_audit_lines(def: &CardDefinition) -> Vec<String> {
                 .downcast_ref::<crate::static_abilities::CompiledStaticAbility>()
                 .and_then(audit_readings::audit_payload_reading)
                 .or_else(|| value.downcast_ref::<Ability>().map(ability_surface_text))
+                // A granted ability's self-references name its recipient:
+                // artifacts you control have "Sacrifice this artifact: ...".
+                .or_else(|| {
+                    value
+                        .downcast_ref::<(Ability, ObjectFilter)>()
+                        .and_then(|(ability, recipient)| granted_ability_audit_text(ability, recipient))
+                })
                 .or_else(|| value.downcast_ref::<crate::effect::Restriction>().map(describe_restriction))
                 .or_else(|| value.downcast_ref::<ironsmith_core::ThisSpellCostCondition>()
                     .and_then(crate::static_abilities::describe_this_spell_cost_condition))
@@ -167,7 +174,11 @@ pub fn semantic_audit_lines(def: &CardDefinition) -> Vec<String> {
             // The base chunk carries the spell effect, casting options and
             // enchant restriction; each ability chunk carries only itself.
             let mut base = def.clone();
-            base.abilities.clear();
+            // A repeatable sacrifice cost's copy trigger (Plumb the
+            // Forbidden) is printed with its optional-cost line, which the
+            // base chunk reads.
+            base.abilities
+                .retain(|ability| is_repeatable_sacrifice_copy_helper(def, ability));
             base.ability_labels.clear();
             let base_lines = compiled_text_lines(&base);
             let mut lines: Vec<(AuditLine, String)> = base_lines
@@ -203,19 +214,57 @@ pub fn semantic_audit_lines(def: &CardDefinition) -> Vec<String> {
             let mut composed_through = None;
             for (index, ability) in abilities {
                 if composed_through.is_some_and(|end| index <= end) { continue; }
+                if is_repeatable_sacrifice_copy_helper(def, ability) { continue; }
                 if std::ptr::eq(ability, &def.abilities[index])
                     && let AbilityKind::Static(marker) = &ability.kind
                     && let Some(ironsmith_core::StaticAbilityPayload::SourceLineStaticGroup { member_count }) =
                         marker.compiled_model().map(|model| &model.payload)
                     && let Some(members) = def.abilities.get(index + 1..index + 1 + member_count)
-                    && let Some(text) = describe_audited_source_line_static_group(
-                        members, subject_for_card(&def.card))
+                    && let Some(text) = audit_leader_bans_with_sacrifice_ignore(members)
+                        .or_else(|| audit_conditional_animated_set_with_grants(members))
+                        .or_else(|| audit_anthem_and_granted_block_exception_pair(def, members))
+                        .or_else(|| audit_each_toughness_damage_and_defender_attack_pair(members))
+                        .or_else(|| describe_source_line_attached_attacking_split_count_anthem_group(members))
+                        .or_else(|| audit_attached_subtype_base_pt_restriction_loss_group(def, members))
+                        .or_else(|| audit_must_be_blocked_by_exactly_one_pair(members, subject_for_card(&def.card)))
+                        .or_else(|| audit_graveyard_cast_with_cost_increase_pair(def, members))
+                        .or_else(|| audit_source_conditional_protection_pair(def, members))
+                        .or_else(|| audit_conditional_self_subtype_base_pt_restriction_group(def, members))
+                        .or_else(|| audit_opponent_choice_x_definition_pair(members))
+                        .or_else(|| audit_removed_draft_keyword_ladder_group(def, members))
+                        .or_else(|| audit_conditional_attach_keyword_control_guard_group(def, members))
+                        .or_else(|| describe_source_line_conditioned_object_protection_group(members))
+                        .or_else(|| describe_audited_source_line_static_group(
+                        members, subject_for_card(&def.card)))
+                        .or_else(|| audit_join_source_line_static_members(def, members))
                 {
                     composed_through = Some(index + member_count);
                     let text = audit_static_subject_surface(
                         &text, subject_for_card(&def.card), audit_attached_subject(def).as_deref());
                     lines.push((AuditLine::Rendered,
                         format!("{}.", capitalize_first(text.trim_end_matches('.')))));
+                    continue;
+                }
+                // "As an additional cost to cast this spell, choose a number
+                // between 0 and 5" (Liquid Fire): a spell with no {X} in its
+                // cost announces X within both bounds (CR 601.2b).
+                if std::ptr::eq(ability, &def.abilities[index])
+                    && let AbilityKind::Static(maximum_ability) = &ability.kind
+                    && let Some(ironsmith_core::StaticAbilityPayload::ThisSpellXMaximum {
+                        maximum, definition: None, ..
+                    }) = maximum_ability.compiled_model().map(|model| &model.payload)
+                    && let Some(Ability { kind: AbilityKind::Static(minimum_ability), .. }) =
+                        def.abilities.get(index + 1)
+                    && let Some(ironsmith_core::StaticAbilityPayload::ThisSpellXMinimum { minimum, .. }) =
+                        minimum_ability.compiled_model().map(|model| &model.payload)
+                    && def.card.mana_cost.as_ref().is_none_or(|cost| !cost.has_x())
+                {
+                    composed_through = Some(index + 1);
+                    lines.push((AuditLine::Rendered, format!(
+                        "As an additional cost to cast this spell, choose a number between {} and {}.",
+                        describe_value(minimum),
+                        describe_value(maximum),
+                    )));
                     continue;
                 }
                 let mut single = def.clone();
@@ -300,6 +349,11 @@ pub fn semantic_audit_lines(def: &CardDefinition) -> Vec<String> {
                                 }
                                 let mut tier_ability = other.clone();
                                 if let AbilityKind::Activated(activated) = &mut tier_ability.kind {
+                                    // The tier header states these exact bounds
+                                    // (CR 711.2a); drop the matching gate while the
+                                    // range marker still identifies it.
+                                    activated.activation_condition =
+                                        activation_condition_without_presentation_label(activated);
                                     activated
                                         .additional_restrictions
                                         .retain(|restriction| !restriction.starts_with("__ironsmith_level_range:"));
@@ -347,6 +401,77 @@ pub fn semantic_audit_lines(def: &CardDefinition) -> Vec<String> {
                         lines.push((AuditLine::Keyword(group), "Undaunted".to_string()));
                         continue;
                     }
+                    // "Minion of the Wastes's power and toughness are each
+                    // equal to the life paid as it entered": the CDA reads
+                    // the number its linked as-enters life payment recorded
+                    // (the pair is proven against the ability before it).
+                    if std::ptr::eq(ability, &def.abilities[index])
+                        && let Some(basis) = index
+                            .checked_sub(1)
+                            .and_then(|previous| def.abilities.get(previous))
+                            .and_then(|entry| life_paid_as_source_entered_for_cda(entry, ability))
+                    {
+                        lines.push((
+                            kind,
+                            format!("This creature's power and toughness are each equal to {basis}."),
+                        ));
+                        continue;
+                    }
+                    if let Some(line) = static_ability
+                        .compiled_model()
+                        .and_then(|model| audit_graveyard_return_keyword_replacement(ability, model))
+                    {
+                        lines.push((kind, format!("{}.", capitalize_first(line.trim_end_matches('.')))));
+                        continue;
+                    }
+                    // "If damage would be dealt to this creature, prevent that
+                    // damage. When damage is prevented this way, ..." (Phyrexian
+                    // Vindicator): a self prevention whose printed line goes on
+                    // to a prevented-this-way trigger names the replaced event
+                    // (CR 615.1a) rather than "all damage".
+                    if std::ptr::eq(ability, &def.abilities[index])
+                        && static_ability.id() == crate::static_abilities::StaticAbilityId::PreventAllDamageToSelf
+                        && let Some(Ability { kind: AbilityKind::Triggered(next), .. }) = def.abilities.get(index + 1)
+                        && def.ability_labels.get(index + 1).is_some()
+                        && def.ability_labels.get(index + 1) == def.ability_labels.get(index)
+                        && next.trigger.downcast_ref::<crate::triggers::DamagePreventedBySourceTrigger>().is_some()
+                    {
+                        lines.push((kind, format!(
+                            "If damage would be dealt to {}, prevent that damage.",
+                            subject_for_card(&def.card)
+                        )));
+                        continue;
+                    }
+                    // "This creature can't be blocked by non-Wall creatures"
+                    // (Flow of Maggots): the authored negated-subtype blocker
+                    // class keeps its wording; the display rephrasing to
+                    // "except by Walls" is for the "except by" authoring.
+                    if let Some(model) = static_ability.compiled_model()
+                        && let ironsmith_core::StaticAbilityPayload::RuleRestriction {
+                            restriction,
+                            additional_restrictions,
+                            ..
+                        } = &model.payload
+                        && additional_restrictions.is_empty()
+                        && let Some(line) =
+                            audit_non_subtype_blocker_restriction(restriction, subject_for_card(&def.card))
+                    {
+                        lines.push((AuditLine::Rendered, line));
+                        continue;
+                    }
+                    // CR 700.4: only a creature dies. A noncreature card's own
+                    // battlefield-to-graveyard replacement names the zone move
+                    // (Ugin's Nexus); the payload reader alone cannot see the
+                    // card's types behind its bare self-reference.
+                    if let Some(line) = static_ability.compiled_model().and_then(|model| {
+                        audit_readings::audit_noncreature_self_graveyard_replacement(
+                            model,
+                            &def.card.card_types,
+                        )
+                    }) {
+                        lines.push((kind, format!("{}.", capitalize_first(line.trim_end_matches('.')))));
+                        continue;
+                    }
                     if let Some(line) = static_ability
                         .compiled_model()
                         .and_then(audit_readings::audit_payload_reading)
@@ -362,6 +487,12 @@ pub fn semantic_audit_lines(def: &CardDefinition) -> Vec<String> {
                             ..
                         } = &model.payload
                     {
+                        if let Some(pair) =
+                            audit_cast_and_play_lands_ban_pair(restriction, additional_restrictions)
+                        {
+                            lines.push((kind, format!("{}.", capitalize_first(pair.trim_end_matches('.')))));
+                            continue;
+                        }
                         let line = std::iter::once(restriction)
                             .chain(additional_restrictions)
                             .map(|restriction| {
@@ -380,20 +511,70 @@ pub fn semantic_audit_lines(def: &CardDefinition) -> Vec<String> {
                     }
                     continue;
                 }
+                // Reconfigure (CR 702.151a): the unattach half shares its
+                // cost with the attach half, whose keyword line reads both.
+                if let AbilityKind::Activated(unattach) = &ability.kind
+                    && let [segment] = unattach.effects.segments.as_slice()
+                    && let [only] = segment.default_effects.as_slice()
+                    && only
+                        .downcast_ref::<crate::effects::ReconfigureEffect>()
+                        .is_some_and(|reconfigure| matches!(reconfigure.target, ChooseSpec::Source))
+                    && def.abilities.iter().any(|other| {
+                        let AbilityKind::Activated(attach) = &other.kind else { return false };
+                        attach.mana_cost == unattach.mana_cost
+                            && matches!(attach.effects.segments.as_slice(), [attach_segment]
+                                if matches!(attach_segment.default_effects.as_slice(), [attach_effect]
+                                    if attach_effect
+                                        .downcast_ref::<crate::effects::ReconfigureEffect>()
+                                        .is_some_and(|reconfigure| !matches!(reconfigure.target, ChooseSpec::Source))))
+                    })
+                {
+                    continue;
+                }
                 single.abilities = vec![ability.clone()];
                 single.ability_labels = def.ability_labels.get(index).cloned().into_iter().collect();
                 // The attachment filter names "enchanted creature" in the
                 // ability; its own Enchant / attach-only line belongs to the
                 // base chunk, so a repeat of it is dropped here.
                 single.aura_attach_filter = def.aura_attach_filter.clone();
+                // The as-enters choice lives in its own chunk; its declared
+                // single card type still names "the chosen <type>" here, as
+                // in the ordinary renderer (model-derived, CR 614.12).
+                let chosen_noun = as_enters_single_chosen_object_noun(def);
                 let rendered = compiled_text_lines(&single)
                     .into_iter()
+                    .map(|line| match chosen_noun {
+                        Some(noun) => line
+                            .replace("The chosen cards ", &format!("The chosen {noun} "))
+                            .replace("the chosen cards", &format!("the chosen {noun}")),
+                        None => line,
+                    })
                     .filter(|line| {
                         !((line.starts_with("Enchant ")
                             || line.starts_with("This Equipment can be attached only to "))
                             && base_lines.contains(line))
                     })
                     .collect::<Vec<_>>();
+                // A source-owned entry payment is the value a later token
+                // ability reads (Phyrexian Processor). Each ability renders
+                // alone here, so prove the linked pair against the ability
+                // before it, as the ordinary renderer does.
+                let rendered = match index
+                    .checked_sub(1)
+                    .and_then(|previous| def.abilities.get(previous))
+                    .and_then(|entry| life_paid_as_source_entered_for_token(entry, ability))
+                {
+                    Some(basis) => rendered
+                        .into_iter()
+                        .map(|line| {
+                            line.replace(
+                                "where X is the last chosen number",
+                                &format!("where X is {basis}"),
+                            )
+                        })
+                        .collect::<Vec<_>>(),
+                    None => rendered,
+                };
                 // A triggered keyword (firebending, annihilator) printed on
                 // the same line as the static keywords before it joins their
                 // keyword list: "Flying, firebending 2" (label equality only).
@@ -443,7 +624,7 @@ pub fn semantic_audit_lines(def: &CardDefinition) -> Vec<String> {
                 if line.contains(" enter as a copy ") {
                     line
                 } else {
-                    line.replace("the granting permanent", &def.card.name)
+                    substitute_granting_source_surface(line, def)
                 }
             })
             // After the printed-line merges, so a keyword grant and a quoted
@@ -479,6 +660,156 @@ pub fn semantic_audit_lines(def: &CardDefinition) -> Vec<String> {
 /// creatures you control can't attack": an attack restriction whose filter
 /// excludes exactly one name and the artifact card type reads its two
 /// exceptions first, as Oracle prints them.
+/// The typed reading of one static ability for the audit: its payload
+/// reading, a rule restriction's typed reading, or its display.
+/// "Players can't cast spells or play lands with a name originally printed in
+/// the Arabian Nights expansion" (City in a Bottle): a spell ban and a
+/// land-play ban over the same players and the same card qualifier read as
+/// one ban.
+fn audit_cast_and_play_lands_ban_pair(
+    restriction: &crate::effect::Restriction,
+    additional: &[crate::effect::Restriction],
+) -> Option<String> {
+    // "Players can't draw cards or gain life" (Mornsong Aria): a draw ban
+    // and a gain-life ban over the same players read as one ban.
+    if let (
+        crate::effect::Restriction::DrawCards(drawer),
+        [crate::effect::Restriction::GainLife(gainer)],
+    ) = (restriction, additional)
+        && drawer == gainer
+    {
+        let draw = audit_rule_restriction_reading(restriction);
+        let draw = draw.trim().trim_end_matches('.');
+        return draw
+            .ends_with(" can't draw cards")
+            .then(|| format!("{draw} or gain life"));
+    }
+    let (
+        crate::effect::Restriction::CastSpellsMatching(caster, spells),
+        [crate::effect::Restriction::PlayLandsMatching(player, lands)],
+    ) = (restriction, additional)
+    else {
+        return None;
+    };
+    let play = &additional[0];
+    if caster != player || *spells == ObjectFilter::default() {
+        return None;
+    }
+    let mut land_rest = lands.clone();
+    land_rest.card_types.retain(|card_type| *card_type != CardType::Land);
+    if land_rest != *spells {
+        return None;
+    }
+    let cast = audit_rule_restriction_reading(restriction);
+    let play = audit_rule_restriction_reading(play);
+    let cast = cast.trim().trim_end_matches('.');
+    let play = play.trim().trim_end_matches('.');
+    let (subject, qualifier) = cast.split_once(" can't cast spells")?;
+    let (_, play_qualifier) = play.split_once(" can't play lands")?;
+    (qualifier == play_qualifier && qualifier.starts_with(' ') && !qualifier.contains('.'))
+        .then(|| format!("{subject} can't cast spells or play lands{qualifier}"))
+}
+
+fn audit_single_static_reading(def: &CardDefinition, ability: &Ability) -> Option<String> {
+    let AbilityKind::Static(static_ability) = &ability.kind else {
+        return None;
+    };
+    let model = static_ability.compiled_model()?;
+    if let Some(line) = audit_readings::audit_payload_reading(model) {
+        return Some(line);
+    }
+    if let ironsmith_core::StaticAbilityPayload::RuleRestriction {
+        restriction,
+        additional_restrictions,
+        ..
+    } = &model.payload
+    {
+        if let Some(pair) = audit_cast_and_play_lands_ban_pair(restriction, additional_restrictions) {
+            return Some(pair);
+        }
+        return Some(
+            std::iter::once(restriction)
+                .chain(additional_restrictions)
+                .map(|restriction| {
+                    audit_named_attack_exception(restriction, &def.card.name)
+                        .unwrap_or_else(|| audit_rule_restriction_reading(restriction))
+                })
+                .collect::<Vec<_>>()
+                .join(" and "),
+        );
+    }
+    let line = static_ability.display();
+    let line = line.trim().trim_end_matches('.');
+    (!line.is_empty()).then(|| line.to_string())
+}
+
+/// A printed line lowered into several statics with one shared subject
+/// ("Enchanted permanent loses all abilities and doesn't untap during its
+/// controller's untap step"): each member reads alone, then the readings
+/// join as one sentence when they name the same subject.
+fn audit_join_source_line_static_members(def: &CardDefinition, members: &[Ability]) -> Option<String> {
+    // One member has nothing to join; its ordinary per-ability chunk (with
+    // the static rule rephrasings) reads it.
+    if members.len() < 2 {
+        return None;
+    }
+    if let Some(text) = audit_counter_entry_then_if_not_tapped_entry(def, members) {
+        return Some(text);
+    }
+    if let Some(text) = audit_zone_split_targeting_ban_pair(members) {
+        return Some(text);
+    }
+    if let Some(text) = audit_attack_block_and_tap_ability_ban(members)
+        .or_else(|| audit_your_turn_grant_and_cost_modifier(members))
+        .or_else(|| audit_chosen_names_cast_and_play_ban(def, members))
+        .or_else(|| audit_conditional_subtype_and_grant_pair(members))
+        .or_else(|| audit_attached_source_unattackable_and_grant(def, members))
+        .or_else(|| audit_opponent_cause_discard_and_sacrifice_ban(members))
+        .or_else(|| audit_your_turn_and_other_turns_base_pt(def, members))
+        .or_else(|| audit_play_grant_with_any_type_mana_rider(def, members))
+        .or_else(|| audit_anthem_and_quoted_grant_pair(def, members))
+        .or_else(|| audit_attached_combat_activation_ban_with_ignore(members))
+        .or_else(|| audit_targeting_permission_and_ward_suppression_pair(def, members))
+    {
+        return Some(text);
+    }
+    let subject = subject_for_card(&def.card);
+    let attached = audit_attached_subject(def);
+    let readings = members
+        .iter()
+        .map(|member| {
+            let line = audit_single_static_reading(def, member)?;
+            let line = format!("{}.", capitalize_first(line.trim().trim_end_matches('.')));
+            Some(audit_static_subject_surface(&line, subject, attached.as_deref()))
+        })
+        .collect::<Option<Vec<_>>>()?;
+    if let Some(text) = audit_attached_type_with_granted_ability_and_loss(members, &readings)
+        .or_else(|| audit_source_and_set_shared_grant(members, &readings))
+        .or_else(|| audit_otherwise_conditional_pair(members, &readings))
+        .or_else(|| audit_restriction_then_loss_and_grant(members, &readings))
+        .or_else(|| audit_restriction_and_activated_grant(members, &readings))
+        .or_else(|| audit_grants_and_chosen_name_type(members, &readings))
+        .or_else(|| audit_attached_anthem_then_conditional_riders(members, &readings))
+    {
+        return Some(text);
+    }
+    // Separate cost modifiers on one line stay separate sentences ("This
+    // spell costs {1} less ... It also costs {1} less ...").
+    if readings.iter().filter(|line| line.contains(" cost {") || line.contains(" costs {")).count() > 1 {
+        return None;
+    }
+    // Only a restriction-like predicate joins here ("loses all abilities and
+    // doesn't untap"); entry, type-setting and grant lines have their own
+    // composers or read as separate sentences.
+    if readings.iter().any(|line| {
+        [" enters ", " is ", " are ", " has ", " have "].iter().any(|verb| line.contains(verb))
+    }) {
+        return None;
+    }
+    let [joined] = join_audit_same_subject_static_lines(readings).try_into().ok()?;
+    Some(joined)
+}
+
 fn audit_named_attack_exception(
     restriction: &crate::effect::Restriction,
     card_name: &str,
@@ -518,6 +849,13 @@ fn audit_named_attack_exception(
 /// being unable to cast spells is the printed "Players can cast spells only
 /// during their own turns" (Dosan the Falling Leaf).
 fn audit_rule_restriction_reading(restriction: &crate::effect::Restriction) -> String {
+    // "If a player would gain life, that player gains no life instead"
+    // (Sulfuric Vortex): an every-player gain-life restriction static. The
+    // canonical "Players can't gain life" lowers to the identified
+    // `PlayersCantGainLife` static instead, never to this payload.
+    if matches!(restriction, crate::effect::Restriction::GainLife(PlayerFilter::Any)) {
+        return "If a player would gain life, that player gains no life instead".to_string();
+    }
     if let crate::effect::Restriction::CastSpellsMatching(
         PlayerFilter::Excluding { base, excluded },
         spells,
@@ -539,6 +877,105 @@ fn audit_rule_restriction_reading(restriction: &crate::effect::Restriction) -> S
         && *spells == ObjectFilter::default()
     {
         return "You can cast spells only during your turn".to_string();
+    }
+    // "Creatures with power greater than this creature's power can't block
+    // it" (Silumgar Assassin): the blocker threshold reads the source's power
+    // as an object reference, unlike the `SourcePower` shorthand that
+    // "can't be blocked by creatures with greater power" lowers to.
+    if let crate::effect::Restriction::BlockSpecificAttacker { blockers, attacker } = restriction
+        && attacker.source
+        && blockers.card_types.as_slice() == [CardType::Creature]
+        && let Some(crate::filter::Comparison::GreaterThanExpr(threshold)) = &blockers.power
+        && let Value::PowerOf(spec) = threshold.unhinted()
+        && matches!(spec.base(), ChooseSpec::Source)
+    {
+        return "Creatures with power greater than this creature's power can't block it"
+            .to_string();
+    }
+    // "Noncreature spells with mana value 4 or greater can't be cast"
+    // (Gaddock Teeg): an every-player ban over a creature / noncreature
+    // spell class with a mana-value threshold reads in the passive.
+    if let crate::effect::Restriction::CastSpellsMatching(PlayerFilter::Any, spells) = restriction
+        && spells.mana_value.is_some()
+        && ((spells.card_types.as_slice() == [CardType::Creature])
+            != (spells.excluded_card_types.as_slice() == [CardType::Creature]))
+    {
+        return format!(
+            "{} can't be cast",
+            capitalize_first(&describe_cast_ban_spell_filter(spells))
+        );
+    }
+    // "Each opponent who cast a spell this turn can't attack with creatures"
+    // (Angelic Arbiter): an attack ban over every creature a player set
+    // controls names that player set as the subject.
+    if let crate::effect::Restriction::Attack(filter) = restriction
+        && let Some(controller @ PlayerFilter::Excluding { .. }) = &filter.controller
+        && filter.card_types.as_slice() == [CardType::Creature]
+        && {
+            let mut rest = filter.clone();
+            rest.controller = None;
+            rest.zone = None;
+            rest.card_types.clear();
+            rest.union_surface = Default::default();
+            rest == ObjectFilter::default()
+        }
+    {
+        return format!(
+            "{} can't attack with creatures",
+            describe_player_set_filter(controller)
+        );
+    }
+    // "Your opponents can't block with creatures with even mana values"
+    // (Void Winnower).
+    if let crate::effect::Restriction::Block(filter) = restriction
+        && filter.controller == Some(PlayerFilter::Opponent)
+        && filter.card_types.as_slice() == [CardType::Creature]
+        && let Some(parity) = match filter.mana_value_parity {
+            Some(ironsmith_core::filter_model::ParityRequirement::Even) => Some("even"),
+            Some(ironsmith_core::filter_model::ParityRequirement::Odd) => Some("odd"),
+            _ => None,
+        }
+        && {
+            let mut rest = filter.clone();
+            rest.controller = None;
+            rest.zone = None;
+            rest.card_types.clear();
+            rest.mana_value_parity = None;
+            rest.union_surface = Default::default();
+            rest == ObjectFilter::default()
+        }
+    {
+        return format!("Your opponents can't block with creatures with {parity} mana values");
+    }
+    // "Juggernauts you control can't be blocked by Walls" (Graaz): a
+    // subtype-only blocker class against a subtype-only attacker class you
+    // control reads from the attackers' side, as printed.
+    if let crate::effect::Restriction::BlockSpecificAttacker { blockers, attacker } = restriction
+        && !attacker.source
+        && let [attacker_subtype] = attacker.subtypes.as_slice()
+        && let [blocker_subtype] = blockers.subtypes.as_slice()
+        && attacker.controller == Some(PlayerFilter::You)
+        && {
+            let mut rest = attacker.clone();
+            rest.controller = None;
+            rest.zone = None;
+            rest.subtypes.clear();
+            rest.union_surface = Default::default();
+            rest == ObjectFilter::default()
+        }
+        && {
+            let mut rest = blockers.clone();
+            rest.zone = None;
+            rest.subtypes.clear();
+            rest.union_surface = Default::default();
+            rest == ObjectFilter::default()
+        }
+    {
+        return format!(
+            "{} you control can't be blocked by {}",
+            pluralize_noun_phrase(&attacker_subtype.to_string()),
+            pluralize_noun_phrase(&blocker_subtype.to_string())
+        );
     }
     describe_restriction(restriction)
 }
@@ -844,7 +1281,17 @@ fn audit_merge_flash_permission_pairs_r5a(lines: Vec<String>) -> Vec<String> {
     let mut index = 0;
     while index < lines.len() {
         let line = &lines[index];
-        if let Some(next) = lines.get(index + 1)
+        // The standalone first-spell flash permission reads "You may cast
+        // the first creature spell ... as though it had flash." (The Blue
+        // Spirit); paired with a cost change over the same spells it joins
+        // as "... and can be cast as though it had flash." (Radagast).
+        let normalized_next = lines.get(index + 1).map(|next| {
+            next.strip_prefix("You may cast the first ")
+                .and_then(|rest| rest.strip_suffix(" as though it had flash."))
+                .map(|body| format!("The first {body} can be cast as though it had flash."))
+                .unwrap_or_else(|| next.clone())
+        });
+        if let Some(next) = normalized_next.as_ref()
             && !line.contains('"')
             && !next.contains('"')
             && let Some(first) = line.strip_suffix('.')
@@ -1075,7 +1522,9 @@ fn audit_residual_e_line_surfaces(line: String, def: &CardDefinition) -> String 
     // Indominus Rex, Alpha: each keyword counter is put on it as it enters if
     // a card discarded this way has that keyword.
     if let Some((head, rest)) = line.split_once(" creature cards. Then if it has ")
-        && let Some(discard) = head.strip_prefix("As this creature enters, you discard ")
+        && let Some(discard) = head
+            .strip_prefix("As this creature enters, you discard ")
+            .or_else(|| head.strip_prefix("As this creature enters, discard "))
         && !discard.contains(['.', ','])
         && let Some(rest) = rest.strip_suffix('.')
     {
@@ -1612,6 +2061,11 @@ enum AuditLine {
 /// text-only surface merges. The merges see only audit readings, never
 /// retained prose, and marker lines pass through untouched.
 fn finish_audit_static_lines(def: &CardDefinition, lines: Vec<(AuditLine, String)>) -> Vec<String> {
+    // A draft instruction that names its own card ("a card named ~").
+    let lines = lines
+        .into_iter()
+        .map(|(kind, line)| (kind, line.replace("a card named ~", &format!("a card named {}", def.card.name))))
+        .collect::<Vec<_>>();
     let subject = subject_for_card(&def.card);
     let attached = audit_attached_subject(def);
     let mut out = Vec::with_capacity(lines.len());
@@ -1720,10 +2174,38 @@ fn finish_audit_static_lines(def: &CardDefinition, lines: Vec<(AuditLine, String
         run.push(line);
     }
     flush(&mut run, &mut out);
+    // Statics lowered from an authored leading "As long as it's your turn"
+    // (typed lowering provenance, CR 611.2): the condition is `YourTurn`
+    // either way; the audit keeps the authored connective.
+    let mut authored_as_long_as = def
+        .abilities
+        .iter()
+        .filter(|ability| {
+            matches!(
+                &ability.kind,
+                AbilityKind::Static(static_ability)
+                    if static_ability.compiled_model().is_some_and(|model| {
+                        model.label.starts_with(
+                            ironsmith_core::static_ability_model::
+                                AS_LONG_AS_ITS_YOUR_TURN_STATIC_LABEL_PREFIX,
+                        )
+                    })
+            )
+        })
+        .count();
     let out = out
         .into_iter()
         .map(|line| audit_attached_condition_first(&line).unwrap_or(line))
-        .map(|line| audit_your_turn_window(&line).unwrap_or(line))
+        .map(|line| {
+            let line = audit_your_turn_window(&line).unwrap_or(line);
+            if authored_as_long_as > 0
+                && let Some(rest) = line.strip_prefix("During your turn, ")
+            {
+                authored_as_long_as -= 1;
+                return format!("As long as it's your turn, {rest}");
+            }
+            line
+        })
         // CR 508.1d / 509.1c: both requirements on one creature.
         .map(|line| line.replace(" attacks each combat if able and blocks each combat if able", " attacks or blocks each combat if able"))
         .collect();
@@ -2280,7 +2762,40 @@ fn audit_entry_counters(line: &str, kind: &str) -> Option<u32> {
 /// keyword. Each pattern matches every line of the expansion and reads the
 /// parameter back from those lines, so a partial or altered expansion stays
 /// spelled out.
+/// CR 702.127a: aftermath is three static abilities on one half of a split
+/// card — a graveyard cast permission that exiles the spell afterward, a
+/// restriction against casting it from any other zone, and the exile
+/// replacement as it leaves the stack. Each audit chunk renders alone, so the
+/// three readings can land apart from one another; when all three are
+/// present they read as the keyword, at the position of the first one.
+fn collapse_audit_aftermath_expansion(lines: Vec<String>) -> Vec<String> {
+    const PARTS: [&str; 3] = [
+        "You may cast this card from your graveyard. If you cast it this way and it would be put into your graveyard, exile it instead",
+        "Cast this spell only if this card is in your graveyard",
+        "If this spell was cast from your graveyard, exile it instead of putting it anywhere else any time it would leave the stack",
+    ];
+    let is_part = |line: &str| PARTS.contains(&line.trim().trim_end_matches('.'));
+    let present = |part: &str| lines.iter().any(|line| line.trim().trim_end_matches('.') == part);
+    if !PARTS.iter().all(|part| present(part)) {
+        return lines;
+    }
+    let mut out = Vec::with_capacity(lines.len());
+    let mut emitted = false;
+    for line in lines {
+        if is_part(&line) {
+            if !emitted {
+                out.push("Aftermath".to_string());
+                emitted = true;
+            }
+            continue;
+        }
+        out.push(line);
+    }
+    out
+}
+
 fn collapse_audit_keyword_expansions(lines: Vec<String>) -> Vec<String> {
+    let lines = collapse_audit_aftermath_expansion(lines);
     let has_line = |prefix: &str| lines.iter().any(|line| line.starts_with(prefix));
     let partner_with = lines
         .iter()
@@ -2802,7 +3317,7 @@ fn audit_static_rule_rephrasings(line: &str) -> String {
             && subject.split(' ').count() <= 3
             && !["Each ", "A ", "An ", "This ", "That ", "Target ", "The "]
                 .iter()
-                .any(|head| subject.starts_with(head))
+                .any(|head| subject.starts_with(head) || subject == head.trim_end())
         {
             let first = subject.split(' ').next().unwrap_or_default();
             let subject_text = if ["Creature", "Artifact", "Enchantment", "Land", "Instant", "Sorcery", "Planeswalker", "Permanent", "Nonland"]
@@ -3200,7 +3715,7 @@ fn audit_static_rule_rephrasings_late(mut line: String) -> String {
         .and_then(|rest| rest.strip_suffix(" cast by you first spells cast each turn as though they had flash."))
         .filter(|kind| !kind.contains(' '))
     {
-        line = format!("The first {kind} spell you cast each turn can be cast as though it had flash.");
+        line = format!("You may cast the first {kind} spell you cast each turn as though it had flash.");
     }
     // A granted ability merged with a type change is quoted once: "Enchanted
     // permanent has "{T}: Add {C}" and is a land and is colorless." (In Too
@@ -3233,8 +3748,7 @@ fn audit_static_rule_rephrasings_late(mut line: String) -> String {
         {
             let each = rest
                 .strip_prefix("colors among ")
-                .map(|tail| format!("color among {tail}"))
-                .or_else(|| rest.strip_prefix("counters on ").map(|tail| format!("counter on {tail}")));
+                .map(|tail| format!("color among {tail}"));
             if let Some(each) = each {
                 line = format!("{head}{verb}+1/+1 for each {each}.");
                 break;
@@ -3386,7 +3900,14 @@ fn audit_land_animation_surface(line: &str) -> Option<String> {
     // "Enchanted land is creature in addition to its other types and is an
     // Elemental in addition to its other types and is green and has base
     // power and toughness 6/4[ and has vigilance and haste]."
-    let rest = line.strip_prefix("Enchanted land is creature in addition to its other types and is ")?;
+    // "Enchanted Mountain is a 7/7 red Giant creature with haste. It's still
+    // a land." (Awaken the Ancient): a basic-land-type attachment subject.
+    let (subject, rest) = line
+        .strip_prefix("Enchanted ")?
+        .split_once(" is creature in addition to its other types and is ")?;
+    if subject != "land" && !["Forest", "Island", "Mountain", "Plains", "Swamp"].contains(&subject) {
+        return None;
+    }
     let rest = rest.strip_suffix('.')?;
     // A colorless animation: "Enchanted land is a 4/4 Elemental creature
     // with reach and haste. It's still a land." (Nissa's Zendikon)
@@ -3405,7 +3926,7 @@ fn audit_land_animation_surface(line: &str) -> Option<String> {
             return None;
         }
         let with = keywords.map_or(String::new(), |keywords| format!(" with {keywords}"));
-        return Some(format!("Enchanted land is a {pt} {subtype} creature{with}. It's still a land."));
+        return Some(format!("Enchanted {subject} is a {pt} {subtype} creature{with}. It's still a land."));
     }
     let (subtype, rest) = rest.split_once(" in addition to its other types and is ")?;
     let subtype = subtype.strip_prefix("a ").or_else(|| subtype.strip_prefix("an "))?;
@@ -3422,7 +3943,7 @@ fn audit_land_animation_surface(line: &str) -> Option<String> {
         return None;
     }
     let with = keywords.map_or(String::new(), |keywords| format!(" with {keywords}"));
-    Some(format!("Enchanted land is a {pt} {color} {subtype} creature{with}. It's still a land."))
+    Some(format!("Enchanted {subject} is a {pt} {color} {subtype} creature{with}. It's still a land."))
 }
 
 /// "Equipped creature has lifelink as long as you control a Cleric." and
@@ -4058,6 +4579,9 @@ fn audit_ability_effect_rephrasings(line: &str) -> String {
         };
         if subject.is_empty()
             || subject.split(' ').count() > 3
+            // "Each 1/1 creature you control gets +1/+2" (Pendelhaven Elder):
+            // a P/T-shorthand subject keeps its distributive singular.
+            || subject.starts_with(|ch: char| ch.is_ascii_digit())
             || subject.contains(',')
             || !rest.contains("until end of turn")
             || rest.contains('"')
@@ -4201,7 +4725,8 @@ fn audit_blocker_exception(line: &str) -> Option<String> {
                 .or_else(|| kind.strip_prefix("an "))
                 .and_then(|kind| kind.strip_suffix(" you control"))
                 .filter(|kind| !kind.contains(' ') && kind.chars().next().is_some_and(|ch| ch.is_ascii_uppercase()))
-                .map(pluralize_noun_phrase)
+                // A Latin "-us" subtype takes "-uses" (Octopuses, Nautiluses).
+                .map(|kind| if kind.ends_with("us") { format!("{kind}es") } else { pluralize_noun_phrase(kind) })
         })
         .collect::<Option<Vec<_>>>()
         .filter(|kinds| kinds.len() >= 2)
@@ -4370,6 +4895,10 @@ fn is_mana_ward_audit_keyword_d5(keyword: &str) -> bool {
 /// A numbered keyword that is a triggered ability (CR 702.86 annihilator,
 /// firebending) as it closes or sits in a printed keyword list.
 fn is_triggered_list_audit_keyword_r5f(keyword: &str) -> bool {
+    // Soulbond (CR 702.95a) is a triggered keyword with no parameter.
+    if keyword.eq_ignore_ascii_case("soulbond") {
+        return true;
+    }
     let Some((name, number)) = keyword.rsplit_once(' ') else {
         return false;
     };
@@ -4392,11 +4921,46 @@ fn audit_attached_subject(def: &CardDefinition) -> Option<String> {
     if subtypes.contains(&Subtype::Fortification) {
         return Some("fortified land".to_string());
     }
-    if !subtypes.contains(&Subtype::Aura) {
+    let self_conversion_filter;
+    let attach_filter = if subtypes.contains(&Subtype::Aura) {
+        def.aura_attach_filter.as_ref()?
+    } else if def.card.is_creature() {
         // A creature that attaches itself (bestow, Licids) is an Aura then.
-        return def.card.is_creature().then(|| "enchanted creature".to_string());
+        // Any other creature names an enchanted object only through its own
+        // filters ("an enchanted permanent", Godhunter Octopus).
+        let can_attach_itself = def
+            .alternative_casts
+            .iter()
+            .any(|method| matches!(method, AlternativeCastingMethod::Bestow { .. }))
+            || def
+                .abilities
+                .iter()
+                .any(|ability| matches!(ability.kind, AbilityKind::Activated(_)));
+        if !can_attach_itself {
+            return None;
+        }
+        return Some("enchanted creature".to_string());
+    } else {
+        // An enchantment that makes itself an Aura ("it becomes an Aura with
+        // enchant creature": Cloudform, Lightform, Rageform) enchants with
+        // the filter its own conversion sets.
+        self_conversion_filter = audit_self_aura_conversion_filter(def)?;
+        &self_conversion_filter
+    };
+    // "Enchanted permanent has ward {1}" on an Aura that can enchant only
+    // artifacts (Hardlight Containment): the grant's authored generic
+    // subject is the card's attached subject.
+    if subtypes.contains(&Subtype::Aura)
+        && def.abilities.iter().any(|ability| {
+            matches!(&ability.kind, AbilityKind::Static(static_ability)
+                if matches!(static_ability.compiled_model().map(|model| &model.payload),
+                    Some(ironsmith_core::StaticAbilityPayload::AttachedAbilityGrant(grant))
+                        if grant.permanent_subject_surface))
+        })
+    {
+        return Some("enchanted permanent".to_string());
     }
-    let noun = match def.aura_attach_filter.as_ref()? {
+    let noun = match attach_filter {
         crate::object::AuraAttachmentFilter::Player(_) => "player",
         crate::object::AuraAttachmentFilter::Object(filter) => {
             if filter.zone.is_some_and(|zone| zone != Zone::Battlefield) {
@@ -4409,6 +4973,10 @@ fn audit_attached_subject(def: &CardDefinition) -> Option<String> {
                     [CardType::Enchantment] => "enchantment",
                     [CardType::Planeswalker] => "planeswalker",
                     [CardType::Battle] => "battle",
+                    // "Enchant Wall": the subtype alone names the host.
+                    [] if filter.all_card_types.is_empty() && filter.subtypes.len() == 1 => {
+                        return Some(format!("enchanted {}", filter.subtypes[0]));
+                    }
                     // "Enchant artifact creature": both types at once.
                     [] if matches!(
                         filter.all_card_types.as_slice(),
@@ -4516,11 +5084,14 @@ fn audit_static_subject_surface(line: &str, subject: &str, attached: Option<&str
             .replace(" is goaded by this Aura's controller", " is goaded")
             .replace(" is goaded by this Equipment's controller", " is goaded");
     }
-    // A plain creature Aura's subject is "enchanted creature".
-    if attached == Some("enchanted creature") {
+    // An Aura that can enchant only one kind of permanent names that kind:
+    // "Enchanted artifact doesn't untap" (CR 303.4a, the enchant restriction).
+    if let Some(noun) = attached.and_then(|attached| attached.strip_prefix("enchanted "))
+        && !matches!(noun, "permanent" | "player" | "card")
+    {
         line = line
-            .replace("Enchanted permanent", "Enchanted creature")
-            .replace("enchanted permanent", "enchanted creature");
+            .replace("Enchanted permanent", &format!("Enchanted {noun}"))
+            .replace("enchanted permanent", &format!("enchanted {noun}"));
     }
     if let Some(rewritten) = audit_each_conjunctive_grant(&line) {
         line = rewritten;
@@ -4929,10 +5500,17 @@ fn audit_static_subject_surface(line: &str, subject: &str, attached: Option<&str
             let each_card = (verb == " have ")
                 .then(|| {
                     let (kind, zone) = head.split_once(" cards in your ")?;
-                    (["hand", "graveyard"].contains(&zone) && !kind.is_empty() && !kind.contains(' ')).then(|| {
+                    // "Nonland cards in your hand have miracle {0}" (Molecule
+                    // Man) is printed plural; singular nonland grants
+                    // (Underworld Breach) are already rendered "Each ...".
+                    (["hand", "graveyard"].contains(&zone)
+                        && !kind.is_empty()
+                        && !kind.contains(' ')
+                        && kind != "Nonland")
+                        .then(|| {
                         let kind = if [
                             "Creature", "Land", "Artifact", "Enchantment", "Instant", "Sorcery",
-                            "Nonland", "Noncreature", "Historic", "Permanent", "Legendary",
+                            "Noncreature", "Historic", "Permanent", "Legendary",
                         ]
                         .contains(&kind)
                         {
@@ -6160,7 +6738,21 @@ fn flush_station_keyword_row(
         return;
     };
     if !pending_keywords.is_empty() {
-        out.push(format!("{threshold}+ | {}", pending_keywords.join(", ")));
+        // Each body was capitalized to stand alone; in one keyword row only
+        // the first keyword starts the sentence.
+        let row = pending_keywords
+            .iter()
+            .enumerate()
+            .map(|(index, keyword)| {
+                if index == 0 {
+                    keyword.clone()
+                } else {
+                    lowercase_first(keyword)
+                }
+            })
+            .collect::<Vec<_>>()
+            .join(", ");
+        out.push(format!("{threshold}+ | {row}"));
         pending_keywords.clear();
     }
 }
@@ -8103,8 +8695,14 @@ fn merge_shared_as_long_as_tail_lines(lines: Vec<String>) -> Vec<String> {
             return None;
         }
         let right = right.trim().trim_end_matches('.');
-        let body = right.strip_prefix("As long as ")?;
-        let (condition, grant) = body.split_once(", ")?;
+        let (condition, grant) = match right.strip_prefix("As long as ") {
+            Some(body) => body.split_once(", ")?,
+            // The grant's own trailing gate: "<recipients> have vigilance as
+            // long as you have the city's blessing".
+            None => right
+                .rsplit_once(" as long as ")
+                .map(|(grant, condition)| (condition, grant))?,
+        };
         let keywords = grant
             .strip_prefix(subject)
             .or_else(|| {
@@ -10830,4 +11428,1988 @@ mod display_fallback_audit_tests {
         .build();
         assert_audit_reads_model(&definition, ironsmith_core::semantic_audit::UNVERIFIED_MARKER_PREFIX);
     }
+}
+
+/// The attachment filter an ability sets on this object while turning it
+/// into an Aura (`SetAuraAttachmentFilter` on the source).
+fn audit_self_aura_conversion_filter(def: &CardDefinition) -> Option<crate::object::AuraAttachmentFilter> {
+    def.abilities.iter().find_map(|ability| {
+        let AbilityKind::Triggered(triggered) = &ability.kind else {
+            return None;
+        };
+        triggered.effects.flattened_default_effects().iter().find_map(|effect| {
+            let apply = effect.downcast_ref::<crate::effects::ApplyContinuousEffect>()?;
+            if !matches!(apply.target_spec.as_ref(), Some(ChooseSpec::Source)) {
+                return None;
+            }
+            apply.runtime_modifications.iter().find_map(|modification| match modification {
+                crate::effects::continuous::RuntimeModification::SetAuraAttachmentFilter(filter) => {
+                    Some(filter.clone())
+                }
+                _ => None,
+            })
+        })
+    })
+}
+
+/// The audit reading of an ability granted to `recipient`, with its
+/// self-references named for the recipient's object class.
+fn granted_ability_audit_text(ability: &Ability, recipient: &ObjectFilter) -> Option<String> {
+    let subject = render_effects::granted_ability_self_subject_for_filter(recipient);
+    // Only a permanent class other than creatures renames the granted
+    // ability's self-reference; every other grant keeps its ordinary reading.
+    // A creature recipient renames only a generic self-reference the trigger
+    // matcher printed ("Whenever this permanent becomes tapped"); otherwise
+    // the later card-subject pass would name the granting card instead.
+    let generic_creature_self_reference = subject == "this creature" && {
+        let raw = render_effects::describe_inline_ability_with_self_subject(ability, subject);
+        raw.contains("this permanent") || raw.contains("This permanent")
+    };
+    if !generic_creature_self_reference
+        && !matches!(subject, "this artifact" | "this land" | "this enchantment")
+    {
+        return None;
+    }
+    let text = render_effects::describe_inline_ability_with_self_subject(ability, subject);
+    Some(render_effects::normalize_ability_self_reference_surface(&text, subject))
+}
+
+/// "Creatures with flying can't attack or block, and their activated
+/// abilities with {T} in their costs can't be activated" (Katabatic Winds):
+/// an attack/block ban and a tap-ability ban over the same filter read as one
+/// sentence, the second clause bound to the shared subject.
+fn audit_attack_block_and_tap_ability_ban(members: &[Ability]) -> Option<String> {
+    let [first, second] = members else {
+        return None;
+    };
+    let restriction = |ability: &Ability| -> Option<crate::effect::Restriction> {
+        let AbilityKind::Static(static_ability) = &ability.kind else {
+            return None;
+        };
+        let model = static_ability.compiled_model()?;
+        let ironsmith_core::StaticAbilityPayload::RuleRestriction {
+            restriction,
+            additional_restrictions,
+            ..
+        } = &model.payload
+        else {
+            return None;
+        };
+        additional_restrictions.is_empty().then(|| restriction.clone())
+    };
+    let (
+        crate::effect::Restriction::AttackOrBlock(attackers),
+        crate::effect::Restriction::ActivateTapAbilitiesOf(sources),
+    ) = (restriction(first)?, restriction(second)?)
+    else {
+        return None;
+    };
+    if attackers != sources {
+        return None;
+    }
+    let head = audit_rule_restriction_reading(&crate::effect::Restriction::AttackOrBlock(attackers));
+    let head = head.trim().trim_end_matches('.');
+    if !head.ends_with(" can't attack or block") || head.contains(',') {
+        return None;
+    }
+    // "Enchanted creature ..., and its activated abilities" (Serra Bestiary).
+    let lower = head.to_ascii_lowercase();
+    let pronoun = if ["enchanted ", "equipped ", "this ", "target "].iter().any(|lead| lower.starts_with(lead)) {
+        "its"
+    } else {
+        "their"
+    };
+    Some(format!(
+        "{}, and {pronoun} activated abilities with {{T}} in their costs can't be activated",
+        capitalize_first(head)
+    ))
+}
+
+/// "During your turn, creatures you control have first strike and equip
+/// abilities you activate cost {1} less to activate" (Nahiri, Storm of
+/// Stone): two members gated by the same your-turn condition, the second an
+/// activated-ability cost modifier with its own subject, share one leading
+/// "During your turn".
+fn audit_your_turn_grant_and_cost_modifier(members: &[Ability]) -> Option<String> {
+    let [first, second] = members else {
+        return None;
+    };
+    fn gated(ability: &Ability) -> Option<&crate::static_abilities::CompiledStaticAbility> {
+        let AbilityKind::Static(static_ability) = &ability.kind else {
+            return None;
+        };
+        let model = static_ability.compiled_model()?;
+        let ironsmith_core::StaticAbilityPayload::Conditional { ability, condition, .. } =
+            &model.payload
+        else {
+            return None;
+        };
+        matches!(condition, crate::ConditionExpr::YourTurn).then_some(ability.as_ref())
+    }
+    let (left, right) = (gated(first)?, gated(second)?);
+    if !matches!(
+        &right.payload,
+        ironsmith_core::StaticAbilityPayload::ActivatedAbilityCostReduction { .. }
+    ) || matches!(
+        &left.payload,
+        ironsmith_core::StaticAbilityPayload::ActivatedAbilityCostReduction { .. }
+    ) {
+        return None;
+    }
+    let reading = |ability: &crate::static_abilities::CompiledStaticAbility| {
+        let text = audit_readings::audit_payload_reading(ability).unwrap_or_else(|| {
+            crate::static_abilities::StaticAbility::from_model(ability.clone()).display()
+        });
+        text.trim().trim_end_matches('.').to_string()
+    };
+    let (left, right) = (reading(left), reading(right));
+    if left.is_empty()
+        || right.is_empty()
+        || [&left, &right]
+            .iter()
+            .any(|text| text.contains([',', '"', ':']) || text.contains(" as long as "))
+    {
+        return None;
+    }
+    Some(format!(
+        "During your turn, {} and {}",
+        lowercase_first(&left),
+        lowercase_first(&right)
+    ))
+}
+
+/// "During your turn, artifacts you control are Foods in addition to their
+/// other types and have "..."" (Gourmand's Talent): a conditional subtype
+/// addition and an ability grant over the same objects under the same
+/// condition read as one sentence.
+/// "During your turn, each non-Equipment artifact and non-Aura enchantment
+/// you control with mana value 4 or greater is a 4/4 Elemental creature in
+/// addition to its other types and has indestructible, haste, and
+/// "Whenever this creature deals combat damage to a player, draw a card.""
+/// (Bello, Bard of the Brambles): one printed sentence lowered into a
+/// creature-type addition, a base P/T setter, an optional subtype addition,
+/// and one grant per ability, all over one set and under one condition.
+fn audit_conditional_animated_set_with_grants(members: &[Ability]) -> Option<String> {
+    use ironsmith_core::StaticAbilityPayload as P;
+    let [types_member, pt_member, rest @ ..] = members else {
+        return None;
+    };
+    let AbilityKind::Static(types_ability) = &types_member.kind else {
+        return None;
+    };
+    let types_model = types_ability.compiled_model()?;
+    let P::Conditional { ability: types_inner, condition, .. } = &types_model.payload else {
+        return None;
+    };
+    let P::AddCardTypes { filter, card_types } = &types_inner.payload else {
+        return None;
+    };
+    if card_types.as_slice() != [CardType::Creature] {
+        return None;
+    }
+    let AbilityKind::Static(pt_ability) = &pt_member.kind else {
+        return None;
+    };
+    let pt_model = pt_ability.compiled_model()?;
+    let P::Conditional { ability: pt_inner, condition: pt_condition, .. } = &pt_model.payload
+    else {
+        return None;
+    };
+    let P::SetBasePowerToughness { filter: pt_filter, power, toughness } = &pt_inner.payload
+    else {
+        return None;
+    };
+    if pt_filter != filter || pt_condition != condition {
+        return None;
+    }
+    let mut subtype_words = String::new();
+    let mut grants = rest;
+    if let Some((subtype_member, after)) = rest.split_first()
+        && let AbilityKind::Static(subtype_ability) = &subtype_member.kind
+        && let Some(subtype_model) = subtype_ability.compiled_model()
+        && let P::Conditional { ability: subtype_inner, condition: subtype_condition, .. } =
+            &subtype_model.payload
+        && let P::AddSubtypes { filter: subtype_filter, subtypes } = &subtype_inner.payload
+    {
+        if subtype_filter != filter || subtype_condition != condition || subtypes.is_empty() {
+            return None;
+        }
+        subtype_words = subtypes
+            .iter()
+            .map(|subtype| format!("{subtype:?} "))
+            .collect::<String>();
+        grants = after;
+    }
+    if grants.is_empty() {
+        return None;
+    }
+    let mut grant_subject: Option<String> = None;
+    let mut abilities = Vec::with_capacity(grants.len());
+    for grant_member in grants {
+        let AbilityKind::Static(grant_ability) = &grant_member.kind else {
+            return None;
+        };
+        let grant_model = grant_ability.compiled_model()?;
+        let P::GrantObjectAbilityForFilter(granted) = &grant_model.payload else {
+            return None;
+        };
+        if &granted.filter != filter
+            || granted.condition.as_ref() != Some(condition)
+            || !granted.additional_abilities.is_empty()
+        {
+            return None;
+        }
+        let mut unconditional = grant_model.clone();
+        if let P::GrantObjectAbilityForFilter(granted) = &mut unconditional.payload {
+            granted.condition = None;
+        }
+        // A plain keyword grant has no payload reading; its own display is
+        // the reading `audit_single_static_reading` would use.
+        let reading = audit_readings::audit_payload_reading(&unconditional).unwrap_or_else(|| {
+            crate::static_abilities::StaticAbility::from_model(unconditional.clone()).display()
+        });
+        let reading = reading.trim().trim_end_matches('.');
+        let (grant_head, predicate) = reading.split_once(" have ")?;
+        if grant_subject
+            .as_deref()
+            .is_some_and(|known| !known.eq_ignore_ascii_case(grant_head))
+        {
+            return None;
+        }
+        grant_subject = Some(grant_head.to_string());
+        let predicate = predicate.trim();
+        if predicate.is_empty() {
+            return None;
+        }
+        abilities.push(predicate.to_string());
+    }
+    let types_reading = audit_readings::audit_payload_reading(types_inner).unwrap_or_else(|| {
+        crate::static_abilities::StaticAbility::from_model(types_inner.as_ref().clone()).display()
+    });
+    let types_reading = lowercase_first(types_reading.trim().trim_end_matches('.'));
+    let subject = types_reading.strip_suffix(" is a creature in addition to its other types")?;
+    if !subject.starts_with("each ") {
+        return None;
+    }
+    let condition_text = describe_condition(condition);
+    let condition_text = condition_text.strip_prefix("as long as ").unwrap_or(&condition_text);
+    let lead = if condition_text == "it's your turn"
+        || condition_text.eq_ignore_ascii_case("during your turn")
+    {
+        "During your turn".to_string()
+    } else {
+        format!("As long as {condition_text}")
+    };
+    let article = if matches!(*power, 8 | 11 | 18) { "an" } else { "a" };
+    Some(format!(
+        "{lead}, {subject} is {article} {power}/{toughness} {subtype_words}creature in addition to its other types and has {}",
+        join_with_and(&abilities)
+    ))
+}
+
+fn audit_conditional_subtype_and_grant_pair(members: &[Ability]) -> Option<String> {
+    use ironsmith_core::StaticAbilityPayload as P;
+    let [types_member, grant_member] = members else {
+        return None;
+    };
+    let (AbilityKind::Static(types_ability), AbilityKind::Static(grant_ability)) =
+        (&types_member.kind, &grant_member.kind)
+    else {
+        return None;
+    };
+    let types_model = types_ability.compiled_model()?;
+    let P::Conditional { ability: inner, condition, .. } = &types_model.payload else {
+        return None;
+    };
+    let P::AddSubtypes { filter, .. } = &inner.payload else {
+        return None;
+    };
+    let grant_model = grant_ability.compiled_model()?;
+    let P::GrantObjectAbilityForFilter(granted) = &grant_model.payload else {
+        return None;
+    };
+    if &granted.filter != filter
+        || granted.condition.as_ref() != Some(condition)
+        || !granted.additional_abilities.is_empty()
+    {
+        return None;
+    }
+    let mut unconditional = grant_model.clone();
+    if let P::GrantObjectAbilityForFilter(granted) = &mut unconditional.payload {
+        granted.condition = None;
+    }
+    let types_reading = audit_readings::audit_payload_reading(inner).unwrap_or_else(|| {
+        crate::static_abilities::StaticAbility::from_model(inner.as_ref().clone()).display()
+    });
+    let grant_reading = audit_readings::audit_payload_reading(&unconditional)?;
+    let types_reading = types_reading.trim().trim_end_matches('.');
+    let grant_reading = grant_reading.trim().trim_end_matches('.');
+    let (subject, type_predicate) = types_reading.split_once(" are ")?;
+    // The engine's subtype display reads its subject in lowercase
+    // ("artifacts you control are Foods ..."); the grant reading capitalizes it.
+    let grant_predicate = grant_reading
+        .get(..subject.len())
+        .filter(|head| head.eq_ignore_ascii_case(subject))
+        .and_then(|_| grant_reading[subject.len()..].strip_prefix(" have "))?;
+    let condition = describe_condition(condition);
+    let condition = condition.strip_prefix("as long as ").unwrap_or(&condition);
+    let lead = if condition == "it's your turn" {
+        "During your turn".to_string()
+    } else {
+        format!("As long as {condition}")
+    };
+    Some(format!(
+        "{lead}, {} are {type_predicate} and have {grant_predicate}",
+        lowercase_first(subject)
+    ))
+}
+
+/// "This creature enters with a number of stun counters on it equal to three
+/// minus X. If X is 2 or less, it enters tapped." (Slumbering Trudge): an
+/// entry-counter static and an authored negated-if tapped entry on one line.
+fn audit_counter_entry_then_if_not_tapped_entry(
+    def: &CardDefinition,
+    members: &[Ability],
+) -> Option<String> {
+    use ironsmith_core::StaticAbilityPayload as P;
+    let [counters, tapped] = members else {
+        return None;
+    };
+    let (AbilityKind::Static(counter_ability), AbilityKind::Static(tapped_ability)) =
+        (&counters.kind, &tapped.kind)
+    else {
+        return None;
+    };
+    if !matches!(
+        counter_ability.compiled_model().map(|model| &model.payload),
+        Some(P::EntersWithCountersValue { .. })
+    ) {
+        return None;
+    }
+    let P::EntersTappedUnlessCondition { condition, if_not_surface: true, .. } =
+        &tapped_ability.compiled_model()?.payload
+    else {
+        return None;
+    };
+    let first = audit_single_static_reading(def, counters)?;
+    let negated = describe_condition(&crate::ConditionExpr::Not(Box::new(condition.clone())));
+    Some(format!(
+        "{}. If {negated}, it enters tapped",
+        first.trim().trim_end_matches('.')
+    ))
+}
+
+/// "During your turn, this Spacecraft and creatures you control have
+/// hexproof" (K'Vort-Class Raider): one source line lowered into the same
+/// granted ability, under the same condition, for the source and for a set
+/// of other objects reads as one grant with a compound subject.
+fn audit_source_and_set_shared_grant(members: &[Ability], readings: &[String]) -> Option<String> {
+    use ironsmith_core::StaticAbilityPayload as P;
+    // "During your turn, Yuna and enchantment creatures you control have
+    // trample, lifelink, and ward {2}" (Yuna, Hope of Spira): several granted
+    // abilities lower to one source grant and one set grant each, the source
+    // grants first, in printed order.
+    if members.len() < 2 || members.len() % 2 != 0 || readings.len() != members.len() {
+        return None;
+    }
+    let half = members.len() / 2;
+    let (sources, sets) = members.split_at(half);
+    let (source_readings, set_readings) = readings.split_at(half);
+    let mut shared: Option<(String, String, String)> = None;
+    let mut predicates: Vec<String> = Vec::with_capacity(half);
+    for (index, (source_member, set_member)) in sources.iter().zip(sets).enumerate() {
+        let (AbilityKind::Static(first), AbilityKind::Static(second)) =
+            (&source_member.kind, &set_member.kind)
+        else {
+            return None;
+        };
+        let (P::GrantObjectAbilityForFilter(source_grant), P::GrantObjectAbilityForFilter(set_grant)) =
+            (&first.compiled_model()?.payload, &second.compiled_model()?.payload)
+        else {
+            return None;
+        };
+        if !source_grant.filter.source
+            || set_grant.filter.source
+            || source_grant.condition != set_grant.condition
+            || source_grant.ability != set_grant.ability
+            || !source_grant.additional_abilities.is_empty()
+            || !set_grant.additional_abilities.is_empty()
+        {
+            return None;
+        }
+        let left = source_readings[index].trim().trim_end_matches('.');
+        let right = set_readings[index].trim().trim_end_matches('.');
+        let (left_head, predicate) = left.split_once(" has ")?;
+        let right_head = right.strip_suffix(&format!(" have {predicate}"))?;
+        let (lead, source_subject, set_subject) = match left_head.rsplit_once(", ") {
+            Some((lead, source_subject)) => {
+                let set_subject = right_head.strip_prefix(lead)?.strip_prefix(", ")?;
+                (format!("{lead}, "), source_subject, set_subject)
+            }
+            None => (String::new(), left_head, right_head),
+        };
+        let source_subject = lowercase_first(source_subject);
+        if !source_subject.starts_with("this ") || set_subject.contains(',') || predicate.contains('"') {
+            return None;
+        }
+        // Mid-sentence the set subject is already lowercase; a leading one is
+        // capitalized only as the sentence start.
+        let set_subject = if lead.is_empty() {
+            lowercase_first(set_subject)
+        } else {
+            set_subject.to_string()
+        };
+        let parts = (lead, source_subject, set_subject);
+        match &shared {
+            Some(existing) if *existing != parts => return None,
+            Some(_) => {}
+            None => shared = Some(parts),
+        }
+        predicates.push(predicate.to_string());
+    }
+    let (lead, source_subject, set_subject) = shared?;
+    let predicate = match predicates.as_slice() {
+        [] => return None,
+        [one] => one.clone(),
+        [first, second] => format!("{first} and {second}"),
+        [init @ .., last] => format!("{}, and {last}", init.join(", ")),
+    };
+    Some(format!("{lead}{source_subject} and {set_subject} have {predicate}"))
+}
+
+/// "Spells with the chosen names can't be cast and lands with the chosen
+/// names can't be played" (Null Chamber): a chosen-name cast prohibition and
+/// a chosen-name land-play prohibition for every player, printed as one
+/// passive sentence. "names" when an opponent also chose a name as the
+/// permanent entered.
+fn audit_chosen_names_cast_and_play_ban(def: &CardDefinition, members: &[Ability]) -> Option<String> {
+    use crate::effect::Restriction as R;
+    use ironsmith_core::StaticAbilityPayload as P;
+    let [cast, play] = members else {
+        return None;
+    };
+    fn sole_restriction(ability: &Ability) -> Option<crate::effect::Restriction> {
+        let AbilityKind::Static(static_ability) = &ability.kind else {
+            return None;
+        };
+        match &static_ability.compiled_model()?.payload {
+            ironsmith_core::StaticAbilityPayload::RuleRestriction {
+                restriction,
+                additional_restrictions,
+                ..
+            } if additional_restrictions.is_empty() => Some(restriction.clone()),
+            _ => None,
+        }
+    }
+    let (R::CastSpellsMatching(cast_player, spells), R::PlayLandsMatching(play_player, lands)) =
+        (sole_restriction(cast)?, sole_restriction(play)?)
+    else {
+        return None;
+    };
+    let chosen = |filter: &ObjectFilter| filter.name.as_deref() == Some("{chosen name}");
+    let mut spell_rest = spells.clone();
+    spell_rest.zone = None;
+    spell_rest.stack_kind = None;
+    spell_rest.name = None;
+    let mut land_rest = lands.clone();
+    land_rest.zone = None;
+    land_rest.card_types.retain(|card_type| *card_type != CardType::Land);
+    land_rest.name = None;
+    if cast_player != PlayerFilter::Any
+        || play_player != PlayerFilter::Any
+        || !chosen(&spells)
+        || !chosen(&lands)
+        || spell_rest != ObjectFilter::default()
+        || land_rest != ObjectFilter::default()
+    {
+        return None;
+    }
+    let two_names = def.abilities.iter().any(|ability| {
+        matches!(&ability.kind, AbilityKind::Static(static_ability)
+            if matches!(static_ability.compiled_model().map(|model| &model.payload),
+                Some(P::ChooseCardNameAsEnters { opponent_also_chooses: true, .. })))
+    });
+    let names = if two_names { "names" } else { "name" };
+    Some(format!(
+        "Spells with the chosen {names} can't be cast and lands with the chosen {names} can't be played"
+    ))
+}
+
+/// "As long as you control enchanted creature, it gets +2/+2. Otherwise, it
+/// can't block." (Mishra's Domination): one printed line lowered into a
+/// conditional static and an attached grant gated on that condition's
+/// negation reads as the condition, its effect, and the "Otherwise" branch.
+/// "Equipped creature gets +1/+1. As long as it's legendary, it gets an
+/// additional +2/+2. As long as it's red, it has trample." (Tenza, Godo's
+/// Maul): an unconditional attached anthem followed by riders gated on the
+/// attached object's own characteristics reads as one line whose riders name
+/// that object "it".
+fn audit_attached_anthem_then_conditional_riders(
+    members: &[Ability],
+    readings: &[String],
+) -> Option<String> {
+    use ironsmith_core::StaticAbilityPayload as P;
+    let (first_member, rider_members) = members.split_first()?;
+    let (first_line, rider_lines) = readings.split_first()?;
+    if rider_members.is_empty() || rider_members.len() != rider_lines.len() {
+        return None;
+    }
+    let AbilityKind::Static(first) = &first_member.kind else {
+        return None;
+    };
+    let P::Anthem(anthem) = &first.compiled_model()?.payload else {
+        return None;
+    };
+    if anthem.condition.is_some() {
+        return None;
+    }
+    let first_line = first_line.trim().trim_end_matches('.');
+    let (host, _) = first_line.split_once(" gets ")?;
+    if !["Equipped creature", "Enchanted creature"].contains(&host)
+        || first_line.contains(['"', ','])
+    {
+        return None;
+    }
+    let host_lower = lowercase_first(host);
+    let mut sentences = vec![first_line.to_string()];
+    for (member, line) in rider_members.iter().zip(rider_lines) {
+        let AbilityKind::Static(rider) = &member.kind else {
+            return None;
+        };
+        let gated = match &rider.compiled_model()?.payload {
+            P::Anthem(anthem) => anthem.condition.as_ref(),
+            P::AttachedAbilityGrant(grant) if grant.additional_abilities.is_empty() => {
+                grant.condition.as_ref()
+            }
+            _ => return None,
+        };
+        if !matches!(gated, Some(crate::ConditionExpr::AttachedToSourceMatches(_))) {
+            return None;
+        }
+        let line = line.trim().trim_end_matches('.');
+        if line.contains('"') {
+            return None;
+        }
+        let leading_host = format!("As long as {host_lower} is ");
+        let trailing_host = format!(" as long as {host_lower} is ");
+        let (quality, predicate) = if let Some(rest) = line
+            .strip_prefix(leading_host.as_str())
+            .or_else(|| line.strip_prefix("As long as it's "))
+        {
+            rest.split_once(", it ")?
+        } else {
+            let rest = line.strip_prefix(&format!("{host} "))?;
+            let (predicate, quality) = rest
+                .rsplit_once(trailing_host.as_str())
+                .or_else(|| rest.rsplit_once(" as long as it's "))?;
+            (quality, predicate)
+        };
+        if quality.is_empty()
+            || predicate.is_empty()
+            || quality.contains(',')
+            || predicate.contains(" as long as ")
+        {
+            return None;
+        }
+        sentences.push(format!("As long as it's {quality}, it {predicate}"));
+    }
+    Some(sentences.join(". "))
+}
+
+fn audit_otherwise_conditional_pair(members: &[Ability], readings: &[String]) -> Option<String> {
+    use ironsmith_core::StaticAbilityPayload as P;
+    let [first, second] = members else {
+        return None;
+    };
+    let [left, right] = readings else {
+        return None;
+    };
+    let (AbilityKind::Static(first), AbilityKind::Static(second)) = (&first.kind, &second.kind) else {
+        return None;
+    };
+    let (P::Conditional { condition, .. }, P::AttachedAbilityGrant(grant)) =
+        (&first.compiled_model()?.payload, &second.compiled_model()?.payload)
+    else {
+        return None;
+    };
+    if !grant.additional_abilities.is_empty()
+        || !matches!(grant.condition.as_ref(),
+            Some(crate::ConditionExpr::Not(negated)) if negated.as_ref() == condition)
+    {
+        return None;
+    }
+    let left = left.trim().trim_end_matches('.');
+    let right = right.trim().trim_end_matches('.');
+    let (left_head, shown_condition) = left.split_once(" as long as ")?;
+    let right_head = right.strip_suffix(&format!(" unless {shown_condition}"))?;
+    // The shared subject is the common leading words of both readings.
+    let common = left_head
+        .char_indices()
+        .zip(right_head.chars())
+        .take_while(|((_, a), b)| a == b)
+        .last()
+        .map_or(0, |((index, ch), _)| index + ch.len_utf8());
+    let subject_end = left_head[..common].rfind(' ')? + 1;
+    let (positive, negative) = (&left_head[subject_end..], &right_head[subject_end..]);
+    if subject_end < 2
+        || positive.is_empty()
+        || negative.is_empty()
+        || shown_condition.contains(',')
+        || [positive, negative].iter().any(|text| text.contains(" as long as ") || text.contains('"'))
+    {
+        return None;
+    }
+    Some(format!("As long as {shown_condition}, it {positive}. Otherwise, it {negative}"))
+}
+
+/// "Each creature you control with defender assigns combat damage equal to
+/// its toughness rather than its power and can attack as though it didn't
+/// have defender" (Arcades, the Strategist): two rules granted to the same
+/// "each" set on one printed line read as one sentence.
+fn audit_each_toughness_damage_and_defender_attack_pair(members: &[Ability]) -> Option<String> {
+    use crate::static_abilities::StaticAbilityId as Id;
+    let [first, second] = members else {
+        return None;
+    };
+    let grant = |ability: &Ability| -> Option<(ObjectFilter, Option<Id>, Option<ironsmith_core::SetQuantifierSurface>)> {
+        let AbilityKind::Static(static_ability) = &ability.kind else {
+            return None;
+        };
+        let ironsmith_core::StaticAbilityPayload::GrantObjectAbilityForFilter(grant) =
+            &static_ability.compiled_model()?.payload
+        else {
+            return None;
+        };
+        if grant.condition.is_some() || !grant.additional_abilities.is_empty() {
+            return None;
+        }
+        let ironsmith_core::AbilityKind::Static(granted) = &grant.ability.kind else {
+            return None;
+        };
+        Some((grant.filter.clone(), granted.id.clone(), grant.set_quantifier_surface.clone()))
+    };
+    let (filter, first_id, quantifier) = grant(first)?;
+    let (other_filter, second_id, other_quantifier) = grant(second)?;
+    if filter != other_filter
+        || filter.source
+        || first_id != Some(Id::ThisCreatureAssignsCombatDamageUsingToughness)
+        || second_id != Some(Id::CanAttackAsThoughNoDefender)
+        || quantifier != Some(ironsmith_core::SetQuantifierSurface::Each)
+        || other_quantifier != quantifier
+    {
+        return None;
+    }
+    let description = filter.description();
+    let subject = strip_indefinite_article(&description).trim();
+    if subject.is_empty() {
+        return None;
+    }
+    Some(format!(
+        "Each {subject} assigns combat damage equal to its toughness rather than its power and can attack as though it didn't have defender"
+    ))
+}
+
+/// "Enchanted creature is a Turtle with base power and toughness 0/1. It
+/// can't attack and loses all abilities." (Retro-Mutation): the base P/T and
+/// single creature type of the enchanted creature, then a granted rules
+/// restriction and the loss of all abilities, all on one attached subject.
+fn audit_attached_subtype_base_pt_restriction_loss_group(
+    def: &CardDefinition,
+    members: &[Ability],
+) -> Option<String> {
+    use ironsmith_core::StaticAbilityPayload as P;
+    let [pt_member, subtype_member, grant_member, loss_member] = members else {
+        return None;
+    };
+    fn model(ability: &Ability) -> Option<&crate::static_abilities::CompiledStaticAbility> {
+        let AbilityKind::Static(static_ability) = &ability.kind else {
+            return None;
+        };
+        static_ability.compiled_model()
+    }
+    let P::SetBasePowerToughness { filter: pt_filter, power, toughness } = &model(pt_member)?.payload
+    else {
+        return None;
+    };
+    let P::SetCreatureSubtypes { filter: subtype_filter, subtypes } = &model(subtype_member)?.payload
+    else {
+        return None;
+    };
+    let P::AttachedAbilityGrant(grant) = &model(grant_member)?.payload else {
+        return None;
+    };
+    let P::RemoveAllAbilities(loss_filter) = &model(loss_member)?.payload else {
+        return None;
+    };
+    let [subtype] = subtypes.as_slice() else {
+        return None;
+    };
+    let normalized = |filter: &ObjectFilter| {
+        let mut filter = filter.clone();
+        filter.set_explicit_card_type_noun(None);
+        filter.source_surface = None;
+        filter
+    };
+    let attached = normalized(pt_filter);
+    if normalized(subtype_filter) != attached
+        || normalized(loss_filter) != attached
+        || !attached.tagged_constraints.iter().any(|constraint| constraint.tag.as_str() == "enchanted")
+        || grant.condition.is_some()
+        || !grant.additional_abilities.is_empty()
+    {
+        return None;
+    }
+    let ironsmith_core::AbilityKind::Static(granted) = &grant.ability.kind else {
+        return None;
+    };
+    if granted.id != Some(crate::static_abilities::StaticAbilityId::RuleRestriction) {
+        return None;
+    }
+    let restriction = audit_single_static_reading(def, grant_member)?;
+    // The granted restriction names its host as "the object this is
+    // attached to"; read it with the card's attached subject first.
+    let restriction = audit_static_subject_surface(
+        &format!("{}.", capitalize_first(restriction.trim().trim_end_matches('.'))),
+        subject_for_card(&def.card),
+        audit_attached_subject(def).as_deref(),
+    );
+    let restriction = restriction.trim().trim_end_matches('.');
+    let (subject, rest) = restriction.split_once(" can't ")?;
+    if !subject.eq_ignore_ascii_case("enchanted creature") || rest.contains(['.', ',', '"']) {
+        return None;
+    }
+    Some(format!(
+        "Enchanted creature is {} with base power and toughness {power}/{toughness}. It can't {rest} and loses all abilities",
+        with_indefinite_article(&subtype.to_string()),
+    ))
+}
+
+/// "Lands on the battlefield and land cards in graveyards can't be the
+/// targets of spells or abilities your opponents control." (Tomik,
+/// Distinguished Advokist): two typed `BeTargetedFrom` bans with one source
+/// filter, over the same object kind on the battlefield and in any graveyard.
+fn audit_zone_split_targeting_ban_pair(members: &[Ability]) -> Option<String> {
+    let ban = |member: &Ability| -> Option<(ObjectFilter, ObjectFilter)> {
+        let AbilityKind::Static(ability) = &member.kind else { return None; };
+        let ironsmith_core::StaticAbilityPayload::RuleRestriction { restriction, additional_restrictions, .. } =
+            &ability.compiled_model()?.payload
+        else {
+            return None;
+        };
+        if !additional_restrictions.is_empty() {
+            return None;
+        }
+        let crate::effect::Restriction::BeTargetedFrom(objects, sources) = restriction else {
+            return None;
+        };
+        Some((objects.clone(), sources.clone()))
+    };
+    let [first, second] = members else { return None; };
+    let (battlefield, sources) = ban(first)?;
+    let (graveyard, graveyard_sources) = ban(second)?;
+    if sources != graveyard_sources
+        || battlefield.zone != Some(Zone::Battlefield)
+        || graveyard.zone != Some(Zone::Graveyard)
+        || graveyard.owner.is_some()
+        || battlefield.controller.is_some()
+    {
+        return None;
+    }
+    let mut on_battlefield = battlefield.clone();
+    on_battlefield.zone = None;
+    let mut in_graveyard = graveyard;
+    in_graveyard.zone = None;
+    if on_battlefield != in_graveyard {
+        return None;
+    }
+    let noun = on_battlefield.description();
+    let noun = noun.trim_start_matches("a ").trim_start_matches("an ");
+    let noun = noun.strip_suffix(" card").unwrap_or(noun);
+    if noun.is_empty() || noun.contains(' ') {
+        return None;
+    }
+    let reading = describe_restriction(&crate::effect::Restriction::BeTargetedFrom(battlefield, sources));
+    let (_, sources_text) = reading
+        .split_once(" can't be the targets of ")
+        .or_else(|| reading.split_once(" can't be the target of "))?;
+    Some(format!(
+        "{} on the battlefield and {noun} cards in graveyards can't be the targets of {}",
+        capitalize_first(&pluralize_noun_phrase(noun)),
+        sources_text.trim().trim_end_matches('.')
+    ))
+}
+
+/// "As long as this card is in your graveyard, if you would learn, you may
+/// instead return this card to the battlefield." (Retriever Phoenix): a
+/// keyword-action replacement whose ability functions only from the
+/// graveyard (CR 113.6) and whose replacement moves the source card from
+/// there to the battlefield.
+fn audit_graveyard_return_keyword_replacement(
+    ability: &Ability,
+    model: &crate::static_abilities::CompiledStaticAbility,
+) -> Option<String> {
+    let ironsmith_core::StaticAbilityPayload::KeywordActionReplacement {
+        action,
+        source_filter,
+        performer_filter: Some(PlayerFilter::You),
+        replacement_effects,
+        optional,
+        ..
+    } = &model.payload
+    else {
+        return None;
+    };
+    if ability.functional_zones.as_slice() != [Zone::Graveyard] || *source_filter != ObjectFilter::default() {
+        return None;
+    }
+    let [returned] = replacement_effects.as_slice() else { return None; };
+    let returned = returned.downcast_ref::<crate::effects::MoveToZoneEffect>()?;
+    if returned.zone != Zone::Battlefield
+        || !matches!(returned.target.base(), ChooseSpec::Source)
+        || returned.enters_tapped
+        || !returned.enters_with_counters.is_empty()
+    {
+        return None;
+    }
+    Some(format!(
+        "As long as this card is in your graveyard, if you would {}, {}instead return this card to the battlefield",
+        action.infinitive(),
+        if *optional { "you may " } else { "" }
+    ))
+}
+
+/// "During each player's turn, that player may cast a spell from among the
+/// cards they don't own exiled with Ian Malcolm, and mana of any type can be
+/// spent to cast it": a play permission and the spending rider scoped to the
+/// same card set read as one sentence.
+fn audit_play_grant_with_any_type_mana_rider(def: &CardDefinition, members: &[Ability]) -> Option<String> {
+    use ironsmith_core::StaticAbilityPayload as P;
+    let [grant_member, spend_member] = members else {
+        return None;
+    };
+    let (AbilityKind::Static(grant_static), AbilityKind::Static(spend_static)) =
+        (&grant_member.kind, &spend_member.kind)
+    else {
+        return None;
+    };
+    let grant = grant_static.grant_spec()?;
+    if !matches!(grant.grantable, ironsmith_core::Grantable::PlayFrom) {
+        return None;
+    }
+    let P::ManaSpendPermission { permission, .. } = &spend_static.compiled_model()?.payload else {
+        return None;
+    };
+    if !matches!(
+        permission.mode,
+        ironsmith_core::value_model::ManaSpendMode::AnyColor
+            | ironsmith_core::value_model::ManaSpendMode::AnyType
+    ) || permission.mana_source_filter.is_some()
+        || !matches!(
+            &permission.scope,
+            ironsmith_core::value_model::ManaSpendScope::CastingSpellsMatching(filter)
+                if *filter == grant.filter
+        )
+    {
+        return None;
+    }
+    let line = audit_single_static_reading(def, grant_member)?;
+    let line = line.trim().trim_end_matches('.');
+    if line.is_empty() || line.contains("mana of any") {
+        return None;
+    }
+    Some(format!("{line}, and mana of any type can be spent to cast it"))
+}
+
+/// "Equipped creature gets +0/+1 and has "This creature has hexproof as
+/// long as it's untapped."" (Giant's Amulet): an unconditional anthem and a
+/// quoted ability granted to the same recipient read as one sentence.
+/// "Enchanted creature can't attack or block, and its activated abilities
+/// can't be activated. Its controller may exile three cards from their
+/// graveyard for that player to ignore this effect until end of turn." (Lost
+/// in Thought; Volrath's Curse's controller sacrifices a permanent of their
+/// choice instead): the attached object's combat ban, its activation ban and
+/// the special action that ignores both read as Oracle's two sentences.
+fn audit_attached_combat_activation_ban_with_ignore(members: &[Ability]) -> Option<String> {
+    use ironsmith_core::StaticAbilityPayload as P;
+    let [combat, activation, ignore] = members else {
+        return None;
+    };
+    let restriction = |ability: &Ability| -> Option<crate::effect::Restriction> {
+        let AbilityKind::Static(static_ability) = &ability.kind else {
+            return None;
+        };
+        let model = static_ability.compiled_model()?;
+        let P::RuleRestriction { restriction, additional_restrictions, .. } = &model.payload else {
+            return None;
+        };
+        additional_restrictions.is_empty().then(|| restriction.clone())
+    };
+    let (
+        crate::effect::Restriction::AttackOrBlock(attackers),
+        crate::effect::Restriction::ActivateAbilitiesOf(sources),
+    ) = (restriction(combat)?, restriction(activation)?)
+    else {
+        return None;
+    };
+    if attackers != sources {
+        return None;
+    }
+    let head = audit_rule_restriction_reading(&crate::effect::Restriction::AttackOrBlock(attackers));
+    let head = head.trim().trim_end_matches('.');
+    let subject = head.strip_suffix(" can't attack or block")?;
+    let attached_noun = subject.to_ascii_lowercase().strip_prefix("enchanted ")?.to_string();
+    if subject.contains(',') || attached_noun.contains(' ') {
+        return None;
+    }
+    let AbilityKind::Static(ignore_static) = &ignore.kind else {
+        return None;
+    };
+    let ignore_model = ignore_static.compiled_model()?;
+    let tail = match &ignore_model.payload {
+        P::AttachedControllerMayPayCostToIgnoreSourceEffectUntilEndOfTurn { cost, .. } => {
+            // The cost is paid by the enchanted object's controller, so the
+            // paying player's graveyard is "their" graveyard.
+            let cost_text = lowercase_first(describe_total_cost(cost).trim().trim_end_matches('.'))
+                .replace(" from your graveyard", " from their graveyard");
+            // A sequenced structural cost ("..., then exile those cards") has
+            // no single verb phrase to quote.
+            if cost_text.is_empty() || cost_text.contains(" then ") {
+                return None;
+            }
+            format!(
+                "Its controller may {cost_text} for that player to ignore this effect until end of turn"
+            )
+        }
+        _ if ignore_model.id
+            == Some(
+                crate::static_abilities::StaticAbilityId::AttachedControllerMaySacrificePermanentToIgnoreSourceEffectUntilEndOfTurn,
+            ) =>
+        {
+            format!(
+                "That {attached_noun}'s controller may sacrifice a permanent of their choice for that player to ignore this effect until end of turn"
+            )
+        }
+        _ => return None,
+    };
+    Some(format!(
+        "{}, and its activated abilities can't be activated. {tail}",
+        capitalize_first(head)
+    ))
+}
+
+fn audit_anthem_and_quoted_grant_pair(def: &CardDefinition, members: &[Ability]) -> Option<String> {
+    use ironsmith_core::StaticAbilityPayload as P;
+    let [anthem_member, grant_member] = members else {
+        return None;
+    };
+    let (AbilityKind::Static(anthem_static), AbilityKind::Static(grant_static)) =
+        (&anthem_member.kind, &grant_member.kind)
+    else {
+        return None;
+    };
+    let P::Anthem(anthem) = &anthem_static.compiled_model()?.payload else {
+        return None;
+    };
+    let P::GrantObjectAbilityForFilter(grant) = &grant_static.compiled_model()?.payload else {
+        return None;
+    };
+    if anthem.filter.as_ref() != Some(&grant.filter)
+        || anthem.condition.is_some()
+        || grant.condition.is_some()
+        || !grant.additional_abilities.is_empty()
+    {
+        return None;
+    }
+    let left = audit_single_static_reading(def, anthem_member)?;
+    let left = left.trim().trim_end_matches('.');
+    let right = audit_single_static_reading(def, grant_member)?;
+    let right = lowercase_first(right.trim());
+    let (left_subject, _) = left.split_once(" gets ")?;
+    let quoted = right.strip_prefix(&format!("{} has ", lowercase_first(left_subject)))?;
+    if !quoted.starts_with('"') || !quoted.trim_end_matches('.').ends_with('"') || left.contains('"') {
+        return None;
+    }
+    Some(format!("{left} and has {quoted}"))
+}
+
+
+/// "Spells and abilities your opponents control can't cause you to discard
+/// cards or sacrifice permanents" (Tamiyo, Collector of Tales): the discard
+/// and sacrifice protections name one cause, so the two verbs share one
+/// "can't cause you to".
+fn audit_opponent_cause_discard_and_sacrifice_ban(members: &[Ability]) -> Option<String> {
+    let [first, second] = members else {
+        return None;
+    };
+    let restriction = |ability: &Ability| -> Option<crate::effect::Restriction> {
+        let AbilityKind::Static(static_ability) = &ability.kind else {
+            return None;
+        };
+        let model = static_ability.compiled_model()?;
+        let ironsmith_core::StaticAbilityPayload::RuleRestriction {
+            restriction,
+            additional_restrictions,
+            ..
+        } = &model.payload
+        else {
+            return None;
+        };
+        additional_restrictions.is_empty().then(|| restriction.clone())
+    };
+    let discard = restriction(first)?;
+    let sacrifice = restriction(second)?;
+    let crate::effect::Restriction::DiscardByCause { player, .. } = &discard else {
+        return None;
+    };
+    if *player != PlayerFilter::You
+        || !matches!(sacrifice, crate::effect::Restriction::BeSacrificedByCause { .. })
+    {
+        return None;
+    }
+    let discard_text = audit_rule_restriction_reading(&discard);
+    let sacrifice_text = audit_rule_restriction_reading(&sacrifice);
+    let head = discard_text
+        .trim()
+        .trim_end_matches('.')
+        .strip_suffix(" discard cards")?;
+    if !head.ends_with(" can't cause you to") {
+        return None;
+    }
+    let tail = sacrifice_text
+        .trim()
+        .trim_end_matches('.')
+        .strip_prefix(head)?
+        .strip_prefix(' ')?;
+    if !tail.starts_with("sacrifice ") {
+        return None;
+    }
+    Some(format!("{head} discard cards or {tail}"))
+}
+
+
+/// "During your turn, Angry Mob's power and toughness are each equal to 2
+/// plus the number of Swamps your opponents control. During turns other than
+/// yours, Angry Mob's power and toughness are each 2." (Angry Mob): a
+/// your-turn base power/toughness value on this object and its not-your-turn
+/// complement read as Oracle's paired sentences.
+fn audit_your_turn_and_other_turns_base_pt(
+    def: &CardDefinition,
+    members: &[Ability],
+) -> Option<String> {
+    let [first, second] = members else {
+        return None;
+    };
+    fn gated(ability: &Ability) -> Option<(&crate::ConditionExpr, &Value)> {
+        let AbilityKind::Static(static_ability) = &ability.kind else {
+            return None;
+        };
+        let model = static_ability.compiled_model()?;
+        let ironsmith_core::StaticAbilityPayload::Conditional { ability, condition, .. } =
+            &model.payload
+        else {
+            return None;
+        };
+        let ironsmith_core::StaticAbilityPayload::SetBasePowerToughnessValue {
+            filter,
+            power,
+            toughness,
+        } = &ability.payload
+        else {
+            return None;
+        };
+        (filter.source && power == toughness).then_some((condition, power))
+    }
+    let (first_condition, during) = gated(first)?;
+    let (second_condition, other) = gated(second)?;
+    if !matches!(first_condition, crate::ConditionExpr::YourTurn)
+        || !matches!(second_condition, crate::ConditionExpr::Not(inner)
+            if matches!(inner.as_ref(), crate::ConditionExpr::YourTurn))
+    {
+        return None;
+    }
+    let subject = subject_for_card(&def.card);
+    Some(format!(
+        "During your turn, {subject}'s power and toughness are each equal to {}. During turns other than yours, {subject}'s power and toughness are each {}",
+        describe_value(during),
+        describe_value(other)
+    ))
+}
+
+/// "This creature can't be blocked by non-Wall creatures" (Flow of Maggots):
+/// a source's blocker ban over creatures lacking one subtype, authored with
+/// the explicit "creatures" noun (`explicit_card_type_noun`), as printed.
+fn audit_non_subtype_blocker_restriction(
+    restriction: &crate::effect::Restriction,
+    subject: &str,
+) -> Option<String> {
+    let crate::effect::Restriction::BlockSpecificAttacker { blockers, attacker } = restriction else {
+        return None;
+    };
+    if !attacker.source
+        || blockers.card_types.as_slice() != [CardType::Creature]
+        || blockers.union_surface.explicit_card_type_noun() != Some(CardType::Creature)
+    {
+        return None;
+    }
+    let [excluded] = blockers.excluded_subtypes.as_slice() else {
+        return None;
+    };
+    let mut rest = blockers.clone();
+    rest.zone = None;
+    rest.card_types.clear();
+    rest.excluded_subtypes.clear();
+    rest.union_surface = Default::default();
+    if rest != ObjectFilter::default() {
+        return None;
+    }
+    let mut source = attacker.clone();
+    source.zone = None;
+    source.source = false;
+    source.source_surface = None;
+    source.union_surface = Default::default();
+    if source != ObjectFilter::default() {
+        return None;
+    }
+    Some(format!("{} can't be blocked by non-{excluded} creatures.", capitalize_first(subject)))
+}
+
+fn audit_member_payload(
+    member: &Ability,
+) -> Option<
+    &ironsmith_core::StaticAbilityPayload<
+        crate::triggers::Trigger,
+        crate::effect::Effect,
+        crate::costs::Cost,
+        ironsmith_core::ThisSpellCostCondition,
+    >,
+> {
+    match &member.kind {
+        AbilityKind::Static(ability) => ability.compiled_model().map(|model| &model.payload),
+        _ => None,
+    }
+}
+
+/// "Enchanted creature can't attack or block. It loses all abilities and has
+/// "{T}: ..."" (Heliod's Punishment): an attached restriction, then the loss
+/// of all abilities and a granted activated ability on the same object,
+/// joined on "It" as printed.
+fn audit_restriction_then_loss_and_grant(members: &[Ability], readings: &[String]) -> Option<String> {
+    use ironsmith_core::StaticAbilityPayload as P;
+    let [restriction, loss, grant] = members else {
+        return None;
+    };
+    let [restriction_line, loss_line, grant_line] = readings else {
+        return None;
+    };
+    let Some(P::AttachedAbilityGrant(restriction)) = audit_member_payload(restriction) else {
+        return None;
+    };
+    if !restriction.additional_abilities.is_empty()
+        || restriction.condition.is_some()
+        || !matches!(&restriction.ability.kind, ironsmith_core::AbilityKind::Static(ability)
+            if ability.id == Some(crate::static_abilities::StaticAbilityId::RuleRestriction))
+    {
+        return None;
+    }
+    if !matches!(audit_member_payload(loss), Some(P::RemoveAllAbilities(_))) {
+        return None;
+    }
+    let Some(P::AttachedAbilityGrant(grant)) = audit_member_payload(grant) else {
+        return None;
+    };
+    if !grant.additional_abilities.is_empty()
+        || grant.condition.is_some()
+        || !matches!(&grant.ability.kind, ironsmith_core::AbilityKind::Activated(_))
+    {
+        return None;
+    }
+    let restriction_line = restriction_line.trim().trim_end_matches('.');
+    let (subject, _) = restriction_line.split_once(" can't ")?;
+    let lost = loss_line.trim().trim_end_matches('.').strip_prefix(subject)?.strip_prefix(" loses ")?;
+    let granted = grant_line.trim().trim_end_matches('.').strip_prefix(subject)?.strip_prefix(" has ")?;
+    Some(format!("{restriction_line}. It loses {lost} and has {granted}"))
+}
+
+/// "Equipped creature has ward {1}, it can't be blocked, and its name and
+/// creature type are the last chosen name and creature type" (Psychic
+/// Paper): two attached grants and the chosen name/type characteristic of
+/// one object read as one serial sentence.
+fn audit_grants_and_chosen_name_type(members: &[Ability], readings: &[String]) -> Option<String> {
+    use ironsmith_core::StaticAbilityPayload as P;
+    let [first, second, chosen] = members else {
+        return None;
+    };
+    let [first_line, second_line, chosen_line] = readings else {
+        return None;
+    };
+    if !matches!(audit_member_payload(first), Some(P::AttachedAbilityGrant(_)))
+        || !matches!(audit_member_payload(second), Some(P::AttachedAbilityGrant(_)))
+    {
+        return None;
+    }
+    let AbilityKind::Static(chosen) = &chosen.kind else {
+        return None;
+    };
+    if chosen.id() != crate::static_abilities::StaticAbilityId::AttachedHasSourceChosenNameAndCreatureType {
+        return None;
+    }
+    let chosen_line = chosen_line.trim().trim_end_matches('.');
+    let (subject, characteristics) = chosen_line.split_once("'s ")?;
+    let first = first_line.trim().trim_end_matches('.').strip_prefix(subject)?.strip_prefix(' ')?;
+    let second = second_line.trim().trim_end_matches('.').strip_prefix(subject)?.strip_prefix(' ')?;
+    if first.is_empty() || second.is_empty() || first.contains(". ") || second.contains(". ") {
+        return None;
+    }
+    Some(format!("{subject} {first}, it {second}, and its {characteristics}"))
+}
+
+/// "As long as this creature is tapped, it's a Human Citizen with base power
+/// and toughness 1/1 and can't be blocked." (Futurist Operative): every
+/// member gated on the same condition and applied to the source itself —
+/// its creature types, its base P/T and one rules restriction. A
+/// "creature" card-type setting on a card that is only a creature changes
+/// nothing and is not printed.
+fn audit_conditional_self_subtype_base_pt_restriction_group(
+    def: &CardDefinition,
+    members: &[Ability],
+) -> Option<String> {
+    use ironsmith_core::StaticAbilityPayload as P;
+    fn gated(
+        ability: &Ability,
+    ) -> Option<(&crate::static_abilities::CompiledStaticAbility, &crate::ConditionExpr)> {
+        let AbilityKind::Static(static_ability) = &ability.kind else {
+            return None;
+        };
+        let P::Conditional { ability, condition, .. } = &static_ability.compiled_model()?.payload
+        else {
+            return None;
+        };
+        Some((ability.as_ref(), condition))
+    }
+    if members.len() < 3 {
+        return None;
+    }
+    let mut shared_condition: Option<&crate::ConditionExpr> = None;
+    let mut subtypes: Option<Vec<crate::types::Subtype>> = None;
+    let mut base_pt: Option<(i32, i32)> = None;
+    let mut restriction: Option<crate::effect::Restriction> = None;
+    for member in members {
+        if member.functional_zones.as_slice() != [Zone::Battlefield] {
+            return None;
+        }
+        let (inner, condition) = gated(member)?;
+        if shared_condition.is_some_and(|known| known != condition) {
+            return None;
+        }
+        shared_condition = Some(condition);
+        match &inner.payload {
+            P::SetCardTypes { filter, card_types, .. }
+                if filter.source
+                    && card_types.as_slice() == [CardType::Creature]
+                    && def.card.card_types.as_slice() == [CardType::Creature] => {}
+            P::SetCreatureSubtypes { filter, subtypes: set }
+                if filter.source && subtypes.is_none() && !set.is_empty() =>
+            {
+                subtypes = Some(set.clone());
+            }
+            P::SetBasePowerToughness { filter, power, toughness }
+                if filter.source && base_pt.is_none() =>
+            {
+                base_pt = Some((*power, *toughness));
+            }
+            P::RuleRestriction { restriction: rule, additional_restrictions, .. }
+                if additional_restrictions.is_empty() && restriction.is_none() =>
+            {
+                restriction = Some(rule.clone());
+            }
+            _ => return None,
+        }
+    }
+    let condition = shared_condition?;
+    let subtypes = subtypes?;
+    let (power, toughness) = base_pt?;
+    let rule = audit_rule_restriction_reading(&restriction?);
+    let rule = rule.trim().trim_end_matches('.');
+    let (rule_subject, rest) = rule.split_once(" can't ")?;
+    if !rule_subject.to_ascii_lowercase().starts_with("this ") || rest.contains(['.', ',', '"']) {
+        return None;
+    }
+    let kinds = subtypes
+        .iter()
+        .map(|subtype| subtype.to_string())
+        .collect::<Vec<_>>()
+        .join(" ");
+    Some(format!(
+        "As long as {}, it's {} with base power and toughness {power}/{toughness} and can't {rest}",
+        describe_condition(condition),
+        with_indefinite_article(&kinds),
+    ))
+}
+
+
+/// "As long as this creature is untapped, it has protection from artifacts
+/// and from each color." (Pristine Angel): two protection grants to the
+/// source under one shared condition print as one leading-condition sentence
+/// with the second quality introduced by "and from".
+fn audit_source_conditional_protection_pair(def: &CardDefinition, members: &[Ability]) -> Option<String> {
+    use crate::static_abilities::StaticAbilityId as Id;
+    use ironsmith_core::StaticAbilityPayload as P;
+    let [_, _] = members else {
+        return None;
+    };
+    let mut shared_condition = None;
+    for member in members {
+        let AbilityKind::Static(static_ability) = &member.kind else {
+            return None;
+        };
+        let P::GrantObjectAbilityForFilter(grant) = &static_ability.compiled_model()?.payload else {
+            return None;
+        };
+        let ironsmith_core::AbilityKind::Static(granted) = &grant.ability.kind else {
+            return None;
+        };
+        if !grant.filter.source
+            || grant.condition.is_none()
+            || !grant.additional_abilities.is_empty()
+            || granted.id != Some(Id::Protection)
+        {
+            return None;
+        }
+        match shared_condition {
+            None => shared_condition = Some(grant.condition.clone()),
+            Some(ref known) if *known != grant.condition => return None,
+            Some(_) => {}
+        }
+    }
+    let subject = subject_for_card(&def.card);
+    let attached = audit_attached_subject(def);
+    let mut parts = Vec::new();
+    for member in members {
+        let line = audit_single_static_reading(def, member)?;
+        let line = audit_static_subject_surface(line.trim().trim_end_matches('.'), subject, attached.as_deref());
+        let line = line.trim().trim_end_matches('.').to_string();
+        let (head, rest) = line.split_once(" has protection from ")?;
+        let (protection, condition) = rest.split_once(" as long as ")?;
+        parts.push((head.to_string(), protection.to_string(), condition.to_string()));
+    }
+    let [(left_head, left, left_condition), (right_head, right, right_condition)] = parts.as_slice() else {
+        return None;
+    };
+    if left_head != right_head
+        || left_condition != right_condition
+        || [left, right].iter().any(|text| text.contains(" as long as ") || text.contains('"') || text.is_empty())
+    {
+        return None;
+    }
+    let pronoun = if left_condition.starts_with("this ") || left_condition.starts_with("it ") {
+        "it".to_string()
+    } else {
+        lowercase_first(left_head)
+    };
+    Some(format!("As long as {left_condition}, {pronoun} has protection from {left} and from {right}"))
+}
+
+/// "This creature must be blocked by exactly one creature if able." (Nacatl
+/// War-Pride): the source's must-be-blocked requirement (CR 509.1c) paired
+/// with its one-blocker maximum on the same printed line.
+fn audit_must_be_blocked_by_exactly_one_pair(members: &[Ability], subject: &str) -> Option<String> {
+    use ironsmith_core::StaticAbilityPayload as P;
+    fn model(ability: &Ability) -> Option<&crate::static_abilities::CompiledStaticAbility> {
+        let AbilityKind::Static(static_ability) = &ability.kind else {
+            return None;
+        };
+        static_ability.compiled_model()
+    }
+    let [requirement, maximum] = members else {
+        return None;
+    };
+    let P::RuleRestriction { restriction, additional_restrictions, .. } = &model(requirement)?.payload
+    else {
+        return None;
+    };
+    let crate::effect::Restriction::MustBeBlocked(filter) = restriction else {
+        return None;
+    };
+    if !additional_restrictions.is_empty() || !filter.source {
+        return None;
+    }
+    let P::CantBeBlockedByMoreThan(1) = &model(maximum)?.payload else {
+        return None;
+    };
+    Some(format!("{subject} must be blocked by exactly one creature if able"))
+}
+
+/// "You may cast this creature from your graveyard if you pay {1} more to
+/// cast it for each other creature card in your graveyard." (Risen
+/// Executioner): the source's own graveyard play permission paired with a
+/// cost increase on the source, printed as one conditional permission.
+fn audit_graveyard_cast_with_cost_increase_pair(
+    def: &CardDefinition,
+    members: &[Ability],
+) -> Option<String> {
+    use ironsmith_core::StaticAbilityPayload as P;
+    fn model(ability: &Ability) -> Option<&crate::static_abilities::CompiledStaticAbility> {
+        let AbilityKind::Static(static_ability) = &ability.kind else {
+            return None;
+        };
+        static_ability.compiled_model()
+    }
+    let [permission, increase] = members else {
+        return None;
+    };
+    let P::Grants(grant) = &model(permission)?.payload else {
+        return None;
+    };
+    if !matches!(grant.grantable, ironsmith_core::Grantable::PlayFrom)
+        || !grant.filter.source
+        || grant.zone != Zone::Graveyard
+        || !grant.additional_zones.is_empty()
+        || grant.beneficiary != PlayerFilter::You
+        || grant.usage_limit.is_some()
+    {
+        return None;
+    }
+    let P::CostIncrease(cost) = &model(increase)?.payload else {
+        return None;
+    };
+    if !cost.filter.source || cost.condition.is_some() || cost.per_target {
+        return None;
+    }
+    let reading = audit_single_static_reading(def, increase)?;
+    let reading = reading.trim().trim_end_matches('.');
+    let rest = reading.strip_prefix("This spell costs ")?;
+    let (amount, tail) = rest.split_once(" more to cast")?;
+    if amount.is_empty() || tail.contains(". ") {
+        return None;
+    }
+    Some(format!(
+        "You may cast {} from your graveyard if you pay {amount} more to cast it{tail}",
+        subject_for_card(&def.card)
+    ))
+}
+
+/// "Creatures you control that are enchanted get +1/+1 and can't be blocked
+/// except by creatures with defender." (Infiltrator's Magemark): an anthem
+/// and a granted self-restriction on the same recipients. The granted
+/// restriction's attacker is the recipient itself, so it is re-rendered on
+/// the recipient filter and only its typed "except by" blocker class is kept.
+fn audit_anthem_and_granted_block_exception_pair(
+    def: &CardDefinition,
+    members: &[Ability],
+) -> Option<String> {
+    use ironsmith_core::StaticAbilityPayload as P;
+    let [anthem_member, grant_member] = members else {
+        return None;
+    };
+    let (AbilityKind::Static(anthem_static), AbilityKind::Static(grant_static)) =
+        (&anthem_member.kind, &grant_member.kind)
+    else {
+        return None;
+    };
+    let P::Anthem(anthem) = &anthem_static.compiled_model()?.payload else {
+        return None;
+    };
+    let P::GrantObjectAbilityForFilter(grant) = &grant_static.compiled_model()?.payload else {
+        return None;
+    };
+    if anthem.filter.as_ref() != Some(&grant.filter)
+        || anthem.condition.is_some()
+        || grant.condition.is_some()
+        || !grant.additional_abilities.is_empty()
+    {
+        return None;
+    }
+    let ironsmith_core::AbilityKind::Static(granted) = &grant.ability.kind else {
+        return None;
+    };
+    let P::RuleRestriction { restriction, additional_restrictions, .. } = &granted.payload else {
+        return None;
+    };
+    let crate::effect::Restriction::BlockSpecificAttacker { blockers, attacker } = restriction
+    else {
+        return None;
+    };
+    if !additional_restrictions.is_empty() || !attacker.source {
+        return None;
+    }
+    let on_recipients = crate::effect::Restriction::BlockSpecificAttacker {
+        blockers: blockers.clone(),
+        attacker: grant.filter.clone(),
+    };
+    let reading = audit_rule_restriction_reading(&on_recipients);
+    let (_, allowed) = reading.split_once(" can't be blocked except by ")?;
+    let allowed = allowed.trim().trim_end_matches('.');
+    let left = audit_single_static_reading(def, anthem_member)?;
+    let left = left.trim().trim_end_matches('.');
+    if !left.contains(" get ") && !left.contains(" gets ") {
+        return None;
+    }
+    Some(format!("{left} and can't be blocked except by {allowed}"))
+}
+
+
+/// "Enchanted creature can't attack or block and has \"{7}: ...\"" (Hold for
+/// Ransom): an attached rule restriction and an attached activated-ability
+/// grant authored on one source line share their attached subject.
+fn audit_restriction_and_activated_grant(members: &[Ability], readings: &[String]) -> Option<String> {
+    use ironsmith_core::StaticAbilityPayload as P;
+    let [restriction, grant] = members else {
+        return None;
+    };
+    let [restriction_line, grant_line] = readings else {
+        return None;
+    };
+    let Some(P::AttachedAbilityGrant(restriction)) = audit_member_payload(restriction) else {
+        return None;
+    };
+    if !restriction.additional_abilities.is_empty()
+        || restriction.condition.is_some()
+        || !matches!(&restriction.ability.kind, ironsmith_core::AbilityKind::Static(ability)
+            if ability.id == Some(crate::static_abilities::StaticAbilityId::RuleRestriction))
+    {
+        return None;
+    }
+    let Some(P::AttachedAbilityGrant(grant)) = audit_member_payload(grant) else {
+        return None;
+    };
+    if !grant.additional_abilities.is_empty()
+        || grant.condition.is_some()
+        || !matches!(&grant.ability.kind, ironsmith_core::AbilityKind::Activated(_))
+    {
+        return None;
+    }
+    let restriction_line = restriction_line.trim().trim_end_matches('.');
+    let (subject, _) = restriction_line.split_once(" can't ")?;
+    let granted = grant_line.trim().trim_end_matches('.').strip_prefix(subject)?.strip_prefix(" has ")?;
+    Some(format!("{restriction_line} and has {granted}"))
+}
+
+/// "X is the number of artifact and/or creature cards in an opponent's
+/// graveyard as you cast this spell." (Spoils of War): X is that count for
+/// the opponent you choose, so it is defined by the count and bounded by the
+/// greatest and the least such count among your opponents.
+fn audit_opponent_choice_x_definition_pair(members: &[Ability]) -> Option<String> {
+    use ironsmith_core::StaticAbilityPayload as P;
+    fn model(ability: &Ability) -> Option<&crate::static_abilities::CompiledStaticAbility> {
+        let AbilityKind::Static(static_ability) = &ability.kind else {
+            return None;
+        };
+        static_ability.compiled_model()
+    }
+    let [maximum, minimum] = members else {
+        return None;
+    };
+    let P::ThisSpellXMaximum {
+        maximum: Value::GreatestCount(greatest),
+        definition: Some(Value::Count(defined)),
+        ..
+    } = &model(maximum)?.payload
+    else {
+        return None;
+    };
+    let P::ThisSpellXMinimum { minimum: Value::LeastCount(least), .. } = &model(minimum)?.payload
+    else {
+        return None;
+    };
+    if greatest != defined
+        || greatest != least
+        || greatest.owner != Some(PlayerFilter::Opponent)
+        || greatest.zone != Some(Zone::Graveyard)
+        || greatest.card_types.is_empty()
+    {
+        return None;
+    }
+    let mut rest = greatest.clone();
+    rest.owner = None;
+    rest.zone = None;
+    rest.card_types.clear();
+    rest.union_surface = Default::default();
+    if rest != ObjectFilter::default() {
+        return None;
+    }
+    let types = greatest
+        .card_types
+        .iter()
+        .map(|card_type| card_type.name().to_ascii_lowercase())
+        .collect::<Vec<_>>()
+        .join(" and/or ");
+    Some(format!(
+        "X is the number of {types} cards in an opponent's graveyard as you cast this spell"
+    ))
+}
+
+/// "Creatures your opponents control can be the targets of spells and
+/// abilities as though they didn't have hexproof. Ward abilities of those
+/// creatures don't trigger." (Nowhere to Run): a targeting permission and a
+/// ward-only trigger suppression over the same creatures, printed on one
+/// line with the suppression naming them back.
+/// "A player who controls more permanents than each other player can't play
+/// lands or cast artifact, creature, or enchantment spells. That player may
+/// sacrifice a permanent of their choice for that player to ignore this
+/// effect until end of turn." (Damping Engine): a land-play ban and a spell
+/// ban over the unique leader (`PlayerFilter::ControlsMost`), then that
+/// leader's sacrifice opt-out from this source's effect.
+fn audit_leader_bans_with_sacrifice_ignore(members: &[Ability]) -> Option<String> {
+    use ironsmith_core::StaticAbilityPayload as P;
+    fn ban(member: &Ability) -> Option<&crate::effect::Restriction> {
+        match audit_member_payload(member)? {
+            ironsmith_core::StaticAbilityPayload::RuleRestriction { restriction, additional_restrictions, .. }
+                if additional_restrictions.is_empty() =>
+            {
+                Some(restriction)
+            }
+            _ => None,
+        }
+    }
+    let [play, cast, ignore] = members else {
+        return None;
+    };
+    let Some(P::PlayerMaySacrificePermanentToIgnoreSourceEffectUntilEndOfTurn { player: leader, .. }) =
+        audit_member_payload(ignore)
+    else {
+        return None;
+    };
+    if !matches!(leader, PlayerFilter::ControlsMost { .. }) {
+        return None;
+    }
+    let (play, cast) = (ban(play)?, ban(cast)?);
+    let (
+        crate::effect::Restriction::PlayLandsMatching(land_player, _),
+        crate::effect::Restriction::CastSpellsMatching(cast_player, _),
+    ) = (play, cast)
+    else {
+        return None;
+    };
+    if land_player != leader || cast_player != leader {
+        return None;
+    }
+    let leader_text = leader.description();
+    let counted = leader_text.strip_prefix("the player who controls the most ")?;
+    let play_text = audit_rule_restriction_reading(play);
+    let cast_text = audit_rule_restriction_reading(cast);
+    let (_, play_rest) = play_text.trim().trim_end_matches('.').split_once(" can't ")?;
+    let (_, cast_rest) = cast_text.trim().trim_end_matches('.').split_once(" can't ")?;
+    if !play_rest.starts_with("play ") || !cast_rest.starts_with("cast ") {
+        return None;
+    }
+    Some(format!(
+        "A player who controls more {counted} than each other player can't {play_rest} or {cast_rest}. That player may sacrifice a permanent of their choice for that player to ignore this effect until end of turn"
+    ))
+}
+
+fn audit_targeting_permission_and_ward_suppression_pair(
+    def: &CardDefinition,
+    members: &[Ability],
+) -> Option<String> {
+    let [first, second] = members else {
+        return None;
+    };
+    let AbilityKind::Static(first_static) = &first.kind else {
+        return None;
+    };
+    let AbilityKind::Static(second_static) = &second.kind else {
+        return None;
+    };
+    let ironsmith_core::StaticAbilityPayload::TargetingAsThoughNoAbility(spec) =
+        &first_static.compiled_model()?.payload
+    else {
+        return None;
+    };
+    let ironsmith_core::StaticAbilityPayload::SuppressMatchingTriggeredAbilities {
+        source_filter: Some(suppressed),
+        event_matcher: None,
+        ward_only: true,
+        ..
+    } = &second_static.compiled_model()?.payload
+    else {
+        return None;
+    };
+    let mut objects = spec.objects.clone()?;
+    let mut suppressed = suppressed.clone();
+    objects.union_surface = Default::default();
+    suppressed.union_surface = Default::default();
+    if objects != suppressed || suppressed.card_types.as_slice() != [CardType::Creature] {
+        return None;
+    }
+    let permission = audit_single_static_reading(def, first)?;
+    Some(format!(
+        "{}. Ward abilities of those creatures don't trigger",
+        capitalize_first(permission.trim().trim_end_matches('.'))
+    ))
+}
+
+/// "As long as this creature is untapped, noncreature artifacts you control
+/// can't be enchanted, they have indestructible, and other players can't gain
+/// control of them. This effect doesn't remove Auras already attached to
+/// those artifacts." (Guardian Beast): one condition gates a new-Aura
+/// attachment ban, a keyword grant and a control-change ban on one set of
+/// objects; the printed line names the set once and refers back with
+/// "they"/"them".
+fn audit_conditional_attach_keyword_control_guard_group(
+    def: &CardDefinition,
+    members: &[Ability],
+) -> Option<String> {
+    use crate::effect::Restriction as R;
+    use crate::static_abilities::StaticAbilityId as Id;
+    use ironsmith_core::StaticAbilityPayload as P;
+    if members.len() != 3 {
+        return None;
+    }
+    let mut enchant = None;
+    let mut control = None;
+    let mut grant = None;
+    for member in members {
+        match audit_member_payload(member)? {
+            P::Conditional { ability, condition, .. } => {
+                let P::RuleRestriction { restriction, additional_restrictions, .. } = &ability.payload else {
+                    return None;
+                };
+                if !additional_restrictions.is_empty() {
+                    return None;
+                }
+                match restriction {
+                    R::BeAttachedByNew(hosts, attachments) if enchant.is_none() => {
+                        enchant = Some((member, condition, hosts, attachments));
+                    }
+                    R::GainControl(objects, players) if control.is_none() => {
+                        control = Some((condition, objects, players));
+                    }
+                    _ => return None,
+                }
+            }
+            P::GrantObjectAbilityForFilter(granted) if grant.is_none() => {
+                grant = Some((member, granted));
+            }
+            _ => return None,
+        }
+    }
+    let (enchant_member, condition, hosts, attachments) = enchant?;
+    let (control_condition, objects, players) = control?;
+    let (grant_member, granted) = grant?;
+    let ironsmith_core::AbilityKind::Static(keyword) = &granted.ability.kind else {
+        return None;
+    };
+    let same_set = |filter: &ObjectFilter| {
+        filter.card_types == hosts.card_types
+            && filter.excluded_card_types == hosts.excluded_card_types
+            && filter.controller == hosts.controller
+    };
+    let other_players = PlayerFilter::Excluding {
+        base: Box::new(PlayerFilter::Any),
+        excluded: Box::new(PlayerFilter::You),
+    };
+    if control_condition != condition
+        || granted.condition.as_ref() != Some(condition)
+        || !granted.additional_abilities.is_empty()
+        || keyword.id != Some(Id::Indestructible)
+        || !same_set(objects)
+        || !same_set(&granted.filter)
+        || hosts.card_types.as_slice() != [CardType::Artifact]
+        || attachments.subtypes.as_slice() != [Subtype::Aura]
+        || *players != other_players
+    {
+        return None;
+    }
+    // The grant reads "<objects> have <keyword> as long as <condition>" or
+    // "As long as <condition>, <objects> have <keyword>".
+    let _ = enchant_member;
+    let grant_reading = audit_single_static_reading(def, grant_member)?;
+    let grant_reading = grant_reading.trim().trim_end_matches('.');
+    let (condition_text, objects_text, keyword_text) = if let Some(rest) = grant_reading
+        .strip_prefix("As long as ")
+        .or_else(|| grant_reading.strip_prefix("as long as "))
+    {
+        let (condition, body) = rest.split_once(", ")?;
+        let (objects, keyword) = body.split_once(" have ")?;
+        (condition.to_string(), objects, keyword.trim())
+    } else {
+        let (objects, rest) = grant_reading.split_once(" have ")?;
+        let (keyword, condition) = rest.split_once(" as long as ")?;
+        (condition.trim().to_string(), objects, keyword.trim())
+    };
+    if condition_text.is_empty()
+        || objects_text.is_empty()
+        || keyword_text.is_empty()
+        || [condition_text.as_str(), objects_text, keyword_text].iter().any(|text| text.contains(['.', '"']))
+    {
+        return None;
+    }
+    Some(format!(
+        "As long as {condition_text}, {} can't be enchanted, they have {keyword_text}, and other players can't gain control of them. This effect doesn't remove Auras already attached to those artifacts",
+        lowercase_first(objects_text)
+    ))
+}
+
+/// "If you removed a creature card with flying from the draft with cards
+/// named Animus of Predation, this creature has flying. The same is true for
+/// first strike, double strike, ..." (Animus of Predation): one source
+/// keyword grant per keyword, each gated on a removed draft card with that
+/// keyword, reads as the printed ladder. Every member must be consumed.
+fn audit_removed_draft_keyword_ladder_group(def: &CardDefinition, members: &[Ability]) -> Option<String> {
+    let subject = subject_for_card(&def.card);
+    let (text, consumed) = describe_structural_removed_draft_keyword_ladder(members, subject)?;
+    if consumed != members.len() {
+        return None;
+    }
+    // The condition's group name is the card's own name, stored lowercased.
+    let name = &def.card.name;
+    let lowered = format!("cards named {}", name.to_ascii_lowercase());
+    Some(if text.contains(&lowered) {
+        text.replace(&lowered, &format!("cards named {name}"))
+    } else {
+        text
+    })
+}
+
+
+/// "Enchanted permanent is a Treasure artifact with "{T}, Sacrifice this
+/// artifact: Add one mana of any color," and it loses all other abilities"
+/// (Minimus Containment): one source line that sets the attached object's
+/// card types, adds a subtype, grants it an activated ability and removes its
+/// other abilities reads as one type-with-ability sentence. The granted
+/// ability's self-reference names the recipient's new type.
+fn audit_attached_type_with_granted_ability_and_loss(
+    members: &[Ability],
+    readings: &[String],
+) -> Option<String> {
+    use ironsmith_core::StaticAbilityPayload as P;
+    if members.len() != 4 || readings.len() != 4 {
+        return None;
+    }
+    let mut subject = None;
+    let mut lost_filter = None;
+    let mut granted = None;
+    let mut set_types = None;
+    let mut added_subtypes = None;
+    for (member, reading) in members.iter().zip(readings) {
+        match audit_member_payload(member)? {
+            P::RemoveAllAbilities(filter) if lost_filter.is_none() => {
+                let (head, _) = reading.trim().split_once(" loses all ")?;
+                subject = Some(head.to_string());
+                lost_filter = Some(filter);
+            }
+            P::AttachedAbilityGrant(grant) if granted.is_none() => granted = Some(grant),
+            P::SetCardTypes { filter, card_types, loses_other_card_types_surface: false }
+                if set_types.is_none() =>
+            {
+                set_types = Some((filter, card_types));
+            }
+            P::AddSubtypes { filter, subtypes } if added_subtypes.is_none() => {
+                added_subtypes = Some((filter, subtypes));
+            }
+            _ => return None,
+        }
+    }
+    let subject = subject?;
+    let lost_filter = lost_filter?;
+    let granted = granted?;
+    let (types_filter, card_types) = set_types?;
+    let (subtypes_filter, subtypes) = added_subtypes?;
+    if types_filter != lost_filter
+        || subtypes_filter != lost_filter
+        || card_types.is_empty()
+        || subtypes.is_empty()
+        || !granted.additional_abilities.is_empty()
+        || granted.condition.is_some()
+        || !matches!(&granted.ability.kind, ironsmith_core::AbilityKind::Activated(_))
+        || subject.contains('"')
+    {
+        return None;
+    }
+    let mut recipient = lost_filter.clone();
+    recipient.card_types = card_types.clone();
+    let runtime =
+        crate::static_abilities::StaticAbilityModelInterpreter::ability_from_model(&granted.ability);
+    let self_subject = render_effects::granted_ability_self_subject_for_filter(&recipient);
+    let text = render_effects::describe_inline_ability_with_self_subject(&runtime, self_subject);
+    let text = render_effects::normalize_ability_self_reference_surface(&text, self_subject);
+    let text = text.trim().trim_end_matches('.');
+    if text.is_empty() || text.contains('"') {
+        return None;
+    }
+    let kind = subtypes
+        .iter()
+        .map(|subtype| subtype.to_string())
+        .chain(card_types.iter().map(|card_type| format!("{card_type:?}").to_ascii_lowercase()))
+        .collect::<Vec<_>>()
+        .join(" ");
+    Some(format!(
+        "{subject} is {} with \"{text},\" and it loses all other abilities",
+        with_indefinite_article(&kind)
+    ))
+}
+
+
+/// "As long as The Aetherspark is attached to a creature, The Aetherspark
+/// can't be attacked and has "Whenever equipped creature deals combat damage
+/// during your turn, ..."" (The Aetherspark): an attack ban on the source and
+/// a grant to the source under the same "source is attached to a matching
+/// host" condition read as one sentence.
+fn audit_attached_source_unattackable_and_grant(def: &CardDefinition, members: &[Ability]) -> Option<String> {
+    use ironsmith_core::StaticAbilityPayload as P;
+    let [restriction_member, grant_member] = members else {
+        return None;
+    };
+    let P::Conditional { ability: inner, condition, .. } = audit_member_payload(restriction_member)? else {
+        return None;
+    };
+    let P::RuleRestriction {
+        restriction: crate::effect::Restriction::AttackPermanents { attackers, permanents },
+        additional_restrictions,
+        ..
+    } = &inner.payload
+    else {
+        return None;
+    };
+    let P::GrantObjectAbilityForFilter(grant) = audit_member_payload(grant_member)? else {
+        return None;
+    };
+    if !additional_restrictions.is_empty()
+        || !permanents.source
+        || attackers.card_types.as_slice() != [CardType::Creature]
+        || !grant.filter.source
+        || grant.condition.as_ref() != Some(condition)
+        || !grant.additional_abilities.is_empty()
+    {
+        return None;
+    }
+    let crate::ConditionExpr::AttachmentCount {
+        attachment,
+        host: ironsmith_core::AttachmentConditionHost::Matching(host),
+        comparison: ironsmith_core::Comparison::GreaterThanOrEqual(1),
+        ..
+    } = condition
+    else {
+        return None;
+    };
+    if !attachment.source {
+        return None;
+    }
+    // The grant member's own reading carries the quoted granted ability; its
+    // audit display appends the shared condition after the quote, so read it
+    // without the condition (already checked equal to the restriction's).
+    let AbilityKind::Static(grant_static) = &grant_member.kind else {
+        return None;
+    };
+    let mut unconditional = grant_static.compiled_model()?.clone();
+    if let P::GrantObjectAbilityForFilter(granted) = &mut unconditional.payload {
+        granted.condition = None;
+    }
+    let grant_reading = audit_readings::audit_payload_reading(&unconditional).unwrap_or_else(|| {
+        crate::static_abilities::StaticAbility::from_model(unconditional.clone()).display()
+    });
+    // The granted ability names its granting Equipment by the card's name.
+    let grant_reading = substitute_granting_source_surface(grant_reading, def);
+    let (_, quoted) = grant_reading
+        .split_once(" has \"")
+        .or_else(|| grant_reading.split_once(" have \""))?;
+    let quoted = quoted.trim().trim_end_matches('.');
+    if !quoted.ends_with('"') || quoted[..quoted.len() - 1].contains('"') {
+        return None;
+    }
+    let subject = subject_for_card(&def.card);
+    Some(format!(
+        "As long as {subject} is attached to {}, {subject} can't be attacked and has \"{quoted}",
+        ensure_indefinite_article(&host.description())
+    ))
 }

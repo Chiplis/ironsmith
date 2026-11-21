@@ -1719,10 +1719,12 @@ impl StaticAbilityModelInterpreter {
             ironsmith_core::StaticAbilityPayload::SuppressMatchingTriggeredAbilities {
                 source_filter,
                 event_matcher,
+                ward_only,
                 display,
-            } => StaticAbility::suppress_matching_triggered_abilities(
+            } => StaticAbility::suppress_matching_triggered_abilities_scoped(
                 source_filter.clone(),
                 event_matcher.clone(),
+                *ward_only,
                 display.clone(),
             ),
             ironsmith_core::StaticAbilityPayload::ExertAttack {
@@ -1844,7 +1846,7 @@ impl StaticAbilityModelInterpreter {
                     ability
                 }
             }
-            ironsmith_core::StaticAbilityPayload::SetCardTypes { filter, card_types } => {
+            ironsmith_core::StaticAbilityPayload::SetCardTypes { filter, card_types, .. } => {
                 StaticAbility::set_card_types(filter.clone(), card_types.clone())
             }
             ironsmith_core::StaticAbilityPayload::AddSubtypes { filter, subtypes } => {
@@ -1996,6 +1998,7 @@ impl StaticAbilityModelInterpreter {
                 options,
                 display,
                 at_random: false,
+                ..
             } => StaticAbility::choose_power_toughness_options_as_enters_or_turns_face_up(
                 options
                     .iter()
@@ -2164,6 +2167,7 @@ impl StaticAbilityModelInterpreter {
                 combat_only,
                 noncombat_only,
                 display,
+                ..
             } => {
                 let mut replacement = crate::static_abilities::DoubleDamageAmountReplacement::new(
                     source_filter.clone(),
@@ -2486,7 +2490,7 @@ impl StaticAbilityModelInterpreter {
                 *factor,
                 display.clone(),
             ),
-            ironsmith_core::StaticAbilityPayload::TokenCreationTemplates { controller, token_filter, templates, mode, choose_one, optional, display } => {
+            ironsmith_core::StaticAbilityPayload::TokenCreationTemplates { controller, token_filter, templates, mode, choose_one, optional, display, .. } => {
                 StaticAbility::token_creation_templates(controller.clone(), token_filter.clone(), templates.clone(), *mode, *choose_one, *optional, display.clone())
             }
             ironsmith_core::StaticAbilityPayload::AddLifeGainReplacement { player, additional, loss, display } =>
@@ -2617,7 +2621,12 @@ impl StaticAbilityModelInterpreter {
             ironsmith_core::StaticAbilityPayload::EntersTappedUnlessCondition {
                 condition,
                 display,
-            } => StaticAbility::enters_tapped_unless_condition(condition.clone(), display.clone()),
+                if_not_surface,
+            } => StaticAbility::enters_tapped_unless_condition_with_surface(
+                condition.clone(),
+                display.clone(),
+                *if_not_surface,
+            ),
             ironsmith_core::StaticAbilityPayload::EntersWithCountersIfCondition {
                 counter,
                 count,
@@ -3075,6 +3084,18 @@ impl StaticAbilityKind for StaticAbilityModelInterpreter {
                 );
             }
             return format!("{body} {condition}");
+        }
+        if let ironsmith_core::StaticAbilityPayload::SetCardTypes {
+            loses_other_card_types_surface: true,
+            ..
+        } = &self.model.payload
+            && let Some(ability) = self.leaf_static_ability()
+        {
+            let text = ability.display();
+            return format!(
+                "{} and loses all other card types",
+                text.trim_end().trim_end_matches('.')
+            );
         }
         if let Some(ability) = self.leaf_static_ability() {
             return ability.display();

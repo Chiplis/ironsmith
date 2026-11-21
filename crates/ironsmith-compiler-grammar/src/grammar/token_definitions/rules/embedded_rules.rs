@@ -446,6 +446,13 @@ fn parse_canonical_named_token<'a>(
         primitives::kw("mutavault").value(BuiltinTokenShape::Mutavault),
         primitives::phrase(&["spellgorger", "weird"]).value(BuiltinTokenShape::SpellgorgerWeird),
         primitives::kw("tarmogoyf").value(BuiltinTokenShape::Tarmogoyf),
+        primitives::phrase(&["baneslayer", "angel"]).value(BuiltinTokenShape::BaneslayerAngel),
+        (
+            primitives::kw("akroma"),
+            opt(primitives::comma()),
+            primitives::phrase(&["angel", "of", "wrath"]),
+        )
+            .value(BuiltinTokenShape::AkromaAngelOfWrath),
     ))
     .parse_next(input)?;
     opt(alt((primitives::kw("token"), primitives::kw("tokens")))).parse_next(input)?;

@@ -355,6 +355,7 @@ pub fn rewrite_modal_to_parsed_item(
             point_cost: mode.point_cost,
             additional_mana_cost: mode.additional_mana_cost,
             effects_ast,
+            flavor_label: mode.flavor_label,
         });
     }
 

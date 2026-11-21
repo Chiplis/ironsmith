@@ -3088,6 +3088,26 @@ impl EffectAst {
                 target,
                 subtypes,
                 duration,
+                copular_surface: false,
+            }),
+        )
+    }
+
+    /// "... and is a Werewolf" (Werewolf Pack Leader): the copular spelling
+    /// of a creature-type setting (CR 205.1a).
+    pub fn subject_verb_set_creature_subtypes_copular(
+        target: TargetAst,
+        subtypes: Vec<Subtype>,
+        duration: Until,
+    ) -> Self {
+        Self::subject_verb(
+            SubjectVerbRoleAst::Actor,
+            PlayerAst::Implicit,
+            SubjectVerbActionAst::Characteristics(CharacteristicActionAst::SetCreatureSubtypes {
+                target,
+                subtypes,
+                duration,
+                copular_surface: true,
             }),
         )
     }
@@ -3568,6 +3588,26 @@ impl EffectAst {
                 target,
                 abilities,
                 duration,
+                leading_choose_surface: false,
+            }),
+        )
+    }
+
+    /// "Choose <keywords>. <target> gains that ability <duration>": the same
+    /// resolution-time choice, authored as a leading imperative choice.
+    pub fn subject_verb_grant_abilities_leading_choice_to_target(
+        target: TargetAst,
+        abilities: Vec<GrantedAbilityAst>,
+        duration: Until,
+    ) -> Self {
+        Self::subject_verb(
+            SubjectVerbRoleAst::Actor,
+            PlayerAst::Implicit,
+            SubjectVerbActionAst::Grants(GrantActionAst::GrantAbilitiesChoiceToTarget {
+                target,
+                abilities,
+                duration,
+                leading_choose_surface: true,
             }),
         )
     }

@@ -21,6 +21,14 @@ pub struct TokenTemplateReplacement<'a> {
     /// "... during each of your turns" (Esix, Fractal Bloom): the first-time
     /// window only opens on the controller's own turns.
     pub first_time_each_of_your_turns: bool,
+    /// "If you would create ..." (active) rather than the passive form.
+    pub active: bool,
+    /// "a Fish token" rather than "one or more Fish tokens".
+    pub singular_source: bool,
+    /// "instead create ..." rather than "create ... instead".
+    pub leading_instead: bool,
+    /// "those tokens plus an additional Map token".
+    pub additional_word: bool,
     /// "choose a creature other than Esix and create that many tokens that
     /// are copies of that creature": the chosen permanent's description.
     pub chosen_copy_source: Option<&'a [OwnedLexToken]>,
@@ -122,6 +130,9 @@ pub fn parse_token_template_replacement(tokens: &[OwnedLexToken]) -> Option<Toke
     }
     if quoted { return None; }
     let addition = primitives::parse_prefix(body, primitives::phrase(&["those", "tokens", "plus"]));
+    let additional_word = addition
+        .as_ref()
+        .is_some_and(|((), tail)| tail.get(1).is_some_and(|token| token.is_word("additional")));
     let (mode, template_body) = if let Some(((), tail)) = addition {
         let (template, per_token) = quantity(tail)?;
         (if per_token || singular { TokenCreationTemplateMode::AppendForEach } else { TokenCreationTemplateMode::AppendOnce }, template)
@@ -157,6 +168,7 @@ pub fn parse_token_template_replacement(tokens: &[OwnedLexToken]) -> Option<Toke
     Some(TokenTemplateReplacement {
         source_descriptor, templates, mode, choose_one, optional, first_time_each_turn,
         first_time_each_of_your_turns, chosen_copy_source,
+        active, singular_source: singular, leading_instead, additional_word,
     })
 }
 

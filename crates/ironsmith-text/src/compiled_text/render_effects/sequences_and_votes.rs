@@ -583,6 +583,14 @@ fn describe_discard_draw_pair(first: &Effect, second: &Effect) -> Option<String>
             // "Discard your hand, then draw a card for each card you've
             // discarded this turn." (Change of Fortune)
             "a card for each card you've discarded this turn".to_string()
+        } else if draw.count.has_surface_hint(ValueSurfaceHint::EqualTo)
+            && draw
+                .count
+                .has_surface_hint(ValueSurfaceHint::CardsDiscardedThisWay)
+        {
+            // "then draw cards equal to the number of cards discarded this
+            // way" (Borrowed Knowledge): the authored equal-to surface.
+            "cards equal to the number of cards discarded this way".to_string()
         } else {
             describe_card_count(&draw.count)
         };
@@ -1496,6 +1504,14 @@ pub(super) fn describe_sequential_any_player_may_action(
         {
             "Any other player".to_string()
         }
+        // "If a player would draw a card, ... Then any other player may pay 2
+        // life" (Zur's Weirding): other than the iterated drawer.
+        PlayerFilter::Excluding { base, excluded }
+            if matches!(**base, PlayerFilter::Any)
+                && matches!(**excluded, PlayerFilter::IteratedPlayer) =>
+        {
+            "Any other player".to_string()
+        }
         filter => format!("Any {}", describe_for_each_player_filter(filter)),
     };
 
@@ -1516,6 +1532,26 @@ pub(super) fn describe_sequential_any_player_may_action(
         .collect::<Vec<_>>();
     if let [effect] = visible_effects.as_slice() {
         let effect = structural_unwrap_render_wrappers(effect);
+        // "any opponent may tap an untapped creature they control" (Reservoir
+        // Kraken): the offered player taps one creature of their own; the
+        // actor and controller are the same iterated player, so the plural
+        // player pronoun names both.
+        if let Some(tap) = effect.downcast_ref::<crate::effects::TapEffect>()
+            && tap.actor == Some(PlayerFilter::IteratedPlayer)
+            && tap.named_payment.is_none()
+            && let ChooseSpec::WithCount(inner, count) = &tap.target
+            && count.is_single()
+            && let ChooseSpec::Object(filter) = inner.base()
+            && filter.controller == Some(PlayerFilter::IteratedPlayer)
+        {
+            let mut pronoun = filter.clone();
+            pronoun.set_iterated_actor_pronoun_surface(true);
+            let described = describe_object_filter_with_fixed_pt_shorthand(&pronoun);
+            return Some(format!(
+                "{subject} may tap {}",
+                with_indefinite_article(strip_leading_article(&described))
+            ));
+        }
         if let Some(move_card) = effect.downcast_ref::<crate::effects::MoveToZoneEffect>()
             && move_card.actor_surface == Some(PlayerFilter::You)
         {
@@ -4330,8 +4366,13 @@ pub(super) fn normalize_compile_effect_list_surface(line: &str) -> String {
 pub(super) fn describe_gain_life_then_distribute_creatures_died_counters(
     effects: &[Effect],
 ) -> Option<String> {
-    let [gain_effect, put_effect] = effects else {
-        return None;
+    // "distribute that many +1/+1 counters among any number of creatures you
+    // control": lowering may choose the recipients first and distribute
+    // among the chosen set.
+    let (gain_effect, chosen_effect, put_effect) = match effects {
+        [gain_effect, put_effect] => (gain_effect, None, put_effect),
+        [gain_effect, choose_effect, put_effect] => (gain_effect, Some(choose_effect), put_effect),
+        _ => return None,
     };
     let gain =
         unwrap_basic_tag_wrappers(gain_effect).downcast_ref::<crate::effects::GainLifeEffect>()?;
@@ -4348,6 +4389,30 @@ pub(super) fn describe_gain_life_then_distribute_creatures_died_counters(
         || put.counter_type != crate::object::CounterType::PlusOnePlusOne
     {
         return None;
+    }
+    if let Some(choose_effect) = chosen_effect {
+        let choose = unwrap_basic_tag_wrappers(choose_effect)
+            .downcast_ref::<crate::effects::ChooseObjectsEffect>()?;
+        let filter = &choose.filter;
+        if choose.chooser != PlayerFilter::You
+            || choose.is_search
+            || choose.count.min != 0
+            || choose.count.max.is_some()
+            || put.target_count.is_some()
+            || !matches!(&put.target, ChooseSpec::Tagged(tag) if *tag == choose.tag)
+            || filter.zone != Some(Zone::Battlefield)
+            || filter.controller != Some(PlayerFilter::You)
+            || !filter.card_types.contains(&CardType::Creature)
+        {
+            return None;
+        }
+        let recipients =
+            ChooseSpec::WithCount(Box::new(ChooseSpec::Object(filter.clone())), choose.count);
+        return Some(format!(
+            "You gain that much life and distribute that many {} counters among {}",
+            describe_counter_type(put.counter_type),
+            describe_choose_spec(&recipients)
+        ));
     }
     let ChooseSpec::WithCount(inner, count) = &put.target else {
         return None;

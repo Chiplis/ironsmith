@@ -294,6 +294,7 @@ pub fn parse_copy_modifier_words(tail_words: &[&str]) -> Result<CopyModifierSpec
                 ["defender", ..] => (StaticAbility::defender(), 1),
                 ["flying", ..] => (StaticAbility::flying(), 1),
                 ["trample", ..] => (StaticAbility::trample(), 1),
+                ["changeling", ..] => (StaticAbility::changeling(), 1),
                 _ => break,
             };
             push_unique(&mut spec.granted_abilities, ability);

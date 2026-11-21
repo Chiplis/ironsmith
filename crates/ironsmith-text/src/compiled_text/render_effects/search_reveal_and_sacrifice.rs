@@ -1629,6 +1629,16 @@ pub(in crate::compiled_text) fn sacrifice_view(effect: &Effect) -> Option<Sacrif
             player: &sacrifice.player,
         });
     }
+    // Lowering records the sacrificed set as the action's outcome; the
+    // receipt wrapper does not change what is sacrificed or who does it.
+    if let Some(tagged) = effect.downcast_ref::<crate::effects::TaggedEffect>()
+        && matches!(
+            tagged.action,
+            None | Some(crate::effect::PriorEffectAction::Sacrificed)
+        )
+    {
+        return sacrifice_view(&tagged.effect);
+    }
     None
 }
 
@@ -3631,7 +3641,12 @@ fn describe_duration_scoped_targeted_graveyard_cast_replacement(
     }
     let replacement = structural_unwrap_render_wrappers(*rest.get(replacement_idx)?)
         .downcast_ref::<crate::effects::RegisterFutureZoneReplacementEffect>()?;
-    if replacement.filter != ObjectFilter::tagged(target_tag.clone()).in_zone(Zone::Stack)
+    // The replaced spell's owner restriction is the "into your graveyard"
+    // destination the sentence already names (CR 404.2).
+    let tagged_spell = ObjectFilter::tagged(target_tag.clone()).in_zone(Zone::Stack);
+    let owned_tagged_spell = tagged_spell.clone().owned_by(PlayerFilter::You);
+    if (replacement.filter != tagged_spell
+        && !(owner == Some(PlayerFilter::You) && replacement.filter == owned_tagged_spell))
         || replacement.from_zone != Some(Zone::Stack)
         || replacement.to_zone != Some(Zone::Graveyard)
         || replacement.replacement_zone != Zone::Exile

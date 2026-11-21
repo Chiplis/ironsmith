@@ -49,6 +49,30 @@ pub fn parse_exile_segment_tokens(
     tokens: &[OwnedLexToken],
     contextual_source_reference: impl Fn(&[&str]) -> bool,
 ) -> Result<ActivationCostSegmentCst, CardTextError> {
+    // "Exile <this Equipment's name>" inside the ability it grants (The
+    // Dominion Bracelet): the granting attachment, chosen by identity and
+    // then exiled. Exiling needn't be by its controller.
+    {
+        let words = primitives::TokenWordView::new(tokens);
+        let words = words.word_refs();
+        if words.len() > 1
+            && words[0] == "exile"
+            && words[1..] == *crate::preprocess::GRANTING_SOURCE_SURFACE_WORDS
+        {
+            let mut filter = crate::target::ObjectFilter::tagged(
+                crate::tag::CompilerReferenceTag::GrantingSource.key(),
+            );
+            filter.zone = Some(Zone::Battlefield);
+            filter.controller = Some(PlayerFilter::Any);
+            return Ok(ActivationCostSegmentCst::ExileChosen {
+                count_value: None,
+                choice_count: crate::effect::ChoiceCount::exactly(1),
+                filter,
+                top_only: false,
+                turn_face_up: false,
+            });
+        }
+    }
     // A repeated counted selection is one announced cardinality expression,
     // not a sequence of unrelated choices: "exile two times X cards ...".
     let count_start = if tokens.get(1).is_some_and(|token| token.is_word("exactly")) { 2 } else { 1 };

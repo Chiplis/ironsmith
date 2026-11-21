@@ -232,6 +232,7 @@ pub struct ManaOutputRewriteShape<'a> {
     pub input: ironsmith_core::ManaRewriteInput,
     pub output: ironsmith_core::ManaRewriteOutput,
     pub quantity: ironsmith_core::ManaRewriteQuantity,
+    pub surface: ironsmith_core::ManaOutputRewriteSurface,
     pub mode: Option<crate::effects::ReplacementApplyMode>,
 }
 
@@ -285,12 +286,14 @@ fn mana_rewrite_basic_mapping<'a>(input: &mut LexStream<'a>) -> Result<ManaOutpu
         return Err(primitives::backtrack_err("mana rewrite", "type-preserving land mapping"));
     }
     Ok(ManaOutputRewriteShape {source_tokens: None, controller: None, tapped_for_mana: true,
+        surface: ironsmith_core::ManaOutputRewriteSurface::Passive,
         input: affected, output: Output::ByBasicLandType(mapping), quantity, mode: None})
 }
 fn mana_rewrite_controlled_colored<'a>(input: &mut LexStream<'a>) -> Result<ManaOutputRewriteShape<'a>, ErrMode<ContextError>> {
     primitives::phrase(&["spells", "and", "abilities", "you", "control", "that", "would", "add", "colored", "mana", "instead", "add", "that", "much", "white", "mana"]).parse_next(input)?;
     primitives::sentence_end().parse_next(input)?;
     Ok(ManaOutputRewriteShape {source_tokens: None, controller: Some(crate::target::PlayerFilter::You), tapped_for_mana: false,
+        surface: ironsmith_core::ManaOutputRewriteSurface::SpellsAndAbilitiesWouldAdd,
         input: ironsmith_core::ManaRewriteInput::Colored,
         output: ironsmith_core::ManaRewriteOutput::Symbol(ManaSymbol::White),
         quantity: ironsmith_core::ManaRewriteQuantity::Preserve, mode: None})
@@ -315,19 +318,27 @@ fn mana_rewrite_filtered_source<'a>(input: &mut LexStream<'a>) -> Result<ManaOut
         primitives::phrase(&["tapped", "for", "mana"]).parse_next(input)?;
         source
     };
+    let mut names_source_again = false;
     if has_if {
         opt(primitives::comma()).parse_next(input)?;
         // "..., that Mountain produces colorless mana instead" (Chaos Moon):
         // the tapped source named again, same as "it".
-        alt((
-            primitives::phrase(&["it", "produces"]),
-            (primitives::kw("that"), any, primitives::kw("produces")).void(),
+        names_source_again = alt((
+            primitives::phrase(&["it", "produces"]).value(false),
+            (primitives::kw("that"), any, primitives::kw("produces")).value(true),
         ))
         .parse_next(input)?;
     } else { primitives::kw("produce").parse_next(input)?; }
     let output = mana_rewrite_output(input)?;
     let (affected, quantity) = mana_rewrite_tail(input)?;
-    Ok(ManaOutputRewriteShape {source_tokens: Some(trim_lexed_commas(source_tokens)),
+    let surface = if actor == Some(false) && names_source_again {
+        ironsmith_core::ManaOutputRewriteSurface::PlayerTapsNamedSource
+    } else if actor == Some(false) {
+        ironsmith_core::ManaOutputRewriteSurface::PlayerTaps
+    } else {
+        ironsmith_core::ManaOutputRewriteSurface::Passive
+    };
+    Ok(ManaOutputRewriteShape {source_tokens: Some(trim_lexed_commas(source_tokens)), surface,
         controller: actor.filter(|you| *you).map(|_| crate::target::PlayerFilter::You), tapped_for_mana: true,
         input: affected, output, quantity, mode: None})
 }

@@ -99,6 +99,7 @@ fn choice_grant_parts(effect: EffectAst) -> Option<(TargetAst, Vec<GrantedAbilit
                 target,
                 abilities,
                 duration,
+                ..
             }),
         ..
     }) = effect

@@ -1417,7 +1417,7 @@ fn modal_modes_with_shared_spells_cast_value_render_one_x_preamble() {
 
     assert_eq!(
         describe_effect(&Effect::new(choose)),
-        "Choose one. X is the number of spells you've cast this turn —\n\
+        "Choose one. X is the number of spells you've cast this turn.\n\
          • Scry X.\n\
          • This creature deals X damage to target creature.\n\
          • You gain X life."

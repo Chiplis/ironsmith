@@ -474,6 +474,16 @@ pub fn parse_spells_from_tagged_tokens(
         return None;
     }
 
+    // "you may play lands and cast spells from among cards exiled this way"
+    // (Magus of the Mind): the land-and-spell pair names the whole pool.
+    let surface = if surface == TaggedPermissionTargetSurface::CardsExiledThisWay
+        && crate::lexer::token_word_refs(subject_tokens)
+            .ends_with(&["lands", "and", "cast", "spells", "from", "among", "cards"])
+    {
+        TaggedPermissionTargetSurface::LandsAndSpellsFromAmongCardsExiledThisWay
+    } else {
+        surface
+    };
     Some(SpellsFromTaggedFact {
         reference: TaggedPermissionReference::LastTagged,
         subject_tokens,

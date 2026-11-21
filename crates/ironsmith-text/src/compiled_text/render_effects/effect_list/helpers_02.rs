@@ -2410,7 +2410,18 @@ pub(crate) fn describe_face_down_pile_then_manifest(effects: &[Effect]) -> Optio
             .downcast_ref::<crate::effects::ExileEffect>()?;
         let manifest = unwrap_basic_tag_wrappers(manifest_effect)
             .downcast_ref::<crate::effects::ManifestObjectsEffect>().filter(|effect| !effect.descriptive)?;
-        let ChooseSpec::All(filter) = &exile.spec else { return None; };
+        // "Exile all ... in a face-down pile ... those cards" or "Exile any
+        // number of ... in a face-down pile ... them" (Expose the Culprit).
+        let (filter, pile_pronoun) = match &exile.spec {
+            ChooseSpec::All(filter) => (filter, "those cards"),
+            ChooseSpec::WithCount(inner, count)
+                if count.min == 0 && count.max.is_none() && !count.random && !count.dynamic_x =>
+            {
+                let ChooseSpec::Object(filter) = inner.as_ref() else { return None; };
+                (filter, "them")
+            }
+            _ => return None,
+        };
         let ChooseSpec::Tagged(pile_tag) = &manifest.target else { return None; };
         if *exile != crate::effects::ExileEffect::with_spec(exile.spec.clone()).with_face_down(true)
             || !wrapper_chain_contains_tag(exile_effect, pile_tag)
@@ -2431,7 +2442,7 @@ pub(crate) fn describe_face_down_pile_then_manifest(effects: &[Effect]) -> Optio
         let action = if manifest.cloak { "cloak" } else { "manifest" };
         let shuffle = if manifest.shuffle { "shuffle that pile, then " } else { "then " };
         let tapped = if manifest.tapped { ". They enter tapped" } else { "" };
-        return Some(format!("Exile {objects} in a face-down pile, {shuffle}{action} those cards{tapped}"));
+        return Some(format!("Exile {objects} in a face-down pile, {shuffle}{action} {pile_pronoun}{tapped}"));
     }
     let [target_exile_effect, library_exile_effect, manifest_effect] = body else {
         return None;
@@ -4423,5 +4434,79 @@ pub(crate) fn describe_reveal_top_opponent_split_you_choose_pile_bottom_bundle(
     let reveal_text = describe_effect(reveal_effect);
     Some(format!(
         "{reveal_text}. An opponent separates those cards into two piles. Put one pile into your hand and the other on the bottom of your library in any order."
+    ))
+}
+
+/// "Each opponent reveals cards from the top of their library until they
+/// reveal a creature card. Assimilate one of the creature cards revealed this
+/// way. Then each opponent puts the other cards they revealed this way on the
+/// bottom of their library in a random order." (Gift of Perfection): a
+/// per-opponent reveal pooling every match, your one choice from that pool,
+/// its assimilation (a Borg entry under your control), and the remaining
+/// revealed cards to the bottom of their owners' libraries in a random order.
+pub(crate) fn render_opponent_reveal_assimilate_one(effects: &[&Effect]) -> Option<String> {
+    let [reveal_loop_effect, choose_effect, move_effect, remainder_effect] = effects else {
+        return None;
+    };
+    let reveal_loop = structural_unwrap_render_wrappers(reveal_loop_effect)
+        .downcast_ref::<crate::effects::ForPlayersEffect>()?;
+    let [consult_effect] = reveal_loop.effects.as_slice() else {
+        return None;
+    };
+    let consult = structural_unwrap_render_wrappers(consult_effect)
+        .downcast_ref::<crate::effects::ConsultTopOfLibraryEffect>()?;
+    let pooled = consult.accumulated_match_tag.as_ref()?;
+    if reveal_loop.filter != PlayerFilter::Opponent
+        || consult.mode != crate::effects::consult_helpers::LibraryConsultMode::Reveal
+        || !matches!(consult.stop_rule, crate::effects::ConsultTopOfLibraryStopRule::FirstMatch)
+        || consult.max_exposed.is_some()
+    {
+        return None;
+    }
+    let choose = structural_unwrap_render_wrappers(choose_effect)
+        .downcast_ref::<crate::effects::ChooseObjectsEffect>()?;
+    if choose.chooser != PlayerFilter::You
+        || choose.count != crate::effect::ChoiceCount::exactly(1)
+        || !choose
+            .filter
+            .tagged_constraints
+            .iter()
+            .any(|constraint| &constraint.tag == pooled)
+    {
+        return None;
+    }
+    let moved = structural_unwrap_render_wrappers(move_effect)
+        .downcast_ref::<crate::effects::MoveToZoneEffect>()?;
+    let assimilates = moved
+        .entry_type_changes
+        .as_ref()
+        .is_some_and(|changes| changes.added_subtypes.as_slice() == [crate::types::Subtype::Borg]);
+    if moved.zone != Zone::Battlefield
+        || !assimilates
+        || !matches!(moved.target.base(), ChooseSpec::Tagged(tag) if tag == &choose.tag)
+    {
+        return None;
+    }
+    let remainder = structural_unwrap_render_wrappers(remainder_effect)
+        .downcast_ref::<crate::effects::PutTaggedRemainderOnLibraryBottomEffect>()?;
+    if remainder.tag != consult.all_tag
+        || remainder.keep_tagged.as_ref() != Some(&choose.tag)
+        || !matches!(remainder.order, crate::effects::consult_helpers::LibraryBottomOrder::Random)
+    {
+        return None;
+    }
+    let matched = strip_indefinite_article(&describe_single_search_filter_in_zone(
+        &consult.filter,
+        Zone::Library,
+    ))
+    .trim()
+    .to_string();
+    let kind = matched.strip_suffix(" card")?.trim();
+    if kind.is_empty() {
+        return None;
+    }
+    Some(format!(
+        "Each opponent reveals cards from the top of their library until they reveal {}. Assimilate one of the {kind} cards revealed this way. Then each opponent puts the other cards they revealed this way on the bottom of their library in a random order",
+        with_indefinite_article(&matched)
     ))
 }

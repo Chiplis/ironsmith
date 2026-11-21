@@ -12,6 +12,27 @@ mod intrinsic_immediate_actions;
 mod named_action_token_grants;
 mod reminder_definitions;
 
+/// "This creature can't be blocked by creatures with power 2 or greater as
+/// long as defending player controls a snow land." (Arctic Foxes): a
+/// blocker-class restriction is checked as blockers are declared, when the
+/// defending player is bound, so its "defending player controls ..." gate is
+/// a whole-restriction condition rather than part of the blocker filter.
+fn defending_player_controls_gate_on_blocker_restriction(
+    keyword_tokens: &[OwnedLexToken],
+    condition_tokens: &[OwnedLexToken],
+) -> bool {
+    let condition = crate::lexer::token_word_refs(condition_tokens);
+    let keyword = crate::lexer::token_word_refs(keyword_tokens);
+    let ["defending", "player", "controls", rest @ ..] = condition.as_slice() else {
+        return false;
+    };
+    !rest.is_empty()
+        && !rest.iter().any(|word| {
+            matches!(*word, "defending" | "attacking" | "blocking" | "target" | "triggering")
+        })
+        && keyword.windows(3).any(|window| window == ["be", "blocked", "by"])
+}
+
 pub(crate) fn parse_descriptive_reminder_line(tokens: &[OwnedLexToken]) -> Option<Vec<StaticAbilityAst>> {
     reminder_definitions::parse(tokens)
 }
@@ -2837,9 +2858,12 @@ fn parse_static_ability_ast_line_lexed_committed(
         && let Some(split) = crate::grammar::anthem_grants::split_trailing_as_long_as_clause(tokens)
         // These roles belong to existing blocking/target/event-time readers,
         // not a source's global static-condition discovery context.
-        && !split.condition_tokens.iter().any(|token| token.is_any_word(&[
+        && (!split.condition_tokens.iter().any(|token| token.is_any_word(&[
             "defending", "attacking", "blocking", "target", "triggering",
-        ]))
+        ])) || defending_player_controls_gate_on_blocker_restriction(
+            split.keyword_tokens,
+            split.condition_tokens,
+        ))
         && let Some(abilities) = parse_static_ability_ast_line_lexed_committed(split.keyword_tokens)?
     {
         let condition = parse_static_condition_clause(split.condition_tokens)?;
@@ -5633,9 +5657,8 @@ pub fn parse_ward_static_ability_line(
     }
 
     if keyword_static_lines::parse_ward_abilities_dont_trigger_marker_tokens(tokens) {
-        return Ok(Some(StaticAbility::suppress_matching_triggered_abilities(
+        return Ok(Some(StaticAbility::suppress_ward_abilities(
             Some(ObjectFilter::creature().opponent_controls()),
-            None,
             render_token_slice(tokens),
         )));
     }
@@ -5887,6 +5910,31 @@ pub fn parse_composed_anthem_effects_line(
         else {
             continue;
         };
+        // "Enchanted creature gets -4/-0, can't block, and is a Salamander."
+        // (De-evolve): a trailing type-setting sibling shares the subject.
+        if !parsed.omitted_subject && idx > 0 {
+            let body = trim_commas(parsed.body_tokens);
+            let body = match body.first() {
+                Some(token) if token.is_word("and") => body[1..].to_vec(),
+                _ => body,
+            };
+            // Only the type-setting "is a/an <type>" sibling; other copular
+            // segments ("is black") keep the trailing-segment reading.
+            if body.len() > 2
+                && body[0].is_any_word(&["is", "are"])
+                && body[1].is_any_word(&["a", "an"])
+            {
+                let mut expanded = subject_tokens.clone();
+                expanded.extend(body);
+                let Ok(Some(abilities)) = parse_static_ability_ast_line_lexed_unstacked(&expanded)
+                else {
+                    return Ok(None);
+                };
+                saw_omitted_subject_clause = true;
+                compiled.extend(abilities);
+                continue;
+            }
+        }
         let mut segment = parsed.body_tokens.to_vec();
         if parsed.omitted_subject {
             if idx > 0 {
@@ -6486,7 +6534,22 @@ pub fn parse_must_attack_draft_noted_players_line(
     if name.is_empty() {
         return Ok(None);
     }
-    Ok(Some(StaticAbility::must_attack_draft_noted_players(name.join(" "))))
+    // Keep the authored spelling of the noted card family's name; the
+    // parser words are lowercased. Draft notes are looked up
+    // case-insensitively, so this is presentation only.
+    let trimmed = trim_edge_punctuation_tokens(tokens);
+    let view = TokenWordView::new(trimmed);
+    let literal = (view.len() == words.len())
+        .then(|| {
+            let start = view.map_word_to_token_start(10)?;
+            let end = view.map_word_or_end_to_token_start(10 + name.len())?;
+            let rendered =
+                crate::lexer::render_literal_token_slice(trimmed.get(start..end)?).trim().to_string();
+            rendered.eq_ignore_ascii_case(&name.join(" ")).then_some(rendered)
+        })
+        .flatten();
+    let name = literal.unwrap_or_else(|| name.join(" "));
+    Ok(Some(StaticAbility::must_attack_draft_noted_players(name)))
 }
 
 /// "You may discard this card any time you could cast an instant." (Circling
@@ -7660,12 +7723,21 @@ fn parse_trigger_duplication_event_matcher(
                     }),
                     Box::new(TriggerSpec::Dies(filter)),
                 ),
-                EventKind::EntersBattlefield => TriggerSpec::EntersBattlefield {
-                    filter,
-                    cause_filter: None,
-                    origin_condition: None,
-                    during_turn: None,
-                },
+                EventKind::EntersBattlefield => {
+                    // "Artifacts and creatures entering the battlefield don't
+                    // cause abilities to trigger" (Karn, Argent Defender)
+                    // keeps its printed battlefield noun.
+                    let mut filter = filter;
+                    if tokens.last().is_some_and(|token| token.is_word("battlefield")) {
+                        filter.set_entered_battlefield_explicit_surface(true);
+                    }
+                    TriggerSpec::EntersBattlefield {
+                        filter,
+                        cause_filter: None,
+                        origin_condition: None,
+                        during_turn: None,
+                    }
+                }
                 EventKind::LeavesBattlefield => TriggerSpec::LeavesBattlefield(filter),
                 EventKind::DrawsCard(None) => TriggerSpec::PlayerDrawsCard(PlayerFilter::Any),
                 EventKind::DrawsCard(Some(_)) => unreachable!("handled typed player subject"),
@@ -7882,14 +7954,17 @@ pub fn parse_double_damage_from_sources_you_control_of_chosen_type_line(
     // with the chosen subtype can deal damage too.
     let mut source_filter = ObjectFilter::default().controlled_by(PlayerFilter::You);
     source_filter.chosen_creature_type = true;
-    Ok(Some(StaticAbility::multiply_damage_amount_replacement(
-        source_filter,
-        Some(PlayerFilter::Any),
-        Some(ObjectFilter::default()),
-        2,
-        false,
-        "Double all damage that sources you control of the chosen type would deal.".to_string(),
-    )))
+    Ok(Some(
+        StaticAbility::multiply_damage_amount_replacement(
+            source_filter,
+            Some(PlayerFilter::Any),
+            Some(ObjectFilter::default()),
+            2,
+            false,
+            "Double all damage that sources you control of the chosen type would deal.".to_string(),
+        )
+        .with_double_all_damage_surface(),
+    ))
 }
 
 pub fn parse_damage_amount_replacement_line(
@@ -8060,6 +8135,9 @@ pub fn parse_double_damage_amount_replacement_line(
     );
     if parts.noncombat_only {
         ability = ability.with_noncombat_only_damage_multiplier();
+    }
+    if spec.imperative_all_damage {
+        ability = ability.with_double_all_damage_surface();
     }
     if let Some(condition) = spec.condition_tokens {
         ability = ability.with_condition(parse_static_condition_clause(condition)?);

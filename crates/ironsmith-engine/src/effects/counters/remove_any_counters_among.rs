@@ -478,11 +478,22 @@ fn remove_counters_target_phrase(filter: &ObjectFilter, plural: bool) -> String 
         .iter()
         .all(|card_type| filter.card_types.contains(card_type));
     let mut noun = if filter.card_types.is_empty() || every_permanent_type {
+        // "Remove a counter from a nonland permanent you control" (O'aka,
+        // Traveling Merchant): excluded card types qualify the bare noun.
+        let head = filter
+            .excluded_card_types
+            .iter()
+            .map(|card_type| format!("non{}", card_type.name().to_ascii_lowercase()))
+            .chain(std::iter::once(
+                if plural { "permanents" } else { "permanent" }.to_string(),
+            ))
+            .collect::<Vec<_>>()
+            .join(" ");
         match (plural, filter.other) {
-            (true, true) => "other permanents".to_string(),
-            (true, false) => "permanents".to_string(),
-            (false, true) => "another permanent".to_string(),
-            (false, false) => "a permanent".to_string(),
+            (true, true) => format!("other {head}"),
+            (true, false) => head,
+            (false, true) => format!("another {head}"),
+            (false, false) => format!("a {head}"),
         }
     } else {
         let type_names = filter

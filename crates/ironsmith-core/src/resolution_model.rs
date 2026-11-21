@@ -82,6 +82,13 @@ pub struct ResolutionProgram<E> {
     /// Actions explicitly exempted from the authored sorcery-only restriction.
     #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "Vec::is_empty"))]
     pub activation_sorcery_exceptions: Vec<String>,
+    /// "This ability costs {X} less to activate, where X is ..." printed inside
+    /// this activation itself (a quoted granted or token ability): the generic
+    /// discount belongs to this activation's own price, read from its own
+    /// source (CR 601.2f, 602.2b). Printed top-level abilities keep the
+    /// separate bound `ActivatedAbilityCostReduction` static instead.
+    #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "Option::is_none"))]
+    pub activation_self_cost_reduction: Option<crate::Value>,
     flattened_default_effects: Vec<E>,
     /// A legacy copied object lacked the definition evidence needed for its
     /// spell program. This is incomplete data, never an executable empty body.
@@ -155,6 +162,7 @@ impl<E> Default for ResolutionProgram<E> {
             activation_label: None,
             activation_designations: Vec::new(),
             activation_sorcery_exceptions: Vec::new(),
+            activation_self_cost_reduction: None,
             flattened_default_effects: Vec::new(),
             unavailable_copied_definition: false,
         }
@@ -178,6 +186,7 @@ impl<E: Clone> ResolutionProgram<E> {
             activation_label: None,
             activation_designations: Vec::new(),
             activation_sorcery_exceptions: Vec::new(),
+            activation_self_cost_reduction: None,
             flattened_default_effects: Vec::new(),
             unavailable_copied_definition: false,
         };
@@ -291,6 +300,7 @@ impl<E: Clone> ResolutionProgram<E> {
             self.activation_label = other.activation_label.clone();
             self.activation_designations = other.activation_designations.clone();
             self.activation_sorcery_exceptions = other.activation_sorcery_exceptions.clone();
+            self.activation_self_cost_reduction = other.activation_self_cost_reduction.clone();
         } else if !other.segments.is_empty()
             && self.linked_exile_pair != other.linked_exile_pair
         {
@@ -334,6 +344,9 @@ impl<E: Clone> ResolutionProgram<E> {
         if !self.segments.is_empty() && !other.segments.is_empty() {
             self.activation_designations.retain(|designation| other.activation_designations.contains(designation));
             self.activation_sorcery_exceptions.retain(|action| other.activation_sorcery_exceptions.contains(action));
+            if self.activation_self_cost_reduction != other.activation_self_cost_reduction {
+                self.activation_self_cost_reduction = None;
+            }
         }
         for tag in other.object_reference_imports {
             if !self.object_reference_imports.contains(&tag) {self.object_reference_imports.push(tag);}
@@ -413,6 +426,7 @@ impl<E> ResolutionProgram<E> {
         mapped.activation_label = self.activation_label.clone();
         mapped.activation_designations = self.activation_designations.clone();
         mapped.activation_sorcery_exceptions = self.activation_sorcery_exceptions.clone();
+        mapped.activation_self_cost_reduction = self.activation_self_cost_reduction.clone();
         mapped.unavailable_copied_definition = self.unavailable_copied_definition;
         Ok(mapped)
     }

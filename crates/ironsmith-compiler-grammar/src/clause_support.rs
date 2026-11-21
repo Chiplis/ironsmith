@@ -1239,6 +1239,70 @@ pub fn parse_triggered_line_lexed(tokens: &[OwnedLexToken]) -> Result<LineAst, C
     Ok(parsed)
 }
 
+/// A quoted granted trigger keeps the authored sentence boundaries of its
+/// multi-sentence body, as the same trigger printed on a card does
+/// (`parse_effect_sentences_preserving_source_boundaries`). Only the plain
+/// first-comma split is regrouped, and only when that split reproduces the
+/// trigger the joint line parse chose; every other shape keeps its effects.
+pub(crate) fn preserve_triggered_line_source_boundaries(
+    tokens: &[OwnedLexToken],
+    trigger: &TriggerSpec,
+    effects: &mut Vec<EffectAst>,
+) {
+    if crate::grammar::functional_zones::split_ability_function_exclusion(tokens).is_some()
+        || crate::grammar::document_shapes::parse_trailing_trigger_cap_suffix_tokens(tokens)
+            .is_some()
+        || effects
+            .iter()
+            .any(|effect| matches!(effect, EffectAst::SourceSentence { .. }))
+    {
+        return;
+    }
+    let start_idx = clause_grammar::parse_trigger_intro_tokens(tokens).body_first;
+    let Some(delimiter) = clause_grammar::parse_trigger_delimiters_tokens(tokens).first_comma_or_then
+    else {
+        return;
+    };
+    if delimiter.kind != TriggerDelimiterKind::Comma
+        || delimiter.index <= start_idx
+        || clause_grammar::parse_source_trigger_prefix_tokens(&tokens[start_idx..]).is_some()
+    {
+        return;
+    }
+    let trigger_tokens = &tokens[start_idx..delimiter.index];
+    let body = &tokens[delimiter.index + 1..];
+    if body.first().is_some_and(|token| token.is_word("if"))
+        || split_lexed_sentences(body)
+            .iter()
+            .filter(|sentence| !sentence.is_empty())
+            .count()
+            < 2
+    {
+        return;
+    }
+    let same_trigger =
+        crate::word_claims::probe_only(|| parse_trigger_clause_lexed(trigger_tokens))
+            .is_ok_and(|parsed| &parsed == trigger);
+    if !same_trigger {
+        return;
+    }
+    let rewritten = rewrite_attached_controller_trigger_effect_tokens_lexed(trigger_tokens, body);
+    let Ok(grouped) = crate::word_claims::probe_only(|| {
+        crate::semantic_line_parsing::parse_effect_sentences_preserving_source_boundaries(
+            &rewritten,
+        )
+    }) else {
+        return;
+    };
+    if grouped.len() >= 2
+        && grouped
+            .iter()
+            .all(|effect| matches!(effect, EffectAst::SourceSentence { .. }))
+    {
+        *effects = grouped;
+    }
+}
+
 pub fn parse_triggered_line_lexed_with_context(
     context: crate::parse_context::ParseContextView<'_>,
     tokens: &[OwnedLexToken],

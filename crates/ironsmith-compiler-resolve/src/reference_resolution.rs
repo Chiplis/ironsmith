@@ -1980,7 +1980,29 @@ fn advance_coordinated_reference_frames(
     }
     let mut exile_group: Vec<TagKey> = Vec::new();
     for effect in effects {
+        // A nested coordinated member ("the top card of their library, a
+        // card at random from their graveyard") exiles several groups: every
+        // "exiled this way" alias it adds is a producer of this instruction.
+        let aliases_before: Vec<TagKey> = frame
+            .snapshot_bindings
+            .aliases()
+            .filter(|(existing, _)| existing == &alias)
+            .map(|(_, exiled)| exiled.clone())
+            .collect();
         advance_reference_frame_for_effect(effect, id_gen, frame)?;
+        let nested_exiles: Vec<TagKey> =
+            if matches!(effect, EffectAst::Coordinated { .. } | EffectAst::Sequence { .. }) {
+                frame
+                    .snapshot_bindings
+                    .aliases()
+                    .filter(|(existing, exiled)| {
+                        existing == &alias && !aliases_before.contains(exiled)
+                    })
+                    .map(|(_, exiled)| exiled.clone())
+                    .collect()
+            } else {
+                Vec::new()
+            };
         let exiled = match effect {
             EffectAst::TagAffected { effect, tag } if terminal_exile(effect) => Some(tag.key.clone()),
             _ if is_object_memory_producer_for_action(effect, PriorEffectAction::Exiled) => frame
@@ -1991,9 +2013,12 @@ fn advance_coordinated_reference_frames(
                 .map(|(_, tag)| tag.clone()),
             _ => None,
         };
-        if let Some(exiled) = exiled {
-            if !exile_group.contains(&exiled) {
-                exile_group.push(exiled);
+        let produced: Vec<TagKey> = exiled.into_iter().chain(nested_exiles).collect();
+        if !produced.is_empty() {
+            for exiled in produced {
+                if !exile_group.contains(&exiled) {
+                    exile_group.push(exiled);
+                }
             }
             if !exile_group.is_empty() {
                 frame.snapshot_bindings.remove_alias(&alias);
@@ -2009,7 +2034,12 @@ fn advance_coordinated_reference_frames(
                 ObjectChoiceEffectAst::ChooseObjects { .. }
                     | ObjectChoiceEffectAst::ChooseObjectsTopOfZone { .. }
                     | ObjectChoiceEffectAst::ChooseTaggedObjectsInZone { .. }
-            )
+            ) | EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                // The instruction's actor re-declared as each member's
+                // target ("target opponent exiles A, B, and C").
+                action: SubjectVerbActionAst::TargetOnly { .. },
+                ..
+            })
         ) {
             exile_group.clear();
         }

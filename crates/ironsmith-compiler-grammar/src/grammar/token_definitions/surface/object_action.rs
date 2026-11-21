@@ -154,7 +154,8 @@ pub fn parse_token_definition_shape_tokens(
             BuiltinTokenShape::WizardRole => &["wizard", "role"],
             BuiltinTokenShape::WarriorRole => &["warrior", "role"],
             BuiltinTokenShape::Gingerbrute | BuiltinTokenShape::Mutavault
-            | BuiltinTokenShape::SpellgorgerWeird | BuiltinTokenShape::Tarmogoyf => unreachable!("complete card-name token leaf owns these shapes"),
+            | BuiltinTokenShape::SpellgorgerWeird | BuiltinTokenShape::Tarmogoyf
+            | BuiltinTokenShape::BaneslayerAngel | BuiltinTokenShape::AkromaAngelOfWrath => unreachable!("complete card-name token leaf owns these shapes"),
         };
         for word in identifier {
             common::word_read(words, word);

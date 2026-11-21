@@ -340,9 +340,8 @@ impl crate::effects::SimultaneousEffectProposal for TokenProposal {
         if ctx.pending_entry_attachment.is_some()
             && let crate::events::processing::PreparedTokenCreation::Proceed { event, provenance, .. } = &mut prepared
         {
-            // Past the creation budget, create as many tokens as fit.
-            let granted = super::resources::reserve_token_creation_up_to(game, event.total_count())?;
-            if granted < event.total_count() { *event = event.truncated_to(granted); }
+            // At most 512 same-name tokens per batch, then as many as the budget fits.
+            super::resources::limit_token_batch(game, event)?;
             let registration_id = event.token.as_ref().map(|object| object.id).unwrap_or(ctx.source);
             let _ = game.object_from_token_definition(registration_id, &self.resolved_token, event.controller);
             if let Some(preview) = &mut event.token {
@@ -600,9 +599,8 @@ fn commit_token_original(
         return Err(ExecutionError::IncompleteEvidence("authored token attachment lost its prepared entry owner".into()));
     }
     if entry_attachment_plan.is_none() {
-        // Past the creation budget, create as many tokens as fit and stop.
-        let granted = super::resources::reserve_token_creation_up_to(game, replacement.total_count())?;
-        if granted < replacement.total_count() { replacement = replacement.truncated_to(granted); }
+        // At most 512 same-name tokens per batch, then as many as the budget fits.
+        super::resources::limit_token_batch(game, &mut replacement)?;
     }
     let count = replacement.count as usize;
     let cleanup_options = TokenCleanupOptions::new(

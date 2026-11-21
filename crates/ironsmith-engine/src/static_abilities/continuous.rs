@@ -873,7 +873,55 @@ fn describe_filter_comparison(cmp: &crate::filter::Comparison) -> String {
     crate::filter::describe_comparison(cmp)
 }
 
+/// "Creature and planeswalker spells you cast" can lower with the shared
+/// spell fields (caster, stack kind, mana-cost requirement) repeated on each
+/// coordinated card-type arm instead of on the head. Move identical shared
+/// fields to the head so the coordinated spell reader applies.
+fn hoist_shared_coordinated_spell_fields(filter: &ObjectFilter) -> Option<ObjectFilter> {
+    let mut shared: Option<ObjectFilter> = None;
+    let mut branches = Vec::new();
+    for branch in &filter.any_of {
+        let [card_type] = branch.card_types.as_slice() else {
+            return None;
+        };
+        let mut rest = branch.clone();
+        rest.card_types.clear();
+        if rest.stack_kind != Some(crate::filter::StackObjectKind::Spell) || rest.cast_by.is_none() {
+            return None;
+        }
+        match &shared {
+            Some(existing) if *existing != rest => return None,
+            Some(_) => {}
+            None => shared = Some(rest),
+        }
+        branches.push(ObjectFilter::default().with_type(*card_type));
+    }
+    let shared = shared?;
+    let mut probe = shared.clone();
+    probe.cast_by = None;
+    probe.stack_kind = None;
+    probe.has_mana_cost = false;
+    probe.zone = None;
+    if probe != ObjectFilter::default() {
+        return None;
+    }
+    let mut hoisted = filter.clone();
+    hoisted.cast_by = shared.cast_by.clone();
+    hoisted.stack_kind = shared.stack_kind;
+    hoisted.has_mana_cost = shared.has_mana_cost;
+    hoisted.any_of = branches;
+    Some(hoisted)
+}
+
 fn spell_grant_subject_text(filter: &ObjectFilter) -> Option<String> {
+    if filter.has_conjunctive_set_surface()
+        && filter.stack_kind.is_none()
+        && filter.cast_by.is_none()
+        && filter.any_of.len() >= 2
+        && let Some(hoisted) = hoist_shared_coordinated_spell_fields(filter)
+    {
+        return spell_grant_subject_text(&hoisted);
+    }
     let is_spell_subject = matches!(
         filter.stack_kind,
         Some(crate::filter::StackObjectKind::Spell)
@@ -2174,10 +2222,16 @@ fn describe_static_turn_history_presence(
             } else {
                 format!("a {object}")
             };
-            Some(format!(
-                "{} sacrificed {object} this turn",
+            // "as long as you sacrificed a permanent this turn" (Goblin
+            // Blast-Runner) keeps its authored simple past.
+            let subject = if filter.has_simple_past_history_surface()
+                && *player == crate::target::PlayerFilter::You
+            {
+                "you".to_string()
+            } else {
                 subject_have(player)
-            ))
+            };
+            Some(format!("{subject} sacrificed {object} this turn"))
         }
         History::CardsDrawn(player) => {
             Some(format!("{} drawn a card this turn", subject_have(player)))
@@ -2324,6 +2378,48 @@ fn flatten_static_condition_and(
         }
         _ => out.push(condition.clone()),
     }
+}
+
+/// "you control a permanent of each color" (Spirit of Resistance): one
+/// permanent you control of each single color, for all five colors, with
+/// every other characteristic shared.
+fn describe_static_permanent_of_each_color_condition(
+    clauses: &[crate::ConditionExpr],
+) -> Option<String> {
+    let [
+        crate::ConditionExpr::PlayerControls { player: PlayerFilter::You, filter: first },
+        ..,
+    ] = clauses
+    else {
+        return None;
+    };
+    let mut shared = first.clone();
+    shared.colors = None;
+    if shared.zone != Some(crate::zone::Zone::Battlefield)
+        || !shared.card_types.is_empty()
+        || !shared.subtypes.is_empty()
+    {
+        return None;
+    }
+    let mut seen = crate::color::ColorSet::new();
+    for clause in clauses {
+        let crate::ConditionExpr::PlayerControls { player: PlayerFilter::You, filter } = clause
+        else {
+            return None;
+        };
+        let colors = filter.colors?;
+        if colors.count() != 1 || seen.contains_all(colors) {
+            return None;
+        }
+        let mut rest = filter.clone();
+        rest.colors = None;
+        if rest != shared {
+            return None;
+        }
+        seen = seen.union(colors);
+    }
+    (clauses.len() == 5 && seen.count() == 5)
+        .then(|| "you control a permanent of each color".to_string())
 }
 
 /// "black is the most common color among all permanents or is tied for most
@@ -2505,6 +2601,9 @@ pub(super) fn describe_static_condition(condition: &crate::ConditionExpr) -> Str
             if let Some(described) = describe_static_most_common_color_condition(&clauses) {
                 return format!("as long as {described}");
             }
+            if let Some(described) = describe_static_permanent_of_each_color_condition(&clauses) {
+                return format!("as long as {described}");
+            }
             // "As long as Kosei is enchanted, equipped, and has a counter on
             // it": a conjunction of states of the source shares one subject.
             let source_states = clauses
@@ -2594,6 +2693,13 @@ pub(super) fn describe_static_condition(condition: &crate::ConditionExpr) -> Str
                 "as long as it's not {}",
                 affected_object_state_word(filter).unwrap_or_default()
             )
+        }
+        // "gets +3/+3 as long as it's not attacking or blocking" (The
+        // Muckslinger Gang): a negated disjunction of two affected-object
+        // states shares one negated copula.
+        crate::ConditionExpr::Not(inner) if affected_object_state_disjunction(inner).is_some() => {
+            let (left, right) = affected_object_state_disjunction(inner).unwrap_or_default();
+            format!("as long as it's not {left} or {right}")
         }
         crate::ConditionExpr::CurrentTurnIsExtra => "during extra turns".to_string(),
         crate::ConditionExpr::Not(inner)
@@ -2970,6 +3076,23 @@ pub(super) fn describe_static_condition(condition: &crate::ConditionExpr) -> Str
             if let Some(display) = ironsmith_core::semantic_audit::authored(display.as_deref()) {
                 return format!("as long as {}", display.replace(" dont ", " don't "));
             }
+            // "as long as that player controls three or fewer lands"
+            // (Sheltering Prayers): a ceiling on the recipient controller's
+            // own permanents.
+            if ironsmith_core::semantic_audit::semantic_audit_active()
+                && let AnthemCountExpression::MatchingFilter(filter) = count
+                && filter.zone == Some(crate::zone::Zone::Battlefield)
+                && filter.controller == Some(crate::target::PlayerFilter::IteratedPlayer)
+                && let Comparison::LessThanOrEqual(n @ 1..) = comparison
+            {
+                let mut described = filter.clone();
+                described.controller = None;
+                let amount = number_word_u32(*n as u32).unwrap_or_else(|| n.to_string());
+                return format!(
+                    "as long as that player controls {amount} or fewer {}",
+                    pluralized_subject_text(&described)
+                );
+            }
             // "as long as it has three or more +1/+1 counters on it".
             if ironsmith_core::semantic_audit::semantic_audit_active()
                 && let AnthemCountExpression::CountersOnSource(counter_type)
@@ -3047,6 +3170,29 @@ pub(super) fn describe_static_condition(condition: &crate::ConditionExpr) -> Str
                 && let Some(word) = number_word_u32(*n as u32)
             {
                 return format!("as long as {word} or more creatures are blocking it");
+            }
+            // "as long as its controller controls another creature"
+            // (Favorable Destiny): objects other than the attached object,
+            // controlled by that object's controller.
+            if ironsmith_core::semantic_audit::semantic_audit_active()
+                && let AnthemCountExpression::MatchingFilter(filter) = count
+                && matches!(comparison, Comparison::GreaterThanOrEqual(1))
+                && let Some(PlayerFilter::ControllerOf(ObjectRef::Tagged(attached))) =
+                    &filter.controller
+                && let [constraint] = filter.tagged_constraints.as_slice()
+                && constraint.tag == *attached
+                && constraint.relation == TaggedOpbjectRelation::IsNotTaggedObject
+            {
+                let mut rest = filter.clone();
+                rest.controller = None;
+                rest.zone = None;
+                rest.tagged_constraints.clear();
+                let noun = rest.description();
+                let noun = noun
+                    .strip_prefix("a ")
+                    .or_else(|| noun.strip_prefix("an "))
+                    .unwrap_or(&noun);
+                return format!("as long as its controller controls another {noun}");
             }
             // Thresholds read in words: "as long as there are two or more
             // ...", "as long as there is a Lesson card in your graveyard".
@@ -4529,6 +4675,14 @@ fn audit_anthem_for_each_basis(value: &Value) -> Option<(i32, String)> {
     if !ironsmith_core::semantic_audit::semantic_audit_active() {
         return None;
     }
+    // "+3/+3 for each opponent whose life total is less than half their
+    // starting life total" (Anya): a fixed multiple of a counted basis.
+    if let Value::Scaled(inner, multiplier) = value.unhinted()
+        && *multiplier > 1
+    {
+        let (unit, basis) = audit_anthem_for_each_basis(inner)?;
+        return Some((unit * *multiplier, basis));
+    }
     let described = crate::runtime_display::describe_value(value);
     let counted = described.strip_prefix("the number of ")?;
     if counted.contains(" plus ") || counted.contains(" minus ") || counted.contains(" and ") {
@@ -4748,6 +4902,19 @@ impl StaticAbilityKind for Anthem {
                     signed_toughness(power, *toughness),
                 )
             }
+            // "+2/+0 for every seven cards in your graveyard": a multiple of
+            // a count split into groups of a fixed size, rounded down.
+            (AnthemValue::Dynamic(power), AnthemValue::Fixed(toughness))
+                if anthem_for_every_group(power).is_some() =>
+            {
+                let (power, basis) =
+                    anthem_for_every_group(power).expect("for-every value checked in match guard");
+                format!(
+                    "{subject} {verb} {}/{} for every {basis}",
+                    signed(power),
+                    signed_toughness(power, *toughness),
+                )
+            }
             (AnthemValue::Fixed(power), AnthemValue::Dynamic(toughness))
                 if dynamic_for_each(toughness).is_some() =>
             {
@@ -4779,6 +4946,37 @@ impl StaticAbilityKind for Anthem {
                 format!(
                     "{subject} {verb} +1/+1 for each {left} you control and +1/+1 for each {right} you control"
                 )
+            }
+            // "Squirrels you control get +3/+3 for every seven Foods you
+            // control" (Meatsqueak, Hoard Lord): both components count the
+            // same fixed-size groups, rounded down.
+            (AnthemValue::Dynamic(power), AnthemValue::Dynamic(toughness))
+                if power == toughness && anthem_for_every_group(power).is_some() =>
+            {
+                let (amount, basis) =
+                    anthem_for_every_group(power).expect("for-every value checked in match guard");
+                format!(
+                    "{subject} {verb} {}/{} for every {basis}",
+                    signed(amount),
+                    signed_toughness(amount, amount),
+                )
+            }
+            // "Other Humans you control get +1/+1 for each counter on Kyler":
+            // a counter count authored as a for-each bonus. "+X/+X, where X is
+            // the number of counters on Hancock" keeps its where-X surface.
+            (AnthemValue::Dynamic(power), AnthemValue::Dynamic(toughness))
+                if power == toughness
+                    && !self.count_uses_where_x
+                    && signed_dynamic_anthem_basis(power).0 == "+"
+                    && crate::runtime_display::describe_value(signed_dynamic_anthem_basis(power).1)
+                        .starts_with("the number of counters on ") =>
+            {
+                let basis =
+                    crate::runtime_display::describe_value(signed_dynamic_anthem_basis(power).1);
+                let location = basis
+                    .strip_prefix("the number of counters on ")
+                    .unwrap_or(basis.as_str());
+                format!("{subject} {verb} +1/+1 for each counter on {location}")
             }
             (AnthemValue::Dynamic(power), AnthemValue::Dynamic(toughness))
                 if power == toughness =>
@@ -5527,10 +5725,21 @@ fn audited_ability_list(abilities: &[Ability]) -> String {
     let readings = abilities
         .iter()
         .map(|ability| {
-            ironsmith_core::semantic_audit::audited_value("Ability", ability, ability)
-                .trim()
-                .trim_end_matches('.')
-                .to_string()
+            let reading =
+                ironsmith_core::semantic_audit::audited_value("Ability", ability, ability);
+            let reading = reading.trim().trim_end_matches('.');
+            // A lost keyword is named by the keyword alone; its reminder
+            // parenthetical ("Islandwalk (This creature can't be blocked
+            // ...)") describes having the ability, not losing it.
+            let reading = if object_ability_is_static_keyword(ability)
+                && reading.ends_with(')')
+                && let Some((keyword, _)) = reading.split_once(" (")
+            {
+                keyword
+            } else {
+                reading
+            };
+            reading.to_string()
         })
         .collect::<Vec<_>>();
     match readings.as_slice() {
@@ -7832,6 +8041,14 @@ impl StaticAbilityKind for RemoveSupertypesForFilter {
             .map(|supertype| supertype.name().to_string())
             .collect::<Vec<_>>()
             .join(" and ");
+        // "Aeve isn't legendary if it's a token": a self-only removal gated
+        // on the source being a token.
+        if self.filter.source && self.filter.token {
+            let mut source = self.filter.clone();
+            source.token = false;
+            let subject = pluralized_subject_text(&source);
+            return format!("{subject} isn't {supertypes} if it's a token");
+        }
         format!("{subject} {verb} no longer {supertypes}")
     }
 
@@ -8208,6 +8425,24 @@ pub(crate) fn quote_granted_static_sentence_r5f(
     creature_subject: bool,
 ) -> String {
     let body = text.trim().trim_end_matches('.');
+    // "Equipped creature has "This creature has hexproof as long as it's
+    // untapped."" (Giant's Amulet): a granted self-grant names the creature
+    // that receives it, never the granting permanent.
+    if creature_subject
+        && !granted.is_keyword()
+        && !body.contains('"')
+        && !body.contains(ironsmith_core::semantic_audit::UNVERIFIED_MARKER_PREFIX)
+        && let Some(rest) = ["this permanent ", "this source ", "this object ", "this creature "]
+            .iter()
+            .find_map(|head| body.strip_prefix(head))
+        // Only a conditional self-grant is quoted; an anthem ("gets +1/+1")
+        // reads as the recipient's own bonus.
+        && rest.starts_with("has ")
+        && rest.contains(" as long as ")
+    {
+        let rest = rest.replacen(" as long as this creature is ", " as long as it's ", 1);
+        return format!("\"This creature {rest}.\"");
+    }
     if granted.is_keyword()
         || body.starts_with('"')
         || body.contains('"')
@@ -8283,6 +8518,11 @@ impl StaticAbilityKind for AttachedAbilityGrant {
             if let Some(condition) = &self.condition {
                 text.push(' ');
                 text.push_str(&describe_static_condition(condition));
+            }
+            // The granted protection leaves this controller's Auras and
+            // Equipment attached (state_based.rs; Benevolent Blessing).
+            if self.protection_does_not_remove_controlled_attachments {
+                text.push_str(". This effect doesn't remove Auras and Equipment you control that are already attached to it");
             }
             return text;
         }
@@ -8566,4 +8806,38 @@ impl StaticAbilityKind for AttachedChosenLandwalkGrant {
             &self.condition,
         )]
     }
+}
+
+/// "+2/+0 for every seven cards in your graveyard" (Dark Matter Manipulator):
+/// `k * floor(count / n)` reads as `k` per group of `n` counted objects.
+fn anthem_for_every_group(value: &Value) -> Option<(i32, String)> {
+    let (multiplier, divided) = match value.unhinted() {
+        Value::Scaled(inner, factor) if *factor > 0 => (*factor, inner.unhinted()),
+        other => (1, other),
+    };
+    let Value::DividedRoundedDown(counted, divisor) = divided else {
+        return None;
+    };
+    if !matches!(counted.unhinted(), Value::Count(_)) || *divisor < 2 {
+        return None;
+    }
+    let counted = crate::runtime_display::describe_value(counted);
+    let objects = counted.strip_prefix("the number of ")?.to_string();
+    let group = ironsmith_core::cardinal_word(u32::try_from(*divisor).ok()?)?;
+    Some((multiplier, format!("{group} {objects}")))
+}
+
+/// `A or B` over two affected-object states (`attacking`, `blocking`,
+/// `tapped`, `untapped`), as read by [`affected_object_state_word`].
+fn affected_object_state_disjunction(
+    condition: &crate::ConditionExpr,
+) -> Option<(&'static str, &'static str)> {
+    let crate::ConditionExpr::Or(left, right) = condition else {
+        return None;
+    };
+    let state = |side: &crate::ConditionExpr| match side {
+        crate::ConditionExpr::TargetMatches(filter) => affected_object_state_word(filter),
+        _ => None,
+    };
+    Some((state(&**left)?, state(&**right)?))
 }

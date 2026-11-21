@@ -680,6 +680,31 @@ fn counters_removed_this_way_multiplier(value: &Value) -> Option<i32> {
 }
 
 fn describe_for_each_cost_modifier_amount(amount: &Value) -> Option<(String, Option<String>)> {
+    // "costs {1} less to cast for each counter among players and permanents"
+    // (Lumbering Megasloth): the counters on every player plus the counters
+    // on every permanent, authored as one "among" set.
+    if amount.has_surface_hint(ironsmith_core::ValueSurfaceHint::CountersAmong)
+        && amount.has_surface_hint(ironsmith_core::ValueSurfaceHint::ForEach)
+        && let Value::Add(players, permanents) = amount.unhinted()
+        && let Value::CountersOn(players, None) = players.unhinted()
+        && matches!(
+            players.base(),
+            crate::target::ChooseSpec::EachPlayer(PlayerFilter::Any)
+        )
+        && let Value::CountersOn(permanents, None) = permanents.unhinted()
+        && let crate::target::ChooseSpec::All(filter) = permanents.base()
+        && filter.zone == Some(Zone::Battlefield)
+        && {
+            let mut rest = filter.clone();
+            rest.zone = None;
+            rest == ObjectFilter::default()
+        }
+    {
+        return Some((
+            "{1}".to_string(),
+            Some("for each counter among players and permanents".to_string()),
+        ));
+    }
     if let Some(multiplier) = counters_removed_this_way_multiplier(amount) {
         return Some((
             format!("{{{multiplier}}}"),
@@ -805,6 +830,28 @@ fn describe_cost_modifier_amount(amount: &Value) -> (String, Option<String>) {
             "{X}".to_string(),
             Some(format!("where X is {}", describe_value(amount))),
         ),
+        // "{1} less to activate for each color of the creature it targets"
+        // (Dragonfire Blade): one generic mana per color of the target.
+        Value::ColorsOf(spec)
+            if spec.is_target()
+                && matches!(spec.base(), crate::target::ChooseSpec::Object(_)) =>
+        {
+            let noun = match spec.base() {
+                crate::target::ChooseSpec::Object(filter) => {
+                    let description = filter.description();
+                    description
+                        .strip_prefix("a ")
+                        .or_else(|| description.strip_prefix("an "))
+                        .unwrap_or(&description)
+                        .to_string()
+                }
+                _ => "permanent".to_string(),
+            };
+            (
+                "{1}".to_string(),
+                Some(format!("for each color of the {noun} it targets")),
+            )
+        }
         Value::Count(filter) => {
             if let Some(tail) = describe_dynamic_count_cost_tail(filter) {
                 ("{X}".to_string(), Some(tail))
@@ -1981,6 +2028,28 @@ impl StaticAbilityKind for CostReduction {
             };
             return format!("{subject} {origins} cost {amount_text} less to cast");
         }
+        // "Each spell you cast that's red or green costs {1} less to cast"
+        // (Goblin Anarchomancer): a color disjunction with no other spell
+        // qualifier reads as a relative clause on one spell.
+        if self.condition.is_none()
+            && self.characteristic_intersection.is_none()
+            && !self.per_target
+            && tail.is_none()
+            && let Some(colors) = self.filter.colors
+            && colors.count() >= 2
+            && self.filter.union_surface.relative_characteristic_list()
+            && matches!(self.filter.cast_by, Some(PlayerFilter::You))
+            && {
+                let mut rest = self.filter.clone();
+                rest.colors = None;
+                describe_spell_filter(&rest) == "spells you cast"
+            }
+        {
+            return format!(
+                "Each spell you cast that's {} costs {amount_text} less to cast",
+                describe_colors(colors)
+            );
+        }
         // "Your commander costs {1} less to cast for each time it's been cast
         // from the command zone this game." (Myth Unbound)
         if self.filter.is_commander
@@ -2644,13 +2713,48 @@ impl StaticAbilityKind for ActivatedAbilityCostReduction {
             line
         } else if self.filter == ObjectFilter::source() {
             format!("This ability costs {}{{{}}} less to activate", if self.optional { "up to " } else { "" }, self.reduction)
-        } else {
+        } else if self.multiplier.is_none() {
             format!(
                 "Activated abilities of {} cost {}{{{}}} less to activate",
                 self.filter.description(),
                 if self.optional { "up to " } else { "" },
                 self.reduction
             )
+        } else {
+            // A set of objects reads in the plural ("Activated abilities of
+            // creatures you control"), as in the cost-increase reading below.
+            let subject = super::continuous::grant_subject_with_set_quantifier(
+                &self.filter,
+                self.filter.set_quantifier_surface(),
+            )
+            .0;
+            let subject = subject.strip_prefix("All ").unwrap_or(&subject).to_string();
+            // "{X} less to activate, where X is Agatha's power": a scaled
+            // reduction reads its multiplier, as the source-only branch does.
+            let (amount, tail) = match &self.multiplier {
+                Some(multiplier) => {
+                    let (amount, tail) = describe_cost_modifier_amount(multiplier);
+                    let tail = match tail {
+                        None if amount == "{X}" => {
+                            Some(format!("where X is {}", describe_value(multiplier)))
+                        }
+                        tail => tail,
+                    };
+                    let amount =
+                        if self.reduction == 1 { amount } else { format!("{{{}}}", self.reduction) };
+                    (amount, tail)
+                }
+                None => (format!("{{{}}}", self.reduction), None),
+            };
+            let mut line = format!(
+                "Activated abilities of {subject} cost {}{amount} less to activate",
+                if self.optional { "up to " } else { "" },
+            );
+            if let Some(tail) = tail {
+                line.push_str(if tail.starts_with("where ") { ", " } else { " " });
+                line.push_str(&tail);
+            }
+            line
         };
         if let Some(filter) = &self.per_matching_objects {
             // "for each creature ...", not "for each a creature ...".
@@ -2680,6 +2784,56 @@ impl StaticAbilityKind for ActivatedAbilityCostReduction {
             && let Some(keyworded) = keyword_ability_cost_line(&line)
         {
             line = keyworded;
+        }
+        // "Abilities you activate that aren't mana abilities cost {2} less
+        // to activate" (Zirda): every activated ability, gated on its
+        // activator and on not being a mana ability.
+        if ironsmith_core::semantic_audit::semantic_audit_active()
+            && !self.optional
+            && self.filter == ObjectFilter::default()
+            && self.replacement_mana_cost.is_none()
+            && self.per_matching_objects.is_none()
+            && self.per_basic_land_types_among.is_none()
+            && self.multiplier.is_none()
+            && let Some(ActivatedAbilityCostCondition::All(conditions)) = &self.condition
+            && let [
+                ActivatedAbilityCostCondition::Activator(PlayerFilter::You),
+                ActivatedAbilityCostCondition::NonManaAbility,
+            ] = conditions.as_slice()
+        {
+            line = format!(
+                "Abilities you activate that aren't mana abilities cost {{{}}} less to activate",
+                self.reduction
+            );
+        }
+        // "Equip abilities you activate cost {1} less to activate" (Bureau
+        // Headmaster, Nahiri); "Equip costs you pay cost {1} less" (Auriok
+        // Steelshaper) when the filter retains that authored head.
+        if ironsmith_core::semantic_audit::semantic_audit_active()
+            && !self.optional
+            && self.replacement_mana_cost.is_none()
+            && self.per_matching_objects.is_none()
+            && self.per_basic_land_types_among.is_none()
+            && self.multiplier.is_none()
+            && matches!(
+                &self.condition,
+                Some(ActivatedAbilityCostCondition::EquipAbility { targeting: None })
+            )
+            && self.filter.controller == Some(PlayerFilter::You)
+            && {
+                let mut rest = self.filter.clone();
+                rest.controller = None;
+                rest == ObjectFilter::default()
+            }
+        {
+            line = if self.filter.has_equip_costs_paid_surface() {
+                format!("Equip costs you pay cost {{{}}} less", self.reduction)
+            } else {
+                format!(
+                    "Equip abilities you activate cost {{{}}} less to activate",
+                    self.reduction
+                )
+            };
         }
         if let Some(minimum) = self.minimum_total_mana
             && minimum == 1
@@ -2722,6 +2876,48 @@ impl StaticAbilityKind for ActivatedAbilityCostIncrease {
             return describe_cost_modifier_with_condition(display.to_string(), &self.condition);
         }
 
+        // "Planeswalkers' loyalty abilities you activate cost an additional
+        // [+1] to activate" (Carth the Lion): a loyalty counter put on the
+        // source is the loyalty-cost symbol (CR 606.4), and the you-activate
+        // loyalty-ability subset names the abilities possessively.
+        if let Some(ActivatedAbilityCostCondition::All(conditions)) = &self.ability_condition
+            && conditions.len() == 2
+            && conditions.contains(&ActivatedAbilityCostCondition::LoyaltyAbility)
+            && conditions.contains(&ActivatedAbilityCostCondition::Activator(PlayerFilter::You))
+            && self.activator.is_none()
+            && !self.non_mana_only
+            && !self.filter.source
+            && self.filter.card_types.as_slice() == [CardType::Planeswalker]
+            && let Some([cost]) = self.increase.as_all()
+            && let Some(effect) = cost.effect_ref()
+            && let Some(put) = effect
+                .downcast_ref::<crate::effects::WithIdEffect>()
+                .map_or(effect, |observed| &observed.effect)
+                .downcast_ref::<crate::effects::PutCountersEffect>()
+            && put.counter_type == crate::object::CounterType::Loyalty
+            && matches!(put.target.base(), crate::target::ChooseSpec::Source)
+            && let Value::Fixed(amount) = &put.amount
+            && *amount > 0
+        {
+            let subject = super::continuous::grant_subject_with_set_quantifier(
+                &self.filter,
+                self.filter.set_quantifier_surface(),
+            )
+            .0;
+            let subject = subject.strip_prefix("All ").unwrap_or(&subject).to_string();
+            let possessive = if subject.ends_with('s') {
+                format!("{subject}'")
+            } else {
+                format!("{subject}'s")
+            };
+            return describe_cost_modifier_with_condition(
+                format!(
+                    "{} loyalty abilities you activate cost an additional [+{amount}] to activate",
+                    capitalize_first(&possessive)
+                ),
+                &self.condition,
+            );
+        }
         let increase = self.increase.display();
         let increase = if self.increase.has_non_mana_costs() {
             format!("\"{increase}\"")
@@ -2808,6 +3004,12 @@ impl StaticAbilityKind for ActivatedAbilityCostIncrease {
             || matches!(self.ability_condition, Some(ActivatedAbilityCostCondition::NonManaAbility))
         {
             line.push_str(" unless they're mana abilities");
+        } else if matches!(self.ability_condition, Some(ActivatedAbilityCostCondition::LoyaltyAbility))
+            && let Some(rest) = line.strip_prefix("Activated abilities of ")
+        {
+            // CR 606.3: the loyalty-ability condition names the subset of
+            // abilities the increase applies to.
+            line = format!("Loyalty abilities of {rest}");
         } else if let Some(condition) = &self.ability_condition {
             line.push(' ');
             line.push_str(&describe_activated_ability_cost_condition(condition));

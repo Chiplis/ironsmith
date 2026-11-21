@@ -46,13 +46,16 @@ pub enum BuiltinTokenShape {
     Mutavault,
     SpellgorgerWeird,
     Tarmogoyf,
+    BaneslayerAngel,
+    AkromaAngelOfWrath,
 }
 
 impl BuiltinTokenShape {
     pub fn card_types(self) -> Vec<CardType> {
         match self {
             Self::Walker | Self::EldraziSpawn | Self::EldraziScion
-            | Self::SpellgorgerWeird | Self::Tarmogoyf => vec![CardType::Creature],
+            | Self::SpellgorgerWeird | Self::Tarmogoyf
+            | Self::BaneslayerAngel | Self::AkromaAngelOfWrath => vec![CardType::Creature],
             Self::Gingerbrute => vec![CardType::Artifact, CardType::Creature],
             Self::Mutavault => vec![CardType::Land],
             Self::Shard | Self::WickedRole | Self::YoungHeroRole | Self::MonsterRole
@@ -84,6 +87,7 @@ impl BuiltinTokenShape {
             Self::Gingerbrute => vec![Subtype::Food, Subtype::Golem],
             Self::Mutavault => Vec::new(), Self::SpellgorgerWeird => vec![Subtype::Weird],
             Self::Tarmogoyf => vec![Subtype::Lhurgoyf],
+            Self::BaneslayerAngel | Self::AkromaAngelOfWrath => vec![Subtype::Angel],
         }
     }
     /// CR 111.10/111.11 supply these names explicitly. The enum is the
@@ -107,6 +111,8 @@ impl BuiltinTokenShape {
             Self::Mutavault => Some("Mutavault"),
             Self::SpellgorgerWeird => Some("Spellgorger Weird"),
             Self::Tarmogoyf => Some("Tarmogoyf"),
+            Self::BaneslayerAngel => Some("Baneslayer Angel"),
+            Self::AkromaAngelOfWrath => Some("Akroma, Angel of Wrath"),
             Self::Treasure | Self::Clue | Self::Map | Self::Lander | Self::Junk
             | Self::Mutagen | Self::Gold | Self::Shard | Self::EldraziSpawn
             | Self::EldraziScion | Self::Food | Self::Blood | Self::Powerstone

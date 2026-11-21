@@ -328,8 +328,11 @@ fn parse_line_semantic_facts_tokens_with_optional_context(
         intrinsic_basic_land_mana_reminder: None,
         station_creature_threshold: None,
         supported_sneak_form: false,
+        named_token_definition_reminder: false,
+        enters_attached_host_trigger: None,
         keyword_identity: parse_keyword_line_identity(tokens),
         sticker_ticket_cost: None,
+        source_card_other_abilities_grant: false,
         static_ability: StaticLineSemanticFacts {
             leading_as_long_as_your_turn: {
                 let words = crate::lexer::token_word_refs(tokens);

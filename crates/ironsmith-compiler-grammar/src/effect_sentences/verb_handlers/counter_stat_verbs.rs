@@ -562,6 +562,11 @@ fn parse_counter_ability_target_phrase(
             for card_type in &source_types {
                 *filter = filter.clone().with_type(*card_type);
             }
+            // "loyalty ability of a planeswalker" (Verdant Command): keep the
+            // authored noun; the activated-ability stack kind stays semantic.
+            if loyalty_ability_term {
+                filter.set_loyalty_ability_noun_surface(true);
+            }
         }
     }
 

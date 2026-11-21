@@ -206,6 +206,11 @@ pub(super) fn describe_player_filter(filter: &PlayerFilter) -> String {
                 strip_leading_article(&describe_player_filter(base))
             )
         }
+        PlayerFilter::ChosenPlayer
+            if ironsmith_core::filter_model::chosen_player_reads_as_that_player() =>
+        {
+            "that player".to_string()
+        }
         PlayerFilter::ChosenPlayer => "the chosen player".to_string(),
         PlayerFilter::TaggedPlayer(tag) if tag.as_str() == "enchanted" => {
             "enchanted player".to_string()
@@ -1401,7 +1406,8 @@ fn describe_token_blueprint_with_name_role(
 
     if name_role.is_none() && card.subtypes.is_empty()
         && !card.is_creature()
-        && card.card_types.contains(&CardType::Artifact)
+        && (card.card_types.contains(&CardType::Artifact)
+            || card.card_types.contains(&CardType::Land))
         && !card.name.trim().is_empty()
         && !card.name.eq_ignore_ascii_case("token")
     {
@@ -1602,11 +1608,24 @@ fn describe_token_blueprint_with_name_role(
                     extra_ability_texts.push(static_ability.display().to_ascii_lowercase());
                     continue;
                 }
+                let mut static_text =
+                    describe_static_ability_with_subject(static_ability, "this token");
+                // An Aura or Equipment token's attachment grant names its host
+                // by the token's own enchant filter / subtype (CR 303.4,
+                // 301.5): "Enchanted land has ...". The card-level reading
+                // does the same through `audit_attached_subject`.
+                if static_ability.id()
+                    == crate::static_abilities::StaticAbilityId::AttachedAbilityGrant
+                    && let Some(attached) = super::audit_attached_subject(token)
+                {
+                    static_text = static_text.replacen(
+                        "The object this is attached to ",
+                        &format!("{} ", capitalize_first(&attached)),
+                        1,
+                    );
+                }
                 extra_ability_texts.push(quote_token_granted_ability_text(
-                    normalize_token_granted_static_ability_text(
-                        describe_static_ability_with_subject(static_ability, "this token").as_str(),
-                    )
-                    .as_str(),
+                    normalize_token_granted_static_ability_text(static_text.as_str()).as_str(),
                 ));
             }
             AbilityKind::Triggered(triggered) => {
@@ -2478,6 +2497,8 @@ pub(super) fn normalize_you_verb_phrase(text: &str) -> String {
         ("adds ", "add "),
         ("casts ", "cast "),
         ("plays ", "play "),
+        ("taps ", "tap "),
+        ("untaps ", "untap "),
         ("Behold ", "behold "),
     ];
     for (from, to) in replacements {
@@ -3393,6 +3414,11 @@ fn split_ability_loss_transform_subtype_card_type(text: &str) -> Option<(String,
 fn normalize_temporary_animation_oracle_surface(line: &str) -> Option<String> {
     let trimmed = line.trim().trim_end_matches('.');
     let lower = trimmed.to_ascii_lowercase();
+    // A copy effect takes the copied object's types (CR 707.2); it is never
+    // the "still a land" animation surface.
+    if lower.contains_lit(" becomes a copy of ") {
+        return None;
+    }
     if lower.contains_lit("this land becomes ")
         && lower.ends_with(" in addition to its other types until end of turn")
     {

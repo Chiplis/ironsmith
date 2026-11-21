@@ -734,6 +734,9 @@ fn reveal_top_matching(
     match shape.remainder {
         RevealTopRemainder::LibraryBottom(order) => {
             let matched_tag = helper_tag_for_tokens(tokens, "matched");
+            // This shape only admits "... revealed this way ..."; keep the
+            // authored pool reference on the matched-card filter.
+            filter.set_prior_effect_action_surface(Some(ironsmith_core::PriorEffectAction::Revealed));
             filter.tagged_constraints.push(TaggedObjectConstraint {
                 tag: group.tag.clone(),
                 relation: TaggedOpbjectRelation::IsTaggedObject,

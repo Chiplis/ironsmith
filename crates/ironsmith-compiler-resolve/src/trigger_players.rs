@@ -305,6 +305,18 @@ pub fn inferred_trigger_player_filter(trigger: &TriggerSpec) -> Option<PlayerFil
                 crate::tag::CompilerReferenceTag::Triggering.bind(),
             )))
         }
+        // "Whenever a creature attacks enchanted player, its controller gains
+        // 1 life" (Curse of the Forsaken): the attacked player is named, so
+        // that named player is the player antecedent; "its controller" names
+        // the attacking creature's controller, never the defending player.
+        TriggerSpec::Attacks(filter) | TriggerSpec::AttacksOneOrMore(filter)
+            if matches!(
+                filter.attacking_player_or_planeswalker_controlled_by,
+                Some(PlayerFilter::TaggedPlayer(_))
+            ) =>
+        {
+            filter.attacking_player_or_planeswalker_controlled_by.clone()
+        }
         TriggerSpec::Attacks(filter) | TriggerSpec::AttacksOneOrMore(filter)
             if filter
                 .attacking_player_or_planeswalker_controlled_by

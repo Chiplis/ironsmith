@@ -355,11 +355,45 @@ pub fn parse_activated_line_with_raw(
     if let Some(split) = activated_line_grammar::parse_activated_line_split_tokens(tokens) {
         let mut kept = Vec::new();
         let mut surcharges = Vec::new();
+        let mut self_cost_reduction: Option<Value> = None;
         for sentence in crate::lexer::split_lexed_sentences(split.after_colon) {
             let words = crate::lexer::parser_token_word_refs(sentence);
             let is_own_surcharge = words.starts_with(&["this", "ability", "costs"])
                 && words.windows(3).any(|part| part == ["more", "to", "activate"]);
             let parsed = if is_own_surcharge { typed_cost_modifiers::parse(sentence)? } else { None };
+            // "This ability costs {X} less to activate, where X is this
+            // creature's power" inside a quoted activation: the discount is
+            // that activation's own price (CR 601.2f, 602.2b), like the own
+            // surcharge above. Only the unconditional where-X shape is moved;
+            // anything else keeps its existing reading.
+            let is_own_where_x_reduction = parsed.is_none()
+                && self_cost_reduction.is_none()
+                && words.starts_with(&["this", "ability", "costs"])
+                && words.windows(4).any(|part| part == ["less", "to", "activate", "where"]);
+            let own_reduction = if is_own_where_x_reduction {
+                typed_cost_modifiers::parse(sentence).ok().flatten().and_then(|ability| match ability.payload {
+                    ironsmith_core::StaticAbilityPayload::ActivatedAbilityCostReduction {
+                        optional: false,
+                        filter,
+                        reduction: 1,
+                        replacement_mana_cost: None,
+                        condition: Some(ironsmith_core::ActivatedAbilityCostCondition::ThisAbility { ability_index: None }),
+                        per_matching_objects: None,
+                        per_basic_land_types_among: None,
+                        multiplier: Some(value),
+                        minimum_total_mana: None,
+                        reduction_mana: None,
+                        ..
+                    } if filter == ObjectFilter::source() => Some(value),
+                    _ => None,
+                })
+            } else {
+                None
+            };
+            if own_reduction.is_some() {
+                self_cost_reduction = own_reduction;
+                continue;
+            }
             if let Some(StaticAbility { payload: ironsmith_core::StaticAbilityPayload::ActivatedAbilityCostIncrease {
                 increase, activator: None, non_mana_only: false, condition: None,
                 ability_condition: Some(ironsmith_core::ActivatedAbilityCostCondition::ThisAbility { ability_index: None }), ..
@@ -371,7 +405,7 @@ pub fn parse_activated_line_with_raw(
                 kept.push(OwnedLexToken::period(crate::cards::TextSpan::synthetic()));
             }
         }
-        if !surcharges.is_empty() {
+        if !surcharges.is_empty() || self_cost_reduction.is_some() {
             // The own-ability surcharge belongs to its price, including when
             // the activation is granted. No printed/grantor ability index is involved.
             let prefix = tokens.len() - split.after_colon.len();
@@ -384,7 +418,12 @@ pub fn parse_activated_line_with_raw(
                 }
             }
             if let crate::model::CompilerAbilityKindCore::Activated(ability) = parsed.kind_mut() {
-                ability.mana_cost = append(ability.mana_cost.clone(), &surcharges);
+                if !surcharges.is_empty() {
+                    ability.mana_cost = append(ability.mana_cost.clone(), &surcharges);
+                }
+                if let Some(value) = self_cost_reduction {
+                    ability.effects.activation_self_cost_reduction = Some(value);
+                }
             }
             return Ok(Some(parsed));
         }
@@ -1160,10 +1199,19 @@ fn parse_enters_tapped_turn_condition_line(tokens: &[OwnedLexToken]) -> Option<S
     {
         crate::word_claims::claim_words(&head_words);
     }
-    Some(StaticAbility::enters_tapped_unless_condition(
-        condition,
-        crate::lexer::render_token_slice(tokens),
-    ))
+    // "enters tapped if it's not your turn": the gate is the same YourTurn
+    // condition as "unless it's your turn"; keep the authored negated-if.
+    let if_not_surface = !unless
+        && matches!(
+            crate::grammar::anthem_grants::parse_fixed_static_condition_kind(condition_tokens),
+            Some(FixedStaticConditionKind::NotYourTurn)
+        );
+    let display = crate::lexer::render_token_slice(tokens);
+    Some(if if_not_surface {
+        StaticAbility::enters_tapped_if_not_condition(condition, display)
+    } else {
+        StaticAbility::enters_tapped_unless_condition(condition, display)
+    })
 }
 
 pub fn parse_enters_tapped_line(

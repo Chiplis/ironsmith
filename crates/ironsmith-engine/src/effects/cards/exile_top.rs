@@ -173,7 +173,10 @@ impl ZoneMovementInstruction for ExileTopOfLibraryEffect {
         // performs the exile; otherwise the instruction's controller does.
         let exiler = if matches!(
             self.surface,
-            Some(ironsmith_core::ExileTopLibrarySurface::LibraryOwnerAsActor)
+            Some(
+                ironsmith_core::ExileTopLibrarySurface::LibraryOwnerAsActor
+                    | ironsmith_core::ExileTopLibrarySurface::DrawnCardFaceUp
+            )
         ) {
             player_id
         } else {

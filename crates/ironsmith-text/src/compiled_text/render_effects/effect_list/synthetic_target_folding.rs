@@ -643,14 +643,27 @@ fn single_synthetic_target_consumer(
         return None;
     };
     let identity = synthetic_target_identity(target_effect)?;
-    let consumers = effects
-        .iter()
-        .enumerate()
-        .filter(|(index, effect)| {
-            *index != *target_index && effect_references_identity(effect, &identity)
-        })
-        .map(|(index, _)| index)
-        .collect::<Vec<_>>();
+    let consumers_of = |identity: &SyntheticTargetIdentity<'_>| {
+        effects
+            .iter()
+            .enumerate()
+            .filter(|(index, effect)| {
+                *index != *target_index && effect_references_identity(effect, identity)
+            })
+            .map(|(index, _)| index)
+            .collect::<Vec<_>>()
+    };
+    let mut consumers = consumers_of(&identity);
+    // "Up to one target creature an opponent controls attacks Gideon ..."
+    // (Gideon, Battle-Forged): a tagged declaration whose only reader is the
+    // implicit "it" anaphor is read back as an untagged declaration.
+    let identity = if consumers.is_empty() && identity.tag.is_some() {
+        let untagged = SyntheticTargetIdentity { target: identity.target, tag: None };
+        consumers = consumers_of(&untagged);
+        untagged
+    } else {
+        identity
+    };
     let [consumer_index] = consumers.as_slice() else {
         return None;
     };
@@ -754,6 +767,9 @@ pub(in crate::compiled_text) fn describe_multi_consumer_synthetic_target_declara
         return None;
     }
 
+    if let Some(text) = describe_target_and_attached_return_to_hand(effects, target_index, &identity) {
+        return Some(text);
+    }
     let declaration = describe_effect(structural_unwrap_render_wrappers(target_effect));
     if declaration.trim().is_empty() {
         return None;
@@ -1337,4 +1353,56 @@ mod tests {
             "Draw cards equal to the number of cards target opponent discarded this turn"
         );
     }
+}
+
+/// "Return target creature you control and all Auras you control attached
+/// to it to their owner's hand." (Orzhov Charm): the declared target, a sweep
+/// of the objects attached to that same target, then the target itself, all
+/// returned to hand.
+fn describe_target_and_attached_return_to_hand(
+    effects: &[Effect],
+    target_index: usize,
+    identity: &SyntheticTargetIdentity<'_>,
+) -> Option<String> {
+    let tag = identity.tag?;
+    let [_, attached_effect, returned_effect] = effects else {
+        return None;
+    };
+    if target_index != 0 {
+        return None;
+    }
+    let attached = structural_unwrap_render_wrappers(attached_effect)
+        .downcast_ref::<crate::effects::ReturnToHandEffect>()?;
+    let returned = structural_unwrap_render_wrappers(returned_effect)
+        .downcast_ref::<crate::effects::ReturnToHandEffect>()?;
+    if attached.actor_surface.is_some()
+        || returned.actor_surface.is_some()
+        || !matches!(returned.spec.base(), ChooseSpec::Tagged(found) if found == tag)
+    {
+        return None;
+    }
+    let ChooseSpec::All(filter) = attached.spec.base() else {
+        return None;
+    };
+    let [constraint] = filter.tagged_constraints.as_slice() else {
+        return None;
+    };
+    if constraint.tag != *tag
+        || constraint.relation != crate::filter::TaggedOpbjectRelation::AttachedToTaggedObject
+    {
+        return None;
+    }
+    let mut attachment = filter.clone();
+    attachment.tagged_constraints.clear();
+    attachment.zone = None;
+    let described = attachment.description();
+    let noun = strip_indefinite_article(&described).trim();
+    if noun.is_empty() || noun == "permanent" || noun.starts_with("all ") {
+        return None;
+    }
+    Some(format!(
+        "Return {} and all {} attached to it to their owner's hand",
+        describe_choose_spec(identity.target),
+        pluralize_noun_phrase(noun)
+    ))
 }

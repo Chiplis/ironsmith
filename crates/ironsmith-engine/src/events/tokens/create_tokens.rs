@@ -110,6 +110,54 @@ impl CreateTokensEvent {
         next
     }
 
+    /// The printed name the tokens of one group would have, when known.
+    fn group_name(&self, key: TokenGroupKey) -> Option<String> {
+        match key {
+            TokenGroupKey::Original => self.token.as_ref().map(|token| token.name.to_string()),
+            TokenGroupKey::Copy(index) => Some(self.additional_copies[index].token.name.to_string()),
+            TokenGroupKey::Named(index) => {
+                Some(additional_token_definition(self.additional_tokens[index].0).card.name.to_string())
+            }
+            TokenGroupKey::Template(index) => {
+                Some(self.additional_templates[index].definition.card.name.to_string())
+            }
+        }
+    }
+
+    /// This proposal with at most `cap` tokens of any one name, in group
+    /// order. Groups sharing a name share the cap; a group whose name is not
+    /// known yet counts as its own name.
+    pub(crate) fn capped_per_name(&self, cap: u32) -> Self {
+        let mut next = self.clone();
+        let mut used: Vec<(Option<String>, u32)> = Vec::new();
+        let mut changed = false;
+        for key in self.group_keys() {
+            let name = self.group_name(key);
+            let slot = match used.iter().position(|(seen, _)| match (seen, &name) {
+                (Some(seen), Some(name)) => crate::filter::names_match(seen, name),
+                (None, None) => true,
+                _ => false,
+            }) {
+                Some(index) => index,
+                None => {
+                    used.push((name, 0));
+                    used.len() - 1
+                }
+            };
+            let count = next.group_count_mut(key);
+            let kept = (*count).min(cap.saturating_sub(used[slot].1));
+            changed |= kept != *count;
+            *count = kept;
+            used[slot].1 = used[slot].1.saturating_add(kept);
+        }
+        if changed {
+            next.additional_tokens.retain(|(_, count)| *count > 0);
+            next.additional_templates.retain(|group| group.count > 0);
+            next.additional_copies.retain(|group| group.count > 0);
+        }
+        next
+    }
+
     pub fn group_keys(&self) -> Vec<TokenGroupKey> {
         std::iter::once(TokenGroupKey::Original)
             .chain((0..self.additional_tokens.len()).map(TokenGroupKey::Named))

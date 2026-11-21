@@ -1012,7 +1012,16 @@ fn normalize_cross_segment_correlated_created_result_fights(
             idx += 1;
             continue;
         };
-        let Some(producer) = producer_effect.downcast_ref::<crate::effects::ForEachObject>() else {
+        // Outcome-receipt lowering may wrap the producer loop in its own
+        // result tag; the later "those tokens" then names that outer tag.
+        let producer_wrapper_tag = producer_effect
+            .downcast_ref::<crate::effects::TaggedEffect>()
+            .map(|tagged| tagged.tag.clone());
+        let producer_loop = producer_effect
+            .downcast_ref::<crate::effects::TaggedEffect>()
+            .map(|tagged| tagged.effect.as_ref())
+            .unwrap_or(producer_effect);
+        let Some(producer) = producer_loop.downcast_ref::<crate::effects::ForEachObject>() else {
             idx += 1;
             continue;
         };
@@ -1058,7 +1067,10 @@ fn normalize_cross_segment_correlated_created_result_fights(
             || consumer.filter.zone.is_some()
             || consumer.filter.controller.is_some()
             || !consumer.filter.card_types.is_empty()
-            || !single_is_tagged_constraint(&consumer.filter, &tagged_create.tag)
+            || !(single_is_tagged_constraint(&consumer.filter, &tagged_create.tag)
+                || producer_wrapper_tag
+                    .as_ref()
+                    .is_some_and(|tag| single_is_tagged_constraint(&consumer.filter, tag)))
         {
             idx += 1;
             continue;
@@ -1082,7 +1094,18 @@ fn normalize_cross_segment_correlated_created_result_fights(
                 source_reference.card_types.as_slice(),
                 [crate::types::CardType::Creature]
             )
-            || !single_is_tagged_constraint(source_reference, &it_tag)
+            // "a different one of those creatures": the bare `it` reference,
+            // optionally with the "different" exclusion of the same binding.
+            // Both are replaced by the exact correlated source binding below.
+            || !(single_is_tagged_constraint(source_reference, &it_tag)
+                || (source_reference
+                    .tagged_constraints
+                    .iter()
+                    .all(|constraint| it_tag == constraint.tag)
+                    && source_reference.tagged_constraints.iter().any(|constraint| {
+                        constraint.relation
+                            == crate::filter::TaggedOpbjectRelation::IsTaggedObject
+                    })))
         {
             idx += 1;
             continue;

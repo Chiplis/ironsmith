@@ -1819,7 +1819,31 @@ pub fn append_token_reminder_to_last_create_effect(
     if tokens.is_empty() {
         return Ok(false);
     }
-    let reminder = crate::grammar::token_definitions::parse_token_reminder_facts_tokens(tokens);
+    let mut reminder = crate::grammar::token_definitions::parse_token_reminder_facts_tokens(tokens);
+    // "It has trample, haste, and "At the beginning of the end step,
+    // sacrifice this token."" (Sparkspitter): an end-step sacrifice or exile
+    // inside the quoted rule is the token's own triggered ability, not a
+    // delayed instruction of the creating effect.
+    if reminder.sacrifice_at_next_end_step || reminder.exile_at_next_end_step {
+        let mut quoted = false;
+        let unquoted = tokens
+            .iter()
+            .filter(|token| {
+                if token.kind == crate::lexer::TokenKind::Quote {
+                    quoted = !quoted;
+                    return false;
+                }
+                !quoted
+            })
+            .cloned()
+            .collect::<Vec<_>>();
+        if unquoted.len() < tokens.len() {
+            let outer =
+                crate::grammar::token_definitions::parse_token_reminder_facts_tokens(&unquoted);
+            reminder.sacrifice_at_next_end_step &= outer.sacrifice_at_next_end_step;
+            reminder.exile_at_next_end_step &= outer.exile_at_next_end_step;
+        }
+    }
     let sentence_kind =
         crate::grammar::token_definitions::parse_token_reminder_sentence_kind_tokens(tokens);
     let ability_presentation = match sentence_kind {

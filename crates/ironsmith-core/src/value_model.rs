@@ -376,10 +376,25 @@ pub enum ValueSurfaceHint {
     /// effect. Unlike an ambient trigger event amount, this value must bind to
     /// the immediately exported effect result (for example, a die roll).
     PriorEffectResult,
+    /// Preserve an authored demonstrative reference to a number chosen by a
+    /// preceding "choose a number" instruction ("that number", "the number")
+    /// as distinct from "the chosen number" (Void). Presentation only; the
+    /// value still binds to the exact choosing effect.
+    ThatChosenNumber,
+    /// Preserve an authored "you already control" controller clause on a
+    /// counted set read while a permanent enters ("for each creature type
+    /// among non-Borg creatures you already control", Jean-Luc; "for each
+    /// Angel you already control", Giada). The entering object is not on the
+    /// battlefield yet, so the word adds no predicate; presentation only.
+    AlreadyControlled,
     /// Preserve the authored threshold idiom "had another land enter ... this
     /// turn". The underlying value remains the reusable count of lands that
     /// entered under the matching player's control, compared against two.
     AnotherLandEnteredThisTurn,
+    /// Preserve the authored simple past "you drew N or more cards this
+    /// turn" (Archmage Ascension) as distinct from the equally executable
+    /// "you've drawn N or more cards this turn". Presentation only.
+    SimplePastCardsDrawn,
     /// Preserve an authored possessive "that player's" reference on a value.
     /// Player identity remains encoded by the value's `PlayerFilter`; this is
     /// presentation provenance only, distinct from the ordinary "their"
@@ -548,6 +563,10 @@ pub enum ValueSurfaceHint {
     /// Append-only. "a number of cards ... equal to <value>" (Neriv): the
     /// count was authored with the "a number of" quantifier.
     ANumberOf,
+    /// Append-only. "if you've done all four this turn" (Avatar Aang): each
+    /// performed-this-turn threshold restates one action of the trigger's
+    /// list named by the authored "all <N>" anaphor.
+    AllListedActionsDone,
 }
 
 /// Payment action and authored reference in a mana-spent count.

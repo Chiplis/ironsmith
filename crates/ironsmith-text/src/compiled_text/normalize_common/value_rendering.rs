@@ -2623,6 +2623,21 @@ pub(crate) fn describe_choose_spec(spec: &ChooseSpec) -> String {
             if matches!(spec.unhinted(), ChooseSpec::Target(_)) {
                 return describe_choose_spec(spec);
             }
+            // The object that granted the ability keeps its typed surface; the
+            // card-level renderers replace it with the card's name. A retained
+            // preprocess hint ("granting permanent") is not an authored name.
+            if matches!(spec.unhinted(), ChooseSpec::Tagged(tag) if tag.as_str() == ironsmith_core::GRANTING_SOURCE_TAG)
+                && !hints.iter().any(|hint| {
+                    matches!(
+                        hint,
+                        crate::target::ChooseSpecSurfaceHint::SourceReference(
+                            crate::target::SourceReferenceSurface::ShortName(_)
+                        )
+                    )
+                })
+            {
+                return super::super::GRANTING_SOURCE_RENDER_SURFACE.to_string();
+            }
             if let Some(kind) = hints.iter().find_map(|hint| match hint {
                 crate::target::ChooseSpecSurfaceHint::SacrificedObject(kind) => Some(*kind),
                 crate::target::ChooseSpecSurfaceHint::SourceReference(_) => None,
@@ -3140,6 +3155,14 @@ pub(crate) fn describe_choose_spec(spec: &ChooseSpec) -> String {
                 // "you may return one of them" (Kaito, Dancing Shadow): a
                 // single pick out of the "one or more" triggering set.
                 if matches!(inner.as_ref(), ChooseSpec::Tagged(tag) if tag.as_str() == "triggering")
+                {
+                    return "one of them".to_string();
+                }
+                // "Tap up to three target creatures. Put a stun counter on one
+                // of them." (Aerith Rescue Mission): "either" names a pick out
+                // of at most two objects.
+                if matches!(inner.as_ref(), ChooseSpec::Tagged(tag)
+                    if declared_tag_max_count(tag.as_str()).is_some_and(|max| max > 2))
                 {
                     return "one of them".to_string();
                 }
@@ -4576,7 +4599,20 @@ pub(crate) fn describe_compact_keyword_change_choice(effect: &Effect) -> Option<
             crate::continuous::Modification::AddAbility(keyword) => keyword,
             _ => return None,
         };
-        let label = keyword.display().trim().trim_end_matches('.').to_ascii_lowercase();
+        // A bare keyword marker whose granted expansion is rampage N reads as
+        // that keyword (Gabriel Angelfire: "... trample, or rampage 3").
+        let marker_rampage = if keyword.id() == crate::static_abilities::StaticAbilityId::KeywordMarker
+            && let [crate::continuous::Modification::AddAbilityGeneric(expansion)] =
+                apply.additional_modifications.as_slice()
+        {
+            granted_rampage_expansion_amount(expansion)
+        } else {
+            None
+        };
+        let label = match marker_rampage {
+            Some(amount) => format!("rampage {amount}"),
+            None => keyword.display().trim().trim_end_matches('.').to_ascii_lowercase(),
+        };
         if label.is_empty() || label.split(' ').count() > 2 {
             return None;
         }
@@ -4592,6 +4628,10 @@ pub(crate) fn describe_compact_keyword_change_choice(effect: &Effect) -> Option<
             Some((first, _)) => {
                 let mut same_execution = apply.clone();
                 same_execution.modification = first.modification.clone();
+                if marker_rampage.is_some() {
+                    same_execution.additional_modifications =
+                        first.additional_modifications.clone();
+                }
                 if same_execution != *first { return None; }
                 if let (
                     Some(crate::continuous::Modification::RemoveAbilityGeneric { mode: left, .. }),
@@ -5747,10 +5787,32 @@ fn declared_target_noun_for_spec(spec: &crate::target::ChooseSpec) -> Option<Str
 
 /// Note what a tagged target declaration (`TaggedEffect` around a
 /// `TargetOnlyEffect`) announced.
+thread_local! {
+    /// The maximum object count of each tagged counted tap ("Tap up to three
+    /// target creatures") while the current card renders, so a later single
+    /// pick out of that set knows whether "either of them" applies.
+    static DECLARED_TAG_MAX_COUNTS: std::cell::RefCell<std::collections::HashMap<String, usize>> =
+        std::cell::RefCell::new(std::collections::HashMap::new());
+}
+
+/// The maximum number of objects the tagged counted instruction `tag` acted
+/// on, if one rendered.
+pub(crate) fn declared_tag_max_count(tag: &str) -> Option<usize> {
+    DECLARED_TAG_MAX_COUNTS.with(|counts| counts.borrow().get(tag).copied())
+}
+
 pub(crate) fn note_declared_target(effect: &crate::effect::Effect) {
     let Some(tagged) = effect.downcast_ref::<crate::effects::TaggedEffect>() else {
         return;
     };
+    if let Some(tap) = tagged.effect.downcast_ref::<crate::effects::TapEffect>()
+        && let crate::target::ChooseSpec::WithCount(_, count) = &tap.target
+        && let Some(max) = count.max
+    {
+        DECLARED_TAG_MAX_COUNTS.with(|counts| {
+            counts.borrow_mut().insert(tagged.tag.as_str().to_string(), max);
+        });
+    }
     let Some(target_only) = tagged.effect.downcast_ref::<crate::effects::TargetOnlyEffect>() else {
         return;
     };
@@ -5765,6 +5827,7 @@ pub(crate) fn note_declared_target(effect: &crate::effect::Effect) {
 /// begins, so a back-reference never reads a previous card's declaration.
 pub(crate) fn reset_declared_target_nouns() {
     DECLARED_TARGET_NOUNS.with(|nouns| nouns.borrow_mut().clear());
+    DECLARED_TAG_MAX_COUNTS.with(|counts| counts.borrow_mut().clear());
 }
 
 /// The object noun the declaration tagged `tag` announced, if one rendered.
@@ -7216,6 +7279,12 @@ pub(crate) fn describe_value(value: &Value) -> String {
             if hints.contains(&ironsmith_core::ValueSurfaceHint::ThatMany) =>
         {
             "that many".to_string()
+        }
+        // "equal to that number" after "Choose a number" (Void).
+        Value::SurfaceHinted { hints, .. }
+            if hints.contains(&ironsmith_core::ValueSurfaceHint::ThatChosenNumber) =>
+        {
+            "that number".to_string()
         }
         Value::SurfaceHinted { .. }
             if value.has_surface_hint(
@@ -8916,4 +8985,37 @@ fn describe_bare_triggering_group(filter: &ObjectFilter) -> Option<String> {
     let mut bare = filter.clone();
     bare.tagged_constraints.clear();
     (bare == ObjectFilter::default()).then(|| "them".to_string())
+}
+
+/// The amount N of a granted rampage expansion (CR 702.23a): "Whenever this
+/// creature becomes blocked, it gets +N/+N until end of turn for each
+/// creature blocking it beyond the first."
+pub(crate) fn granted_rampage_expansion_amount(ability: &crate::ability::Ability) -> Option<i32> {
+    let crate::ability::AbilityKind::Triggered(triggered) = &ability.kind else {
+        return None;
+    };
+    if triggered.intervening_if.is_some()
+        || !triggered.choices.is_empty()
+        || triggered
+            .trigger
+            .downcast_ref::<crate::triggers::ThisBecomesBlockedTrigger>()
+            .is_none()
+    {
+        return None;
+    }
+    let [effect] = triggered.effects.flattened_default_effects() else {
+        return None;
+    };
+    let pump = effect.downcast_ref::<crate::effects::ModifyPowerToughnessEffect>()?;
+    let Value::EventValue(EventValueSpec::BlockersBeyondFirst { multiplier }) = &pump.power else {
+        return None;
+    };
+    let multiplier = *multiplier;
+    (multiplier > 0
+        && matches!(pump.target, ChooseSpec::Source)
+        && matches!(pump.duration, Until::EndOfTurn)
+        && matches!(&pump.toughness,
+            Value::EventValue(EventValueSpec::BlockersBeyondFirst { multiplier: toughness })
+                if *toughness == multiplier))
+    .then_some(multiplier)
 }

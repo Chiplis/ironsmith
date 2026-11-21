@@ -14,6 +14,26 @@ fn card(name: &str, text: &str) -> ironsmith::CardDefinition {
 fn sunborn_footsteps_upkeep_probe() {
     let _guard = crate::test_id_counter_guard();
     let count: usize = std::env::var("SUNBORNS").ok().and_then(|v| v.parse().ok()).unwrap_or(11);
+    let mut wasm = sunborn_footsteps_game(count);
+
+    run_probe(&mut wasm);
+}
+
+/// Eleven doublers propose 2,048 same-name copies in one batch; the engine
+/// creates 512 of them.
+#[test]
+fn same_name_token_batch_is_capped_at_512() {
+    let _guard = crate::test_id_counter_guard();
+    let mut wasm = sunborn_footsteps_game(11);
+    wasm.advance_until_decision().expect("upkeep trigger reaches priority");
+    let before = wasm.game.battlefield.len();
+    while !wasm.game.stack.is_empty() {
+        pass(&mut wasm);
+    }
+    assert_eq!(wasm.game.battlefield.len() - before, 512);
+}
+
+fn sunborn_footsteps_game(count: usize) -> WasmGame {
     let mut wasm = WasmGame::new();
     let alice = PlayerId::from_index(0);
     let sunborn = card(
@@ -36,7 +56,10 @@ fn sunborn_footsteps_upkeep_probe() {
     wasm.game.turn.step = Some(Step::Upkeep);
     wasm.game.refresh_continuous_state().unwrap();
     wasm.runner = Some(TurnRunner::from_state_for_sync(TurnState::Upkeep));
+    wasm
+}
 
+fn run_probe(wasm: &mut WasmGame) {
     let t = std::time::Instant::now();
     wasm.advance_until_decision().expect("upkeep trigger reaches priority");
     eprintln!("advance to priority: {:?} stack={}", t.elapsed(), wasm.game.stack.len());
@@ -50,7 +73,7 @@ fn sunborn_footsteps_upkeep_probe() {
             break;
         }
         let t = std::time::Instant::now();
-        pass(&mut wasm);
+        pass(wasm);
         eprintln!(
             "pass #{step}: {:?} stack={} battlefield={}",
             t.elapsed(),

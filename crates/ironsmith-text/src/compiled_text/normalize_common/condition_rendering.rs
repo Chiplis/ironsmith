@@ -328,6 +328,11 @@ fn describe_history_filter_subject(filter: &ObjectFilter, historical_default: &s
     subject_filter.zone = None;
     subject_filter.controller = None;
     subject_filter.owner = None;
+    // Objects that left a non-battlefield zone are cards (CR 108.2); a
+    // nontoken qualifier is implied by the "card" noun.
+    if historical_default == "card" {
+        subject_filter.nontoken = false;
+    }
     let mut subject = describe_for_each_filter(&subject_filter);
     if subject == "permanent" && historical_default == "card" {
         subject = "card".to_string();
@@ -700,7 +705,13 @@ fn describe_turn_history_value_comparison_prose(
             } else {
                 String::new()
             };
-            if is_present {
+            if is_present && filter.union_is_one_or_more() {
+                // "if one or more creatures died this turn" (Feast of the
+                // Victorious Dead): the authored presence quantifier.
+                Some(format!(
+                    "one or more {plural}{controller_before} died{controller_after} this turn"
+                ))
+            } else if is_present {
                 Some(format!(
                     "{}{controller_before} died{controller_after} this turn",
                     with_indefinite_article(&subject)
@@ -2103,7 +2114,27 @@ pub(crate) fn describe_coin_result_comparison_for(
 }
 
 pub(crate) fn describe_condition(condition: &Condition) -> String {
+    if let Some(text) = describe_controls_permanent_of_each_color(condition) {
+        return text;
+    }
+    // "if you had 200 or more cards in your starting deck" (Whtz, the
+    // Bibliophile): the starting deck is fixed when the game begins.
+    if let Condition::ValueComparison {
+        left,
+        operator: crate::effect::ValueComparisonOperator::GreaterThanOrEqual,
+        right,
+    } = condition
+        && matches!(left.unhinted(), Value::StartingDeckSize(PlayerFilter::You))
+        && let Value::Fixed(count) = right.unhinted()
+    {
+        return format!("you had {count} or more cards in your starting deck");
+    }
     if ironsmith_core::semantic_audit::semantic_audit_active() {
+        // "you've done all four this turn" (Avatar Aang): only the authored
+        // anaphor, retained as a typed hint on every restated threshold.
+        if let Some(text) = describe_all_listed_actions_done_condition(condition) {
+            return text;
+        }
         // Prose coalescing such as "you've done all three" loses the identity
         // of the individual predicates. Preserve the logical tree in audits.
         // Bracketed groups would be stripped later as annotations, erasing
@@ -2122,6 +2153,15 @@ pub(crate) fn describe_condition(condition: &Condition) -> String {
                 other => describe_condition(other),
             }
         }
+        // "if this card is suspended" (CR 702.62b): the source in exile with
+        // a time counter on it is one structural predicate; the logical-tree
+        // reading below would split it into "this card is exiled and this
+        // permanent has a time counter on it".
+        if let Condition::And(left, right) = condition
+            && let Some(text) = describe_source_exiled_with_counter_condition(left, right)
+        {
+            return text;
+        }
         // "it's attacking alone": the source attacks and it is the only
         // attacking creature (a structural pair, not prose).
         if let Condition::And(left, right) = condition
@@ -2139,6 +2179,54 @@ pub(crate) fn describe_condition(condition: &Condition) -> String {
             && counted.subtypes.is_empty()
         {
             return "it's attacking alone".to_string();
+        }
+        // "if you cast it from anywhere other than your hand" (Alex Wilder,
+        // Runaway): the triggering object was cast, and not from a hand.
+        if let Condition::And(left, right) = condition
+            && matches!(
+                left.as_ref(),
+                Condition::TurnHistory(ironsmith_core::TurnHistoryCondition::TriggeringObjectWasCast)
+            )
+            && let Condition::Not(inner) = right.as_ref()
+            && matches!(
+                inner.as_ref(),
+                Condition::TurnHistory(
+                    ironsmith_core::TurnHistoryCondition::TriggeringObjectWasCastFromZone(Zone::Hand)
+                )
+            )
+        {
+            return "you cast it from anywhere other than your hand".to_string();
+        }
+        // "if this creature was cast this turn" (Rock Jockey): the source was
+        // cast and entered the battlefield this turn, one structural predicate.
+        if let Condition::And(left, right) = condition
+            && let Condition::TurnHistory(ironsmith_core::TurnHistoryCondition::SourceWasCast {
+                surface,
+            }) = left.as_ref()
+            && matches!(
+                right.as_ref(),
+                Condition::TurnHistory(
+                    ironsmith_core::TurnHistoryCondition::SourceEnteredBattlefieldThisTurn { .. }
+                )
+            )
+        {
+            let subject = match surface {
+                crate::target::SourceReferenceSurface::ThisPermanentType(noun)
+                    if !noun.starts_with("this ") =>
+                {
+                    format!("this {noun}")
+                }
+                other => other.display_text(),
+            };
+            return format!("{subject} was cast this turn");
+        }
+        // "it exploited that creature" (CR 702.110): the exploited tag names
+        // the triggering object and the exploiter tag names the source; the
+        // pair is one structural predicate that reads both operands.
+        if let Condition::And(left, right) = condition
+            && let Some(text) = describe_source_exploited_triggering_condition(left, right)
+        {
+            return text;
         }
         // "you gained or lost life this turn" / "you gained and lost life
         // this turn": a gained-life presence check paired with a lost-life
@@ -2187,6 +2275,87 @@ pub(crate) fn describe_condition(condition: &Condition) -> String {
                     &ordinal_fragments,
                 );
             }
+        }
+        // Exact structural Or readers (they read every operand) take
+        // precedence over the generic logical-tree reading.
+        if let Condition::Or(left, right) = condition {
+            // "you revealed a Dragon card or controlled a Dragon as you cast
+            // this spell" (Silumgar's Scorn, Scaleguard Sentinels).
+            if let Some(text) = describe_behold_or_controlled_subtype_condition(left, right) {
+                return text;
+            }
+            // "If it's a land or double-faced card" (Invasion of Pyrulea):
+            // both arms test the same tagged card against one card kind each.
+            if let (
+                Condition::TaggedObjectMatches(left_tag, left_filter),
+                Condition::TaggedObjectMatches(right_tag, right_filter),
+            ) = (left.as_ref(), right.as_ref())
+                && left_tag == right_tag
+                && left_filter.tagged_constraints.is_empty()
+                && right_filter.tagged_constraints.is_empty()
+                && let Some(left_head) = strip_indefinite_article(&left_filter.description())
+                    .strip_suffix(" card")
+                    .map(str::to_string)
+                && let Some(right_head) = strip_indefinite_article(&right_filter.description())
+                    .strip_suffix(" card")
+                    .map(str::to_string)
+                && !left_head.is_empty()
+                && !right_head.is_empty()
+                && !left_head.contains(' ')
+                && !right_head.contains(' ')
+            {
+                return format!("it's {} or {right_head} card", with_indefinite_article(&left_head));
+            }
+            // "you've played a land or cast a spell this turn from anywhere
+            // other than your hand" (Spider-Man 2099): one played-from-zone
+            // history per zone other than the hand, every such zone present.
+            if let Some(text) = describe_played_from_anywhere_but_hand_audit(condition) {
+                return text;
+            }
+        }
+        // "if it isn't a creature or Vehicle" (Lifecraft Awakening): a
+        // negated disjunction of tests on one tagged object is one negated
+        // predicate on that object.
+        if let Condition::Not(inner) = condition
+            && let Condition::Or(left, right) = inner.as_ref()
+            && let (
+                Condition::TaggedObjectMatches(left_tag, left_filter),
+                Condition::TaggedObjectMatches(right_tag, right_filter),
+            ) = (left.as_ref(), right.as_ref())
+            && left_tag == right_tag
+            && left_filter.tagged_constraints.is_empty()
+            && right_filter.tagged_constraints.is_empty()
+        {
+            return format!(
+                "it isn't {} or {}",
+                ensure_indefinite_article(&left_filter.description()),
+                ensure_indefinite_article(&right_filter.description())
+            );
+        }
+        // "if it has greater power or toughness than this creature"
+        // (Hulkling, Propagator Drone): the triggering object's power
+        // exceeds the source's or its toughness does.
+        if let Condition::Or(left, right) = condition
+            && let (
+                Condition::TaggedObjectMatches(left_tag, left_filter),
+                Condition::TaggedObjectMatches(right_tag, right_filter),
+            ) = (left.as_ref(), right.as_ref())
+            && left_tag == right_tag
+            && left_tag.as_str() == "triggering"
+            && {
+                let exceeds_source = |filter: &ObjectFilter, power: bool| {
+                    let mut rest = filter.clone();
+                    let slot = if power { rest.power.take() } else { rest.toughness.take() };
+                    rest.union_surface = Default::default();
+                    let expected = if power { Value::SourcePower } else { Value::SourceToughness };
+                    matches!(slot, Some(crate::filter::Comparison::GreaterThanExpr(value))
+                        if *value.unhinted() == expected)
+                        && rest == ObjectFilter::default()
+                };
+                exceeds_source(left_filter, true) && exceeds_source(right_filter, false)
+            }
+        {
+            return "it has greater power or toughness than this creature".to_string();
         }
         match condition {
             Condition::And(..) => return operand(condition, true),
@@ -2687,7 +2856,9 @@ pub(crate) fn describe_condition(condition: &Condition) -> String {
             {
                 "you control your commander".to_string()
             } else {
-                format!("you control {}", filter.description())
+                // "you control a 1/1 creature" (Lovestruck Beast): exact P/T
+                // reads as the P/T shorthand.
+                format!("you control {}", describe_object_filter_with_fixed_pt_shorthand(filter))
             }
         }
         Condition::OpponentControls(filter) => {
@@ -3231,10 +3402,15 @@ pub(crate) fn describe_condition(condition: &Condition) -> String {
             } else {
                 format!("{}'s", describe_player_filter(player))
             };
-            format!(
-                "{subject} life total is less than half {} starting life total",
+            // The second possessive refers back to the same player: "an
+            // opponent's life total is less than half their starting life
+            // total" (Anya, Merciless Angel).
+            let starting = if *player == PlayerFilter::You {
                 describe_possessive_player_filter(player)
-            )
+            } else {
+                "their".to_string()
+            };
+            format!("{subject} life total is less than half {starting} starting life total")
         }
         Condition::PlayerHasLessLifeThanYou { player } => {
             if *player == PlayerFilter::Opponent {
@@ -3831,9 +4007,10 @@ pub(crate) fn describe_condition(condition: &Condition) -> String {
         Condition::YouControlMoreCreaturesThanTargetSpellController => {
             "you control more creatures than the target spell's controller".to_string()
         }
+        // The target's power is at least every other creature's (Getaway
+        // Glamer): "no other creature has greater power".
         Condition::TargetHasGreatestPowerAmongCreatures => {
-            "the target creature has the greatest power among creatures on the battlefield"
-                .to_string()
+            "no other creature has greater power".to_string()
         }
         Condition::TargetManaValueLteColorsSpentToCastThisSpell => {
             "the target's mana value is less than or equal to the number of colors of mana spent to cast this spell".to_string()
@@ -3869,6 +4046,18 @@ pub(crate) fn describe_condition(condition: &Condition) -> String {
         }
         Condition::SourceIsFaceDown => "this source is transformed".to_string(),
         Condition::SourceMatches(filter) => {
+            // "unless it was unattached from a Ninja" (Shuriken): the granted
+            // ability's source named as the object it was unattached from.
+            if filter.has_unattached_from_reference() {
+                let mut host = filter.clone();
+                if host.zone == Some(Zone::Battlefield) {
+                    host.zone = None;
+                }
+                return format!(
+                    "it was unattached from {}",
+                    ensure_indefinite_article(&host.description())
+                );
+            }
             // "this creature has another activated ability" (Tazri's granted
             // mana ability): the source has one more activated ability than
             // the one being activated.
@@ -3983,6 +4172,23 @@ pub(crate) fn describe_condition(condition: &Condition) -> String {
                 Some(crate::filter::Comparison::GreaterThanOrEqual(4));
             if *filter == enchanted_creature_power {
                 return "enchanted creature's power is 4 or greater".to_string();
+            }
+            // "if enchanted permanent is a creature with the greatest power
+            // among creatures on the battlefield" (Historian's Wisdom): the
+            // attached object is a creature whose power equals the global
+            // creature maximum.
+            if let Some(crate::filter::Comparison::EqualExpr(value)) = &filter.power
+                && let Value::GreatestPower(among) = value.as_ref()
+            {
+                let mut rest = filter.clone();
+                rest.power = None;
+                let global_creatures = ObjectFilter::creature().in_zone(Zone::Battlefield);
+                if (rest == global_creatures || rest == ObjectFilter::creature())
+                    && (*among == global_creatures || *among == ObjectFilter::creature())
+                {
+                    return "enchanted permanent is a creature with the greatest power among creatures on the battlefield"
+                        .to_string();
+                }
             }
             if filter.subtypes.contains(&Subtype::Equipment)
                 && filter
@@ -5410,6 +5616,17 @@ pub(crate) fn describe_condition(condition: &Condition) -> String {
             {
                 return format!("it was {}", states.join(" or "));
             }
+            // "If the exploited creature had power 3 or greater" (Henry Wu):
+            // the exploit trigger's tagged creature is named by its action.
+            if tag.as_str() == "exploited"
+                && filter.demonstrative_antecedent_surface()
+                    == Some(ironsmith_core::DemonstrativeAntecedentSurface::Creature)
+            {
+                let described = describe_last_known_tagged_object_condition(tag, filter);
+                if let Some(rest) = described.strip_prefix("that creature ") {
+                    return format!("the exploited creature {rest}");
+                }
+            }
             // "if an Aura you controlled was attached to it" (Dawn Evangel).
             if tag.as_str() == "triggering"
                 && let Some(attached) = filter.with_attached_object.as_deref()
@@ -5433,8 +5650,13 @@ pub(crate) fn describe_condition(condition: &Condition) -> String {
             }
             describe_last_known_tagged_object_condition(tag, filter)
         }
-        Condition::TaggedObjectIsTopOfLibrary { tag, .. } => {
-            if is_implicit_reference_tag(tag.as_str()) {
+        Condition::TaggedObjectIsTopOfLibrary { tag, player } => {
+            // "that card is still on top of your library" (Commander Spock):
+            // the parser records the controller's library only for this
+            // surface; the generic owner-library reading stays for the rest.
+            if is_implicit_reference_tag(tag.as_str()) && *player == PlayerFilter::You {
+                "that card is still on top of your library".to_string()
+            } else if is_implicit_reference_tag(tag.as_str()) {
                 "it remains on top of its owner's library".to_string()
             } else {
                 format!(
@@ -5870,6 +6092,102 @@ pub(crate) fn describe_condition(condition: &Condition) -> String {
             // structural reading ("at least two other creatures that attacked
             // this combat"); never leak the internal label.
             if let crate::static_abilities::AnthemCountExpression::MatchingFilter(filter) = count {
+                // "it doesn't have the same name as another creature you
+                // control or a creature card in your graveyard" (Guardian
+                // Project): no member of any listed set shares the
+                // referenced object's name.
+                if matches!(
+                    comparison,
+                    ironsmith_core::Comparison::Equal(0)
+                        | ironsmith_core::Comparison::LessThanOrEqual(0)
+                        | ironsmith_core::Comparison::LessThan(1)
+                ) && filter.any_of.len() >= 2
+                    && {
+                        let mut outer = filter.clone();
+                        outer.any_of.clear();
+                        outer.union_surface = Default::default();
+                        outer == ObjectFilter::default()
+                    }
+                    && let Some(alternatives) = filter
+                        .any_of
+                        .iter()
+                        .map(|member| {
+                            let mut rest = member.clone();
+                            let mut shares_name = false;
+                            let mut other = false;
+                            for constraint in std::mem::take(&mut rest.tagged_constraints) {
+                                if constraint.tag.as_str() != "__it__" {
+                                    return None;
+                                }
+                                match constraint.relation {
+                                    crate::filter::TaggedOpbjectRelation::SameNameAsTagged => {
+                                        shares_name = true;
+                                    }
+                                    crate::filter::TaggedOpbjectRelation::IsNotTaggedObject => {
+                                        other = true;
+                                    }
+                                    _ => return None,
+                                }
+                            }
+                            if !shares_name {
+                                return None;
+                            }
+                            rest.other |= other;
+                            let described = rest.description();
+                            Some(
+                                if described.starts_with("a ")
+                                    || described.starts_with("an ")
+                                    || described.starts_with("another ")
+                                {
+                                    described
+                                } else {
+                                    with_indefinite_article(&described)
+                                },
+                            )
+                        })
+                        .collect::<Option<Vec<_>>>()
+                {
+                    return format!(
+                        "it doesn't have the same name as {}",
+                        join_with_or(&alternatives)
+                    );
+                }
+                // "a card with the same name is in a graveyard or a nontoken
+                // permanent with the same name is on the battlefield" (Bazaar
+                // of Wonders): an existence count over objects sharing the
+                // referenced object's name.
+                if matches!(comparison, ironsmith_core::Comparison::GreaterThanOrEqual(1))
+                    && let [constraint] = filter.tagged_constraints.as_slice()
+                    && constraint.tag.as_str() == "__it__"
+                    && constraint.relation == crate::filter::TaggedOpbjectRelation::SameNameAsTagged
+                {
+                    let mut rest = filter.clone();
+                    rest.tagged_constraints.clear();
+                    rest.zone = None;
+                    rest.union_surface = Default::default();
+                    let nontoken = std::mem::take(&mut rest.nontoken);
+                    let location = match filter.zone {
+                        Some(Zone::Graveyard) if !nontoken => Some(("card", "in a graveyard")),
+                        Some(Zone::Battlefield) => Some((
+                            if nontoken { "nontoken permanent" } else { "permanent" },
+                            "on the battlefield",
+                        )),
+                        _ => None,
+                    };
+                    // "if it has the same name as a permanent" (Retraced
+                    // Image): any permanent shares the referenced card's name.
+                    if rest == ObjectFilter::default()
+                        && !nontoken
+                        && filter.zone == Some(Zone::Battlefield)
+                    {
+                        return "it has the same name as a permanent".to_string();
+                    }
+                    if rest == ObjectFilter::default()
+                        && let Some((noun, place)) = location
+                    {
+                        return format!("{} with the same name is {place}", with_indefinite_article(noun));
+                    }
+                }
                 let objects =
                     pluralize_noun_phrase(strip_indefinite_article(&filter.description()));
                 // "you control a legendary creature" / "you control two or
@@ -6015,6 +6333,52 @@ pub(crate) fn describe_condition(condition: &Condition) -> String {
                         return format!("there are {amount} or more {objects}{tail}");
                     }
                 }
+                // "if it has the same name as a permanent" (Retraced Image):
+                // some permanent shares the referenced card's name.
+                if let ironsmith_core::Comparison::GreaterThanOrEqual(1) = comparison
+                    && filter.zone == Some(Zone::Battlefield)
+                    && let [constraint] = filter.tagged_constraints.as_slice()
+                    && constraint.relation == crate::filter::TaggedOpbjectRelation::SameNameAsTagged
+                    && is_implicit_reference_tag(constraint.tag.as_str())
+                    && {
+                        let mut rest = filter.clone();
+                        rest.zone = None;
+                        rest.tagged_constraints.clear();
+                        rest == ObjectFilter::default()
+                    }
+                {
+                    return "it has the same name as a permanent".to_string();
+                }
+                // "there are no cards in your library" (Living Conundrum): a
+                // zero count over a library or graveyard is an existential.
+                if matches!(
+                    comparison,
+                    ironsmith_core::Comparison::Equal(0)
+                        | ironsmith_core::Comparison::LessThanOrEqual(0)
+                        | ironsmith_core::Comparison::LessThan(1)
+                ) && matches!(filter.zone, Some(Zone::Graveyard | Zone::Library))
+                    && strip_indefinite_article(&filter.description()).contains(" in ")
+                {
+                    return format!("there are no {objects}");
+                }
+                // "if it has the same name as one of the cards exiled with
+                // this artifact" (Spellweaver Helix): some card linked to the
+                // source shares the referenced card's name.
+                if let ironsmith_core::Comparison::GreaterThanOrEqual(1) = comparison
+                    && filter.zone == Some(Zone::Exile)
+                    && let [linked, same_name] = filter.tagged_constraints.as_slice()
+                    && linked.relation == crate::filter::TaggedOpbjectRelation::IsTaggedObject
+                    && linked.tag.as_str() == crate::tag::SOURCE_EXILED_TAG
+                    && same_name.relation == crate::filter::TaggedOpbjectRelation::SameNameAsTagged
+                    && is_implicit_reference_tag(same_name.tag.as_str())
+                {
+                    let mut linked_cards = filter.clone();
+                    linked_cards.tagged_constraints.truncate(1);
+                    let described = linked_cards.description();
+                    if let Some(tail) = strip_indefinite_article(&described).strip_prefix("card ") {
+                        return format!("it has the same name as one of the cards {tail}");
+                    }
+                }
                 if let ironsmith_core::Comparison::GreaterThanOrEqual(1) = comparison {
                     return format!(
                         "at least one {}",
@@ -6138,6 +6502,15 @@ pub(crate) fn describe_condition(condition: &Condition) -> String {
             operator,
             right,
         } => {
+            // "If X is 6 or more" (The Destruction of Praxis): a threshold on
+            // an authored where-X value keeps its X ahead of any reading of
+            // the value's own predicate ("lands with different names").
+            if left.has_surface_hint(ironsmith_core::ValueSurfaceHint::WhereXIs)
+                && *operator == crate::effect::ValueComparisonOperator::GreaterThanOrEqual
+                && let Value::Fixed(count) = right.unhinted()
+            {
+                return format!("X is {count} or more");
+            }
             if let (Value::CountPlayersWithCardsInLibraryAtMost(PlayerFilter::Any, maximum),
                 crate::effect::ValueComparisonOperator::GreaterThanOrEqual, Value::Fixed(1))
                 = (left.unhinted(), operator, right.unhinted()) {
@@ -6418,6 +6791,14 @@ pub(crate) fn describe_condition(condition: &Condition) -> String {
                         )
                     }
                     _ => match plural.strip_suffix(" you control") {
+                        // "you control five or more differently named lands"
+                        // (Seven of Nine): the authored prefix form.
+                        Some(objects)
+                            if matches!(left.unhinted(), Value::DistinctNames(filter)
+                                if filter.union_surface.differently_named_prefix()) =>
+                        {
+                            format!("you control {count_text} or more differently named {objects}")
+                        }
                         Some(objects) => format!(
                             "you control {count_text} or more {objects} with different names"
                         ),
@@ -6521,6 +6902,14 @@ pub(crate) fn describe_condition(condition: &Condition) -> String {
             ) = (left.unhinted(), operator, right.unhinted())
             {
                 return format!("any of those results was {minimum} or higher");
+            }
+            // "If X is 6 or more" (The Destruction of Praxis, Obsessive
+            // Pursuit): a threshold on a where-X value keeps its X.
+            if left.has_surface_hint(ironsmith_core::ValueSurfaceHint::WhereXIs)
+                && *operator == crate::effect::ValueComparisonOperator::GreaterThanOrEqual
+                && let Value::Fixed(count) = right.unhinted()
+            {
+                return format!("X is {count} or more");
             }
             // "you control seven or more lands with different names" (Field
             // of the Dead) and "you control three or more creatures that
@@ -6961,6 +7350,19 @@ pub(crate) fn describe_condition(condition: &Condition) -> String {
                 );
             }
             if let (
+                Value::SurfaceHinted { value, hints },
+                crate::effect::ValueComparisonOperator::GreaterThanOrEqual,
+                Value::Fixed(count),
+            ) = (left, operator, right)
+                && hints.contains(&ironsmith_core::ValueSurfaceHint::SimplePastCardsDrawn)
+                && matches!(value.as_ref(), Value::MaxCardsDrawnThisTurn(PlayerFilter::You))
+                && *count >= 0
+            {
+                let count_text =
+                    small_number_word(*count as u32).unwrap_or_else(|| count.to_string());
+                return format!("you drew {count_text} or more cards this turn");
+            }
+            if let (
                 Value::MaxCardsDrawnThisTurn(player),
                 crate::effect::ValueComparisonOperator::GreaterThanOrEqual,
                 Value::Fixed(count),
@@ -7177,6 +7579,13 @@ pub(crate) fn describe_condition(condition: &Condition) -> String {
                     && !head.is_empty()
                 {
                     return format!("{count_text} or more {head} are attacking");
+                }
+                // "if you control two or more Vampires": a count of your own
+                // battlefield permanents reads with you as the subject.
+                if filter.controller == Some(PlayerFilter::You)
+                    && let Some(owned) = noun.strip_suffix(" you control")
+                {
+                    return format!("you control {count_text} or more {owned}");
                 }
                 return format!("there are {} or more {} on the battlefield", count_text, noun);
             }
@@ -7702,7 +8111,29 @@ pub(crate) fn describe_condition(condition: &Condition) -> String {
             _ => format!("custom condition {id}"),
         },
         Condition::Not(inner) => {
-            if matches!(
+            if let Condition::XValueAtLeast(minimum) = inner.as_ref()
+                && *minimum >= 1
+            {
+                // "If X is 2 or less" (Slumbering Trudge).
+                format!("X is {} or less", minimum - 1)
+            } else if let Condition::Or(left, right) = inner.as_ref()
+                && let (Condition::TargetMatches(first), Condition::TargetMatches(second)) =
+                    (left.as_ref(), right.as_ref())
+                && *first == {
+                    let mut attacking = ObjectFilter::default();
+                    attacking.attacking = true;
+                    attacking
+                }
+                && *second == {
+                    let mut blocking = ObjectFilter::default();
+                    blocking.blocking = true;
+                    blocking
+                }
+            {
+                // "Each other creature you control gets +3/+3 as long as it's
+                // not attacking or blocking" (The Muckslinger Gang).
+                "it's not attacking or blocking".to_string()
+            } else if matches!(
                 inner.as_ref(),
                 Condition::TargetObjectsHaveDifferentColorSets
             ) {
@@ -7803,6 +8234,9 @@ pub(crate) fn describe_condition(condition: &Condition) -> String {
                         counter_type.description()
                     )
                 }
+            } else if let Condition::SourceWasCast = inner.as_ref() {
+                // "if it wasn't cast" (Freestrider Commando).
+                "it wasn't cast".to_string()
             } else if let Condition::SourceIsSaddled = inner.as_ref() {
                 "this creature isn't saddled".to_string()
             } else if let Condition::ManaSpentToCastThisSpellAtLeast { amount, symbol } =
@@ -7819,6 +8253,8 @@ pub(crate) fn describe_condition(condition: &Condition) -> String {
                         "fewer than {amount_text} {} mana was spent to cast this spell",
                         describe_mana_symbol(*symbol)
                     ),
+                    // "no mana was spent to cast it" (Freestrider Commando).
+                    None if *amount == 1 => "no mana was spent to cast this spell".to_string(),
                     None => format!(
                         "fewer than {amount_text} mana was spent to cast this spell"
                     ),
@@ -7937,6 +8373,10 @@ pub(crate) fn describe_condition(condition: &Condition) -> String {
                     if subject == "you" || subject == "they" { "don't" } else { "doesn't" },
                     counter_type.description()
                 )
+            } else if let Condition::ThisSpellWasCastFromZone(Zone::Hand) = inner.as_ref() {
+                // The negation of "you cast it from your hand" keeps its
+                // viewpoint (Epochrasite, Phage the Untouchable).
+                "you didn't cast it from your hand".to_string()
             } else if let Condition::ThisSpellWasCastFromZone(zone) = inner.as_ref() {
                 let zone_text = match zone {
                     Zone::Hand => "your hand".to_string(),
@@ -10455,6 +10895,23 @@ fn describe_damage_presence_comparison(
                         format!("{source} didn't deal {damage} this turn")
                     })
                 }
+                // "if you were dealt damage this turn by a red instant or
+                // sorcery spell" (Suffocation): any damage this turn from a
+                // matching source to the player.
+                (
+                    ironsmith_core::DamageHistorySources::Matching(source),
+                    ironsmith_core::DamageHistoryRecipients::Players(player),
+                ) => {
+                    let source = with_indefinite_article(strip_leading_article(&source.description()));
+                    let player = describe_player_filter(player);
+                    let verb = match (player == "you", present) {
+                        (true, true) => "were",
+                        (true, false) => "weren't",
+                        (false, true) => "was",
+                        (false, false) => "wasn't",
+                    };
+                    Some(format!("{player} {verb} dealt {damage} this turn by {source}"))
+                }
                 _ => None,
             }
         }
@@ -10623,4 +11080,124 @@ mod whole_game_movement_condition_tests {
             assert!(rendered.contains(&threshold.to_string()),"{rendered}");
         }
     }
+}
+
+/// Audit reading of a disjunction of `PlayerPlayedCardFromZoneThisTurn`
+/// checks for one player covering every zone except the hand.
+fn describe_played_from_anywhere_but_hand_audit(condition: &Condition) -> Option<String> {
+    fn collect(condition: &Condition, out: &mut Vec<(PlayerFilter, Zone)>) -> bool {
+        match condition {
+            Condition::Or(left, right) => collect(left, out) && collect(right, out),
+            Condition::TurnHistory(
+                ironsmith_core::TurnHistoryCondition::PlayerPlayedCardFromZoneThisTurn { player, zone },
+            ) => {
+                out.push((player.clone(), *zone));
+                true
+            }
+            _ => false,
+        }
+    }
+    let mut played = Vec::new();
+    if !collect(condition, &mut played) {
+        return None;
+    }
+    let (player, _) = played.first()?.clone();
+    if played.iter().any(|(other, zone)| *other != player || *zone == Zone::Hand) {
+        return None;
+    }
+    let required = [
+        Zone::Library, Zone::Battlefield, Zone::Graveyard, Zone::Stack, Zone::Exile, Zone::Command,
+    ];
+    if !required.iter().all(|zone| played.iter().any(|(_, played_zone)| played_zone == zone)) {
+        return None;
+    }
+    let subject = if player == PlayerFilter::You {
+        "you've".to_string()
+    } else {
+        format!("{} has", describe_player_filter(&player))
+    };
+    Some(format!("{subject} played a land or cast a spell this turn from anywhere other than your hand"))
+}
+
+/// "you control a permanent of each color" (Spirit of Resistance): a
+/// conjunction of exactly five "you control a <color> permanent"
+/// requirements, one per color, otherwise identical permanent filters.
+fn describe_controls_permanent_of_each_color(condition: &Condition) -> Option<String> {
+    fn flatten<'a>(condition: &'a Condition, out: &mut Vec<&'a Condition>) {
+        match condition {
+            Condition::And(left, right) => {
+                flatten(left, out);
+                flatten(right, out);
+            }
+            other => out.push(other),
+        }
+    }
+    if !matches!(condition, Condition::And(..)) {
+        return None;
+    }
+    let mut parts = Vec::new();
+    flatten(condition, &mut parts);
+    if parts.len() != 5 {
+        return None;
+    }
+    let mut seen = crate::color::ColorSet::default();
+    let mut base: Option<ObjectFilter> = None;
+    for part in parts {
+        let Condition::PlayerControls { player: PlayerFilter::You, filter } = part else {
+            return None;
+        };
+        let color = filter.colors?;
+        if color.count() != 1 || seen.intersection(color).count() != 0 {
+            return None;
+        }
+        seen = seen.union(color);
+        let mut rest = filter.clone();
+        rest.colors = None;
+        if !rest.card_types.is_empty() || !rest.subtypes.is_empty() {
+            return None;
+        }
+        match &base {
+            Some(known) if *known != rest => return None,
+            Some(_) => {}
+            None => base = Some(rest),
+        }
+    }
+    (seen.count() == 5).then(|| "you control a permanent of each color".to_string())
+}
+
+/// "if you've done all four this turn" (Avatar Aang): the parser restates the
+/// authored "all <N>" anaphor as one performed-this-turn check per listed
+/// keyword action and marks each threshold `AllListedActionsDone`.
+fn describe_all_listed_actions_done_condition(condition: &Condition) -> Option<String> {
+    fn leaves(condition: &Condition, count: &mut u32) -> bool {
+        match condition {
+            Condition::And(left, right) => leaves(left, count) && leaves(right, count),
+            Condition::ValueComparison {
+                left,
+                operator: crate::effect::ValueComparisonOperator::GreaterThanOrEqual,
+                right,
+            } if matches!(right.unhinted(), Value::Fixed(1))
+                && right.has_surface_hint(ironsmith_core::ValueSurfaceHint::AllListedActionsDone)
+                && matches!(
+                    left.unhinted(),
+                    Value::TurnHistoryCount(
+                        ironsmith_core::TurnHistoryCount::KeywordActionsPerformed {
+                            player: PlayerFilter::You,
+                            actions,
+                        }
+                    ) if actions.len() == 1
+                ) =>
+            {
+                *count += 1;
+                true
+            }
+            _ => false,
+        }
+    }
+    let mut count = 0;
+    if !leaves(condition, &mut count) || count < 2 {
+        return None;
+    }
+    let word = small_number_word(count)?;
+    Some(format!("you've done all {word} this turn"))
 }

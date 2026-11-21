@@ -628,6 +628,7 @@ fn normalize_modal_ast(
             point_cost: mode.point_cost,
             additional_mana_cost: mode.additional_mana_cost,
             prepared,
+            flavor_label: mode.flavor_label,
         });
     }
 

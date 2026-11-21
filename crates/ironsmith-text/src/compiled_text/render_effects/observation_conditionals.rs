@@ -764,6 +764,21 @@ fn describe_observation_continuation(
     effect: &Effect,
     observation: &ImmediateObservation<'_>,
 ) -> Option<String> {
+    // "... If it's a Forest card, remove that creature from combat. Then put
+    // the revealed card on the bottom of your library." (Lost in the Woods):
+    // the sentence-leading "Then" lowers to a one-member sequence around the
+    // move; the continuation is that lone member.
+    let effect = effect
+        .downcast_ref::<crate::effects::SequenceEffect>()
+        .filter(|sequence| {
+            matches!(sequence.surface, ironsmith_core::SequenceSurface::SentenceLeadingThen)
+                && sequence.result_label.is_none()
+        })
+        .and_then(|sequence| match sequence.effects.as_slice() {
+            [inner] => Some(inner),
+            _ => None,
+        })
+        .unwrap_or(effect);
     let unwrapped = structural_unwrap_render_wrappers(effect);
     if let Some(move_to_zone) = unwrapped.downcast_ref::<crate::effects::MoveToZoneEffect>() {
         if !choose_spec_references_tagged_object(&move_to_zone.target, observation.tag) {

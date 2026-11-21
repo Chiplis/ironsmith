@@ -1460,6 +1460,8 @@ pub fn parse_sentence_implicit_become_clause(
         };
     let mut rest_words = duration_remainder_clause.as_clause().trimmed_word_refs();
     let prefix_shape = delayed_grammar::parse_implicit_become_prefix_words(&rest_words);
+    // "It's still a ..." restates a retained type; it never sets types.
+    let still_prefix = rest_words.first().is_some_and(|word| *word == "still");
     rest_words.drain(..prefix_shape.consumed);
     if rest_words.is_empty() {
         return Ok(None);
@@ -1654,6 +1656,20 @@ pub fn parse_sentence_implicit_become_clause(
     }
     if subtypes.is_empty() {
         return Ok(None);
+    }
+
+    // "... and is a Werewolf" (Werewolf Pack Leader): a copular creature-type
+    // change without "in addition to its other types" makes the creature
+    // types exactly these (CR 205.1a), the same rules meaning as "becomes a
+    // Werewolf"; the copula is kept as the clause surface.
+    if addition_tail_len.is_none()
+        && !negated
+        && !still_prefix
+        && subtypes.iter().all(|subtype| subtype.is_creature_type())
+    {
+        return Ok(Some(vec![EffectAst::subject_verb_set_creature_subtypes_copular(
+            target, subtypes, duration,
+        )]));
     }
 
     Ok(Some(vec![EffectAst::subject_verb_add_subtypes(

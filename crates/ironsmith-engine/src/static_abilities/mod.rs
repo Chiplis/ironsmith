@@ -1667,6 +1667,10 @@ pub enum TriggerDuplicationSourceMatcher {
 pub struct TriggerSuppressionSpec {
     pub source_filter: Option<crate::target::ObjectFilter>,
     pub event_matcher: Option<crate::triggers::Trigger>,
+    /// Only the matching sources' ward triggers are suppressed; the
+    /// ward-cost path (`targeting::ward`) reads it, the general trigger
+    /// check does not apply it.
+    pub ward_only: bool,
 }
 
 /// Spec for static abilities that reveal a card as part of a draw.
@@ -3602,6 +3606,17 @@ impl StaticAbility {
         )
     }
 
+    pub fn enters_tapped_unless_condition_with_surface(
+        condition: crate::effect::Condition,
+        display: String,
+        if_not_surface: bool,
+    ) -> Self {
+        Self::new(
+            crate::static_abilities::misc::EntersTappedUnlessCondition::new(condition, display)
+                .with_if_not_surface(if_not_surface),
+        )
+    }
+
     pub fn enters_with_counters(counter_type: crate::object::CounterType, count: u32) -> Self {
         Self::new(EntersWithCounters::new(
             counter_type,
@@ -4727,6 +4742,19 @@ impl StaticAbility {
             event_matcher,
             display,
         ))
+    }
+
+    /// A trigger suppression whose `ward_only` scope limits it to ward
+    /// triggers ("Ward abilities of those creatures don't trigger").
+    pub fn suppress_matching_triggered_abilities_scoped(
+        source_filter: Option<crate::target::ObjectFilter>,
+        event_matcher: Option<crate::triggers::Trigger>,
+        ward_only: bool,
+        display: String,
+    ) -> Self {
+        let mut ability = SuppressMatchingTriggeredAbilities::new(source_filter, event_matcher, display);
+        ability.ward_only = ward_only;
+        Self::new(ability)
     }
 
     pub fn other_chosen_type_creature_triggered_abilities_trigger_additional_time(

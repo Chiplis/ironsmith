@@ -2789,6 +2789,35 @@ fn maximum_blockers_rule_for_subject(
     ability.into()
 }
 
+/// "is a Salamander" / "are Zombies": an unscoped copular segment whose every
+/// descriptor is a creature type.
+fn copular_creature_subtype_segment(tokens: &[OwnedLexToken]) -> Option<Vec<crate::types::Subtype>> {
+    let words = crate::lexer::token_word_refs(tokens);
+    let words = match words.as_slice() {
+        ["and", rest @ ..] => rest,
+        rest => rest,
+    };
+    let descriptors = match words {
+        ["is" | "are", "a" | "an", rest @ ..] => rest,
+        ["are", rest @ ..] => rest,
+        _ => return None,
+    };
+    if descriptors.is_empty() {
+        return None;
+    }
+    let mut subtypes = Vec::new();
+    for word in descriptors {
+        let subtype = parse_subtype_flexible(word)?;
+        if !subtype.is_creature_type() {
+            return None;
+        }
+        if !subtypes.contains(&subtype) {
+            subtypes.push(subtype);
+        }
+    }
+    Some(subtypes)
+}
+
 fn lower_atomic_anthem_predicate(
     clause: &ParsedAnthemClause,
     tokens: &[OwnedLexToken],
@@ -3323,6 +3352,18 @@ pub fn parse_anthem_with_trailing_segments_line(
                 parse_continuing_anthem_granted_segment(&clause, &clause_words, &segment)?
         {
             extras.append(&mut granted);
+            continue;
+        }
+
+        // "Enchanted creature gets -4/-0, can't block, and is a Salamander"
+        // (De-evolve): an unscoped copular creature-type segment after a
+        // restriction sets the subject's creature types (CR 205.1b), exactly
+        // as the standalone attached "is a <type>" line does.
+        if let Some(subtypes) = copular_creature_subtype_segment(&segment) {
+            extras.push(wrap_conditioned_animation_static_ability(
+                StaticAbility::set_creature_subtypes(anthem_subject_filter(&clause.subject), subtypes),
+                &clause.condition,
+            ));
             continue;
         }
 
@@ -5541,7 +5582,8 @@ fn generic_leading_as_long_as_wraps_explicit_subject_static_families() {
         ),
         (
             "As long as there are four or more quest counters on this enchantment, untap all creatures you control during each other player's untap step.",
-            &["Quest", "GreaterThanOrEqual"][..],
+            // The existential threshold reads as the source counter test.
+            &["Quest", "SourceHasCounterAtLeast"][..],
         ),
         (
             "As long as this creature has a conqueror counter on it, nonbasic lands are Mountains.",
@@ -6679,10 +6721,16 @@ mod derived_blitz_owner_tests {
             assert!(parse_filter_has_granted_ability_line(&tokens).unwrap().is_none());
             let expected=parse_granted_keyword_static_line(&tokens).unwrap().unwrap();
             assert_eq!(parse_static_ability_ast_line_lexed(&tokens).unwrap().unwrap(),expected);
-            assert_eq!(expected.len(),5,"spell permissions cover the ordinary card zones, not just the stack");
+            // One permission spans the ordinary card zones (hand plus the
+            // other zones a spell can be cast from), not just the stack.
+            assert_eq!(expected.len(),1,"one owned permission covers every card zone");
             for ability in &expected {
                 let StaticAbilityAst::Static(rule)=ability else {panic!("ordinary unconditional grant")};
                 let ironsmith_core::StaticAbilityPayload::Grants(spec)=&rule.payload else {panic!("actual alternative casting permission")};
+                assert_eq!(spec.zone,Zone::Hand);
+                for zone in [Zone::Exile, Zone::Graveyard, Zone::Library, Zone::Command] {
+                    assert!(spec.additional_zones.contains(&zone),"spell permissions cover the ordinary card zones, not just the stack");
+                }
                 assert_eq!(spec.filter.card_types,vec![CardType::Creature]);
                 assert_eq!(spec.filter.mana_value,Some(crate::filter::Comparison::GreaterThanOrEqual(4)));
                 assert!(spec.filter.zone.is_none()&&spec.filter.stack_kind.is_none(),"card eligibility is normalized out of stack-only criteria");

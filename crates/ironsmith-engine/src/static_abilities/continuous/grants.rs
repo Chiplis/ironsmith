@@ -754,6 +754,7 @@ impl GrantObjectAbilityForFilter {
             Some("If" | "When" | "Whenever" | "At")
         ) || granted.id() == StaticAbilityId::DungeonRoomTriggerDuplication
             || granted.id() == StaticAbilityId::RuleRestriction
+            || granted.id() == StaticAbilityId::ConditionalDrawReplacement
             || is_quoted_cost_modifier
         {
             ability_text = format!("\"{ability_text}\"");
@@ -824,6 +825,21 @@ impl GrantObjectAbilityForFilter {
                 // Oracle quantifies unscoped grants ("All creatures with an
                 // odd mana value have haste"); scoped subjects ("Creatures
                 // you control ...") stay bare.
+                // The "All" the plural subject text adds to an unscoped set is
+                // inferred, not authored. With no authored set quantifier on
+                // the grant or its filter, a subtype-qualified subject stays
+                // bare ("Cleric creatures have vigilance"); a generic noun is
+                // re-quantified just below ("All creatures have ...").
+                let subject = match subject.strip_prefix("All ") {
+                    Some(rest)
+                        if self.set_quantifier_surface.is_none()
+                            && self.filter.set_quantifier_surface().is_none()
+                            && !singular_subject =>
+                    {
+                        rest.to_string()
+                    }
+                    _ => subject.clone(),
+                };
                 let lower_subject = subject.to_ascii_lowercase();
                 let already_quantified = singular_subject
                     || lower_subject.starts_with("all ")
@@ -1127,16 +1143,77 @@ impl StaticAbilityKind for GrantObjectAbilityForFilter {
                         creature_subject,
                     ),
                     _ => super::quote_granted_ability_reading(
-                        ironsmith_core::semantic_audit::audited_value("GrantedAbility", ability, ability),
+                        ironsmith_core::semantic_audit::described_value(&(ability.clone(), self.filter.clone()))
+                            .unwrap_or_else(|| {
+                                ironsmith_core::semantic_audit::audited_value("GrantedAbility", ability, ability)
+                            }),
                     ),
                 })
                 .collect::<Vec<_>>();
+            // "Basic lands each player controls have shroud as long as that
+            // player controls three or fewer lands" (Sheltering Prayers): the
+            // gate counts each recipient controller's own permanents.
+            if self.has_per_controller_count()
+                && let Some(condition) = &self.condition
+            {
+                let (subject, _) =
+                    grant_subject_with_set_quantifier(&self.filter, self.set_quantifier_surface);
+                return format!(
+                    "{subject} each player controls have {} {}",
+                    granted.join(" and "),
+                    describe_static_condition(condition)
+                );
+            }
             // A spell subject reads from its typed filter ("instant and
             // sorcery spells you cast from your hand").
             let mut text = match super::spell_grant_subject_text(&self.filter) {
                 Some(spells) => format!("{spells} have {}", granted.join(" and ")),
+                // "Henry Wu and other Human creatures you control have
+                // exploit": the source+other union is one plural subject.
+                None if source_and_other_grant_subject(&self.filter).is_some() => format!(
+                    "{} have {}",
+                    source_and_other_grant_subject(&self.filter).unwrap_or_default(),
+                    granted.join(" and ")
+                ),
+                // The authored set quantifier ("All Cleric creatures") and a
+                // union subject read from the typed subject helper; a bare
+                // subtype-qualified set ("Cleric creatures") stays bare.
+                None if self.set_quantifier_surface == Some(ironsmith_core::SetQuantifierSurface::All)
+                    || (self.set_quantifier_surface.is_none() && self.filter.any_of.len() >= 2) =>
+                {
+                    let (subject, _) =
+                        grant_subject_with_set_quantifier(&self.filter, self.set_quantifier_surface);
+                    let verb = if grant_subject_is_plural(&subject) { "have" } else { "has" };
+                    format!("{subject} {verb} {}", granted.join(" and "))
+                }
+                // "Each creature that's attacking one of your opponents has
+                // trample" (Oviya, Automech Artisan): an authored "each" keeps
+                // its distributive singular subject.
+                None if self.set_quantifier_surface
+                    == Some(ironsmith_core::SetQuantifierSurface::Each)
+                    // Cards in a hand or graveyard keep their plural keyword
+                    // grant readings (scavenge, ninjutsu).
+                    && self.filter.zone.is_none_or(|zone| zone == crate::zone::Zone::Battlefield)
+                    && !self.filter.description().to_ascii_lowercase().starts_with("each ") =>
+                {
+                    let (subject, _) =
+                        grant_subject_with_set_quantifier(&self.filter, self.set_quantifier_surface);
+                    format!("{subject} has {}", granted.join(" and "))
+                }
                 None => format!("{} has {}", self.filter.description(), granted.join(" and ")),
             };
+            // "This creature escapes with "<ability>"" (Skyway Robber): a
+            // self grant gated on the permanent having escaped (CR 702.138c)
+            // reads as the escape entry, not as a standing condition.
+            if self.filter.source
+                && self.additional_abilities.is_empty()
+                && !matches!(&self.ability.kind, AbilityKind::Static(_))
+                && matches!(self.condition, Some(crate::ConditionExpr::ThisSpellEscaped))
+                && let Some((subject, granted)) = text.split_once(" has ")
+            {
+                let subject = if subject == "this source" { "this creature" } else { subject };
+                return format!("{subject} escapes with {granted}");
+            }
             if let Some(condition) = &self.condition {
                 text.push(' ');
                 text.push_str(&describe_static_condition(condition));

@@ -4843,10 +4843,12 @@ fn lower_parsed_ability_internal(
     let activation_label = activated.effects.activation_label.take();
     let activation_designations = std::mem::take(&mut activated.effects.activation_designations);
     let activation_sorcery_exceptions = std::mem::take(&mut activated.effects.activation_sorcery_exceptions);
+    let activation_self_cost_reduction = activated.effects.activation_self_cost_reduction.take();
     activated.effects = lowered.effects;
     activated.effects.activation_label = activation_label;
     activated.effects.activation_designations = activation_designations;
     activated.effects.activation_sorcery_exceptions = activation_sorcery_exceptions;
+    activated.effects.activation_self_cost_reduction = activation_self_cost_reduction;
     activated.choices = lowered.choices;
     validate_counter_cost_target_program(activated)?;
     mark_activated_mana_output_if_needed(activated);
@@ -5296,6 +5298,21 @@ fn preserve_named_granting_source_in_effect(effect: Effect) -> Effect {
         tagged.effect = Box::new(preserve_named_granting_source_in_effect(*tagged.effect));
         return Effect::new(tagged);
     }
+    // "Put that card onto the battlefield and attach Shifting Shadow to it"
+    // (Shifting Shadow, Nettlevine Blight): the attached object named by the
+    // card's own name is the granting Aura, not the creature that has the
+    // ability; the destination keeps its own reference.
+    if let Some(attach) = effect.downcast_ref::<crate::effects::AttachObjectsEffect>()
+        && matches!(attach.objects.base(), ChooseSpec::Source)
+        && matches!(
+            attach.objects.source_reference_surface(),
+            Some(SourceReferenceSurface::FullName(_) | SourceReferenceSurface::ShortName(_))
+        )
+    {
+        let mut attach = attach.clone();
+        attach.objects = granting_source_scope_spec(&attach.objects);
+        return Effect::new(attach);
+    }
     // Keep source rebinding as narrow as the runtime composition permits.
     // A quoted ability may refer both to its granting Aura by proper name and
     // to `this creature`, meaning the object that received the ability. If a
@@ -5494,7 +5511,9 @@ fn preserve_named_granting_source(mut ability: Ability) -> Ability {
             wrap_effects(&mut replacement.replacement_effects);
         }
     }
+    let self_cost_reduction = program.activation_self_cost_reduction.take();
     *program = crate::resolution::ResolutionProgram::new(segments);
+    program.activation_self_cost_reduction = self_cost_reduction;
     ability
 }
 
@@ -5511,9 +5530,13 @@ fn attached_object_abilities_grant(
             "attached keyword grant produced no abilities".to_string(),
         )
     })?;
+    // The parser builds the grant's `display` as "<subject> has ..."; the
+    // generic "enchanted permanent" subject is a recorded surface.
+    let permanent_subject = display.trim_start().to_ascii_lowercase().starts_with("enchanted permanent ");
     let mut grant = crate::static_abilities::AttachedAbilityGrant::new(first, display)
         .with_additional_abilities(abilities.collect())
-        .with_protection_attachment_exception(protection_does_not_remove_controlled_attachments);
+        .with_protection_attachment_exception(protection_does_not_remove_controlled_attachments)
+        .with_permanent_subject_surface(permanent_subject);
     if let Some(condition) = condition {
         grant = grant.with_condition(condition);
     }
@@ -5622,7 +5645,9 @@ fn lower_attached_static_ability_grant(
     }
 
     let granted = Ability::static_ability(lower_static_ability_ast(ability)?);
-    let mut grant = crate::static_abilities::AttachedAbilityGrant::new(granted, display);
+    let permanent_subject = display.trim_start().to_ascii_lowercase().starts_with("enchanted permanent ");
+    let mut grant = crate::static_abilities::AttachedAbilityGrant::new(granted, display)
+        .with_permanent_subject_surface(permanent_subject);
     if let Some(condition) = condition {
         grant = grant.with_condition(condition);
     }
@@ -5776,6 +5801,7 @@ pub fn lower_static_ability_ast(ability: StaticAbilityAst) -> Result<StaticAbili
             choose_one,
             optional,
             display,
+            surface,
         } => {
             let (templates, choices) = compile_trigger_effects(None, &templates)?;
             // Templates describe replacement token groups rather than an
@@ -5841,7 +5867,8 @@ pub fn lower_static_ability_ast(ability: StaticAbilityAst) -> Result<StaticAbili
                 choose_one,
                 optional,
                 display,
-            ))
+            )
+            .with_token_creation_template_surface(surface))
         }
         StaticAbilityAst::LoseGameReplacement {
             effects,

@@ -1659,6 +1659,16 @@ pub(super) fn try_bind_conditional_token_entry_followup(
     let Some(previous) = effects.last().cloned() else {
         return Ok(false);
     };
+    // "You may put a creature card from your hand onto the battlefield. If
+    // that card is an enchantment card, it enters tapped and attacking."
+    // (Summoner's Grimoire): a put of a card from a hand is no token
+    // producer. "That card" names the card the put chooses, so it must be
+    // chosen before the condition is tested. Wrapping the whole put here
+    // would test the trigger's object (or the source) instead. The
+    // conditional-entry-modifier follow-up chooses the card, then branches.
+    if conditional_entry_previous_is_hand_card_battlefield_put(&previous) {
+        return Ok(false);
+    }
     let mut modified = vec![previous.clone()];
     if !try_apply_token_copy_followup(&mut modified, followup)? {
         return Ok(false);
@@ -3000,3 +3010,31 @@ use subject_verb_followups_permission_programs::pre_rule_exile_this_way_followup
 #[path = "subject_verb_followups/animation_pt_replacement.rs"]
 mod animation_pt_replacement;
 use animation_pt_replacement::pre_rule_animation_base_pt_replacement;
+
+/// A (possibly optional) put of one or more cards from a hand onto the
+/// battlefield. Its conditional entry follow-up reads the chosen card, not a
+/// created token, so the token-entry binder must leave it to
+/// `pre_rule_conditional_entry_modifier_followup`.
+fn conditional_entry_previous_is_hand_card_battlefield_put(effect: &EffectAst) -> bool {
+    match effect {
+        EffectAst::SubjectVerb(SubjectVerbEffectAst {
+            action:
+                SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::MoveToZone {
+                    target,
+                    zone: Zone::Battlefield,
+                    ..
+                }),
+            ..
+        }) => {
+            let inner = match target {
+                TargetAst::WithCount(inner, _) => inner.as_ref(),
+                other => other,
+            };
+            matches!(inner, TargetAst::Object(filter, _, _) if filter.zone == Some(Zone::Hand))
+        }
+        EffectAst::Permissions(
+            PermissionEffectAst::May { effects } | PermissionEffectAst::MayByPlayer { effects, .. },
+        ) if effects.len() == 1 => conditional_entry_previous_is_hand_card_battlefield_put(&effects[0]),
+        _ => false,
+    }
+}

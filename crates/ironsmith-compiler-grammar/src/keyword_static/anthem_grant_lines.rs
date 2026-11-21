@@ -2859,11 +2859,11 @@ pub fn parse_lose_all_abilities_and_doesnt_untap_line(
         return Ok(None);
     };
     let remove_clause = trim_edge_punctuation_tokens(remove_clause);
-    let untap_display =
+    let (untap_display, cant_become_untapped) =
         if is_dependent_doesnt_untap_during_controller_untap_step_line_lexed(untap_clause) {
-            "doesn't untap during its controller's untap step"
+            ("doesn't untap during its controller's untap step", false)
         } else if is_dependent_cant_become_untapped_line_lexed(untap_clause) {
-            "can't become untapped"
+            ("can't become untapped", true)
         } else {
             return Ok(None);
         };
@@ -2905,7 +2905,13 @@ pub fn parse_lose_all_abilities_and_doesnt_untap_line(
     Ok(Some(vec![
         StaticAbility::remove_all_abilities(filter.clone()),
         StaticAbility::restriction(
-            crate::effect::Restriction::untap(filter),
+            // "can't become untapped" forbids every untap (Blossombind), not
+            // only the untap step (CR 502.3).
+            if cant_become_untapped {
+                crate::effect::Restriction::become_untapped(filter)
+            } else {
+                crate::effect::Restriction::untap(filter)
+            },
             format!("{subject} {untap_display}"),
         ),
     ]))
@@ -3232,24 +3238,33 @@ fn granted_blitz_abilities_from_subject(
     let AnthemSubjectAst::Filter(filter) = subject else {
         return Ok(None);
     };
-    let (filter, zones) = normalize_granted_alternative_spell_filter(filter);
-    let mut abilities = Vec::new();
-    for zone in zones {
-        let spec = crate::model::CompilerGrantSpecCore::new(
-            crate::model::CompilerGrantableCore::blitz_from_cards_mana_cost(),
-            filter.clone(),
-            zone,
-        );
-        let mut ability = StaticAbilityAst::Static(StaticAbility::grants(spec));
-        if let Some(condition) = condition.clone() {
-            ability = StaticAbilityAst::ConditionalStaticAbility {
-                ability: Box::new(ability),
-                condition,
-            };
-        }
-        abilities.push(ability);
+    // "Each creature spell you cast ... has blitz" (Henzie "Toolbox" Torre):
+    // the cards that become those spells are yours, wherever you cast them
+    // from (CR 702.152a grants blitz to the card).
+    let cast_by_you = filter.cast_by == Some(PlayerFilter::You);
+    let (mut filter, zones) = normalize_granted_alternative_spell_filter(filter);
+    if cast_by_you && filter.owner.is_none() {
+        filter.owner = Some(PlayerFilter::You);
     }
-    Ok(Some(abilities))
+    let Some((&zone, additional_zones)) = zones.split_first() else {
+        return Ok(None);
+    };
+    // One grant over every castable zone, as the madness grant does, rather
+    // than one ability per zone.
+    let mut spec = crate::model::CompilerGrantSpecCore::new(
+        crate::model::CompilerGrantableCore::blitz_from_cards_mana_cost(),
+        filter,
+        zone,
+    );
+    spec.additional_zones = additional_zones.to_vec();
+    let mut ability = StaticAbilityAst::Static(StaticAbility::grants(spec));
+    if let Some(condition) = condition {
+        ability = StaticAbilityAst::ConditionalStaticAbility {
+            ability: Box::new(ability),
+            condition,
+        };
+    }
+    Ok(Some(vec![ability]))
 }
 
 fn granted_emerge_abilities_from_subject(
@@ -4205,13 +4220,31 @@ pub fn parse_static_condition_clause(
             | ["you", "control", "permanent", "of", "each", "color"]
             | ["you", "control", "permanents", "of", "each", "color"]
     ) {
-        return Ok(PredicateAst::ValueComparison {
-            left: crate::effect::Value::ColorsAmong(
-                ObjectFilter::permanent().controlled_by(PlayerFilter::You),
-            ),
-            operator: crate::effect::ValueComparisonOperator::GreaterThanOrEqual,
-            right: crate::effect::Value::Fixed(5),
+        // CR 105.1: a permanent of each of the five colors, the same
+        // per-color control conjunction as "a creature of each color"
+        // (Coalition Victory). One multicolored permanent may satisfy
+        // several leaves, exactly as the colors-among count would.
+        let base = ObjectFilter::permanent().controlled_by(PlayerFilter::You);
+        let mut leaves = [
+            crate::color::ColorSet::WHITE,
+            crate::color::ColorSet::BLUE,
+            crate::color::ColorSet::BLACK,
+            crate::color::ColorSet::RED,
+            crate::color::ColorSet::GREEN,
+        ]
+        .into_iter()
+        .map(|color| {
+            PredicateAst::Player(PlayerPredicateAst::PlayerControls {
+                player: PlayerAst::You,
+                filter: base.clone().with_colors(color),
+            })
         });
+        let Some(first) = leaves.next() else {
+            unreachable!("five colors");
+        };
+        return Ok(leaves.fold(first, |left, right| {
+            PredicateAst::And(Box::new(left), Box::new(right))
+        }));
     }
 
     // "you control at least two creatures that share a creature type"
@@ -4362,6 +4395,15 @@ pub fn parse_static_condition_clause(
                             right: Value::Fixed(value),
                         });
                     };
+                    // "As long as there are five or more growth counters on
+                    // this enchantment" (Comforting Counsel): the existential
+                    // threshold keeps its authored source surface.
+                    if matches!(shape.comparison, crate::effect::Comparison::GreaterThanOrEqual(threshold) if threshold >= 2)
+                        && let Some(predicate) =
+                            crate::grammar::filters::parse_there_are_source_counters_at_least_predicate(&tokens)
+                    {
+                        return Ok(predicate);
+                    }
                     return Ok(PredicateAst::CountComparison {
                         count: AnthemCountExpression::CountersOnSource(counter_type),
                         comparison: shape.comparison,
@@ -5215,7 +5257,23 @@ pub fn parse_anthem_clause(
     get_idx: usize,
     tail_end: usize,
 ) -> Result<ParsedAnthemClause, CardTextError> {
-    let (prefix_condition, subject_start) = parse_anthem_prefix_condition(tokens, get_idx)?;
+    let (prefix_condition, mut subject_start) = parse_anthem_prefix_condition(tokens, get_idx)?;
+    // "For every seven Foods you control, Squirrels you control get +3/+3"
+    // (Meatsqueak, Hoard Lord): a leading per-count scale is the same
+    // "for each/every" tail authored before the subject.
+    let mut leading_scale_tokens: Option<&[OwnedLexToken]> = None;
+    if prefix_condition.is_none()
+        && subject_start == 0
+        && tokens.first().is_some_and(|token| token.is_word("for"))
+        && tokens.get(1).is_some_and(|token| token.is_any_word(&["each", "every"]))
+        && let Some(comma) = tokens[..get_idx]
+            .iter()
+            .position(|token| token.kind == crate::lexer::TokenKind::Comma)
+        && comma + 1 < get_idx
+    {
+        leading_scale_tokens = Some(&tokens[..comma]);
+        subject_start = comma + 1;
+    }
     let prefix_shape = anthem_grant_grammar::parse_prefix_condition_shape(tokens, get_idx);
     let prefix_attached_subject = if let Some(shape) = prefix_shape
         && shape.kind == anthem_grant_grammar::AnthemPrefixConditionKind::AsLongAs
@@ -5255,6 +5313,10 @@ pub fn parse_anthem_clause(
     let anthem_tail_tokens = trailing_condition
         .map(|split| split.keyword_tokens)
         .unwrap_or(tail_tokens);
+    let anthem_tail_tokens = match leading_scale_tokens {
+        Some(leading) if anthem_tail_tokens.is_empty() => leading,
+        _ => anthem_tail_tokens,
+    };
     let mut explicit_values = None;
     let (raw_power, raw_toughness) = match parse_pt_modifier_values(modifier_token) {
         Ok(values) => {
@@ -6534,12 +6596,12 @@ mod dynamic_anthem_tests {
             panic!("expected typed ability removal: {remove:#?}");
         };
         let ironsmith_core::StaticAbilityPayload::RuleRestriction {
-            restriction: crate::effect::Restriction::Untap(untap_filter),
+            restriction: crate::effect::Restriction::BecomeUntapped(untap_filter),
             display,
             ..
         } = &untap.payload
         else {
-            panic!("expected typed untap restriction: {untap:#?}");
+            panic!("expected typed become-untapped restriction: {untap:#?}");
         };
         assert_eq!(remove_filter, untap_filter);
         assert_eq!(display, "Enchanted creature can't become untapped");

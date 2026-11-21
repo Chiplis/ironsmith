@@ -275,6 +275,7 @@ fn assemble_modal_block(
                 point_cost: mode.point_cost,
                 additional_mana_cost: mode.additional_mana_cost,
                 effects_ast: mode.effects_ast,
+                flavor_label: mode.flavor_label,
             })
             .collect(),
     }))

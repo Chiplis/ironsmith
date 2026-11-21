@@ -352,6 +352,11 @@ fn parse_object_filter_inner_unchecked(
     }
 
     let not_on_battlefield = strip_not_on_battlefield_phrase(&mut base_tokens);
+    // "in any zone other than the battlefield or the stack" (The Muckslinger
+    // Gang): the same nonbattlefield card domain without its stack arm.
+    let not_on_battlefield_or_stack =
+        !not_on_battlefield && strip_not_on_battlefield_or_stack_phrase(&mut base_tokens);
+    let not_on_battlefield = not_on_battlefield || not_on_battlefield_or_stack;
 
     // "<subject> with a <inner> attached to it" and "<subject> that's
     // enchanted by <inner>" both select the subject based on an attachment
@@ -730,6 +735,10 @@ fn parse_object_filter_inner_unchecked(
     };
 
     let mut all_words = non_article_word_refs(&all_words_with_articles);
+    // "Creatures that are enchanted" keeps its postpositive surface; the
+    // matching attachment requirement is the same as "enchanted creatures".
+    let relative_enchanted_set =
+        crate::word_primitives::sequence_occurs(&all_words, &["that", "are", "enchanted"]);
     let enchanted_set =
         crate::word_primitives::sequence_occurs(&all_words, &["that", "are", "enchanted"])
             || crate::word_primitives::sequence_occurs(&all_words, &["enchanted", "creatures"]);
@@ -3246,6 +3255,7 @@ fn parse_object_filter_inner_unchecked(
             Zone::Ante,
         ]
         .into_iter()
+        .filter(|zone| !(not_on_battlefield_or_stack && *zone == Zone::Stack))
         .map(|zone| {
             let mut branch = base.clone();
             branch.zone = Some(zone);
@@ -3395,6 +3405,9 @@ fn parse_object_filter_inner_unchecked(
         let mut aura = ObjectFilter::default();
         aura.subtypes.push(crate::types::Subtype::Aura);
         filter.with_attached_object = Some(Box::new(aura));
+        if relative_enchanted_set {
+            filter.set_relative_attachment_state_surface(true);
+        }
     }
     Ok(filter)
 }

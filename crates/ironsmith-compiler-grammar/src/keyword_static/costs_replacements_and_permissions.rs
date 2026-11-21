@@ -865,8 +865,17 @@ pub fn parse_spells_cost_modifier_line(
             }
         }
         let between_filter = parse_spell_filter_with_grammar_entrypoint(&between_for_filter);
+        // "Each spell you cast that's red or green": the colors are authored
+        // as a relative clause on the spell.
+        let relative_colors = between_filter.colors.is_some()
+            && crate::lexer::parser_token_word_refs(&between_for_filter)
+                .iter()
+                .any(|word| matches!(*word, "that's" | "thats"));
         if spell_filter_has_identity(&between_filter) {
             merge_spell_filters(&mut filter, between_filter);
+        }
+        if relative_colors {
+            filter.union_surface = filter.union_surface.with_relative_characteristic_list(true);
         }
         match between_fact.actor {
             Some(static_mid_facts::SpellCastActorFact::You) => {
@@ -1883,6 +1892,11 @@ pub fn parse_equip_cost_modifier_line(
             filter.controller = Some(PlayerFilter::Opponent)
         }
         keyword_static_lines::EquipCostPayer::Unspecified => {}
+    }
+    // "Equip costs you pay cost {1} less" (Auriok Steelshaper): the authored
+    // cost-payment head, not "equip abilities you activate".
+    if !head.equip_abilities_head && !head.source_relative_equipment {
+        filter.set_equip_costs_paid_surface(true);
     }
 
     if direction == CostModifierDirection::Less {
@@ -3195,6 +3209,12 @@ pub fn parse_subject_are_card_types_in_addition_to_their_other_types_line(
                 render_token_slice(tokens),
             )]));
         }
+        // "Each creature you control is the chosen type" (Xenograft): the
+        // authored singular set quantifier is kept for the reading.
+        let mut filter = filter;
+        if fact.subject_tokens.first().is_some_and(|token| token.is_word("each")) {
+            filter.set_set_quantifier_surface(Some(ironsmith_core::SetQuantifierSurface::Each));
+        }
         return Ok(Some(vec![StaticAbility::add_chosen_creature_type(
             filter,
             render_token_slice(tokens),
@@ -3374,6 +3394,14 @@ pub fn complete_characteristic_subject(
     }
     if is_source_reference_words(&words) || anthem_grant_grammar::is_source_it_subject(tokens) {
         return Ok(Some(ObjectFilter::source()));
+    }
+    // "Enchanted Mountain is a 7/7 red Giant creature with haste. It's still
+    // a land." (Awaken the Ancient): an attachment subject named by a subtype.
+    if let ["enchanted" | "equipped", subtype] = words.as_slice()
+        && parse_subtype_flexible(subtype).is_some()
+        && let Ok(filter) = parse_object_filter_lexed(tokens, false)
+    {
+        return Ok(Some(filter));
     }
     if matches!(words.as_slice(), ["enchanted" | "equipped", "creature" | "permanent" | "artifact" | "land" | "vehicle"]) {
         return parse_object_filter_lexed(tokens, false).map(Some);
@@ -3616,8 +3644,12 @@ pub fn parse_all_cards_spells_permanents_add_chosen_color_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbility>, CardTextError> {
     if type_and_color_facts::parse_all_cards_chosen_color_addition_tokens(tokens).is_some() {
+        let mut filter = ObjectFilter::default();
+        filter.set_global_characteristic_domain_surface(Some(
+            ironsmith_core::GlobalCharacteristicDomainSurface::CardsOutsideBattlefieldSpellsAndPermanents,
+        ));
         return Ok(Some(StaticAbility::add_chosen_color(
-            ObjectFilter::default(),
+            filter,
             render_token_slice(tokens),
         )));
     }
@@ -3932,6 +3964,11 @@ pub fn parse_subject_is_pt_creature_with_keywords_still_land_line(
         ["it's" | "it’s" | "its", "still", "a", "land"]
             | ["it", "is" | "s", "still", "a", "land"]
             | ["it", "'s", "still", "a", "land"]
+            // "Lands you control are 2/2 creatures with first strike.
+            // They're still lands." (Natural Emergence): the plural subject's
+            // retention sentence, the same CR 205.1b land-type retention.
+            | ["they're" | "they’re" | "theyre", "still", "lands"]
+            | ["they", "are" | "re" | "'re", "still", "lands"]
     ) {
         return Ok(None);
     }
@@ -4974,6 +5011,12 @@ pub fn parse_token_creation_templates_line(
         choose_one: shape.choose_one,
         optional: shape.optional,
         display: display_text_for_tokens(tokens, true),
+        surface: ironsmith_core::TokenCreationTemplateSurface {
+            active: shape.active,
+            singular_source: shape.singular_source,
+            leading_instead: shape.leading_instead,
+            additional_word: shape.additional_word,
+        },
     };
     if !shape.first_time_each_turn {
         return Ok(Some(ability));
@@ -5031,7 +5074,12 @@ pub fn parse_double_token_creation_replacement_line(
             let Some(token_filter) = token_descriptor_filter(descriptor_tokens) else {
                 return Ok(None);
             };
-            if factor == 2 && token_filter.is_none() {
+            // "If one or more tokens would be created under your control,
+            // twice that many of those tokens are created instead": the
+            // modern multiplier template keeps its multiplier model; only the
+            // older "If an effect would create ..." line is the doubling
+            // replacement. Both double the tokens (CR 614.1a).
+            if factor == 2 && token_filter.is_none() && !under_your_control {
                 StaticAbility::double_token_creation_replacement(
                     controller,
                     display_text_for_tokens(tokens, true),
@@ -8051,13 +8099,18 @@ pub fn parse_if_you_would_draw_instead_effects_line(
     {
         return Ok(None);
     }
-    let body = draw_replacement_drawn_card_body(&shape.body).unwrap_or(shape.body);
+    let drawn_card_body = draw_replacement_drawn_card_body(&shape.body);
+    let names_drawn_card = drawn_card_body.is_some();
+    let body = drawn_card_body.unwrap_or(shape.body);
     let mut effects = if shape.skip {
         Vec::new()
     } else {
         super::super::clause_support::parse_effect_sentences_lexed(&body)?
     };
     bind_draw_replacement_other_player(&mut effects);
+    if names_drawn_card && let Some(first) = effects.first_mut() {
+        mark_drawn_card_exile_surface(first);
+    }
     let display = render_token_slice(tokens);
     if let Some(source_tokens) = shape.cycling_source.as_ref() {
         // "If a cycling ability of another nonland card would cause you to
@@ -8161,6 +8214,34 @@ fn draw_replacement_drawn_card_body(body: &[OwnedLexToken]) -> Option<Vec<OwnedL
     rewritten.extend(crate::lexer::synthetic_word_tokens([words[verb], "the", "top", "card", "of", possessive, "library"]));
     rewritten.extend(follow_up.iter().cloned());
     Some(rewritten)
+}
+
+/// "that player exiles that card face up instead" (Uba Mask): the exile of
+/// the would-be-drawn card keeps the authored demonstrative surface. The
+/// executable exile (the drawer's top card, exiled by the drawer) is
+/// unchanged.
+fn mark_drawn_card_exile_surface(effect: &mut crate::cards::builders::EffectAst) -> bool {
+    use crate::cards::builders::{
+        EffectAst, LibraryActionAst, SubjectVerbActionAst, SubjectVerbEffectAst,
+    };
+    match effect {
+        EffectAst::SubjectVerb(SubjectVerbEffectAst {
+            action:
+                SubjectVerbActionAst::Library(LibraryActionAst::ExileTopOfLibrary {
+                    surface: surface @ Some(ironsmith_core::ExileTopLibrarySurface::LibraryOwnerAsActor),
+                    face_down: false,
+                    ..
+                }),
+            ..
+        }) => {
+            *surface = Some(ironsmith_core::ExileTopLibrarySurface::DrawnCardFaceUp);
+            true
+        }
+        EffectAst::TagAffected { effect, .. } | EffectAst::TagReferenced { effect, .. } => {
+            mark_drawn_card_exile_surface(effect)
+        }
+        _ => false,
+    }
 }
 
 /// "Then any other player may pay 2 life" inside a draw replacement (Zur's
@@ -8348,17 +8429,26 @@ pub fn parse_conditional_draw_replacement_line(
         ));
     }
 
-    if crate::word_primitives::parse_sequence_complete(
-        &words,
-        &[
-            "if", "you", "would", "draw", "a", "card", "you", "may", "instead", "choose", "land",
-            "or", "nonland", "and", "reveal", "cards", "from", "the", "top", "of", "your",
-            "library", "until", "you", "reveal", "a", "card", "of", "the", "chosen", "kind", "put",
-            "that", "card", "into", "your", "hand", "and", "put", "all", "other", "cards",
-            "revealed", "this", "way", "on", "the", "bottom", "of", "your", "library", "in", "any",
-            "order",
-        ],
-    ) {
+    // "... on the bottom of your library in any order" (Abundance) and "...
+    // in a random order" (Pavel Chekov, First Posting): one program, the
+    // remainder order is the only difference.
+    const CHOSEN_KIND_REVEAL_PREFIX: &[&str] = &[
+        "if", "you", "would", "draw", "a", "card", "you", "may", "instead", "choose", "land",
+        "or", "nonland", "and", "reveal", "cards", "from", "the", "top", "of", "your",
+        "library", "until", "you", "reveal", "a", "card", "of", "the", "chosen", "kind", "put",
+        "that", "card", "into", "your", "hand", "and", "put", "all", "other", "cards",
+        "revealed", "this", "way", "on", "the", "bottom", "of", "your", "library", "in",
+    ];
+    let chosen_kind_bottom_order = [
+        (&["any", "order"][..], LibraryBottomOrderAst::ChooserChooses),
+        (&["a", "random", "order"][..], LibraryBottomOrderAst::Random),
+    ]
+    .into_iter()
+    .find_map(|(tail, order)| {
+        let expected = CHOSEN_KIND_REVEAL_PREFIX.iter().chain(tail).copied().collect::<Vec<_>>();
+        crate::word_primitives::parse_sequence_complete(&words, &expected).then_some(order)
+    });
+    if let Some(bottom_order) = chosen_kind_bottom_order {
         let mode = |label: &str, filter: ObjectFilter, suffix: &str| {
             let all_tag = crate::tag::CompilerIndexedTag::DrawReplacementAll.key_in_scope(suffix);
             let match_tag =
@@ -8385,7 +8475,7 @@ pub fn parse_conditional_draw_replacement_line(
                     EffectAst::subject_verb_put_tagged_remainder_on_bottom_of_library(
                         all_tag,
                         Some(match_tag),
-                        LibraryBottomOrderAst::ChooserChooses,
+                        bottom_order,
                         PlayerAst::You,
                     ),
                 ],
@@ -9512,6 +9602,27 @@ fn parse_copy_activated_abilities_core(
             Err(_) => return Ok(None),
         }
     };
+    // "cards you own in exile with cage counters on them" (Mairsil, the
+    // Pretender): the counter requirement was authored after the zone.
+    {
+        let filter_words = crate::lexer::parser_token_word_refs(&filter_tokens);
+        let zone_index = filter_words.iter().position(|word| {
+            matches!(
+                *word,
+                "battlefield" | "graveyard" | "hand" | "library" | "exile" | "command"
+            )
+        });
+        let counter_index = filter_words
+            .iter()
+            .rposition(|word| matches!(*word, "counter" | "counters"));
+        if filter.with_counter.is_some()
+            && zone_index
+                .zip(counter_index)
+                .is_some_and(|(zone, counter)| zone < counter)
+        {
+            filter.set_counter_requirement_after_zone_surface(true);
+        }
+    }
     crate::word_claims::claim_tokens(&donor_quantifier);
     if fact.exclude_source_name {
         // "that don't have the same name as this creature" is carried by
@@ -11523,6 +11634,7 @@ pub(crate) fn parse_mana_output_rewrite_definition(
             input: shape.input,
             output: shape.output,
             quantity: shape.quantity,
+            surface: shape.surface,
         },
         target,
         mode: shape.mode,

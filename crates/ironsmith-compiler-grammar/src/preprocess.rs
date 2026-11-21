@@ -2500,6 +2500,44 @@ fn dies_trigger_return_object_pronoun_range(
 /// object pronoun names the card that just died — the same referent the
 /// neutral "it" carries (the triggering object, CR 400.7 / 603.10a) — not
 /// the source as a new battlefield object.
+/// "Exile Zuko, then return him to the battlefield under an opponent's
+/// control." (Zuko, Conflicted): once the source is exiled, the personal
+/// object pronoun names the exiled card — the referent the neutral "it"
+/// carries in "Exile Sol'Kanar, then return it ..." — not the source as a
+/// battlefield object (CR 400.7). The operand grammar reads a bare "him" /
+/// "her" as the source, so read this one antecedent as "it".
+fn rewrite_exile_self_then_return_pronoun_line(text: &str, subjects: &[&str]) -> String {
+    for subject in subjects
+        .iter()
+        .map(|subject| subject.trim().to_ascii_lowercase())
+        .filter(|subject| !subject.is_empty())
+    {
+        for pronoun in ["him", "her"] {
+            // Only the return to another player's control: a transformed
+            // return ("return him to the battlefield transformed under his
+            // owner's control") keeps its authored pronoun surface.
+            let pattern = format!(
+                "exile {subject}, then return {pronoun} to the battlefield under an opponent's control"
+            );
+            let Some(at) = text.find(pattern.as_str()) else {
+                continue;
+            };
+            if at > 0 && text[..at].ends_with(|ch: char| ch.is_ascii_alphanumeric()) {
+                continue;
+            }
+            let pronoun_at = at + pattern.len()
+                - " to the battlefield under an opponent's control".len()
+                - pronoun.len();
+            return format!(
+                "{}it{}",
+                &text[..pronoun_at],
+                &text[pronoun_at + pronoun.len()..]
+            );
+        }
+    }
+    text.to_string()
+}
+
 fn rewrite_dies_trigger_object_pronouns_line(text: &str) -> String {
     let Some(rest) = text.strip_prefix("when this dies, ") else {
         return text.to_string();
@@ -3653,8 +3691,16 @@ pub fn preprocess_document_with_provenance(
         let expanded_normalized = rewrite_personal_pronouns_line(expanded_normalized.as_str());
         let expanded_normalized =
             rewrite_dies_trigger_object_pronouns_line(expanded_normalized.as_str());
+        let expanded_normalized = rewrite_exile_self_then_return_pronoun_line(
+            expanded_normalized.as_str(),
+            &["this", typed_subject, full_name.text.as_str(), short_name.text.as_str()],
+        );
+        let enters_attached_input = expanded_normalized;
         let expanded_normalized =
-            rewrite_enters_attached_trigger_line(expanded_normalized.as_str());
+            rewrite_enters_attached_trigger_line(enters_attached_input.as_str());
+        let enters_attached_host = (expanded_normalized != enters_attached_input)
+            .then(|| enters_attached_trigger_host_type(enters_attached_input.as_str()))
+            .flatten();
         let expanded_normalized =
             rewrite_has_and_is_type_addition_line(expanded_normalized.as_str());
         let expanded_normalized =
@@ -3765,6 +3811,9 @@ pub fn preprocess_document_with_provenance(
         }
         let mut semantic_facts = line_semantic_facts::parse_line_semantic_facts_tokens(&tokens);
         record_authored_reminder_facts(&mut semantic_facts, &authored);
+        semantic_facts.named_token_definition_reminder =
+            rewrite_named_token_definition_reminder(raw_line.trim(), &authored).is_some();
+        semantic_facts.enters_attached_host_trigger = enters_attached_host;
         if entry_instead_surface
             && let Some(as_enters) = semantic_facts.statement.as_enters_effect_program.as_mut()
         {
@@ -3953,6 +4002,8 @@ pub fn preprocess_document_with_provenance(
             line = body.trim();
             line_tokens = stage_tokens(line).unwrap_or_default();
         }
+        let source_card_other_abilities_grant =
+            expand_gains_this_cards_other_abilities_line(line, line_index, text.lines()).is_some();
         let variants = reminder_actions::expand_attachment_pair(line)
             .or_else(|| reminder_actions::expand_counter_threshold_activation(line))
             .or_else(|| expand_do_all_of_the_above_line(line, text.lines().take(line_index)))
@@ -4076,6 +4127,8 @@ pub fn preprocess_document_with_provenance(
             )? {
                 let mut parsed_line = parsed_line;
                 parsed_line.info.semantic_facts.sticker_ticket_cost = sticker_ticket_cost;
+                parsed_line.info.semantic_facts.source_card_other_abilities_grant =
+                    source_card_other_abilities_grant;
                 items.push(PreprocessedItem::Line(parsed_line));
             }
         }
@@ -4670,4 +4723,16 @@ fn join_stacked_non_modifiers(text: &str) -> String {
     }
     out.push_str(rest);
     out
+}
+
+
+/// The host card type of "When this Aura enters attached to a <type>, ...",
+/// the authored shape [`rewrite_enters_attached_trigger_line`] reads as the
+/// Aura's attached object.
+fn enters_attached_trigger_host_type(text: &str) -> Option<CardType> {
+    let lower = text.to_ascii_lowercase();
+    let rest = lower.strip_prefix("when this aura enters attached to ")?;
+    let rest = rest.strip_prefix("a ").or_else(|| rest.strip_prefix("an "))?;
+    let (noun, _) = rest.split_once(", ")?;
+    crate::word_claims::probe_only(|| crate::util::parse_card_type(noun))
 }

@@ -918,18 +918,13 @@ fn take_until_replacement_phrase<'a>(
 fn parse_generic_token_replacement(tokens: &[OwnedLexToken]) -> bool {
     semantic_all(
         tokens,
-        alt((
-            semantic_phrase(&[
-                "if", "effect", "would", "create", "one", "or", "more", "tokens", "under", "your",
-                "control", "it", "creates", "twice", "that", "many", "of", "those", "tokens",
-                "instead",
-            ]),
-            semantic_phrase(&[
-                "if", "one", "or", "more", "tokens", "would", "be", "created", "under", "your",
-                "control", "twice", "that", "many", "of", "those", "tokens", "are", "created",
-                "instead",
-            ]),
-        )),
+        // The modern "If one or more tokens would be created under your
+        // control, twice that many ..." template is the multiplier shape.
+        semantic_phrase(&[
+            "if", "effect", "would", "create", "one", "or", "more", "tokens", "under", "your",
+            "control", "it", "creates", "twice", "that", "many", "of", "those", "tokens",
+            "instead",
+        ]),
         "generic double-token replacement",
     )
 }

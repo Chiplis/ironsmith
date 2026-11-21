@@ -37,6 +37,8 @@ pub struct DamageMultiplierSpec<'a> {
     pub combat_only: bool,
     /// "would deal noncombat damage" (Solphim, Mayhem Dominus).
     pub noncombat_only: bool,
+    /// Authored as the imperative "Double all damage ... would deal".
+    pub imperative_all_damage: bool,
 }
 
 /// "If a source would deal damage to you or a permanent you control, prevent
@@ -193,6 +195,7 @@ fn parse_imperative_damage_multiplier_lexed<'a>(
         factor,
         combat_only: false,
         noncombat_only: false,
+        imperative_all_damage: true,
     })
 }
 
@@ -317,6 +320,7 @@ fn parse_damage_multiplier_lexed<'a>(
         factor,
         combat_only,
         noncombat_only,
+        imperative_all_damage: false,
     })
 }
 

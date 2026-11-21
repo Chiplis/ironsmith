@@ -2727,6 +2727,14 @@ pub(crate) fn describe_keyword_ability(ability: &Ability) -> Option<String> {
     {
         return Some("Haunt".to_string());
     }
+    // Renown N (CR 702.112a) and the Equipment token keywords (living
+    // weapon, For Mirrodin!, job select) have exact structural expansions;
+    // a granted copy reads as the keyword, as the printed one does.
+    if let Some(keyword) = super::ast_render::describe_structural_renown_keyword(ability)
+        .or_else(|| super::ast_render::describe_structural_equipment_token_keyword(ability))
+    {
+        return Some(keyword);
+    }
     if let AbilityKind::Triggered(triggered) = &ability.kind
         && triggered.intervening_if.is_none()
         && triggered.presentation_label.is_none()
@@ -4035,14 +4043,20 @@ pub(super) fn describe_structural_reconfigure_keyword(
     if let Some(branches) = activated.mana_cost.as_one_of() {
         // "Reconfigure—Pay {2} or {E}{E}{E}" (CR 702.151a, Razorfield Ripper).
         let has_non_mana_branch = branches.iter().any(|branch| branch.has_non_mana_costs());
+        let mut pay_named = false;
         let branches = branches
             .iter()
             .map(|branch| {
                 let described = describe_total_cost(branch);
                 if has_non_mana_branch && !branch.has_non_mana_costs() {
+                    pay_named = true;
                     format!("pay {described}")
                 } else if has_non_mana_branch {
-                    lowercase_first(&described)
+                    // A later payment shares the "pay" already printed.
+                    match described.strip_prefix("Pay ") {
+                        Some(rest) if pay_named => rest.to_string(),
+                        _ => lowercase_first(&described),
+                    }
                 } else {
                     described
                 }
@@ -6465,6 +6479,40 @@ pub(crate) enum TriggerFrequencySurface {
     DoThisMaxTimesEachTurn(u32),
 }
 
+/// "Whenever this creature becomes tapped for the first time during each of
+/// your turns" (Tale of Katara and Toph): a first-time-this-turn trigger whose
+/// residual intervening condition includes "it's your turn" is the per-your-turn
+/// frequency, never "... for the first time each turn, if it's your turn".
+pub(crate) fn fold_first_time_your_turn_frequency(
+    trigger_surface: &mut String,
+    trigger_frequency: Option<TriggerFrequencySurface>,
+    intervening_condition: &mut Option<crate::ConditionExpr>,
+) {
+    if !matches!(trigger_frequency, Some(TriggerFrequencySurface::FirstTimeThisTurn)) {
+        return;
+    }
+    let Some(base) = trigger_surface
+        .strip_suffix(" for the first time each turn")
+        .map(str::to_string)
+    else {
+        return;
+    };
+    let Some(condition) = intervening_condition.as_ref() else {
+        return;
+    };
+    let mut conjuncts = Vec::new();
+    flatten_condition_and_expr(condition, &mut conjuncts);
+    if !conjuncts
+        .iter()
+        .any(|condition| matches!(condition, crate::ConditionExpr::YourTurn))
+    {
+        return;
+    }
+    conjuncts.retain(|condition| !matches!(condition, crate::ConditionExpr::YourTurn));
+    *intervening_condition = fold_condition_exprs(conjuncts);
+    *trigger_surface = format!("{base} for the first time during each of your turns");
+}
+
 pub(crate) fn split_trigger_intervening_if(
     condition: &crate::ConditionExpr,
 ) -> (
@@ -6965,4 +7013,438 @@ pub(crate) fn rebind_reflexive_matching_count_surface(
         }
     }
     triggered
+}
+
+/// Scoped all-damage redirection (Sivvi's Valor, Turn the Tables, Mirror
+/// Strike, Heroic Sacrifice, Blood of the Martyr): a CR 615 replacement read
+/// from its typed recipient set or target, optional damage-source
+/// restriction, combat-only flag, destination and bounded duration.
+pub(super) fn describe_timed_damage_redirection_scope(
+    scope: &ironsmith_core::TimedDamageRedirectionScope,
+    destination_target: &ChooseSpec,
+) -> String {
+    use ironsmith_core::TimedDamageRedirectDestination as Destination;
+    let damage = if scope.combat_only { "combat damage" } else { "damage" };
+    let recipient = if let Some(protected) = &scope.protected_target {
+        describe_choose_spec(protected)
+    } else {
+        let objects = scope.object_filter.as_ref().map(|filter| {
+            let noun = filter.description();
+            if scope.optional_by_controller {
+                // "if damage would be dealt to any creature" (Blood of the Martyr)
+                format!("any {}", strip_indefinite_article(&noun))
+            } else {
+                pluralize_noun_phrase(strip_indefinite_article(&noun))
+            }
+        });
+        let players = scope.player_filter.as_ref().map(describe_player_filter);
+        match (players, objects) {
+            (Some(players), Some(objects)) => format!("{players} and {objects}"),
+            (Some(players), None) => players,
+            (None, Some(objects)) => objects,
+            (None, None) => "any permanent or player".to_string(),
+        }
+    };
+    let source = match &scope.source_target {
+        Some(source) => format!(" by {}", describe_choose_spec(source)),
+        None => {
+            let noun = scope.source_filter.description();
+            if noun.is_empty() {
+                String::new()
+            } else {
+                format!(" by {}", pluralize_noun_phrase(strip_indefinite_article(&noun)))
+            }
+        }
+    };
+    let destination = match scope.destination {
+        Destination::Target => describe_choose_spec(destination_target),
+        // Same self-reference as RedirectNextTimeDamageToSourceEffect's reader.
+        Destination::Source => "this creature".to_string(),
+        Destination::Controller => "you".to_string(),
+        Destination::DamageSourceController => "its controller".to_string(),
+    };
+    let (lead, timing) = match scope.mode {
+        crate::effects::ReplacementApplyMode::UntilYourNextTurn => ("Until your next turn, ", ""),
+        crate::effects::ReplacementApplyMode::UntilEndOfTurn if scope.optional_by_controller => {
+            ("Until end of turn, ", "")
+        }
+        crate::effects::ReplacementApplyMode::UntilEndOfTurn => ("", " this turn"),
+        _ => ("", ""),
+    };
+    let text = if scope.optional_by_controller {
+        format!(
+            "{lead}if {damage} would be dealt to {recipient}{source}, you may have that damage dealt to {destination} instead"
+        )
+    } else {
+        // A class of sources precedes the duration ("by unblocked creatures
+        // this turn", Kjeldoran Royal Guard); a single targeted or chosen
+        // source follows it ("this turn by target attacking creature").
+        if scope.source_target.is_none() && !source.is_empty() {
+            format!(
+                "{lead}all {damage} that would be dealt to {recipient}{source}{timing} is dealt to {destination} instead"
+            )
+        } else {
+            format!(
+                "{lead}all {damage} that would be dealt to {recipient}{timing}{source} is dealt to {destination} instead"
+            )
+        }
+    };
+    capitalize_first(&text)
+}
+
+/// "each player returns to their hand all cards they own exiled with it"
+/// (Parallax Nexus): for every player, the cards that player owns among those
+/// linked to this source (CR 607.2a) return to their owner's hand; each player
+/// is the subject of the per-player return.
+fn describe_each_player_returns_owned_source_exiled_cards(
+    for_players: &crate::effects::ForPlayersEffect,
+) -> Option<String> {
+    if for_players.filter != PlayerFilter::Any
+        || for_players.starting_with_controller
+        || for_players.stop_after_first_happened
+        || for_players.announcement_condition.is_some()
+    {
+        return None;
+    }
+    let [inner] = for_players.effects.as_slice() else {
+        return None;
+    };
+    let returned = inner.downcast_ref::<crate::effects::ReturnToHandEffect>()?;
+    if returned.actor_surface.is_some()
+        || returned
+            .destination_player_surface
+            .as_ref()
+            .is_some_and(|player| *player != PlayerFilter::IteratedPlayer)
+        || returned.exiled_with_source_surface.is_some()
+        || returned.set_quantifier_surface.is_some()
+        || returned.set_reference_surface.is_some()
+    {
+        return None;
+    }
+    let ChooseSpec::All(filter) = &returned.spec else {
+        return None;
+    };
+    let [constraint] = filter.tagged_constraints.as_slice() else {
+        return None;
+    };
+    if constraint.tag.as_str() != crate::tag::SOURCE_EXILED_TAG
+        || constraint.relation != crate::filter::TaggedOpbjectRelation::IsTaggedObject
+        || filter.zone != Some(Zone::Exile)
+        || filter.owner != Some(PlayerFilter::IteratedPlayer)
+    {
+        return None;
+    }
+    let mut rest = filter.clone();
+    rest.zone = None;
+    rest.owner = None;
+    rest.tagged_constraints.clear();
+    rest.union_surface = Default::default();
+    if rest != crate::target::ObjectFilter::default() {
+        return None;
+    }
+    Some("Each player returns to their hand all cards they own exiled with it".to_string())
+}
+
+
+/// "Choose one. X is the number of spells you've cast this turn. • Scry X."
+/// (Gnostro, Voice of the Crags): once the modal header defines the shared X
+/// (`describe_shared_spells_cast_modal_x_basis`), each mode reads its amount
+/// as X.
+pub(super) fn describe_mode_effects_with_shared_x(effects: &[Effect]) -> Option<String> {
+    let [effect] = effects else {
+        return None;
+    };
+    let effect = unwrap_basic_tag_wrappers(effect);
+    let rewritten = if let Some(scry) = effect.downcast_ref::<crate::effects::ScryEffect>() {
+        let mut scry = scry.clone();
+        scry.count = Value::X;
+        Effect::new(scry)
+    } else if let Some(deal) = effect.downcast_ref::<crate::effects::DealDamageEffect>() {
+        let mut deal = deal.clone();
+        deal.amount = Value::X;
+        Effect::new(deal)
+    } else if let Some(gain) = effect.downcast_ref::<crate::effects::GainLifeEffect>() {
+        let mut gain = gain.clone();
+        gain.amount = Value::X;
+        Effect::new(gain)
+    } else {
+        return None;
+    };
+    Some(describe_effect_list(&[rewritten]))
+}
+
+/// "Assimilate target nonartifact creature an opponent controls" (The Best of
+/// Both Worlds): gaining control of a permanent, putting a +1/+1 counter on
+/// it, and making it an artifact creature Borg (losing its other creature
+/// types) is the permanent assimilate keyword action.
+pub(super) fn describe_battlefield_assimilate_sequence(effects: &[Effect]) -> Option<String> {
+    fn tagged_parts(effect: &Effect) -> (Option<&crate::tag::TagKey>, &Effect) {
+        match effect.downcast_ref::<crate::effects::TaggedEffect>() {
+            Some(tagged) => (Some(&tagged.tag), &*tagged.effect),
+            None => (None, effect),
+        }
+    }
+    fn targets_tag(spec: Option<&ChooseSpec>, tag: &crate::tag::TagKey) -> bool {
+        matches!(spec.map(ChooseSpec::base), Some(ChooseSpec::Tagged(found)) if found == tag)
+    }
+    let [control, counters, typed, subtyped] = effects else {
+        return None;
+    };
+    let (Some(tag), control) = tagged_parts(control) else {
+        return None;
+    };
+    let control = control.downcast_ref::<crate::effects::ApplyContinuousEffect>()?;
+    let target = control.target_spec.as_ref()?;
+    if !matches!(target.unhinted(), ChooseSpec::Target(_))
+        || control.until != crate::Until::Forever
+        || control.modification.is_some()
+        || !control.additional_modifications.is_empty()
+        || !matches!(
+            control.runtime_modifications.as_slice(),
+            [crate::effects::continuous::RuntimeModification::ChangeControllerToEffectController]
+        )
+    {
+        return None;
+    }
+    let counters = tagged_parts(counters).1.downcast_ref::<crate::effects::PutCountersEffect>()?;
+    if counters.counter_type != CounterType::PlusOnePlusOne
+        || counters.amount.unhinted() != &Value::Fixed(1)
+        || !targets_tag(Some(&counters.target), tag)
+    {
+        return None;
+    }
+    let typed = tagged_parts(typed).1.downcast_ref::<crate::effects::ApplyContinuousEffect>()?;
+    if typed.until != crate::Until::Forever
+        || !targets_tag(typed.target_spec.as_ref(), tag)
+        || !typed.additional_modifications.is_empty()
+        || !matches!(
+            typed.modification.as_ref(),
+            Some(crate::continuous::Modification::AddCardTypes(types))
+                if types.as_slice() == [crate::types::CardType::Artifact, crate::types::CardType::Creature]
+        )
+    {
+        return None;
+    }
+    let subtyped = tagged_parts(subtyped).1.downcast_ref::<crate::effects::ApplyContinuousEffect>()?;
+    if subtyped.until != crate::Until::Forever
+        || !targets_tag(subtyped.target_spec.as_ref(), tag)
+        || !matches!(
+            subtyped.modification.as_ref(),
+            Some(crate::continuous::Modification::RemoveAllSubtypesOfFamily(
+                crate::types::SubtypeFamily::Creature
+            ))
+        )
+        || !matches!(
+            subtyped.additional_modifications.as_slice(),
+            [crate::continuous::Modification::AddSubtypes(subtypes)]
+                if subtypes.as_slice() == [crate::types::Subtype::Borg]
+        )
+    {
+        return None;
+    }
+    Some(format!("Assimilate {}", describe_choose_spec(target)))
+}
+
+/// "You may put the exiled card onto the battlefield if it's a creature card.
+/// If you don't put it onto the battlefield, put it into its owner's hand."
+/// (The Creation of Avacyn): lowering routes the declined fallback to an
+/// unconditional move of the still-exiled linked set, identical to the
+/// non-matching branch, so both hand moves are the one authored fallback.
+pub(crate) fn describe_linked_exile_may_put_else_hand(
+    conditional: &crate::effects::ConditionalEffect,
+) -> Option<String> {
+    let crate::effect::Condition::TaggedObjectMatches(tag, _) = &conditional.condition else {
+        return None;
+    };
+    if tag.as_str() != crate::tag::SOURCE_EXILED_TAG {
+        return None;
+    }
+    let [choice, fallback] = conditional.if_true.as_slice() else {
+        return None;
+    };
+    let [otherwise] = conditional.if_false.as_slice() else {
+        return None;
+    };
+    let choice_with_id = choice.downcast_ref::<crate::effects::WithIdEffect>()?;
+    let may = choice_with_id.effect.downcast_ref::<crate::effects::MayEffect>()?;
+    let [move_effect] = may.effects.as_slice() else {
+        return None;
+    };
+    let to_battlefield = structural_unwrap_render_wrappers(move_effect)
+        .downcast_ref::<crate::effects::MoveToZoneEffect>()?;
+    let to_hand = fallback.downcast_ref::<crate::effects::MoveToZoneEffect>()?;
+    let otherwise = otherwise.downcast_ref::<crate::effects::MoveToZoneEffect>()?;
+    let linked = ChooseSpec::Tagged(tag.clone());
+    if to_battlefield.zone != Zone::Battlefield
+        || to_hand.zone != Zone::Hand
+        || otherwise.zone != Zone::Hand
+        || to_battlefield.target != linked
+        || to_hand.target != linked
+        || otherwise.target != linked
+    {
+        return None;
+    }
+    let may_text = describe_effect(&choice_with_id.effect);
+    let may_text = may_text.trim().trim_end_matches('.');
+    let condition = describe_condition(&conditional.condition);
+    Some(format!(
+        "{} if {}. If you don't put it onto the battlefield, put it into its owner's hand",
+        capitalize_first(may_text),
+        condition.trim()
+    ))
+}
+
+
+/// "Return that card to the battlefield tapped under your control. It's a
+/// Treasure artifact with "{T}, Sacrifice this artifact: Add one mana of any
+/// color," and it loses all other card types." (Vraska, the Silencer): the
+/// arrival's typed entry changes replace its card types with one type plus a
+/// subtype and grant it one ability.
+pub(super) fn describe_move_entering_as_typed_object_with_ability(
+    move_to_zone: &crate::effects::MoveToZoneEffect,
+) -> Option<String> {
+    let changes = move_to_zone.entry_type_changes.as_ref()?;
+    let [card_type] = changes.set_card_types.as_deref()? else {
+        return None;
+    };
+    let [subtype] = changes.added_subtypes.as_slice() else {
+        return None;
+    };
+    let [crate::continuous::Modification::AddAbilityGeneric(ability)] =
+        move_to_zone.entry_modifications.as_slice()
+    else {
+        return None;
+    };
+    if !changes.color_changes.is_empty()
+        || !changes.added_card_types.is_empty()
+        || changes.removed_subtype_families.is_empty()
+        || !move_to_zone.enters_with_counters.is_empty()
+    {
+        return None;
+    }
+    let type_word = card_type.name().to_ascii_lowercase();
+    let ability = describe_inline_ability_with_self_subject(ability, &format!("this {type_word}"));
+    let ability = ability.trim().trim_end_matches('.');
+    if ability.is_empty() || ability.contains('"') {
+        return None;
+    }
+    let mut plain = move_to_zone.clone();
+    plain.entry_modifications.clear();
+    plain.entry_type_changes = None;
+    let movement = describe_effect(&Effect::new(plain));
+    Some(format!(
+        "{}. It's {} with \"{ability},\" and it loses all other card types",
+        movement.trim().trim_end_matches('.'),
+        with_indefinite_article(&format!("{subtype} {type_word}"))
+    ))
+}
+
+/// Whether a mode's first action is performed by the ability's controller
+/// with no authored subject of its own: a counter placement, a destruction,
+/// or a draw by you. Used when another player chooses the mode, where the
+/// printed mode names "You" (Misfortune, Fatal Lore).
+pub(super) fn mode_leads_with_your_action(effects: &[Effect]) -> bool {
+    fn first_action(effect: &Effect) -> &Effect {
+        let effect = structural_unwrap_render_wrappers(effect);
+        if let Some(sequence) = effect.downcast_ref::<crate::effects::SequenceEffect>()
+            && let Some(first) = sequence.effects.first()
+        {
+            return first_action(first);
+        }
+        if let Some(for_each) = effect.downcast_ref::<crate::effects::ForEachObject>()
+            && let Some(first) = for_each.effects.first()
+        {
+            return first_action(first);
+        }
+        effect
+    }
+    let Some(first) = effects.first() else {
+        return false;
+    };
+    let effect = first_action(first);
+    if let Some(draw) = effect.downcast_ref::<crate::effects::DrawCardsEffect>() {
+        return draw.player == PlayerFilter::You;
+    }
+    effect.downcast_ref::<crate::effects::PutCountersEffect>().is_some()
+        || effect.downcast_ref::<crate::effects::DestroyEffect>().is_some()
+        || effect.downcast_ref::<crate::effects::DestroyNoRegenerationEffect>().is_some()
+}
+
+/// "For each opponent who does, you gain protection from that player until
+/// your next turn." (Noble Heritage): a per-player readback of an earlier
+/// option whose branch is the player's protection, lowered to its targeting
+/// and damage-prevention consequences (CR 702.16b/e). Both name the iterated
+/// player through the source-controller filter.
+pub(crate) fn describe_for_each_player_who_does_player_protection(
+    for_players: &crate::effects::ForPlayersEffect,
+) -> Option<String> {
+    let [inner] = for_players.effects.as_slice() else {
+        return None;
+    };
+    let if_effect = unwrap_basic_tag_wrappers(inner).downcast_ref::<crate::effects::IfEffect>()?;
+    if !matches!(if_effect.predicate, EffectPredicate::Chosen | EffectPredicate::Happened)
+        || !if_effect.else_.is_empty()
+    {
+        return None;
+    }
+    let [cant_effect, prevent_effect] = if_effect.then.as_slice() else {
+        return None;
+    };
+    let cant = unwrap_basic_tag_wrappers(cant_effect).downcast_ref::<crate::effects::CantEffect>()?;
+    let crate::effect::Restriction::BeTargetedPlayerFrom(PlayerFilter::You, target_sources) =
+        &cant.restriction
+    else {
+        return None;
+    };
+    let prevent = unwrap_basic_tag_wrappers(prevent_effect)
+        .downcast_ref::<crate::effects::PreventAllDamageToTargetEffect>()?;
+    if !matches!(prevent.target, ChooseSpec::SourceController)
+        || prevent.duration != cant.duration
+        || !prevent.follow_up_effects.is_empty()
+        || prevent.source_color_of_your_choice
+        || prevent.source_of_your_choice
+        || prevent.damage_filter.combat_only
+        || prevent.damage_filter.noncombat_only
+    {
+        return None;
+    }
+    let damage_sources = prevent.damage_filter.from_source.as_ref()?;
+    if target_sources.controller != Some(PlayerFilter::IteratedPlayer)
+        || damage_sources.controller != target_sources.controller
+    {
+        return None;
+    }
+    let duration = match cant.duration {
+        crate::effect::Until::YourNextTurn => " until your next turn",
+        crate::effect::Until::EndOfTurn => " until end of turn",
+        _ => return None,
+    };
+    let player_filter_text = describe_for_each_player_filter(&for_players.filter);
+    let each_player = strip_leading_article(&player_filter_text);
+    Some(format!(
+        "For each {each_player} who does, you gain protection from that player{duration}"
+    ))
+}
+
+/// "An opponent chooses one — • You put a +1/+1 counter on each creature you
+/// control and gain 4 life." (Misfortune): a two-member coordinated mode whose
+/// trailing action is the controller's own life gain.
+pub(super) fn mode_trails_with_your_life_gain(effects: &[Effect]) -> bool {
+    let [effect] = effects else {
+        return false;
+    };
+    let Some(sequence) =
+        structural_unwrap_render_wrappers(effect).downcast_ref::<crate::effects::SequenceEffect>()
+    else {
+        return false;
+    };
+    if sequence.surface != ironsmith_core::SequenceSurface::Coordinated {
+        return false;
+    }
+    let [_, last] = sequence.effects.as_slice() else {
+        return false;
+    };
+    structural_unwrap_render_wrappers(last)
+        .downcast_ref::<crate::effects::GainLifeEffect>()
+        .is_some_and(|gain| matches!(gain.player.unhinted(), ChooseSpec::Player(PlayerFilter::You)))
 }

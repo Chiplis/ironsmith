@@ -570,22 +570,24 @@ fn parse_next_turn_attack_ban_sentence(tokens: &[OwnedLexToken]) -> Option<Effec
         .strip_prefix(&["that", "player"][..])
         .or_else(|| words.strip_prefix(&["they"][..]))
         .unwrap_or(&words);
-    let [
-        "cant" | "can't" | "cannot",
-        "attack",
-        "you",
-        "or",
-        protected @ ("permanents" | "planeswalkers"),
-        "you",
-        "control",
-        "during",
-        tail @ ..,
-    ] = rest
-    else {
-        return None;
+    let (protected, tail) = match rest {
+        [
+            "cant" | "can't" | "cannot",
+            "attack",
+            "you",
+            "or",
+            protected @ ("permanents" | "planeswalkers"),
+            "you",
+            "control",
+            "during",
+            tail @ ..,
+        ] => (Some(*protected), tail),
+        // "Each opponent who does can't attack you during their next turn."
+        // (Zagorka, Mother of Sanctum): only the player is protected; their
+        // planeswalkers and battles stay attackable.
+        ["cant" | "can't" | "cannot", "attack", "you", "during", tail @ ..] => (None, tail),
+        _ => return None,
     };
-    // "permanents you control" also covers battles you control (CR 508.1b).
-    let covers_all_permanents = *protected == "permanents";
     if !matches!(
         tail,
         ["their", "next", "turn"]
@@ -596,7 +598,10 @@ fn parse_next_turn_attack_ban_sentence(tokens: &[OwnedLexToken]) -> Option<Effec
     }
     let mut attackers = ObjectFilter::creature();
     attackers.controller = Some(PlayerFilter::IteratedPlayer);
-    let restriction = if covers_all_permanents {
+    // "permanents you control" also covers battles you control (CR 508.1b).
+    let restriction = if protected.is_none() {
+        crate::effect::Restriction::attack_player(attackers, PlayerFilter::You)
+    } else if protected == Some("permanents") {
         crate::effect::Restriction::attack_player_or_permanents_controlled_by(
             attackers,
             PlayerFilter::You,

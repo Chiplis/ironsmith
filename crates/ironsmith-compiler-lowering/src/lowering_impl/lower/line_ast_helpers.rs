@@ -629,6 +629,115 @@ pub fn lower_line_ast(
             }
         }
     }
+    // CR 111.4: a named token defined only by the reminder after its creating
+    // instruction has rules-implied characteristics, like a predefined token.
+    if semantic_facts.named_token_definition_reminder {
+        let mark = |effects: &mut Vec<crate::effect::Effect>| {
+            for effect in effects.iter_mut() {
+                let Some(create) = effect.as_create_token() else {
+                    continue;
+                };
+                if create.text_roles.as_ref().is_none_or(|roles| {
+                    roles.name != ironsmith_core::TokenNameTextRole::Explicit
+                }) {
+                    continue;
+                }
+                let mut create = create.clone();
+                create.text_roles = Some(ironsmith_core::TokenTextRoles::rules_implied(
+                    ironsmith_core::TokenNameTextRole::Explicit,
+                    create.token.abilities.len(),
+                ));
+                *effect = crate::effect::Effect::new(create);
+            }
+        };
+        for ability in &mut builder.abilities[line_abilities_start..] {
+            match &mut ability.kind {
+                ironsmith_core::AbilityKind::Triggered(triggered) => {
+                    for segment in &mut triggered.effects.segments {
+                        mark(&mut segment.default_effects);
+                    }
+                }
+                ironsmith_core::AbilityKind::Activated(activated) => {
+                    for segment in &mut activated.effects.segments {
+                        mark(&mut segment.default_effects);
+                    }
+                }
+                ironsmith_core::AbilityKind::Static(_) => {}
+            }
+        }
+        if let Some(program) = &mut builder.spell_effect {
+            for segment in program.segments.iter_mut().skip(line_spell_segments_start) {
+                mark(&mut segment.default_effects);
+            }
+        }
+    }
+    // "When this Aura enters attached to a creature, ... that creature"
+    // (Infinite Reflection): the host anaphor lowered to the attachment
+    // capture; keep the authored host noun on that capture.
+    if let Some(host) = semantic_facts.enters_attached_host_trigger {
+        for ability in &mut builder.abilities[line_abilities_start..] {
+            let ironsmith_core::AbilityKind::Triggered(triggered) = &mut ability.kind else {
+                continue;
+            };
+            for segment in &mut triggered.effects.segments {
+                for effect in segment.default_effects.iter_mut() {
+                    let Some(attached) =
+                        effect.downcast_ref::<crate::effects::TagAttachedToSourceEffect>()
+                    else {
+                        continue;
+                    };
+                    let mut attached = attached.clone();
+                    attached.entered_attached_host_surface = Some(host);
+                    *effect = crate::effect::Effect::new(attached);
+                }
+            }
+        }
+    }
+    // "It gains this card's other abilities." (Symbiote Spider-Man): the grant
+    // carries the quoted copies of those abilities; keep the authored
+    // by-reference wording as the grant's clause surface.
+    if semantic_facts.source_card_other_abilities_grant {
+        let mark = |effects: &mut Vec<crate::effect::Effect>| {
+            for effect in effects.iter_mut() {
+                let Some(apply) = effect.downcast_ref::<crate::effects::ApplyContinuousEffect>()
+                else {
+                    continue;
+                };
+                let grants_ability = apply
+                    .modification
+                    .iter()
+                    .chain(apply.additional_modifications.iter())
+                    .any(|modification| {
+                        matches!(
+                            modification,
+                            crate::continuous::Modification::AddAbilityGeneric(_)
+                        )
+                    });
+                if !grants_ability {
+                    continue;
+                }
+                let mut apply = apply.clone();
+                apply.clause_surface =
+                    Some(ironsmith_core::ContinuousClauseSurface::SourceCardOtherAbilities);
+                *effect = crate::effect::Effect::new(apply);
+            }
+        };
+        for ability in &mut builder.abilities[line_abilities_start..] {
+            match &mut ability.kind {
+                ironsmith_core::AbilityKind::Triggered(triggered) => {
+                    for segment in &mut triggered.effects.segments {
+                        mark(&mut segment.default_effects);
+                    }
+                }
+                ironsmith_core::AbilityKind::Activated(activated) => {
+                    for segment in &mut activated.effects.segments {
+                        mark(&mut segment.default_effects);
+                    }
+                }
+                ironsmith_core::AbilityKind::Static(_) => {}
+            }
+        }
+    }
     if let Some(keyword) = semantic_facts.keyword_identity {
         for ability in &mut builder.abilities[line_abilities_start..] {
             crate::keyword_actions::stamp_keyword_identity(ability, keyword);

@@ -116,7 +116,7 @@ fn grant_that_ability(
                 ObjectChoiceEffectAst::ChooseOneOfAtRandom { modes },
             ));
         }
-        return Some(EffectAst::subject_verb_grant_abilities_choice_to_target(
+        return Some(EffectAst::subject_verb_grant_abilities_leading_choice_to_target(
             target,
             actions.iter().cloned().map(GrantedAbilityAst::from).collect(),
             duration,

@@ -1871,11 +1871,13 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 target,
                 subtypes,
                 duration,
+                copular_surface,
             }) => f
                 .debug_struct("SetCreatureSubtypes")
                 .field("target", target)
                 .field("subtypes", subtypes)
                 .field("duration", duration)
+                .field("copular_surface", copular_surface)
                 .finish(),
             Self::Characteristics(CharacteristicActionAst::BecomeSaddledUntilEndOfTurn {
                 target,
@@ -2155,6 +2157,7 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 target,
                 abilities,
                 duration,
+                ..
             }) => f
                 .debug_struct("GrantAbilitiesChoiceToTarget")
                 .field("target", target)

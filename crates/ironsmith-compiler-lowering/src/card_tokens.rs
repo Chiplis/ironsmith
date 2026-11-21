@@ -667,3 +667,52 @@ pub fn tarmogoyf_token_definition() -> CardDefinition {
                 Zone::Exile, Zone::Command, Zone::Ante, Zone::OutsideGame]))
         .build()
 }
+
+/// "a Baneslayer Angel token" (Balefang the Unslayable): the complete printed
+/// characteristics of the named card, frozen here. Runtime execution uses this
+/// payload and never looks up a name.
+pub fn baneslayer_angel_token_definition() -> CardDefinition {
+    CardDefinitionBuilder::new(CardId::new(), "Baneslayer Angel")
+        .token()
+        .mana_cost(ManaCost::from_symbols(vec![
+            ManaSymbol::Generic(3),
+            ManaSymbol::White,
+            ManaSymbol::White,
+        ]))
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Angel])
+        .power_toughness(crate::card::PowerToughness::fixed(5, 5))
+        .oracle_text("Flying, first strike, lifelink, protection from Demons and from Dragons")
+        .flying()
+        .first_strike()
+        .lifelink()
+        .protection_from_subtype(Subtype::Demon)
+        .protection_from_subtype(Subtype::Dragon)
+        .build()
+}
+
+/// "an Akroma, Angel of Wrath token" (Nivea, Beloved Battlemage): the named
+/// card's complete printed characteristics, frozen here.
+pub fn akroma_angel_of_wrath_token_definition() -> CardDefinition {
+    CardDefinitionBuilder::new(CardId::new(), "Akroma, Angel of Wrath")
+        .token()
+        .mana_cost(ManaCost::from_symbols(vec![
+            ManaSymbol::Generic(5),
+            ManaSymbol::White,
+            ManaSymbol::White,
+            ManaSymbol::White,
+        ]))
+        .supertypes(vec![crate::types::Supertype::Legendary])
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Angel])
+        .power_toughness(crate::card::PowerToughness::fixed(6, 6))
+        .oracle_text("Flying, first strike, vigilance, trample, haste, protection from black and from red")
+        .flying()
+        .first_strike()
+        .vigilance()
+        .trample()
+        .haste()
+        .protection_from(crate::color::ColorSet::BLACK)
+        .protection_from(crate::color::ColorSet::RED)
+        .build()
+}

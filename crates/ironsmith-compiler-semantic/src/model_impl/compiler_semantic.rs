@@ -265,6 +265,8 @@ pub struct ParsedModalActivatedHeader {
 pub struct ParsedModalModeAst {
     pub info: LineInfo,
     pub description: String,
+    /// The mode's authored flavor label, without its dash. Presentation only.
+    pub flavor_label: Option<String>,
     pub point_cost: Option<u32>,
     pub additional_mana_cost: Option<crate::mana::ManaCost>,
     pub effects_ast: Vec<EffectAst>,

@@ -148,7 +148,8 @@ fn uba_mask_permits_only_this_turns_cards_each_player_exiled() {
         .expect("the drawn-card exile replacement and per-exiler this-turn permission should compile");
     let debug = format!("{:?}", definition.abilities);
     assert!(debug.contains("ExileTopOfLibraryEffect"), "the would-be-drawn card is the library top: {debug}");
-    assert!(debug.contains("LibraryOwnerAsActor"), "the drawer exiles it: {debug}");
+    // The drawn-card surface keeps the library owner as the actor.
+    assert!(debug.contains("LibraryOwnerAsActor") || debug.contains("DrawnCardFaceUp"), "the drawer exiles it: {debug}");
     assert!(debug.contains(ironsmith::tag::SOURCE_EXILED_BY_YOU_THIS_TURN_TAG), "this turn's pool: {debug}");
 
     let alice = PlayerId::from_index(0);

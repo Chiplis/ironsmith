@@ -1017,7 +1017,16 @@ fn parse_enters_with_counter_object_filter_tokens(
                     | "tokens"
             )
         });
-    filter.set_plural_object_noun_surface(plural_noun);
+    // "Faeries you control enter with ..." (Jean-Luc, Mon Capitaine): a
+    // plural subtype head is the same authored plural subject.
+    let plural_subtype_noun = each.is_none()
+        && subject_tokens.iter().filter_map(OwnedLexToken::as_word).any(|word| {
+            filter
+                .subtypes
+                .iter()
+                .any(|subtype| word.eq_ignore_ascii_case(&format!("{subtype}s")))
+        });
+    filter.set_plural_object_noun_surface(plural_noun || plural_subtype_noun);
     Some(filter)
 }
 
@@ -1947,6 +1956,17 @@ pub fn parse_where_x_is_number_of_filter_value(tokens: &[OwnedLexToken]) -> Opti
         ParseOutcome::NoMatch => {}
         ParseOutcome::Error(_) => return None,
     }
+    // The word view drops commas, so "Crabs, Lobsters, and/or Trilobites"
+    // would read as "crabs lobsters and/or trilobites", whose adjacent
+    // subtypes are one conjunctive selector. A comma list reads lexed.
+    if filter_tokens
+        .iter()
+        .any(|token| token.kind == crate::lexer::TokenKind::Comma)
+        && let Some(filter) =
+            crate::grammar::primitives::probe_shape(parse_object_filter_lexed(filter_tokens, false))
+    {
+        return Some(scale_where_x_number_value(Value::Count(filter), multiplier));
+    }
     let mut for_each_words = vec!["for", "each"];
     for_each_words.extend(filter_words.iter().copied());
     if let Some((value, used)) =
@@ -2319,7 +2339,9 @@ pub fn parse_x_at_most_enters_tapped_line(
         return Ok(None);
     }
 
-    Ok(Some(StaticAbility::enters_tapped_unless_condition(
+    // The authored leading "If X is N or less" is the negation of the
+    // executable "unless X is N+1 or more" gate; keep its surface.
+    Ok(Some(StaticAbility::enters_tapped_if_not_condition(
         PredicateAst::XValueAtLeast(maximum.saturating_add(1)),
         format!("If X is {maximum} or less, it enters tapped"),
     )))
@@ -3736,7 +3758,8 @@ fn parse_enters_with_additional_counter_for_each_value(
             })
             .map(|(_, token)| token.clone())
             .collect::<Vec<_>>();
-        return parse_dynamic_cost_modifier_value(&filtered);
+        return Ok(parse_dynamic_cost_modifier_value(&filtered)?
+            .map(|value| value.with_surface_hint(ValueSurfaceHint::AlreadyControlled)));
     }
 
     parse_dynamic_cost_modifier_value(tokens)
@@ -4322,7 +4345,8 @@ pub fn parse_as_enters_or_turns_face_up_pt_choice_line(
         return Ok(Some(
             StaticAbility::choose_power_toughness_options_as_enters_or_turns_face_up(
                 options, display,
-            ),
+            )
+            .with_pt_choice_enters_only(),
         ));
     }
 

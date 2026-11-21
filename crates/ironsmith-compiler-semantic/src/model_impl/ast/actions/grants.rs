@@ -174,6 +174,10 @@ pub enum GrantActionAst {
         target: TargetAst,
         abilities: Vec<GrantedAbilityAst>,
         duration: Until,
+        /// Oracle made the choice as its own imperative sentence ("Choose
+        /// flying, first strike, or trample. This creature gains that ability
+        /// ...", Gabriel Angelfire) rather than "gains your choice of".
+        leading_choose_surface: bool,
     },
     GrantAbilityToSource {
         ability: Box<ParsedAbility>,

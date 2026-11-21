@@ -207,6 +207,30 @@ pub fn parse_become_copy_exception_shape(
         shape.retain_source_colors = true;
         return Some(shape);
     }
+    // "except it isn't legendary and it's a Robot artifact in addition to
+    // its other types" (Shore Leave Planet): the legendary removal
+    // coordinated with a further copy exception (CR 707.9b).
+    if let Some((_, rest)) = primitives::strip_lexed_prefix_phrases(
+        tokens,
+        &[
+            &["it", "isn't", "legendary", "and"],
+            &["it", "isnt", "legendary", "and"],
+            &["it", "is", "not", "legendary", "and"],
+        ],
+    ) {
+        let rest = trim_lexed_commas(rest);
+        if !rest.is_empty()
+            && let Some(mut shape) = parse_become_copy_exception_shape(rest)
+        {
+            if !shape.remove_supertypes.contains(&Supertype::Legendary) {
+                shape.remove_supertypes.push(Supertype::Legendary);
+            }
+            if shape.surface.is_some() {
+                shape.surface = Some(render_token_slice(tokens).trim().to_string());
+            }
+            return Some(shape);
+        }
+    }
     if let Some(parsed) = parse_structured_become_copy_exception_shape(tokens) {
         return Some(parsed);
     }

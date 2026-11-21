@@ -459,11 +459,17 @@ pub(super) fn recover_keyword_text(
         let [segment] = triggered.effects.segments.as_slice() else {
             return None;
         };
-        let [gate] = segment.default_effects.as_slice() else {
-            return None;
+        let first = match segment.default_effects.as_slice() {
+            [gate] => gate
+                .downcast_ref::<crate::effects::ConditionalEffect>()?
+                .if_true
+                .first()?,
+            // "you may pay half your life, rounded up. If you do, return
+            // ... Otherwise, exile ..." lowered as the optional payment
+            // followed by its two outcome branches (Garza's Assassin).
+            [payment, ..] => payment,
+            [] => return None,
         };
-        let gate = gate.downcast_ref::<crate::effects::ConditionalEffect>()?;
-        let first = gate.if_true.first()?;
         let with_id = first.downcast_ref::<crate::effects::WithIdEffect>()?;
         let may = with_id.effect.downcast_ref::<crate::effects::MayEffect>()?;
         if may.effects.is_empty() {
@@ -1277,7 +1283,7 @@ fn describe_ability_in_zone(
         && let Some(model) = static_ability.compiled_model()
         && let ironsmith_core::StaticAbilityPayload::Conditional { ability, .. } = &model.payload
         && matches!(&ability.payload,
-            ironsmith_core::StaticAbilityPayload::SetCardTypes { filter, card_types }
+            ironsmith_core::StaticAbilityPayload::SetCardTypes { filter, card_types, .. }
             | ironsmith_core::StaticAbilityPayload::AddCardTypes { filter, card_types }
                 if filter.source && !card_types.is_empty())
     {
@@ -1604,6 +1610,11 @@ fn describe_ability_in_zone(
             apply_attacks_while_most_life_surface(
                 triggered,
                 &mut trigger_surface,
+                &mut intervening_condition,
+            );
+            fold_first_time_your_turn_frequency(
+                &mut trigger_surface,
+                trigger_frequency,
                 &mut intervening_condition,
             );
             if trigger_surface
@@ -2033,6 +2044,9 @@ fn describe_ability_in_zone(
                     let (cost_text, x_definition) =
                         describe_total_cost_with_trailing_x_definition(&activated.mana_cost);
                     trailing_x_definition = x_definition;
+                    let cost_text = describe_graveyard_self_library_cost(ability, activated)
+                        .filter(|_| trailing_x_definition.is_none())
+                        .unwrap_or(cost_text);
                     if let Some(cost_text) =
                         normalize_zone_bound_self_exile_cost(Some(cost_text), ability)
                     {
@@ -2128,6 +2142,21 @@ fn describe_ability_in_zone(
                 append_sentence_clause(&mut line,
                     "For each mana in this ability's activation cost, you may tap an untapped artifact you control rather than pay that mana");
             }
+            // The activation's own typed discount reads as the printed-line
+            // cost-reduction static does ("This ability costs {X} less to
+            // activate, where X is this creature's power").
+            if let Some(value) = &activated.effects.activation_self_cost_reduction {
+                let mut reduction = crate::static_abilities::ActivatedAbilityCostReduction::new(
+                    ObjectFilter::source(),
+                    1,
+                );
+                reduction.multiplier = Some(value.clone());
+                let clause = crate::static_abilities::StaticAbility::new(reduction).display();
+                let clause = clause.trim().trim_end_matches('.');
+                if !clause.is_empty() {
+                    append_activation_clause(&mut line, clause);
+                }
+            }
             let mut restriction_clauses = collect_activation_restriction_clauses(
                 &activated.timing,
                 &activated.additional_restrictions,
@@ -2138,6 +2167,21 @@ fn describe_ability_in_zone(
                 && !restriction_clauses
                     .iter()
                     .any(|clause| clause.to_ascii_lowercase().starts_with("activate only if "))
+            {
+                push_activation_restriction_clause(
+                    &mut restriction_clauses,
+                    describe_mana_activation_condition(&condition),
+                );
+            }
+            // "Activate only during your turn and only if this card is
+            // exiled" (Q, Stacking the Deck's granted ability): an exile-zone
+            // activation gate with no authored clause reads from the typed
+            // condition, joined to the timing clause.
+            if let Some(condition @ crate::ConditionExpr::SourceIsInZone(Zone::Exile)) =
+                activation_condition_without_presentation_label(activated)
+                && !restriction_clauses
+                    .iter()
+                    .any(|clause| clause.to_ascii_lowercase().contains("only if "))
             {
                 push_activation_restriction_clause(
                     &mut restriction_clauses,
@@ -3308,9 +3352,17 @@ pub(crate) fn describe_additional_costs(costs: &[crate::costs::Cost]) -> String 
         && let Some(put_counters) = costs[1]
             .effect_ref()
             .and_then(|effect| effect.downcast_ref::<crate::effects::PutCountersEffect>())
-        && let Some(amount) = blight_amount_from_choose_and_put(choose, put_counters)
+        && blight_amount_from_choose_and_put(choose, put_counters).is_some()
     {
-        return describe_blight_cost(&amount);
+        // A mandatory choice-and-placement payment: not optional, and not
+        // the Blight keyword action unless a Blight completion is recorded.
+        if put_counters.completion_action == Some(crate::events::KeywordActionKind::Blight) {
+            return format!("blight {}", describe_value(&put_counters.amount));
+        }
+        return format!(
+            "put {} on a creature you control",
+            describe_put_counter_phrase(&put_counters.amount, put_counters.counter_type)
+        );
     }
 
     if costs.len() == 1
@@ -4124,4 +4176,51 @@ pub(crate) fn level_granted_ability_text(granted: &crate::static_abilities::Stat
         }
     }
     display
+}
+
+/// "{2}, Put this card from your graveyard on the bottom of your library:
+/// You gain 2 life." (Daniels, Temporal Agent): a source-to-library cost of an
+/// ability that functions only from the graveyard moves this card out of its
+/// owner's graveyard into that owner's library. The origin zone belongs to the
+/// enclosing ability (`functional_zones`), not to the move itself.
+fn describe_graveyard_self_library_cost(
+    ability: &Ability,
+    activated: &crate::ability::ActivatedAbility,
+) -> Option<String> {
+    if ability.functional_zones.as_slice() != [Zone::Graveyard] {
+        return None;
+    }
+    let costs = activated.mana_cost.as_all()?;
+    let parts = describe_cost_component_parts(costs);
+    if parts.len() != costs.len() {
+        return None;
+    }
+    let mut replaced = false;
+    let parts = costs
+        .iter()
+        .zip(parts)
+        .map(|(cost, part)| {
+            let Some(move_to_zone) = cost
+                .downcast_ref::<crate::costs::CostEffect>()
+                .and_then(|cost_effect| {
+                    unwrap_basic_tag_wrappers(cost_effect.effect())
+                        .downcast_ref::<crate::effects::MoveToZoneEffect>()
+                })
+            else {
+                return part;
+            };
+            if move_to_zone.zone != Zone::Library
+                || !matches!(move_to_zone.target.base(), ChooseSpec::Source)
+            {
+                return part;
+            }
+            replaced = true;
+            if move_to_zone.to_top {
+                "Put this card from your graveyard on top of your library".to_string()
+            } else {
+                "Put this card from your graveyard on the bottom of your library".to_string()
+            }
+        })
+        .collect::<Vec<_>>();
+    replaced.then(|| parts.join(", "))
 }

@@ -1031,6 +1031,15 @@ pub(super) fn recognize_modal_mode(
     if flavor_label {
         crate::word_claims::claim_tokens(&bullet_body[..bullet_body.len() - parse_tokens.len()]);
     }
+    let flavor_label_text = if flavor_label {
+        let label_tokens = &bullet_body[..bullet_body.len() - parse_tokens.len()];
+        let label = render_original_text_for_token_slice(line, label_tokens)
+            .unwrap_or_else(|| render_token_slice(label_tokens));
+        let label = label.trim().trim_end_matches(['—', '-']).trim().to_string();
+        (!label.is_empty()).then_some(label)
+    } else {
+        None
+    };
     // "• Cross-Slash — {0} — Destroy target tapped creature." (Cloud's Limit
     // Break): a tiered mode's name is the same presentation label; the
     // tier's cost follows it.
@@ -1073,6 +1082,7 @@ pub(super) fn recognize_modal_mode(
         point_cost,
         additional_mana_cost: spree_prefix.or(tiered_prefix).map(|(cost, _)| cost),
         effects_ast,
+        flavor_label: flavor_label_text,
     })
 }
 

@@ -60,7 +60,8 @@ pub(super) fn describe(effects: &[Effect]) -> Option<String> {
 
     for (index, mode) in choice.modes.iter().enumerate() {
         let [sacrifice_effect] = mode.effects.as_slice() else { return None };
-        let sacrifice_effect = sacrifice_effect
+        // Lowering wraps each pile's sacrifice in an outcome-receipt tag.
+        let sacrifice_effect = structural_unwrap_render_wrappers(sacrifice_effect)
             .downcast_ref::<crate::effects::zones::SacrificePlayerEffect>()?;
         let filter = if let Some(tag) = pile_tags.get(index) {
             base.clone().match_tagged(

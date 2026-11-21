@@ -133,6 +133,11 @@ pub fn parse_first_spell_grant_with_linked_cast_trigger_line(
     }
     let mut spell_filter = filter.clone();
     spell_filter.cast_by = Some(PlayerFilter::IteratedPlayer);
+    // "When you cast that spell" names the spell the grant sentence
+    // described; the demonstrative is presentation only.
+    spell_filter.set_demonstrative_antecedent_surface(Some(
+        ironsmith_core::DemonstrativeAntecedentSurface::Spell,
+    ));
     let cast = TriggerSpec::SpellCast {
         filter: Some(spell_filter),
         mana_source_filter: None,

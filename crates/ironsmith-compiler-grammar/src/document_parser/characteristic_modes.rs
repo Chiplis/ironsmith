@@ -148,5 +148,6 @@ pub(super) fn recognize_characteristics_mode(
         point_cost: None,
         additional_mana_cost: None,
         effects_ast,
+        flavor_label: None,
     })
 }

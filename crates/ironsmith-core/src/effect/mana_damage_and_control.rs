@@ -717,6 +717,10 @@ impl DrawForEachTaggedMatchingEffect {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, TagKeyWalk)]
 pub enum ExileTopLibrarySurface {
     LibraryOwnerAsActor,
+    /// "that player exiles that card face up instead" (Uba Mask): the top
+    /// card of a replaced draw, named as the card that would be drawn. The
+    /// library owner is the actor, exactly as `LibraryOwnerAsActor`.
+    DrawnCardFaceUp,
 }
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -3750,11 +3754,20 @@ impl TagOtherBlockParticipantEffect {
 #[derive(Debug, Clone, PartialEq, TagKeyWalk)]
 pub struct TagAttachedToSourceEffect {
     pub tag: TagKey,
+    /// "When this Aura enters attached to a creature, ... that creature"
+    /// (Infinite Reflection): the authored trigger named the captured host by
+    /// this card type and the body referred back to it as "that <type>".
+    /// Presentation only; never read while resolving.
+    #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "Option::is_none"))]
+    pub entered_attached_host_surface: Option<CardType>,
 }
 
 impl TagAttachedToSourceEffect {
     pub fn new(tag: impl Into<TagKey>) -> Self {
-        Self { tag: tag.into() }
+        Self {
+            tag: tag.into(),
+            entered_attached_host_surface: None,
+        }
     }
 }
 

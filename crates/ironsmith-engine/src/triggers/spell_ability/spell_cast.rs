@@ -404,6 +404,16 @@ impl TriggerMatcher for SpellCastTrigger {
     }
 
     fn display(&self) -> String {
+        // "When you cast that spell, ..." (Yume, Chronicler of Valor): the
+        // trigger names the spell an earlier ability on its line described.
+        if self.caster == PlayerFilter::You
+            && self.filter.as_ref().is_some_and(|filter| {
+                filter.demonstrative_antecedent_surface()
+                    == Some(ironsmith_core::DemonstrativeAntecedentSurface::Spell)
+            })
+        {
+            return "Whenever you cast that spell".to_string();
+        }
         if self.count_all_spells_this_turn
             && let Some(spell_number) = self.exact_spells_this_turn
         {

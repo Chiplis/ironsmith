@@ -1437,10 +1437,12 @@ fn parse_cant_clauses_unbound(
     // into a ban on every land play.
     if let Some((_, neg_end)) = find_negation_span(tokens) {
         let tail = normalize_cant_word_refs(&tokens[neg_end..]);
-        if crate::grammar::activation_restrictions::parse_compound_player_action_restriction_words(
+        if (crate::grammar::activation_restrictions::parse_compound_player_action_restriction_words(
             &tail,
         )
         .is_some()
+            || super::activation_restriction_clauses::simple_or_player_restriction_tail(&tail)
+                .is_some())
             && let Some(restrictions) =
                 super::activation_restriction_clauses::parse_cant_restrictions(tokens)?
             && restrictions

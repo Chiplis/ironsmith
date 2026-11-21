@@ -1045,6 +1045,31 @@ pub struct ManaOutputRewrite {
     pub input: ManaRewriteInput,
     pub output: ManaRewriteOutput,
     pub quantity: ManaRewriteQuantity,
+    /// Authored clause shape; presentation only, never consulted by rules.
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub surface: ManaOutputRewriteSurface,
+}
+
+/// Which authored clause a mana production rewrite was read from.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, TagKeyWalk)]
+pub enum ManaOutputRewriteSurface {
+    /// "If a land is tapped for mana, it produces ..." (Contamination).
+    Passive,
+    /// "if a player taps a nonbasic land for mana, it produces ..." (Pale Moon).
+    PlayerTaps,
+    /// "if a player taps a Mountain for mana, that Mountain produces ..."
+    /// (Chaos Moon): `PlayerTaps` with the tapped source named again.
+    PlayerTapsNamedSource,
+    /// "spells and abilities you control that would add colored mana instead
+    /// add that much white mana" (False Dawn).
+    SpellsAndAbilitiesWouldAdd,
+}
+
+impl Default for ManaOutputRewriteSurface {
+    fn default() -> Self {
+        Self::Passive
+    }
 }
 
 #[cfg(all(test, feature = "serde"))]
@@ -1054,7 +1079,7 @@ mod mana_output_rewrite_wire_contract {
     fn new_rewrite_semantics_are_authoritative_and_never_defaulted_from_a_label() {
         let rule = ManaOutputRewrite {source_filter: crate::filter_model::ObjectFilter::land(), controller: None,
             tapped_for_mana: true, input: ManaRewriteInput::Any, output: ManaRewriteOutput::ChooseColor,
-            quantity: ManaRewriteQuantity::Exact(1)};
+            quantity: ManaRewriteQuantity::Exact(1), surface: ManaOutputRewriteSurface::Passive};
         let wire = serde_json::to_value(&rule).unwrap();
         assert_eq!(serde_json::from_value::<ManaOutputRewrite>(wire.clone()).unwrap(), rule);
         for field in ["source_filter", "controller", "tapped_for_mana", "input", "output", "quantity"] {

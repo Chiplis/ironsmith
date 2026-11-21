@@ -7354,17 +7354,11 @@ pub(super) fn describe_counted_reflexive_sacrifice_condition(
     choose: &crate::effects::ChooseObjectsEffect,
     sacrifice: SacrificeView<'_>,
 ) -> Option<String> {
-    if predicate == &EffectPredicate::Happened
-        && choose.chooser == PlayerFilter::You
-        && sacrifice.player == &PlayerFilter::You
-        && (choose.count.dynamic_x || choose.count.max.is_none_or(|max| max > 1))
-    {
-        let sacrificed = pluralize_noun_phrase(&describe_sacrifice_choice_kind(choose));
-        return Some(format!(
-            "When you sacrifice one or more {sacrificed} this way"
-        ));
-    }
-
+    // "you may sacrifice one or more Treasures. When you do, ..." (Swashbuckler
+    // Extraordinaire) lowers to `Happened`; the explicit "When you sacrifice
+    // one or more Zombies this way" (Ravenous Rotbelly) is a typed
+    // `PriorEffectResult` and reads through its own predicate.
+    let _ = (choose, sacrifice);
     describe_reflexive_sacrifice_condition(predicate)
 }
 
@@ -9532,6 +9526,16 @@ fn describe_quantified_player_conditional(
         && lose.amount.unhinted() == compared.unhinted()
     {
         action = "loses life equal to that mana value".to_string();
+    }
+    // "Each player with exactly 13 life loses the game" (Triskaidekaphobia):
+    // an exact life-total gate on the quantified player reads as "with".
+    if let Condition::ValueComparison {
+        left: Value::LifeTotal(PlayerFilter::IteratedPlayer),
+        operator: crate::effect::ValueComparisonOperator::Equal,
+        right: Value::Fixed(life),
+    } = &conditional.condition
+    {
+        return Some(format!("{subject} with exactly {life} life {action}"));
     }
     Some(format!("{subject} who {relative} {action}"))
 }

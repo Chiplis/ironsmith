@@ -532,9 +532,14 @@ fn read_cant_cast_this_unless(
     } else {
         condition
     };
+    let mut kind = crate::static_abilities::ThisSpellCastRestrictionKind::only_if(condition);
+    // Only the "unless" form keeps the prohibition surface; the negated
+    // "if" form (Rock Jockey) reads through its `Not` condition.
+    kind.cant_cast_unless_surface = !negated;
+    kind.cant_cast_if_surface = negated;
     Ok(Some(vec![
         StaticAbility::this_spell_cast_restriction(
-            crate::static_abilities::ThisSpellCastRestrictionKind::only_if(condition),
+            kind,
             crate::lexer::render_token_slice(tokens).trim().to_string(),
         )
         .into(),

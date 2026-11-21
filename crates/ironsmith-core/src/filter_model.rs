@@ -804,11 +804,37 @@ pub struct ObjectFilterUnionSurface {
     /// the executable identity; this keeps only the authored craft wording.
     #[cfg_attr(feature = "serde", serde(default))]
     craft_material_reference: bool,
+    /// Oracle named a planeswalker's activated ability as its "loyalty
+    /// ability of a planeswalker" (Verdant Command). The stack kind and
+    /// source card type remain the executable filter.
+    #[cfg_attr(feature = "serde", serde(default))]
+    loyalty_ability_noun: bool,
+    /// Oracle authored a distinct-name count with the prefix "differently
+    /// named <objects>" (Seven of Nine) rather than "<objects> with different
+    /// names" (Field of the Dead). `Value::DistinctNames` stays the semantics.
+    #[cfg_attr(feature = "serde", serde(default))]
+    differently_named_prefix: bool,
+    /// Oracle priced equip activations as "Equip costs you pay" (Auriok
+    /// Steelshaper) rather than "Equip abilities you activate". The
+    /// `EquipAbility` cost condition stays the executable gate.
+    #[cfg_attr(feature = "serde", serde(default))]
+    equip_costs_paid: bool,
     /// Oracle named the source-linked exiled set definitely, as "the exiled
     /// cards" (Sutured Ghoul). The `SourceExiled` constraint stays the
     /// executable identity; this keeps only the authored noun phrase.
     #[cfg_attr(feature = "serde", serde(default))]
     definite_exiled_reference: bool,
+    /// Oracle named the source of an attachment's granted ability as "the
+    /// object it was unattached from" ("unless it was unattached from a
+    /// Ninja", Shuriken). `SourceMatches` stays the executable test.
+    #[cfg_attr(feature = "serde", serde(default))]
+    unattached_from_reference: bool,
+    /// Oracle read a this-turn history count in the simple past ("as long as
+    /// you sacrificed a permanent this turn", Goblin Blast-Runner) rather
+    /// than the perfect ("you've sacrificed"). The history query stays the
+    /// executable condition; this keeps only the authored tense.
+    #[cfg_attr(feature = "serde", serde(default))]
+    simple_past_history_surface: bool,
 }
 
 impl ObjectFilterUnionSurface {
@@ -867,7 +893,12 @@ impl ObjectFilterUnionSurface {
             continuous_control_ignore_effect: false,
             single_target_if_that_target_surface: false,
             craft_material_reference: false,
+            loyalty_ability_noun: false,
+            differently_named_prefix: false,
+            equip_costs_paid: false,
             definite_exiled_reference: false,
+            unattached_from_reference: false,
+            simple_past_history_surface: false,
         }
     }
 
@@ -1271,6 +1302,33 @@ impl ObjectFilterUnionSurface {
         self.craft_material_reference
     }
 
+    pub const fn with_equip_costs_paid(mut self, authored: bool) -> Self {
+        self.equip_costs_paid = authored;
+        self
+    }
+
+    pub const fn equip_costs_paid(self) -> bool {
+        self.equip_costs_paid
+    }
+
+    pub const fn with_differently_named_prefix(mut self, authored: bool) -> Self {
+        self.differently_named_prefix = authored;
+        self
+    }
+
+    pub const fn differently_named_prefix(self) -> bool {
+        self.differently_named_prefix
+    }
+
+    pub const fn with_loyalty_ability_noun(mut self, authored: bool) -> Self {
+        self.loyalty_ability_noun = authored;
+        self
+    }
+
+    pub const fn loyalty_ability_noun(self) -> bool {
+        self.loyalty_ability_noun
+    }
+
     pub const fn with_definite_exiled_reference(mut self, authored: bool) -> Self {
         self.definite_exiled_reference = authored;
         self
@@ -1278,6 +1336,24 @@ impl ObjectFilterUnionSurface {
 
     pub const fn definite_exiled_reference(self) -> bool {
         self.definite_exiled_reference
+    }
+
+    pub const fn with_unattached_from_reference(mut self, authored: bool) -> Self {
+        self.unattached_from_reference = authored;
+        self
+    }
+
+    pub const fn unattached_from_reference(self) -> bool {
+        self.unattached_from_reference
+    }
+
+    pub const fn with_simple_past_history_surface(mut self, authored: bool) -> Self {
+        self.simple_past_history_surface = authored;
+        self
+    }
+
+    pub const fn simple_past_history_surface(self) -> bool {
+        self.simple_past_history_surface
     }
 
     pub const fn with_demonstrative_antecedent(
@@ -2333,6 +2409,7 @@ impl PlayerFilter {
                 };
                 format!("{} who {verb}", base.description())
             }
+            Self::ChosenPlayer if chosen_player_reads_as_that_player() => "that player".to_string(),
             Self::ChosenPlayer => "the chosen player".to_string(),
             Self::TaggedPlayer(tag) if tag.as_str() == "enchanted" => {
                 "enchanted player".to_string()
@@ -4423,6 +4500,16 @@ impl ObjectFilter {
         self.union_surface.craft_material_reference()
     }
 
+    /// Preserve the authored "loyalty ability of a planeswalker" noun of a
+    /// stack-ability filter without changing matching.
+    pub fn set_loyalty_ability_noun_surface(&mut self, authored: bool) {
+        self.union_surface = self.union_surface.with_loyalty_ability_noun(authored);
+    }
+
+    pub fn has_loyalty_ability_noun_surface(&self) -> bool {
+        self.union_surface.loyalty_ability_noun()
+    }
+
     /// Preserve the authored definite "the exiled cards" wording of a
     /// source-linked exile reference.
     pub fn set_definite_exiled_reference(&mut self, authored: bool) {
@@ -4431,6 +4518,36 @@ impl ObjectFilter {
 
     pub fn has_definite_exiled_reference(&self) -> bool {
         self.union_surface.definite_exiled_reference()
+    }
+
+    /// Preserve the authored "it was unattached from <filter>" wording of a
+    /// granted ability's source test.
+    pub fn set_unattached_from_reference(&mut self, authored: bool) {
+        self.union_surface = self.union_surface.with_unattached_from_reference(authored);
+    }
+
+    pub fn has_unattached_from_reference(&self) -> bool {
+        self.union_surface.unattached_from_reference()
+    }
+
+    /// Preserve the authored simple-past tense of a this-turn history count
+    /// ("you sacrificed a permanent this turn") without changing matching.
+    pub fn set_simple_past_history_surface(&mut self, authored: bool) {
+        self.union_surface = self.union_surface.with_simple_past_history_surface(authored);
+    }
+
+    pub fn has_simple_past_history_surface(&self) -> bool {
+        self.union_surface.simple_past_history_surface()
+    }
+
+    /// Preserve the authored "Equip costs you pay" head of an equip cost
+    /// modifier without changing filter matching.
+    pub fn set_equip_costs_paid_surface(&mut self, authored: bool) {
+        self.union_surface = self.union_surface.with_equip_costs_paid(authored);
+    }
+
+    pub fn has_equip_costs_paid_surface(&self) -> bool {
+        self.union_surface.equip_costs_paid()
     }
 
     /// Preserve the authored noun of an explicit demonstrative condition
@@ -5667,6 +5784,31 @@ impl ObjectFilter {
         if let Some(text) = describe_suspended_card(self) {
             return text;
         }
+        // "each permanent and each suspended card" (Dust of Moments): a union
+        // of battlefield permanents and suspended cards in exile quantifies
+        // each domain on its own (CR 702.62b).
+        if let [permanents, suspended] = self.any_of.as_slice()
+            && permanents.zone == Some(Zone::Battlefield)
+            && let Some(suspended_text) = describe_suspended_card(suspended)
+            && {
+                let mut rest = self.clone();
+                rest.any_of.clear();
+                rest.union_surface = Default::default();
+                rest == ObjectFilter::default()
+            }
+        {
+            let mut bare = permanents.clone();
+            bare.zone = None;
+            bare.union_surface = Default::default();
+            if bare == ObjectFilter::default() {
+                return format!("permanent and each {suspended_text}");
+            }
+            bare.with_counter = None;
+            let permanents_text = permanents.description();
+            if bare == ObjectFilter::default() && permanents_text.starts_with("permanent ") {
+                return format!("{permanents_text} and each {suspended_text}");
+            }
+        }
         // "card in a graveyard that was discarded or put there from a
         // library this turn" (Ghost of Ramirez DePietro): one graveyard card
         // with either recent history.
@@ -5793,6 +5935,9 @@ impl ObjectFilter {
             return description;
         }
         if let Some(description) = describe_owned_nonbattlefield_card_union(self) {
+            return description;
+        }
+        if let Some(description) = describe_owned_non_battlefield_or_stack_card_union(self) {
             return description;
         }
         if let Some(description) = describe_nonbattlefield_card_union(self) {
@@ -6240,6 +6385,14 @@ impl ObjectFilter {
                 | PlayerFilter::PlayerToLeftOf(_)
                 | PlayerFilter::MaxSpeed { .. } => {
                     parts.push(describe_possessive_player_filter(ctrl));
+                }
+                // A cast chooser's modes name that player ("each creature
+                // that player controls", Misfortune).
+                PlayerFilter::ChosenPlayer if chosen_player_reads_as_that_player() => {
+                    if !has_leading_determiner {
+                        parts.insert(0, "a".to_string());
+                    }
+                    controller_suffix = Some("that player controls".to_string());
                 }
                 PlayerFilter::ChosenPlayer => parts.push("the chosen player's".to_string()),
                 PlayerFilter::TaggedPlayer(tag) => {
@@ -7555,11 +7708,22 @@ impl ObjectFilter {
         } else if !self.card_types.is_empty() {
             if stack_source_ability {
                 let kind = self.stack_kind.unwrap_or(StackObjectKind::Ability);
-                post_noun_qualifiers.push(format!(
-                    "from {} source",
-                    describe_card_type_source_phrase(&self.card_types, self.union_connective())
-                ));
-                Some((false, describe_stack_object_kind(kind).to_string()))
+                if self.has_loyalty_ability_noun_surface()
+                    && matches!(kind, StackObjectKind::ActivatedAbility)
+                {
+                    // "loyalty ability of a planeswalker" (Verdant Command).
+                    post_noun_qualifiers.push(format!(
+                        "of {}",
+                        describe_card_type_source_phrase(&self.card_types, self.union_connective())
+                    ));
+                    Some((false, "loyalty ability".to_string()))
+                } else {
+                    post_noun_qualifiers.push(format!(
+                        "from {} source",
+                        describe_card_type_source_phrase(&self.card_types, self.union_connective())
+                    ));
+                    Some((false, describe_stack_object_kind(kind).to_string()))
+                }
             } else if has_all_permanent_types || has_all_permanent_spell_types {
                 Some((true, "permanent".to_string()))
             } else {
@@ -8369,11 +8533,19 @@ impl ObjectFilter {
         }
         if let Some(counter_exclusion) = self.without_counter {
             let (plural_noun, plural_subject) = self.counter_exclusion_surface();
-            parts.push(format!(
-                "without {} on {}",
-                describe_counter_constraint(counter_exclusion, plural_noun),
-                if plural_subject { "them" } else { "it" }
-            ));
+            // "target creature with no counters on it" (Heartless Act).
+            if matches!(counter_exclusion, CounterConstraint::Any) {
+                parts.push(format!(
+                    "with no counters on {}",
+                    if plural_subject { "them" } else { "it" }
+                ));
+            } else {
+                parts.push(format!(
+                    "without {} on {}",
+                    describe_counter_constraint(counter_exclusion, plural_noun),
+                    if plural_subject { "them" } else { "it" }
+                ));
+            }
         }
         if let Some(total_counters_parity) = self.total_counters_parity {
             match total_counters_parity {
@@ -8635,8 +8807,21 @@ impl ObjectFilter {
             };
             parts.push(format!("that could enchant {host_text}"));
         }
+        // "enchanted creature" / "equipped creature" already names the object
+        // the source is attached to (CR 303.4e, 301.5c); a source-only
+        // attachment test on the same filter repeats it.
+        let attachment_named_by_tag = self.tagged_constraints.iter().any(|constraint| {
+            constraint.relation == TaggedOpbjectRelation::IsTaggedObject
+                && matches!(constraint.tag.as_str(), "enchanted" | "equipped" | "fortified")
+        });
+        let source_only_attachment = self.with_attached_object.as_deref().is_some_and(|attached| {
+            let mut probe = attached.clone();
+            probe.source_surface = None;
+            probe == ObjectFilter::source()
+        });
         if let Some(with_attached) = &self.with_attached_object
             && attached_adjective.is_none()
+            && !(attachment_named_by_tag && source_only_attachment)
         {
             let inner = with_attached.description();
             let surfaced = if inner.starts_with("another ") || inner.starts_with("other ") {
@@ -9127,6 +9312,61 @@ fn describe_nonbattlefield_card_union(filter: &ObjectFilter) -> Option<String> {
         "{} not on the battlefield",
         nonbattlefield_card_union_basis(filter)?.description()
     ))
+}
+
+/// "creature cards you own in any zone other than the battlefield or the
+/// stack" (The Muckslinger Gang): one owner-scoped card predicate over exactly
+/// the six game zones other than the battlefield and the stack (CR 400.11:
+/// outside the game is not a zone). Any other partial domain is not certified.
+pub fn describe_owned_non_battlefield_or_stack_card_union(filter: &ObjectFilter) -> Option<String> {
+    if filter.union_connective() != ObjectFilterUnionConnective::Or || filter.any_of.len() != 6 {
+        return None;
+    }
+    let mut outer = filter.clone();
+    outer.any_of.clear();
+    outer.union_surface = ObjectFilterUnionSurface::default();
+    if outer != ObjectFilter::default() {
+        return None;
+    }
+    let mut zones = std::collections::HashSet::new();
+    let mut basis: Option<ObjectFilter> = None;
+    for arm in &filter.any_of {
+        let zone = arm.zone?;
+        if matches!(zone, Zone::Battlefield | Zone::Stack | Zone::OutsideGame)
+            || !zones.insert(zone)
+        {
+            return None;
+        }
+        let mut candidate = arm.clone();
+        candidate.zone = None;
+        if !candidate.has_explicit_card_noun() {
+            return None;
+        }
+        match &basis {
+            Some(base) if *base != candidate => return None,
+            None => basis = Some(candidate),
+            _ => {}
+        }
+    }
+    let mut basis = basis?;
+    if basis.owner != Some(PlayerFilter::You) || basis.controller.is_some() {
+        return None;
+    }
+    basis.owner = None;
+    basis.set_plural_object_noun_surface(false);
+    let description = basis.description();
+    let noun = description
+        .strip_prefix("an ")
+        .or_else(|| description.strip_prefix("a "))
+        .or_else(|| description.strip_prefix("the "))
+        .unwrap_or(&description)
+        .trim();
+    let noun = noun.strip_suffix(" card")?.trim();
+    Some(if noun.is_empty() {
+        "cards you own in any zone other than the battlefield or the stack".to_string()
+    } else {
+        format!("{noun} cards you own in any zone other than the battlefield or the stack")
+    })
 }
 
 /// Render an owner-scoped complete card domain without certifying a partial
@@ -9898,6 +10138,7 @@ fn describe_possessive_player_filter(filter: &PlayerFilter) -> String {
             };
             format!("{} who {verb}'s", describe_player_filter(base))
         }
+        PlayerFilter::ChosenPlayer if chosen_player_reads_as_that_player() => "that player's".to_string(),
         PlayerFilter::ChosenPlayer => "the chosen player's".to_string(),
         PlayerFilter::TaggedPlayer(_) => "that player's".to_string(),
         PlayerFilter::IteratedPlayer => "that player's".to_string(),
@@ -10301,7 +10542,7 @@ fn pluralize_count_terminal_word(phrase: &str) -> String {
         .map_or(("", phrase), |(prefix, word)| (prefix, word));
     let lower = word.to_ascii_lowercase();
     let plural = match lower.as_str() {
-        "plains" | "urzas" | "myr" | "merfolk" | "equipment" => word.to_string(),
+        "plains" | "urzas" | "myr" | "merfolk" | "equipment" | "starfish" | "fish" => word.to_string(),
         "elf" => "elves".to_string(),
         "dwarf" => "dwarves".to_string(),
         "wolf" => "wolves".to_string(),
@@ -10612,6 +10853,10 @@ fn describe_comparison(cmp: &Comparison) -> String {
                     && matches!(value.unhinted(), Value::EventValue(EventValueSpec::Amount))
                 {
                     return "the result".to_string();
+                }
+                // "with mana value equal to that number" (Void).
+                if hints.contains(&crate::ValueSurfaceHint::ThatChosenNumber) {
+                    return "that number".to_string();
                 }
                 if hints.contains(&crate::ValueSurfaceHint::CountersAmong)
                     && let Value::CountersOn(spec, counter_type) = value.unhinted()
@@ -12287,4 +12532,31 @@ mod library_boundary_indirection_tests {
         assert_eq!(restored,boundary);
         assert_eq!(restored.count.as_ref(),&count,"the complete nested filter/count operand survives");
     }
+}
+
+
+std::thread_local! {
+    /// Set while rendering the modes of a modal whose modes a player chooses
+    /// as it is cast ("An opponent chooses one —"): that player is the
+    /// spell's chosen player and its modes call them "that player".
+    static CHOSEN_PLAYER_AS_THAT_PLAYER: std::cell::Cell<bool> =
+        const { std::cell::Cell::new(false) };
+}
+
+/// Whether [`PlayerFilter::ChosenPlayer`] currently reads "that player"
+/// (see [`with_chosen_player_as_that_player`]).
+pub fn chosen_player_reads_as_that_player() -> bool {
+    CHOSEN_PLAYER_AS_THAT_PLAYER.with(std::cell::Cell::get)
+}
+
+/// Run `render` with the chosen player described as "that player".
+pub fn with_chosen_player_as_that_player<R>(render: impl FnOnce() -> R) -> R {
+    struct Restore(bool);
+    impl Drop for Restore {
+        fn drop(&mut self) {
+            CHOSEN_PLAYER_AS_THAT_PLAYER.with(|cell| cell.set(self.0));
+        }
+    }
+    let _restore = Restore(CHOSEN_PLAYER_AS_THAT_PLAYER.with(|cell| cell.replace(true)));
+    render()
 }

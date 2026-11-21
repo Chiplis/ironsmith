@@ -865,14 +865,16 @@ fn keyword_actions_this_turn(words: &[&str]) -> Option<PredicateAst> {
     if connector == Some("and") {
         return kinds
             .into_iter()
-            .map(|kind| {
-                history_at_least(
+            .map(|kind| PredicateAst::ValueComparison {
+                left: Value::TurnHistoryCount(
                     ironsmith_core::TurnHistoryCount::KeywordActionsPerformed {
                         player: PlayerFilter::You,
                         actions: vec![kind],
                     },
-                    1,
-                )
+                ),
+                operator: crate::effect::ValueComparisonOperator::GreaterThanOrEqual,
+                right: Value::Fixed(1)
+                    .with_surface_hint(ironsmith_core::ValueSurfaceHint::AllListedActionsDone),
             })
             .reduce(|left, right| PredicateAst::And(Box::new(left), Box::new(right)));
     }

@@ -443,7 +443,10 @@ pub(super) fn read_into_destination(
                     )
                     .with_destination_player_surface(destination_player_surface)
                     .with_destination_player_reference_surface(destination_player_reference_surface)
-                    .with_move_to_zone_actor_surface(player),
+                    .with_move_to_zone_actor_surface(player)
+                    .with_move_to_zone_target_reference_surface(
+                        ironsmith_core::SearchResultReferenceSurface::TopCardOfExiledPile,
+                    ),
                 ));
             }
             if zone == Zone::Graveyard && cca_shapes::is_rest_reference(shape.target_tokens) {

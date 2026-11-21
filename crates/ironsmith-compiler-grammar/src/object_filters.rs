@@ -1291,6 +1291,14 @@ fn finalize_public_object_filter(
         || words
             .word_windows(3)
             .any(|part| crate::word_primitives::equals(&part, &["an", "enchanted", "creature"]))
+        // "untap each enchanted permanent you control" (Estrid, the Masked;
+        // Preston Garvey, Minuteman): a quantified selector never names the
+        // single object this Aura enchants.
+        || words.word_windows(2).any(|part| {
+            crate::word_primitives::equals(&part, &["each", "enchanted"])
+                || crate::word_primitives::equals(&part, &["all", "enchanted"])
+                || crate::word_primitives::equals(&part, &["enchanted", "permanents"])
+        })
     {
         filter
             .tagged_constraints
@@ -2810,6 +2818,15 @@ fn parse_object_filter_inner(
     if let Some((base, relation)) = split_same_power_toughness_as_source_suffix(tokens) {
         let filter = parse_object_filter_inner(base, other)?;
         return Ok(apply_same_power_toughness_as_source(filter, &relation));
+    }
+    // "creature you control that wasn't cast from your hand" (Venser,
+    // Visionary Traveler): the terminal cast-origin relative is provenance,
+    // not the zone the object is in now.
+    if let Some((base, zone)) = split_excluded_cast_origin_suffix(tokens) {
+        let mut filter = parse_object_filter_inner(base, other)?;
+        filter.excluded_cast_origin_zone = Some(zone);
+        claim_outside(tokens, base);
+        return Ok(filter);
     }
     let input = filter_shape_readings::FilterPhrase {
         tokens,
@@ -5489,4 +5506,36 @@ mod named_action_role_filter_tests {
         let (result,loss)=crate::parse_loss::capture(||crate::word_claims::with_enforcement_options(true,true,||crate::compile_card_text(ironsmith_compiler_lowering::CardDefinitionBuilder::new(crate::CardId::new(),"Role witness"),text,false)));
         assert!(result.is_ok(),"{result:?}");assert!(!loss.is_lossy(),"{}",loss.reasons_text());
     }
+}
+
+/// A permanent filter ending in "that wasn't cast from <zone>" split before
+/// the relative: the base tokens and the excluded cast origin. Spell subjects
+/// keep their own spell-domain path.
+fn split_excluded_cast_origin_suffix(
+    tokens: &[OwnedLexToken],
+) -> Option<(&[OwnedLexToken], crate::Zone)> {
+    let zone = excluded_cast_origin_zone(tokens)?;
+    let view = crate::lexer::TokenWordView::new(tokens);
+    let words = view.to_word_refs();
+    let clause_start = crate::word_primitives::parse_last_sequence_start(
+        &words,
+        &["that", "wasnt", "cast", "from"],
+    )
+    .or_else(|| {
+        crate::word_primitives::parse_last_sequence_start(
+            &words,
+            &["that", "was", "not", "cast", "from"],
+        )
+    })?;
+    if words[..clause_start]
+        .iter()
+        .any(|word| matches!(*word, "spell" | "spells"))
+    {
+        return None;
+    }
+    let token_end = view.map_word_to_token_start(clause_start)?;
+    if token_end == 0 {
+        return None;
+    }
+    Some((&tokens[..token_end], zone))
 }

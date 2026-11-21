@@ -174,6 +174,21 @@ fn describe_enters_with_counters_equal_to_value(count: &Value) -> String {
 }
 
 fn describe_matching_object_count_for_each_basis(value: &Value) -> Option<(i32, String)> {
+    // "for each creature type among non-Borg creatures you already control"
+    // (Jean-Luc, Mon Capitaine): the authored "already" stays on the counted
+    // set's controller clause.
+    if value.has_surface_hint(ValueSurfaceHint::AlreadyControlled) {
+        let mut bare = value.unhinted().clone();
+        if let Value::CreatureTypesAmong(filter)
+        | Value::CardTypesAmong(filter)
+        | Value::Count(filter) = &mut bare
+            && filter.controller == Some(PlayerFilter::You)
+        {
+            filter.controller = None;
+            let (multiplier, basis) = describe_matching_object_count_for_each_basis(&bare)?;
+            return Some((multiplier, format!("{basis} you already control")));
+        }
+    }
     match value.unhinted() {
         Value::CreatureTypesAmong(_)
         | Value::CardTypesAmong(_)
@@ -195,11 +210,14 @@ fn describe_matching_object_count_for_each_basis(value: &Value) -> Option<(i32, 
             } else {
                 describe_enters_with_counters_count_filter(filter)
             };
-            let description = description
-                .strip_prefix("an ")
-                .or_else(|| description.strip_prefix("a "))
-                .unwrap_or(&description)
-                .to_string();
+            let description = match description.strip_prefix("another ") {
+                Some(rest) => format!("other {rest}"),
+                None => description
+                    .strip_prefix("an ")
+                    .or_else(|| description.strip_prefix("a "))
+                    .unwrap_or(&description)
+                    .to_string(),
+            };
             Some((1, description))
         }
         Value::CountScaled(filter, multiplier) => {
@@ -292,6 +310,32 @@ fn describe_enters_with_counters_for_each_value(count: &Value, counter: &str) ->
                 "time it's been cast from the command zone this game".to_string(),
             )),
             Value::CreaturesDiedThisTurn => Some((1, "creature that died this turn".to_string())),
+            // "for each {G}{G} spent to cast it" (Clay Champion): pairs of one
+            // mana symbol, lowered as the symbol count divided rounded down.
+            Value::DividedRoundedDown(inner, divisor) if *divisor > 0 => {
+                let Value::ManaSymbolSpentToCastThisSpell { symbol, reference } = inner.unhinted()
+                else {
+                    return None;
+                };
+                let symbol_text = match symbol {
+                    crate::mana::ManaSymbol::White => "{W}",
+                    crate::mana::ManaSymbol::Blue => "{U}",
+                    crate::mana::ManaSymbol::Black => "{B}",
+                    crate::mana::ManaSymbol::Red => "{R}",
+                    crate::mana::ManaSymbol::Green => "{G}",
+                    crate::mana::ManaSymbol::Colorless => "{C}",
+                    _ => return None,
+                };
+                Some((
+                    1,
+                    format!(
+                        "{} spent to cast {}",
+                        symbol_text.repeat(*divisor as usize),
+                        reference.text()
+                    ),
+                ))
+            }
+            Value::ManaSpentToCastThisSpell => Some((1, "mana spent to cast it".to_string())),
             Value::CreaturesDiedThisTurnControlledBy(PlayerFilter::You) => {
                 Some((1, "creature you controlled that died this turn".to_string()))
             }
@@ -534,6 +578,15 @@ fn describe_filtered_enters_with_counters_subject(filter: &ObjectFilter) -> Stri
     }
     if filter.nontoken || filter.token {
         return capitalize_first(&pluralize_filter_description(&description));
+    }
+    // "Faeries you control enter with ..." (Jean-Luc, Mon Capitaine): an
+    // authored plural subject keeps its plural ("enter ... on them").
+    if filter.has_plural_object_noun_surface()
+        && let Some(rest) = description
+            .strip_prefix("an ")
+            .or_else(|| description.strip_prefix("a "))
+    {
+        return capitalize_first(&pluralize_filter_description(rest));
     }
     if let Some(rest) = description
         .strip_prefix("an ")
@@ -2335,11 +2388,18 @@ impl ReplacementMatcher for ThisWouldEnterTappedUnlessTwoOrMoreOpponentsMatcher 
 pub struct EntersTappedUnlessCondition {
     pub condition: Condition,
     pub display: String,
+    /// Authored as "enters tapped if <negated condition>" (presentation only).
+    pub if_not_surface: bool,
 }
 
 impl EntersTappedUnlessCondition {
     pub fn new(condition: Condition, display: String) -> Self {
-        Self { condition, display }
+        Self { condition, display, if_not_surface: false }
+    }
+
+    pub fn with_if_not_surface(mut self, if_not_surface: bool) -> Self {
+        self.if_not_surface = if_not_surface;
+        self
     }
 }
 
@@ -2349,6 +2409,15 @@ impl StaticAbilityKind for EntersTappedUnlessCondition {
     }
 
     fn display(&self) -> String {
+        if ironsmith_core::semantic_audit::semantic_audit_active() && self.if_not_surface {
+            return format!(
+                "This permanent enters tapped if {}",
+                ironsmith_core::semantic_audit::audited_condition(
+                    "EntersTappedUnlessCondition",
+                    &Condition::Not(Box::new(self.condition.clone()))
+                )
+            );
+        }
         if ironsmith_core::semantic_audit::semantic_audit_active() {
             return format!(
                 "This permanent enters tapped unless {}",
@@ -4385,6 +4454,31 @@ impl StaticAbilityKind for PreventDamageToSelfRemoveCounter {
             Value::EventValue(EventValueSpec::Amount) => ("that many".to_string(), "s"),
             amount => (describe_value(amount), "s"),
         };
+        // "..., prevent that damage, remove that many +1/+1 counters from it,
+        // then give each player a rad counter for each +1/+1 counter removed
+        // this way" (Bloatfly Swarm): the follow-up closes one serial sentence.
+        if let Some(ironsmith_core::CounterRemovalFollowUp::EachPlayerGetsCounters {
+            counter_type: gained_type,
+            counters_per_removed,
+        }) = self.follow_up
+        {
+            let gained = gained_type.description();
+            let gained_amount = if counters_per_removed == 1 {
+                "a".to_string()
+            } else {
+                number_word_u32(counters_per_removed)
+                    .unwrap_or_else(|| counters_per_removed.to_string())
+            };
+            let gained_plural = if counters_per_removed == 1 { "" } else { "s" };
+            let amount_word = if matches!(&self.amount, Value::Fixed(1)) {
+                "a"
+            } else {
+                amount_word.as_str()
+            };
+            return format!(
+                "If damage would be dealt to this creature, prevent that damage, remove {amount_word} {counter} counter{suffix} from it, then give each player {gained_amount} {gained} counter{gained_plural} for each {counter} counter removed this way."
+            );
+        }
         let mut display = match self.surface {
             ironsmith_core::CounterRemovalPreventionSurface::Conjoined => format!(
                 "If damage would be dealt to this creature, prevent that damage and remove {amount_word} {counter} counter{suffix} from it."
@@ -6046,6 +6140,7 @@ impl StaticAbilityKind for CreaturesEnteringDontCauseAbilitiesToTrigger {
                 ObjectFilter::creature(),
                 None,
             )),
+            ward_only: false,
         })
     }
 }
@@ -6172,6 +6267,8 @@ impl StaticAbilityKind for ProtectionDoesntRemoveAuras {
 pub struct SuppressMatchingTriggeredAbilities {
     pub source_filter: Option<ObjectFilter>,
     pub event_matcher: Option<crate::triggers::Trigger>,
+    /// Suppresses only ward triggers of the matching sources.
+    pub ward_only: bool,
     pub display: String,
 }
 
@@ -6184,6 +6281,7 @@ impl SuppressMatchingTriggeredAbilities {
         Self {
             source_filter,
             event_matcher,
+            ward_only: false,
             display,
         }
     }
@@ -6202,6 +6300,7 @@ impl StaticAbilityKind for SuppressMatchingTriggeredAbilities {
         Some(TriggerSuppressionSpec {
             source_filter: self.source_filter.clone(),
             event_matcher: self.event_matcher.clone(),
+            ward_only: self.ward_only,
         })
     }
 }

@@ -299,6 +299,26 @@ pub enum TokenCreationTemplateMode {
     ReplaceEach,
 }
 
+/// The authored clause shape of a token-creation replacement. The default is
+/// the passive "If one or more tokens would be created under your control,
+/// ..." surface; `active` is "If you would create ...".
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, TagKeyWalk)]
+pub struct TokenCreationTemplateSurface {
+    /// "If you would create ..." rather than "... would be created under your control".
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub active: bool,
+    /// "a Fish token" rather than "one or more Fish tokens".
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub singular_source: bool,
+    /// "instead create ..." rather than "create ... instead".
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub leading_instead: bool,
+    /// "those tokens plus an additional Map token".
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub additional_word: bool,
+}
+
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq, Eq, TagKeyWalk)]
 pub enum PregameActionKind {
@@ -497,6 +517,16 @@ pub struct ThisSpellCastRestrictionKind {
         serde(default, skip_serializing_if = "Option::is_none")
     )]
     pub condition: Option<Condition>,
+    /// Appended presentation surface: Oracle prohibits the cast ("You can't
+    /// cast this spell unless <condition>") rather than permitting it ("Cast
+    /// this spell only if <condition>"). The typed condition is identical.
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub cant_cast_unless_surface: bool,
+    /// Appended presentation surface: Oracle forbids the cast while a
+    /// condition holds ("You can't cast this spell if <condition>"); the
+    /// typed condition is that condition's negation.
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub cant_cast_if_surface: bool,
 }
 
 impl ThisSpellCastRestrictionKind {
@@ -505,6 +535,8 @@ impl ThisSpellCastRestrictionKind {
             label: label.into(),
             timing: None,
             condition: None,
+            cant_cast_unless_surface: false,
+            cant_cast_if_surface: false,
         }
     }
 
@@ -513,6 +545,8 @@ impl ThisSpellCastRestrictionKind {
             label: "typed cast timing".into(),
             timing: Some(timing),
             condition: None,
+            cant_cast_unless_surface: false,
+            cant_cast_if_surface: false,
         }
     }
 
@@ -523,6 +557,8 @@ impl ThisSpellCastRestrictionKind {
             label: "typed cast condition".into(),
             timing: None,
             condition: Some(condition),
+            cant_cast_unless_surface: false,
+            cant_cast_if_surface: false,
         }
     }
 
@@ -925,6 +961,10 @@ pub enum KeywordMarkerMechanic {
     FinalChapterResolutionRemovesCounters { counter_name: String },
     /// Declared participation in the native precombat lore-counter action.
     PrecombatLoreProgression { stop_at_final_chapter: bool },
+    /// "Note the mana value of each card as it's put into exile" (Bell Borca,
+    /// Spectral Sergeant): the noted values are read from this turn's
+    /// zone-change history by the source's characteristic-defining power.
+    NoteExiledCardManaValues,
 }
 
 /// The mechanic a keyword-marker line carries, if the engine implements one.
@@ -1020,6 +1060,7 @@ pub fn keyword_marker_mechanic(text: &str) -> Option<KeywordMarkerMechanic> {
 
         "this permanent cannot be destroyed" => return Some(M::DestructionImmune),
         "this permanent can be attached while it's a creature" => return Some(M::AttachWhileCreature),
+        "note the mana value of each card as it's put into exile" => return Some(M::NoteExiledCardManaValues),
         "if enchanted creature would be destroyed, instead remove all damage from it and destroy this aura"
         | "if enchanted permanent would be destroyed, instead remove all damage from it and destroy this aura" => return Some(M::DestroyAttachmentInstead),
         "this phases in or out before you untap during each of your untap steps" => return Some(M::PhaseDuringUntap),
@@ -1135,9 +1176,174 @@ pub struct DraftRule {
     /// "You may draft an additional card from that booster pack. If you do,
     /// put this card into that booster pack." (Cogwork Librarian)
     pub exchange_pick: bool,
-    /// The text says more than these fields model (Lore Seeker's added
-    /// booster pack), so a reading of the fields is not the whole rule.
+    /// The text says more than these fields model, so a reading of the
+    /// fields is not the whole rule.
     pub unmodeled: bool,
+    /// Further draft-time instructions (CR 905.2), one bit per
+    /// [`DraftAction`]. They act only during the draft; none of them has an
+    /// effect once the game begins.
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub actions: u32,
+}
+
+/// A draft-time instruction of a conspiracy-draft card (CR 905). Each is a
+/// distinct action on the draft itself, recorded so the rule reads back
+/// from its typed form; the game never executes them.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DraftAction {
+    /// "Reveal this card as you draft it and note how many cards you've
+    /// drafted this draft round, including this card."
+    RevealAndNoteDraftedCount,
+    /// "Reveal the next card you draft and note its name."
+    RevealNextDraftedAndNoteName,
+    /// "As long as this card is face up during the draft, you can't look at
+    /// booster packs and must draft cards at random."
+    FaceUpDraftAtRandom,
+    /// "After you draft three cards this way, turn this card face down."
+    TurnFaceDownAfterThreeRandomPicks,
+    /// "During the draft, you may turn this card face down."
+    MayTurnFaceDownDuringDraft,
+    /// "If you do, look at the next card drafted by a player of your choice."
+    LookAtNextCardDraftedByChosenPlayer,
+    /// "If you do, look at any unopened booster pack in the draft or any
+    /// booster pack not being looked at by another player."
+    LookAtUnwatchedBoosterPack,
+    /// "As you draft a creature card, you may reveal it, note its name, then
+    /// turn this card face down."
+    NoteDraftedCreatureName,
+    /// "As you draft a creature card, you may reveal it, note its creature
+    /// types, then turn this card face down."
+    NoteDraftedCreatureTypes,
+    /// "As you draft a card, you may reveal it, note its name, then turn this
+    /// card face down."
+    NoteDraftedCardName,
+    /// "After you draft this card, you may add a booster pack to the draft."
+    AddBoosterPack,
+    /// "As you draft a card, you may draft an additional card from that
+    /// booster pack." (the extra pick without the exchange)
+    DraftAdditionalCard,
+    /// "If you do, turn this card face down, then pass the next booster pack
+    /// without drafting a card from it."
+    SkipNextPickAfterAdditional,
+    /// "As you draft a card, you may remove it from the draft face up."
+    RemoveDraftedCardFaceUp,
+    /// "As you draft a card, you may remove it from the draft face down."
+    RemoveDraftedCardFaceDown,
+    /// "Each player passes the last card from each booster pack to a player
+    /// who drafted a card named <this card>."
+    ReceiveLastCards,
+    /// "Instead of drafting a card from a booster pack, you may draft each
+    /// card in that booster pack, one at a time."
+    DraftWholeBoosterPack,
+    /// "If you do, turn this card face down and you can't draft cards for
+    /// the rest of this draft round."
+    StopDraftingThisRound,
+    /// "You may look at the next card drafted from this booster pack."
+    LookAtNextCardFromThisPack,
+    /// "Immediately after the draft, you may reveal a card in your card
+    /// pool. Each other player may offer you one card in their card pool in
+    /// exchange. You may accept any one offer."
+    PostDraftTradeOffer,
+    /// "The next time a player drafts a card from this booster pack, guess
+    /// that card's name. Then that player reveals the drafted card."
+    GuessNextDraftedCardName,
+    /// "The player to your right chooses a color, you choose another color,
+    /// then the player to your left chooses a third color." (Paliano, the
+    /// High City; Regicide): the three draft-chosen colors
+    /// (`DraftRule::chosen_colors`).
+    ThreePlayersChooseColors,
+}
+
+impl DraftAction {
+    pub const ALL: [DraftAction; 22] = [
+        Self::RevealAndNoteDraftedCount,
+        Self::RevealNextDraftedAndNoteName,
+        Self::FaceUpDraftAtRandom,
+        Self::TurnFaceDownAfterThreeRandomPicks,
+        Self::MayTurnFaceDownDuringDraft,
+        Self::LookAtNextCardDraftedByChosenPlayer,
+        Self::LookAtUnwatchedBoosterPack,
+        Self::NoteDraftedCreatureName,
+        Self::NoteDraftedCreatureTypes,
+        Self::NoteDraftedCardName,
+        Self::AddBoosterPack,
+        Self::DraftAdditionalCard,
+        Self::SkipNextPickAfterAdditional,
+        Self::RemoveDraftedCardFaceUp,
+        Self::RemoveDraftedCardFaceDown,
+        Self::ReceiveLastCards,
+        Self::DraftWholeBoosterPack,
+        Self::StopDraftingThisRound,
+        Self::LookAtNextCardFromThisPack,
+        Self::PostDraftTradeOffer,
+        Self::GuessNextDraftedCardName,
+        Self::ThreePlayersChooseColors,
+    ];
+
+    pub fn bit(self) -> u32 {
+        1 << (self as u32)
+    }
+
+    /// The sentences of this instruction, in lowercase with "this card"
+    /// standing for the card itself.
+    fn sentences(self) -> &'static [&'static str] {
+        match self {
+            Self::RevealAndNoteDraftedCount => &["reveal this card as you draft it and note how many cards you've drafted this draft round, including this card"],
+            Self::RevealNextDraftedAndNoteName => &["reveal the next card you draft and note its name"],
+            Self::FaceUpDraftAtRandom => &["as long as this card is face up during the draft, you can't look at booster packs and must draft cards at random"],
+            Self::TurnFaceDownAfterThreeRandomPicks => &["after you draft three cards this way, turn this card face down"],
+            Self::MayTurnFaceDownDuringDraft => &["during the draft, you may turn this card face down"],
+            Self::LookAtNextCardDraftedByChosenPlayer => &["if you do, look at the next card drafted by a player of your choice"],
+            Self::LookAtUnwatchedBoosterPack => &["if you do, look at any unopened booster pack in the draft or any booster pack not being looked at by another player"],
+            Self::NoteDraftedCreatureName => &["as you draft a creature card, you may reveal it, note its name, then turn this card face down"],
+            Self::NoteDraftedCreatureTypes => &["as you draft a creature card, you may reveal it, note its creature types, then turn this card face down"],
+            Self::NoteDraftedCardName => &["as you draft a card, you may reveal it, note its name, then turn this card face down"],
+            Self::AddBoosterPack => &["after you draft this card, you may add a booster pack to the draft"],
+            Self::DraftAdditionalCard => &["as you draft a card, you may draft an additional card from that booster pack"],
+            Self::SkipNextPickAfterAdditional => &["if you do, turn this card face down, then pass the next booster pack without drafting a card from it"],
+            Self::RemoveDraftedCardFaceUp => &["as you draft a card, you may remove it from the draft face up"],
+            Self::RemoveDraftedCardFaceDown => &["as you draft a card, you may remove it from the draft face down"],
+            Self::ReceiveLastCards => &["each player passes the last card from each booster pack to a player who drafted a card named this card"],
+            Self::DraftWholeBoosterPack => &["instead of drafting a card from a booster pack, you may draft each card in that booster pack, one at a time"],
+            Self::StopDraftingThisRound => &["if you do, turn this card face down and you can't draft cards for the rest of this draft round"],
+            Self::LookAtNextCardFromThisPack => &["you may look at the next card drafted from this booster pack"],
+            Self::PostDraftTradeOffer => &[
+                "immediately after the draft, you may reveal a card in your card pool",
+                "each other player may offer you one card in their card pool in exchange",
+                "you may accept any one offer",
+            ],
+            Self::GuessNextDraftedCardName => &[
+                "the next time a player drafts a card from this booster pack, guess that card's name",
+                "then that player reveals the drafted card",
+            ],
+            Self::ThreePlayersChooseColors => &[
+                "the player to your right chooses a color, you choose another color, then the player to your left chooses a third color",
+            ],
+        }
+    }
+
+    /// The instruction read as a printed rule, with `name` for the card.
+    pub fn reading(self, name: &str) -> String {
+        self.sentences()
+            .iter()
+            .map(|sentence| {
+                let sentence = sentence.replace("a card named this card", &format!("a card named {name}"));
+                let mut chars = sentence.chars();
+                match chars.next() {
+                    Some(first) => format!("{}{}.", first.to_ascii_uppercase(), chars.as_str()),
+                    None => String::new(),
+                }
+            })
+            .collect::<Vec<_>>()
+            .join(" ")
+    }
+}
+
+impl DraftRule {
+    /// The recorded draft-time instructions, in printed order.
+    pub fn draft_actions(&self) -> impl Iterator<Item = DraftAction> + '_ {
+        DraftAction::ALL.into_iter().filter(|action| self.actions & action.bit() != 0)
+    }
 }
 
 /// Classify a conspiracy's draft-time rule text.
@@ -1151,6 +1357,28 @@ pub fn draft_rule(text: &str) -> DraftRule {
     } else {
         0
     };
+    // A draft instruction names its own card ("a player who drafted a card
+    // named Canal Dredger"); the classification reads it as "this card".
+    let generic = normalized
+        .split(". ")
+        .map(|sentence| match sentence.split_once("a player who drafted a card named ") {
+            Some((head, _)) => format!("{head}a player who drafted a card named this card"),
+            None => sentence.to_string(),
+        })
+        .collect::<Vec<_>>();
+    let mut actions = 0u32;
+    let mut action_sentences: Vec<&str> = Vec::new();
+    for action in DraftAction::ALL {
+        if action
+            .sentences()
+            .iter()
+            .all(|sentence| generic.iter().any(|candidate| candidate == sentence))
+        {
+            actions |= action.bit();
+            action_sentences.extend(action.sentences().iter().copied());
+        }
+    }
+    let normalized = generic.join(". ");
     DraftRule {
         face_up: normalized == "draft this card face up",
         revealed: normalized.starts_with("reveal this card as you draft it"),
@@ -1158,8 +1386,9 @@ pub fn draft_rule(text: &str) -> DraftRule {
         chosen_colors,
         exchange_pick: normalized.contains("draft an additional card from that booster pack")
             && normalized.contains("put this card into that booster pack"),
+        actions,
         unmodeled: !normalized.split(". ").all(|sentence| {
-            matches!(
+            action_sentences.contains(&sentence) || matches!(
                 sentence,
                 "draft this card face up"
                     | "reveal this card as you draft it"
@@ -1542,6 +1771,10 @@ pub enum StaticAbilityPayload<T, E, C, Cond, ICond = Condition> {
     SuppressMatchingTriggeredAbilities {
         source_filter: Option<ObjectFilter>,
         event_matcher: Option<T>,
+        /// "Ward abilities of those creatures don't trigger" (Nowhere to
+        /// Run): only the matching sources' ward triggers are suppressed.
+        #[cfg_attr(feature = "serde", serde(default))]
+        ward_only: bool,
         display: String,
     },
     ExertAttack {
@@ -1608,6 +1841,11 @@ pub enum StaticAbilityPayload<T, E, C, Cond, ICond = Condition> {
     SetCardTypes {
         filter: ObjectFilter,
         card_types: Vec<CardType>,
+        /// "... is an enchantment and loses all other card types" (One with
+        /// the Stars): the authored explicit loss surface. Executes the same
+        /// as an ordinary type setting (CR 205.1a).
+        #[cfg_attr(feature = "serde", serde(default))]
+        loses_other_card_types_surface: bool,
     },
     AddSubtypes {
         filter: ObjectFilter,
@@ -1743,6 +1981,11 @@ pub enum StaticAbilityPayload<T, E, C, Cond, ICond = Condition> {
         /// chooses; the game's deterministic RNG picks one option uniformly.
         #[cfg_attr(feature = "serde", serde(default))]
         at_random: bool,
+        /// "As this creature enters, it becomes your choice of ..." (Primal
+        /// Plasma): the choice is made only as it enters, not also as it is
+        /// turned face up (Aquamorph Entity prints both).
+        #[cfg_attr(feature = "serde", serde(default))]
+        enters_only: bool,
     },
     EnterAsCopyAsEnters {
         spec: EnterAsCopyAsEntersSpec<T, E, C, Cond, ICond>,
@@ -1874,6 +2117,11 @@ pub enum StaticAbilityPayload<T, E, C, Cond, ICond = Condition> {
         #[cfg_attr(feature = "serde", serde(default))]
         noncombat_only: bool,
         display: String,
+        /// Authored as the imperative "Double all damage that <sources>
+        /// would deal" rather than "If <source> would deal damage, it deals
+        /// double that damage instead". Surface only.
+        #[cfg_attr(feature = "serde", serde(default))]
+        double_all_damage_surface: bool,
     },
     /// "If a source would deal damage to you or a permanent you control,
     /// prevent half that damage, rounded up." (Gisela, Blade of Goldnight)
@@ -2154,6 +2402,11 @@ pub enum StaticAbilityPayload<T, E, C, Cond, ICond = Condition> {
     EntersTappedUnlessCondition {
         condition: ICond,
         display: String,
+        /// Oracle wrote the gate as "enters tapped if <negated condition>"
+        /// ("if it's not your turn", Eddymurk Crab). Presentation only: the
+        /// condition stays the one under which it enters untapped.
+        #[cfg_attr(feature = "serde", serde(default))]
+        if_not_surface: bool,
     },
     EntersWithCountersIfCondition {
         counter: CounterType,
@@ -2224,6 +2477,8 @@ pub enum StaticAbilityPayload<T, E, C, Cond, ICond = Condition> {
         choose_one: bool,
         optional: bool,
         display: String,
+        #[cfg_attr(feature = "serde", serde(default))]
+        surface: TokenCreationTemplateSurface,
     },
     ActorCountersAddition {
         filter: ObjectFilter,
@@ -3282,6 +3537,7 @@ where
                     condition: grant.condition,
                     protection_does_not_remove_controlled_attachments: grant
                         .protection_does_not_remove_controlled_attachments,
+                    permanent_subject_surface: grant.permanent_subject_surface,
                 }))
             }
             StaticAbilityPayload::AttachedChosenLandwalkGrant(grant) => {
@@ -3870,10 +4126,12 @@ where
             StaticAbilityPayload::SuppressMatchingTriggeredAbilities {
                 source_filter,
                 event_matcher,
+                ward_only,
                 display,
             } => StaticAbilityPayload::SuppressMatchingTriggeredAbilities {
                 source_filter,
                 event_matcher: event_matcher.map(&mut *map_trigger).transpose()?,
+                ward_only,
                 display,
             },
             StaticAbilityPayload::ExertAttack {
@@ -4008,9 +4266,15 @@ where
                 card_types,
                 condition: condition.map(&mut *map_intervening).transpose()?,
             },
-            StaticAbilityPayload::SetCardTypes { filter, card_types } => {
-                StaticAbilityPayload::SetCardTypes { filter, card_types }
-            }
+            StaticAbilityPayload::SetCardTypes {
+                filter,
+                card_types,
+                loses_other_card_types_surface,
+            } => StaticAbilityPayload::SetCardTypes {
+                filter,
+                card_types,
+                loses_other_card_types_surface,
+            },
             StaticAbilityPayload::AddSubtypes { filter, subtypes } => {
                 StaticAbilityPayload::AddSubtypes { filter, subtypes }
             }
@@ -4152,8 +4416,10 @@ where
                 options,
                 display,
                 at_random,
+                enters_only,
             } => StaticAbilityPayload::ChoosePowerToughnessAsEntersOrTurnsFaceUp {
                 at_random,
+                enters_only,
                 options: options
                     .into_iter()
                     .map(|option| {
@@ -4384,6 +4650,7 @@ where
                 combat_only,
                 noncombat_only,
                 display,
+                double_all_damage_surface,
             } => StaticAbilityPayload::DoubleDamageAmountReplacement {
                 source_filter,
                 target_player_filter,
@@ -4392,6 +4659,7 @@ where
                 combat_only,
                 noncombat_only,
                 display,
+                double_all_damage_surface,
             },
             StaticAbilityPayload::SpellManaSpendingRestriction(rule) =>
                 StaticAbilityPayload::SpellManaSpendingRestriction(rule),
@@ -4669,11 +4937,11 @@ where
                 replacement_mana,
                 display,
             },
-            StaticAbilityPayload::TokenCreationTemplates { controller, token_filter, templates, mode, choose_one, optional, display } =>
+            StaticAbilityPayload::TokenCreationTemplates { controller, token_filter, templates, mode, choose_one, optional, display, surface } =>
                 StaticAbilityPayload::TokenCreationTemplates {
                     controller, token_filter,
                     templates: templates.into_iter().map(map_effect).collect::<Result<Vec<_>, _>>()?,
-                    mode, choose_one, optional, display,
+                    mode, choose_one, optional, display, surface,
                 },
             StaticAbilityPayload::ActorCountersAddition { filter, player_filter, actor, counter_type, additional, display } =>
                 StaticAbilityPayload::ActorCountersAddition { filter, player_filter, actor, counter_type, additional, display },
@@ -4796,10 +5064,11 @@ where
             StaticAbilityPayload::NativeAlternativeCastFromZone { zone, method } => {
                 StaticAbilityPayload::NativeAlternativeCastFromZone { zone, method }
             }
-            StaticAbilityPayload::EntersTappedUnlessCondition { condition, display } => {
+            StaticAbilityPayload::EntersTappedUnlessCondition { condition, display, if_not_surface } => {
                 StaticAbilityPayload::EntersTappedUnlessCondition {
                     condition: map_intervening(condition)?,
                     display,
+                    if_not_surface,
                 }
             }
             StaticAbilityPayload::EntersWithCountersIfCondition {
@@ -6285,8 +6554,24 @@ impl<
         Self {
             id: Some(StaticAbilityId::EntersTappedUnlessCondition),
             label: display.clone(),
-            payload: StaticAbilityPayload::EntersTappedUnlessCondition { condition, display },
+            payload: StaticAbilityPayload::EntersTappedUnlessCondition {
+                condition,
+                display,
+                if_not_surface: false,
+            },
         }
+    }
+
+    /// "This creature enters tapped if it's not your turn": the same gate as
+    /// `enters_tapped_unless_condition`, authored as a negated "if".
+    pub fn enters_tapped_if_not_condition(condition: ICond, display: impl Into<String>) -> Self {
+        let mut ability = Self::enters_tapped_unless_condition(condition, display);
+        if let StaticAbilityPayload::EntersTappedUnlessCondition { if_not_surface, .. } =
+            &mut ability.payload
+        {
+            *if_not_surface = true;
+        }
+        ability
     }
 
     pub fn haste() -> Self {
@@ -7126,7 +7411,11 @@ impl<
         Self {
             id: Some(StaticAbilityId::SetCardTypes),
             label: "set card types".to_string(),
-            payload: StaticAbilityPayload::SetCardTypes { filter, card_types },
+            payload: StaticAbilityPayload::SetCardTypes {
+                filter,
+                card_types,
+                loses_other_card_types_surface: false,
+            },
         }
     }
 
@@ -7138,7 +7427,11 @@ impl<
         Self {
             id: Some(StaticAbilityId::SetCardTypes),
             label: surface.into(),
-            payload: StaticAbilityPayload::SetCardTypes { filter, card_types },
+            payload: StaticAbilityPayload::SetCardTypes {
+                filter,
+                card_types,
+                loses_other_card_types_surface: false,
+            },
         }
     }
     pub fn set_land_subtypes(filter: ObjectFilter, subtypes: Vec<Subtype>) -> Self {
@@ -8239,8 +8532,22 @@ impl<
                 options,
                 display,
                 at_random: false,
+                enters_only: false,
             },
         }
+    }
+
+    /// "As this creature enters, it becomes your choice of ..." without "or
+    /// is turned face up": the choice applies on entry only.
+    pub fn with_pt_choice_enters_only(mut self) -> Self {
+        if let StaticAbilityPayload::ChoosePowerToughnessAsEntersOrTurnsFaceUp {
+            enters_only,
+            ..
+        } = &mut self.payload
+        {
+            *enters_only = true;
+        }
+        self
     }
 
     /// "As this creature enters, flip a coin. If the coin comes up heads,
@@ -8258,6 +8565,7 @@ impl<
                 options,
                 display,
                 at_random: true,
+                enters_only: true,
             },
         }
     }
@@ -8292,6 +8600,25 @@ impl<
             payload: StaticAbilityPayload::SuppressMatchingTriggeredAbilities {
                 source_filter,
                 event_matcher,
+                ward_only: false,
+                display,
+            },
+        }
+    }
+    /// "Ward abilities of those creatures don't trigger." (Nowhere to Run):
+    /// suppresses only the ward triggers of the matching sources.
+    pub fn suppress_ward_abilities(
+        source_filter: Option<ObjectFilter>,
+        display: impl Into<String>,
+    ) -> Self {
+        let display = display.into();
+        Self {
+            id: Some(StaticAbilityId::SuppressMatchingTriggeredAbilities),
+            label: display.clone(),
+            payload: StaticAbilityPayload::SuppressMatchingTriggeredAbilities {
+                source_filter,
+                event_matcher: None,
+                ward_only: true,
                 display,
             },
         }
@@ -9925,6 +10252,18 @@ impl<
     }
     /// Restrict a multiplied-damage replacement to noncombat damage
     /// ("would deal noncombat damage", Solphim, Mayhem Dominus).
+    /// The multiplier was authored as "Double all damage that <sources>
+    /// would deal" (Collective Inferno). Surface only.
+    pub fn with_double_all_damage_surface(mut self) -> Self {
+        if let StaticAbilityPayload::DoubleDamageAmountReplacement {
+            double_all_damage_surface,
+            ..
+        } = &mut self.payload
+        {
+            *double_all_damage_surface = true;
+        }
+        self
+    }
     pub fn with_noncombat_only_damage_multiplier(mut self) -> Self {
         if let StaticAbilityPayload::DoubleDamageAmountReplacement { noncombat_only, .. } =
             &mut self.payload
@@ -9991,6 +10330,7 @@ impl<
                 combat_only,
                 noncombat_only: false,
                 display,
+                double_all_damage_surface: false,
             },
         }
     }
@@ -10479,8 +10819,17 @@ impl<
                 choose_one,
                 optional,
                 display,
+                surface: TokenCreationTemplateSurface::default(),
             },
         }
+    }
+
+    /// Records the authored clause shape of a token-creation replacement.
+    pub fn with_token_creation_template_surface(mut self, surface: TokenCreationTemplateSurface) -> Self {
+        if let StaticAbilityPayload::TokenCreationTemplates { surface: current, .. } = &mut self.payload {
+            *current = surface;
+        }
+        self
     }
 
     pub fn add_life_gain_replacement(

@@ -235,6 +235,82 @@ pub(super) fn pre_rule_conditional_entry_modifier_followup(
     let Some(movement) = battlefield_move_mut(last) else {
         return Ok(None);
     };
+    // A card put from a hand must be chosen before "that card" can be
+    // tested: choose it, then let the chosen card's characteristics select
+    // how that same card enters. Wrapping the whole put instead would test
+    // the condition before any card exists (and bind "that card" to the
+    // trigger's object).
+    let chosen_from_hand = match &*movement {
+        EffectAst::SubjectVerb(SubjectVerbEffectAst {
+            action: SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::MoveToZone { target, .. }),
+            ..
+        }) => match target {
+            crate::TargetAst::WithCount(inner, count) => match inner.as_ref() {
+                crate::TargetAst::Object(filter, _, _) if filter.zone == Some(Zone::Hand) => {
+                    Some((filter.clone(), *count))
+                }
+                _ => None,
+            },
+            crate::TargetAst::Object(filter, _, _) if filter.zone == Some(Zone::Hand) => {
+                Some((filter.clone(), crate::effect::ChoiceCount::exactly(1)))
+            }
+            _ => None,
+        },
+        _ => None,
+    };
+    let chosen_quality = match &predicate {
+        PredicateAst::ItMatches(filter) | PredicateAst::TaggedMatches(_, filter) => {
+            Some(filter.clone())
+        }
+        _ => None,
+    };
+    if let (Some((choice_filter, count)), Some(quality)) = (chosen_from_hand, chosen_quality) {
+        let chosen_tag = crate::util::helper_tag_for_tokens(sentence_tokens, "chosen");
+        let mut plain = movement.clone();
+        if let EffectAst::SubjectVerb(SubjectVerbEffectAst {
+            action: SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::MoveToZone { target, .. }),
+            ..
+        }) = &mut plain
+        {
+            *target = crate::TargetAst::Tagged(chosen_tag.clone(), None);
+        }
+        let mut modified = plain.clone();
+        if let EffectAst::SubjectVerb(SubjectVerbEffectAst {
+            action:
+                SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::MoveToZone {
+                    battlefield_tapped,
+                    battlefield_attacking,
+                    ..
+                }),
+            ..
+        }) = &mut modified
+        {
+            *battlefield_tapped = true;
+            *battlefield_attacking |= attacking;
+        }
+        *movement = EffectAst::Sequence {
+            effects: vec![
+                EffectAst::ObjectChoices(
+                    crate::cards::builders::ObjectChoiceEffectAst::ChooseObjects {
+                        filter: choice_filter,
+                        count,
+                        count_value: None,
+                        player: crate::PlayerAst::You,
+                        tag: chosen_tag.clone(),
+                    },
+                ),
+                EffectAst::Conditionals(ConditionalEffectAst::Conditional {
+                    predicate: PredicateAst::TaggedMatches(chosen_tag, quality),
+                    if_true: vec![modified],
+                    if_false: vec![plain],
+                }),
+            ],
+        };
+        return Ok(Some(PreParseFollowupResult::Handled {
+            consumed_sentences: 1,
+            route: None,
+        }));
+    }
     let plain = movement.clone();
     let mut modified = plain.clone();
     if let EffectAst::SubjectVerb(SubjectVerbEffectAst {

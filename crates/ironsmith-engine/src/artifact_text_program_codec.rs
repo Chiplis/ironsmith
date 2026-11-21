@@ -173,6 +173,7 @@ pub(super) fn encode_text_changed_native_effect(effect: &Effect)
             cost_choice_keywords: model.cost_choice_keywords.clone(),
             announced_modes: model.announced_modes.clone(),
             allowed_mode_counts: model.allowed_mode_counts.clone(),
+            mode_flavor_labels: model.mode_flavor_labels.clone(),
         });
     }
     if let Some(model) = effect.downcast_ref::<ForEachObject>() {

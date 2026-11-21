@@ -36,6 +36,17 @@ pub fn parse_embedded_token_rules_boundary_tokens(tokens: &[OwnedLexToken]) -> O
         return None;
     }
     let with_index = parse_trigger_word_token(tokens, &["with"])?;
+    // The creating verb and its token noun must belong to the outer
+    // sentence. A quoted rule that itself creates a token ("this land
+    // becomes a 3/2 red Goblin creature with \"Whenever this creature
+    // attacks, create a 1/1 red Goblin creature token ...\"") is not an
+    // embedded token blueprint of an outer create action.
+    let head_words = parser_token_word_refs(&tokens[..with_index]);
+    if !exact_word_occurs(&head_words, &["create", "creates"])
+        || !exact_word_occurs(&head_words, &["token", "tokens"])
+    {
+        return None;
+    }
     let starts_tap_ability = tokens
         .get(with_index + 1)
         .and_then(OwnedLexToken::as_word)

@@ -271,10 +271,13 @@ fn parse_turn_history_value_gate(tokens: &[OwnedLexToken]) -> Option<PredicateAs
         clause,
         &["you", "sacrificed", "a", "permanent", "this", "turn"],
     ) {
+        // The clause is the simple past ("you sacrificed"), not "you've".
+        let mut filter = ObjectFilter::permanent();
+        filter.set_simple_past_history_surface(true);
         return Some(value_at_least(
             Value::TurnHistoryCount(TurnHistoryCount::Sacrificed {
                 player: PlayerFilter::You,
-                filter: ObjectFilter::permanent(),
+                filter,
             }),
             1,
         ));
@@ -923,6 +926,19 @@ fn parse_control_gate(tokens: &[OwnedLexToken]) -> Result<Option<PredicateAst>, 
         distinct_names = true;
         filter_tokens = names_stripped.tokens();
     }
+    // "five or more differently named lands" (Seven of Nine): the prefix
+    // form of the same distinct-name count.
+    let mut differently_named_prefix = false;
+    if !distinct_names
+        && filter_tokens.len() > 2
+        && filter_tokens[0].is_word("differently")
+        && filter_tokens[1].is_word("named")
+    {
+        crate::word_claims::claim_tokens(&filter_tokens[..2]);
+        distinct_names = true;
+        differently_named_prefix = true;
+        filter_tokens = &filter_tokens[2..];
+    }
     // "seven or more lands and/or Treefolk" (Tend the Sprigs): each counted
     // permanent is a land, a Treefolk, or both.
     let mut filter = if let Some(split) = filter_tokens
@@ -952,6 +968,7 @@ fn parse_control_gate(tokens: &[OwnedLexToken]) -> Result<Option<PredicateAst>, 
     }
     if distinct_names {
         filter.distinct_names = false;
+        filter.union_surface = filter.union_surface.with_differently_named_prefix(differently_named_prefix);
         if filter.zone.is_none() {
             filter.zone = Some(Zone::Battlefield);
         }

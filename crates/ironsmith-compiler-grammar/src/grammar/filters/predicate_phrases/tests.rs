@@ -2021,7 +2021,11 @@ fn parse_predicate_turn_event_counts_use_shared_capture_parser() -> Result<(), C
         (
             "If you drew two or more cards this turn",
             PredicateAst::ValueComparison {
-                left: Value::MaxCardsDrawnThisTurn(PlayerFilter::You),
+                // The authored simple past is kept as a surface hint
+                // (Archmage Ascension); the value is unchanged.
+                left: Value::MaxCardsDrawnThisTurn(PlayerFilter::You).with_surface_hint(
+                    ironsmith_core::ValueSurfaceHint::SimplePastCardsDrawn,
+                ),
                 operator: ValueComparisonOperator::GreaterThanOrEqual,
                 right: Value::Fixed(2),
             },

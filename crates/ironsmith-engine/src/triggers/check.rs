@@ -1084,6 +1084,11 @@ fn trigger_is_suppressed(
             let Some(spec) = static_ability.trigger_suppression_spec() else {
                 continue;
             };
+            // A ward-only suppression is applied where ward triggers are
+            // created (`targeting::ward`), not to other triggered abilities.
+            if spec.ward_only {
+                continue;
+            }
             if trigger_entry_matches_specs(
                 game,
                 view,
@@ -1107,6 +1112,9 @@ fn trigger_is_suppressed(
         let Some(spec) = static_ability.trigger_suppression_spec() else {
             return;
         };
+        if spec.ward_only {
+            return;
+        }
         suppressed = trigger_entry_matches_specs(
             game,
             view,

@@ -595,6 +595,12 @@ fn spell_subject(
         let joined = match names.as_slice() {
             [one] => (*one).to_string(),
             [first, second] => format!("{first} {} {second}", if plural { "and" } else { "or" }),
+            // "an artifact, instant, or sorcery spell" (Skyway Robber).
+            [leading @ .., last] if leading.len() >= 2 => format!(
+                "{}, {} {last}",
+                leading.join(", "),
+                if plural { "and" } else { "or" }
+            ),
             _ => return None,
         };
         return Some(format!("{joined} spell{}", if plural { "s" } else { "" }));

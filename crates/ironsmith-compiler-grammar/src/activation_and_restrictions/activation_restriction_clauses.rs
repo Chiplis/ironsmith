@@ -535,6 +535,21 @@ pub fn format_negated_restriction_display(tokens: &[OwnedLexToken]) -> String {
     rendered
 }
 
+/// "draw cards or gain life": two simple player-action prohibitions joined
+/// by "or", each exactly one restriction phrase. Returns the "or" position.
+pub fn simple_or_player_restriction_tail(tail: &[&str]) -> Option<usize> {
+    const SIMPLE_TAILS: [&[&str]; 5] = [
+        &["draw", "cards"],
+        &["gain", "life"],
+        &["lose", "life"],
+        &["search", "libraries"],
+        &["win", "the", "game"],
+    ];
+    let or_at = tail.iter().position(|word| *word == "or")?;
+    (SIMPLE_TAILS.contains(&&tail[..or_at]) && SIMPLE_TAILS.contains(&&tail[or_at + 1..]))
+        .then_some(or_at)
+}
+
 pub fn parse_cant_restrictions(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<ParsedCantRestriction>>, CardTextError> {
@@ -582,6 +597,26 @@ pub fn parse_cant_restrictions(
                     })
                     .collect(),
             ));
+        }
+        // "Players can't draw cards or gain life" (Mornsong Aria): two
+        // complete player-action prohibitions sharing one subject. Each half
+        // must be exactly one simple restriction phrase.
+        if let Some(or_at) = simple_or_player_restriction_tail(&tail)
+            && let Some(left) = player_negated_restriction_from_tail(&tail[..or_at], player.clone())
+            && let Some(right) =
+                player_negated_restriction_from_tail(&tail[or_at + 1..], player.clone())
+        {
+            crate::word_claims::claim_tokens(&tokens[neg_start..]);
+            return Ok(Some(vec![
+                ParsedCantRestriction {
+                    restriction: left,
+                    target: target.clone(),
+                },
+                ParsedCantRestriction {
+                    restriction: right,
+                    target,
+                },
+            ]));
         }
     }
 
@@ -1970,7 +2005,23 @@ pub fn parse_negated_object_restriction_clause(
                     }
                 }
             }
-            let mut blocker_filter = parse_and_or_disjunction_filter(&blocker_tokens)?
+            // "black and/or red creatures" (Sacred Knight): color adjectives
+            // over one shared creature noun are one color-set filter. Splitting
+            // on "and/or" would leave the first arm without its noun ("black
+            // permanents and/or red creatures").
+            let shared_noun_color_union = restriction_grammar::parse_and_or_separator_facts_tokens(
+                &blocker_tokens,
+            )
+            .and_then(|_| {
+                crate::grammar::primitives::probe_shape(parse_object_filter(&blocker_tokens, false))
+            })
+            .filter(|filter| {
+                filter.any_of.is_empty()
+                    && filter.colors.is_some()
+                    && filter.card_types.as_slice() == [crate::types::CardType::Creature]
+            });
+            let mut blocker_filter = shared_noun_color_union
+                .or(parse_and_or_disjunction_filter(&blocker_tokens)?)
                 .or(parse_subject_object_filter(&blocker_tokens)?)
                 .or_else(|| {
                     crate::grammar::primitives::probe_shape(parse_object_filter(

@@ -94,6 +94,7 @@ pub fn try_merge_modal_into_remove_mode(
             cost_choice_keywords: choose_mode.cost_choice_keywords.clone(),
             announced_modes: choose_mode.announced_modes.clone(),
             allowed_mode_counts: choose_mode.allowed_mode_counts.clone(),
+            mode_flavor_labels: choose_mode.mode_flavor_labels.clone(),
         },
     ));
     true
@@ -224,10 +225,12 @@ pub fn lower_parsed_modal(
     let mut compiled_modes = Vec::new();
     let mut mode_point_costs = Vec::new();
     let mut mode_additional_mana_costs = Vec::new();
+    let mut mode_flavor_labels: Vec<String> = Vec::new();
     for mode in modes {
         let point_cost = mode.point_cost.unwrap_or(1);
         let additional_mana_cost = mode.additional_mana_cost;
         let mode_description = mode.description;
+        let mode_flavor_label = mode.flavor_label.unwrap_or_default();
         let effects = match lower_prepared_statement_effects(&mode.prepared) {
             Ok(lowered) => lowered.effects,
             Err(err) if allow_unsupported => {
@@ -241,6 +244,7 @@ pub fn lower_parsed_modal(
             source_text: mode_description.clone(),
             effects: effects.to_vec(),
         });
+        mode_flavor_labels.push(mode_flavor_label);
         mode_point_costs.push(point_cost);
         if spree || tiered || descriptive_mode_costs {
             mode_additional_mana_costs.push(additional_mana_cost.ok_or_else(|| {
@@ -343,6 +347,11 @@ pub fn lower_parsed_modal(
         let mut choose_mode = choose_mode.clone();
         choose_mode.faces_dilemma = cost_choice_keywords.is_empty();
         choose_mode.descriptive_mode_costs = descriptive_mode_costs;
+        if mode_flavor_labels.len() == choose_mode.modes.len()
+            && mode_flavor_labels.iter().any(|label| !label.is_empty())
+        {
+            choose_mode.mode_flavor_labels = mode_flavor_labels.clone();
+        }
         if same_mode_more_than_once {
             choose_mode = choose_mode.with_repeated_modes();
         }

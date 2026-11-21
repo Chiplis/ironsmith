@@ -576,7 +576,8 @@ mod typed_output_rewrite_tests {
             .subtypes(vec![crate::types::Subtype::Plains, crate::types::Subtype::Forest]).build();
         let source = game.create_object_from_definition(&definition, player, crate::Zone::Battlefield);
         let rule = ironsmith_core::ManaOutputRewrite {source_filter: ObjectFilter::land(), controller: None,
-            tapped_for_mana: true, input: ironsmith_core::ManaRewriteInput::Any, output, quantity};
+            tapped_for_mana: true, input: ironsmith_core::ManaRewriteInput::Any, output, quantity,
+            surface: ironsmith_core::ManaOutputRewriteSurface::Passive};
         game.effect_store.replacement_effects.add_resolution_effect(ReplacementEffect::with_matcher(source, player,
             crate::events::mana::matchers::ManaRewriteMatcher {rule: rule.clone()},
             ReplacementAction::RewriteMana {input: rule.input, output, quantity}));

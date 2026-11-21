@@ -209,6 +209,29 @@ pub fn trim_vote_winner_suffix(tokens: &[OwnedLexToken]) -> (Vec<OwnedLexToken>,
     parse_vote_winner_suffix_tokens(tokens)
 }
 
+/// "creature cards you own in any zone other than the battlefield or the
+/// stack" (The Muckslinger Gang): the card domain over every game zone except
+/// the battlefield and the stack. Removes the complete phrase and reports it.
+pub fn strip_not_on_battlefield_or_stack_phrase(tokens: &mut Vec<OwnedLexToken>) -> bool {
+    const PHRASE: &[&str] = &[
+        "in", "any", "zone", "other", "than", "the", "battlefield", "or", "the", "stack",
+    ];
+    let word_view = TokenWordView::new(tokens);
+    let words = word_view.to_word_refs();
+    let Some(start) = (0..words.len()).find(|&start| words[start..].starts_with(PHRASE)) else {
+        return false;
+    };
+    let Some(token_start) = word_view.map_word_or_end_to_token_boundary(start) else {
+        return false;
+    };
+    let Some(token_end) = word_view.map_word_or_end_to_token_boundary(start + PHRASE.len())
+    else {
+        return false;
+    };
+    crate::word_claims::claim_drained(tokens.drain(token_start..token_end));
+    true
+}
+
 pub fn strip_not_on_battlefield_phrase(tokens: &mut Vec<OwnedLexToken>) -> bool {
     let word_view = TokenWordView::new(tokens);
     let words = word_view.to_word_refs();

@@ -166,6 +166,19 @@ pub fn parse_quantified_token_creation_with_embedded_rules(
     if outer_tokens == full_tokens {
         return Ok(None);
     }
+    // "... with "{T}: Add one mana of any color." Each opponent who does ..."
+    // (Zagorka, Mother of Sanctum): the creation's own period sits inside the
+    // closing quote. A sentence after that quote is a separate instruction,
+    // never part of the quantified creation; stripping the quote would glue it
+    // onto the token's name.
+    if split_lexed_sentences(&full_tokens)
+        .iter()
+        .filter(|sentence| !crate::lexer::token_word_refs(sentence).is_empty())
+        .count()
+        > 1
+    {
+        return Ok(None);
+    }
     // The player quantifier governs only its own sentence. "Each opponent
     // discards a card. You create a ... token with ..." is two instructions,
     // never one quantified creation.
@@ -2657,6 +2670,9 @@ pub(super) fn parse_effect_sentences_from_sentence_inputs(
         return Ok(effects);
     }
     if let Some(effects) = super::copy_cast_procedure::per_player_target_shuffle_consult(&sentences) {
+        return Ok(effects);
+    }
+    if let Some(effects) = super::copy_cast_procedure::per_opponent_reveal_assimilate_one(&sentences)? {
         return Ok(effects);
     }
     if let Some(effects) = super::copy_cast_procedure::per_card_type_exile_permissions(&sentences)? {
@@ -7313,9 +7329,24 @@ fn parse_composable_typed_statements(
                     effects: vec![base_effect],
                 }))
             } else if is_document {
-                Some(super::zone_counter_helpers::parse_put_counters(
-                    statement_tokens,
-                )?)
+                let mut effect = super::zone_counter_helpers::parse_put_counters(statement_tokens)?;
+                // A counter placement authored as its own later sentence
+                // ("Tap ... . Put a stun counter on it.") keeps that boundary,
+                // exactly as the sentence dispatcher records it.
+                if sentence_start > 0
+                    && let EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                        action:
+                            SubjectVerbActionAst::Counters(CounterActionAst::PutCounters {
+                                count, ..
+                            }),
+                        ..
+                    }) = &mut effect
+                {
+                    *count = count.clone().with_surface_hint(
+                        ironsmith_core::ValueSurfaceHint::CounterFollowupSeparateSentence,
+                    );
+                }
+                Some(effect)
             } else {
                 None
             };
@@ -8993,7 +9024,12 @@ fn bind_where_x_threshold_conditions(tokens: &[OwnedLexToken], effects: &mut [Ef
             match predicate {
                 PredicateAst::XValueAtLeast(threshold) => {
                     *predicate = PredicateAst::ValueComparison {
-                        left: value.clone(),
+                        // The authored "If X is N or more" keeps its X as a
+                        // surface hint (The Destruction of Praxis); the bound
+                        // value is what executes.
+                        left: value
+                            .clone()
+                            .with_surface_hint(ironsmith_core::ValueSurfaceHint::WhereXIs),
                         operator: crate::effect::ValueComparisonOperator::GreaterThanOrEqual,
                         right: Value::Fixed(*threshold as i32),
                     };
@@ -9001,7 +9037,9 @@ fn bind_where_x_threshold_conditions(tokens: &[OwnedLexToken], effects: &mut [Ef
                 PredicateAst::ValueComparison { left, .. }
                     if matches!(left.unhinted(), Value::X) =>
                 {
-                    *left = value.clone();
+                    *left = value
+                        .clone()
+                        .with_surface_hint(ironsmith_core::ValueSurfaceHint::WhereXIs);
                 }
                 _ => {}
             }

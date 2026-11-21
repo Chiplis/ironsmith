@@ -3,7 +3,17 @@
 pub struct AttachmentGrantQuote { pub start: usize, pub end: usize, pub labeled: bool }
 
 pub fn attachment_grant_header(words: &[&str]) -> bool {
-    words.len() >= 2 && matches!(words.last(), Some(&"has" | &"have"))
+    if words.len() >= 2 && matches!(words.last(), Some(&"has" | &"have")) {
+        return true;
+    }
+    // `Enchanted creature has haste and "..."`: a keyword list coordinated
+    // before the quoted ability shares the same grant verb.
+    words.len() >= 4
+        && words.last() == Some(&"and")
+        && words[..words.len() - 1]
+            .iter()
+            .rposition(|word| matches!(*word, "has" | "have"))
+            .is_some_and(|verb| verb >= 1 && words.len() - verb <= 8)
 }
 
 pub fn attachment_grant_quote_scopes(text: &str) -> Vec<AttachmentGrantQuote> {
@@ -29,11 +39,14 @@ pub fn attachment_grant_quote_scopes(text: &str) -> Vec<AttachmentGrantQuote> {
 pub fn attachment_grant_name_is_operand(previous: Option<&str>, before_previous: Option<&str>, colon_follows: bool) -> bool {
     if matches!(previous, Some("on" | "from")) && matches!(before_previous, Some("counter" | "counters")) { return true; }
     match previous {
-        Some("sacrifice" | "tap" | "untap") => true,
+        // "{15}, Exile The Dominion Bracelet: ..." — an exile cost in the
+        // granted ability names the grantor, like a sacrifice cost.
+        Some("sacrifice" | "tap" | "untap" | "exile") => true,
         // "... dealt to this creature by Torrent of Lava": the damage source
         // a granted ability names is the grantor, never the holder.
         Some("by") => !colon_follows,
-        Some("return" | "exile" | "destroy" | "remove" | "fight" | "fights") => !colon_follows,
+        // "attach Shifting Shadow to it": the Aura moves, never its holder.
+        Some("return" | "destroy" | "remove" | "fight" | "fights" | "attach") => !colon_follows,
         _ => false,
     }
 }
@@ -48,5 +61,13 @@ mod tests {
         assert!(text[scopes[1].start..scopes[1].end].contains("from equipment"));
         assert!(attachment_grant_name_is_operand(Some("from"), Some("counters"), true));
         assert!(!attachment_grant_name_is_operand(Some("return"), None, true));
+    }
+    #[test]
+    fn keyword_list_before_a_quoted_grant_keeps_the_grant_scope() {
+        let text = "enchanted creature has haste and \"at the beginning of your upkeep, attach shifting shadow to it.\"";
+        let scopes = attachment_grant_quote_scopes(text);
+        assert_eq!(scopes.len(), 1);
+        assert!(attachment_grant_name_is_operand(Some("attach"), Some("and"), false));
+        assert!(!attachment_grant_header(&["it", "and"]));
     }
 }

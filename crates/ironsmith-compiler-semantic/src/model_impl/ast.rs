@@ -71,6 +71,7 @@ pub enum StaticAbilityAst {
         choose_one: bool,
         optional: bool,
         display: String,
+        surface: ironsmith_core::TokenCreationTemplateSurface,
     },
     LoseGameReplacement {
         effects: Vec<EffectAst>,

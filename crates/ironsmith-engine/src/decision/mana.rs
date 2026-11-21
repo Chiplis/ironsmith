@@ -423,6 +423,8 @@ pub struct ActivationCostAbility {
     pub activation_label: Option<std::sync::Arc<str>>,
     /// Exact designations captured from the original selected activation.
     pub designations: Vec<String>,
+    /// The selected activation's own printed discount, read from its source.
+    pub self_cost_reduction: Option<ActivationSelfCostReduction>,
 }
 
 impl ActivationCostAbility {
@@ -473,6 +475,11 @@ impl ActivationCostAbility {
             ability_index,
             optional_generic_reduction_limit: None,
             activation_label: activated.effects.activation_label.as_deref().map(std::sync::Arc::from),
+            self_cost_reduction: activated
+                .effects
+                .activation_self_cost_reduction
+                .clone()
+                .map(ActivationSelfCostReduction),
             // Designations belong to the enclosing Ability, not its
             // ActivatedAbility payload. Without an exact indexed owner, do
             // not borrow a designation from one of several equal bodies.
@@ -485,6 +492,14 @@ impl ActivationCostAbility {
         }
     }
 }
+
+/// "This ability costs {X} less to activate, where X is ..." carried by the
+/// selected activation's own program (`activation_self_cost_reduction`).
+/// `Value` is only `PartialEq`; these facts are compared structurally.
+#[derive(Debug, Clone, PartialEq)]
+pub struct ActivationSelfCostReduction(pub ironsmith_core::Value);
+
+impl Eq for ActivationSelfCostReduction {}
 
 /// Calculate activated-ability cost after applying battlefield static cost modifiers.
 ///
@@ -1084,6 +1099,26 @@ fn activation_mana_reductions(
             determined
                 .discounts
                 .push((amount, reduction.minimum_total_mana));
+        }
+    }
+    // "This ability costs {X} less to activate, where X is this creature's
+    // power" printed in the activation itself (a granted ability): X is read
+    // from the ability's own source, i.e. the creature that has it.
+    if let Some(ActivationSelfCostReduction(value)) =
+        ability.and_then(|facts| facts.self_cost_reduction.as_ref())
+    {
+        let mut dm = SelectFirstDecisionMaker;
+        let ctx = ExecutionContext::new(
+            ability_source_object.id,
+            game.controller_of(ability_source_object),
+            &mut dm,
+        )
+        .with_targets(activation_targets(chosen_targets));
+        let amount = resolve_value(game, value, &ctx).unwrap_or(0).max(0) as u32;
+        if amount > 0 {
+            determined.mandatory = determined.mandatory.saturating_add(amount);
+            determined.budget = determined.budget.saturating_add(amount);
+            determined.discounts.push((amount, None));
         }
     }
     // The activator may apply larger minimums first, then unrestricted discounts.

@@ -558,7 +558,8 @@ where
                     if matches!(
                         m,
                         crate::alternative_cast_model::AlternativeCastingMethod::Flashback { .. }
-                    ) =>
+                    ) || m.keyword()
+                        == Some(crate::alternative_cast_model::AlternativeCastKeyword::Warp) =>
                 {
                     format!("{} {}", m.name(), cost.to_oracle())
                 }
@@ -1451,6 +1452,37 @@ where
                         "exiling {count_text} {type_prefix}{noun} from your graveyard"
                     ));
                 }
+                // A cost without a typed reading reads as the gerund of its
+                // own imperative display: "removing six counters from among
+                // creatures you control in addition to paying its other costs".
+                let display = cost.display();
+                let display = display.trim().trim_end_matches('.');
+                for (verb, gerund) in [
+                    ("Remove ", "removing "),
+                    ("Tap ", "tapping "),
+                    ("Return ", "returning "),
+                    ("Put ", "putting "),
+                    ("Reveal ", "revealing "),
+                    ("Mill ", "milling "),
+                ] {
+                    if let Some(rest) = display.strip_prefix(verb)
+                        && !rest.contains(". ")
+                        && !rest.contains(", then ")
+                    {
+                        let rest = match rest.split_once(' ') {
+                            Some((count, tail)) => match count
+                                .parse::<u32>()
+                                .ok()
+                                .and_then(crate::cardinal_word)
+                            {
+                                Some(word) => format!("{word} {tail}"),
+                                None => rest.to_string(),
+                            },
+                            None => rest.to_string(),
+                        };
+                        return Some(format!("{gerund}{rest}"));
+                    }
+                }
                 None
             }
 
@@ -2221,6 +2253,17 @@ where
                 );
             }
         }
+        // "You may play Forests from your graveyard" (Titania, Nature's
+        // Force): a land subtype narrows the permission.
+        if matches!(self.grantable, Grantable::PlayFrom)
+            && self.zone == Zone::Graveyard
+            && self.filter.card_types.as_slice() == [CardType::Land]
+            && let [subtype] = self.filter.subtypes.as_slice()
+        {
+            let noun = subtype.to_string();
+            let noun = if noun.ends_with('s') { noun } else { format!("{noun}s") };
+            return format!("{may_prefix} play {noun} from your graveyard{}", cast_this_way_suffix());
+        }
         if matches!(self.grantable, Grantable::PlayFrom)
             && self.zone == Zone::Graveyard
             && self.filter.card_types.as_slice() == [CardType::Land]
@@ -2454,6 +2497,52 @@ where
                 "{may_prefix} cast {spells} from your hand without paying their mana costs"
             );
         }
+        // "Each legendary spell you cast that's one or more colors has
+        // web-slinging {G}{W}{U}." (Amazing Spider-Man): a granted
+        // web-slinging names the spells it applies to and keeps its mana cost;
+        // its return-a-tapped-creature component is the keyword's own cost.
+        if let Grantable::AlternativeCast(
+            method @ AlternativeCastingMethod::Composed { name, .. },
+        ) = &self.grantable
+            && name.eq_ignore_ascii_case("web-slinging")
+            && self.zone == Zone::Hand
+            && method.cast_from_zone() == Zone::Hand
+            && let Some(mana_cost) = method.mana_cost()
+        {
+            let mut spells = self.filter.clone();
+            spells.zone = None;
+            spells.owner = None;
+            spells.has_mana_cost = false;
+            spells
+                .excluded_card_types
+                .retain(|card_type| *card_type != CardType::Land);
+            let colors = match spells.color_count.take() {
+                None => Some(String::new()),
+                Some(crate::filter_model::Comparison::GreaterThanOrEqual(1)) => {
+                    Some(" that's one or more colors".to_string())
+                }
+                Some(_) => None,
+            };
+            if let Some(colors) = colors {
+                let subject = if spells == ObjectFilter::default() {
+                    "spell".to_string()
+                } else {
+                    castable_filter_description(&spells)
+                };
+                let subject = subject
+                    .strip_prefix("a ")
+                    .or_else(|| subject.strip_prefix("an "))
+                    .unwrap_or(&subject);
+                let subject = match subject.strip_suffix(" spells") {
+                    Some(stem) => format!("{stem} spell"),
+                    None => subject.to_string(),
+                };
+                return format!(
+                    "Each {subject} you cast{colors} has web-slinging {}",
+                    mana_cost.to_oracle()
+                );
+            }
+        }
         // "Dinosaur spells you cast have prowl {2}{R}." (Hunting
         // Velociraptor): a granted named alternative cost reads as its keyword.
         if let Grantable::AlternativeCast(
@@ -2639,6 +2728,32 @@ where
         if let Grantable::DerivedAlternativeCast(DerivedAlternativeCast::BlitzFromCardManaCost) =
             &self.grantable
         {
+            // "Each creature spell you cast with mana value 4 or greater has
+            // blitz" (Henzie "Toolbox" Torre): one grant over every zone the
+            // owner's spell can be cast from names no zone.
+            if !self.additional_zones.is_empty() {
+                let mut cards = self.filter.clone();
+                cards.zone = None;
+                let yours = cards.owner == Some(PlayerFilter::You);
+                cards.owner = None;
+                let described = castable_filter_description(&cards);
+                let described = described
+                    .strip_prefix("a ")
+                    .or_else(|| described.strip_prefix("an "))
+                    .unwrap_or(&described)
+                    .to_string();
+                let described = if yours {
+                    match described.split_once(" with ") {
+                        Some((head, rest)) => format!("{head} you cast with {rest}"),
+                        None => format!("{described} you cast"),
+                    }
+                } else {
+                    described
+                };
+                return format!(
+                    "Each {described} has blitz. The blitz cost is equal to its mana cost"
+                );
+            }
             let filter_desc = castable_filter_description(&filter);
             return format!(
                 "Each {filter_desc} has blitz. The blitz cost is equal to its mana cost"

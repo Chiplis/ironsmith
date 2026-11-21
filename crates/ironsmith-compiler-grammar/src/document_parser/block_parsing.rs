@@ -153,6 +153,7 @@ fn try_parse_tiered_shared_body_block(
             point_cost: None,
             additional_mana_cost: Some(cost),
             effects_ast,
+            flavor_label: None,
         });
         probe_idx += 1;
     }
@@ -266,6 +267,7 @@ fn try_parse_chosen_keyword_cost_block(
             point_cost: None,
             additional_mana_cost: None,
             effects_ast,
+            flavor_label: None,
         });
     }
     let mut header_tokens = cost[..choose_idx - 1].to_vec();

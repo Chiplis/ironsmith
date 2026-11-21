@@ -1273,7 +1273,14 @@ fn fold_per_object_random_player_control_changes(effects: &mut Vec<EffectAst>) {
                 constraint.tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str()
             })
         {
+            // "Untap those permanents": the executable set is the iterated
+            // domain; the authored demonstrative survives as surface only.
+            let antecedent = filter
+                .demonstrative_antecedent_surface()
+                .unwrap_or(ironsmith_core::DemonstrativeAntecedentSurface::Permanent);
             *filter = domain;
+            filter.set_demonstrative_antecedent_surface(Some(antecedent));
+            filter.set_plural_object_noun_surface(true);
         }
     }
 }

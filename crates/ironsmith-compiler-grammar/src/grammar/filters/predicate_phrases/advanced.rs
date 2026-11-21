@@ -1863,6 +1863,11 @@ pub(super) fn parse_player_turn_event_predicate(tokens: &[OwnedLexToken]) -> Opt
     {
         left = left.with_surface_hint(ironsmith_core::ValueSurfaceHint::AnotherLandEnteredThisTurn);
     }
+    if matches!(left.unhinted(), Value::MaxCardsDrawnThisTurn(PlayerFilter::You))
+        && tokens.iter().any(|token| token.is_word("drew"))
+    {
+        left = left.with_surface_hint(ironsmith_core::ValueSurfaceHint::SimplePastCardsDrawn);
+    }
 
     Some(PredicateAst::ValueComparison {
         left,
@@ -4613,10 +4618,11 @@ fn parse_unattached_from_source_shape(tokens: &[OwnedLexToken]) -> Option<Predic
         .token_start_indices()
         .get(4)
         .copied()?;
-    let filter = crate::grammar::primitives::probe_shape(parse_object_filter(
+    let mut filter = crate::grammar::primitives::probe_shape(parse_object_filter(
         &tokens[filter_start..],
         false,
     ))?;
+    filter.set_unattached_from_reference(true);
     Some(PredicateAst::Source(SourcePredicateAst::SourceMatches(
         filter,
     )))

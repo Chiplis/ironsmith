@@ -38,6 +38,9 @@ fn token_reminder_sentence_head<'a>(
             primitives::phrase(&["they", "have"]),
             // "They each have flying and ..." (Tetravus).
             primitives::phrase(&["they", "each", "have"]),
+            // "Those tokens have \"Sacrifice this token: Add {C}.\"" (Vile
+            // Redeemer): the plural demonstrative spelling of the same grant.
+            primitives::phrase(&["those", "tokens", "have"]),
         ))
         .value(TokenReminderSentenceKind::GrantedAbility),
         alt((

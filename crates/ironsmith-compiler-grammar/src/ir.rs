@@ -193,6 +193,7 @@ pub struct RewriteModalBlock {
 pub struct RewriteModalMode {
     pub info: LineInfo,
     pub text: String,
+    pub flavor_label: Option<String>,
     pub point_cost: Option<u32>,
     pub additional_mana_cost: Option<crate::mana::ManaCost>,
     pub effects_ast: Vec<EffectAst>,

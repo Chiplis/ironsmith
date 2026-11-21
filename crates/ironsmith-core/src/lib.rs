@@ -226,6 +226,7 @@ pub use effect::{
     TagTriggeringSourceEffect, TaggedEffect, TaggedLeavesAbilitySource, TakeInitiativeEffect,
     TapEffect, TargetOnlyEffect, TicketCountersEffect, TokenAbilityPresentation,
     TokenCopyReferenceSurface, TransformEffect, TurnFaceDownEffect, TurnFaceUpEffect, TypeRetentionSurface,
+    ContinuousClauseSurface,
     UnattachObjectsEffect, UnearthEffect, UnlessActionEffect, UnlessPaysEffect,
     UnlockRoomDoorEffect, UntapEffect, Until, VariableCasualtyPlaneswalkerCopyEffect,
     VentureIntoDungeonEffect, VillainousChoiceEffect, VoteChoice, VoteEffect, VoteOption, VotePayload,
@@ -255,15 +256,15 @@ pub use ids::{
     restore_id_counters, snapshot_id_counters,
 };
 pub use interned::{InternedI32Slice, InternedStr};
-pub use mana::{ManaCost, ManaSymbol, ManaOutputRewrite, ManaRewriteInput, ManaRewriteOutput, ManaRewriteQuantity};
+pub use mana::{ManaCost, ManaSymbol, ManaOutputRewrite, ManaOutputRewriteSurface, ManaRewriteInput, ManaRewriteOutput, ManaRewriteQuantity};
 pub use ordinal::{ordinal_word, parse_ordinal_word, parse_ordinal_words};
 pub use resolution_model::{LinkedExileDefinition, LinkedExilePair, ResolutionProgram, ResolutionSegment, SelfReplacementBranch};
 pub use spell_cost_condition_model::ThisSpellCostCondition;
 pub use spell_timing_model::ThisSpellCastTiming;
 pub use static_ability_id::StaticAbilityId;
 pub use static_ability_model::{
-    TokenCreationTemplateMode,
-    DraftRule, KeywordMarkerMechanic, deck_construction_color_choice_count, draft_rule,
+    TokenCreationTemplateMode, TokenCreationTemplateSurface,
+    DraftAction, DraftRule, KeywordMarkerMechanic, deck_construction_color_choice_count, draft_rule,
     CommanderDeckAllowance, DeckCardClass, ExtraIdentityColors,
     keyword_marker_mechanic,
     AbilityLossMode, ActivatedAbilityCostCondition, AdditionalTokenKind, Anthem,

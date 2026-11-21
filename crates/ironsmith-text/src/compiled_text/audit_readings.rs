@@ -32,6 +32,40 @@ fn may(optional: bool) -> &'static str {
     if optional { "you may " } else { "" }
 }
 
+/// The gate `parse_first_draw_each_turn_replacement_line` builds: no card
+/// drawn this turn yet, or (with the draw-step exception) on your turn at
+/// most the excepted draw-step card.
+fn is_first_draw_each_turn_gate(
+    condition: &crate::effect::Condition,
+    except_first_of_draw_step: bool,
+) -> bool {
+    use crate::effect::Condition as C;
+    let drawn_compare = |condition: &C, expected: crate::effect::ValueComparisonOperator, amount: Value| {
+        matches!(condition, C::ValueComparison { left, operator, right }
+            if left.unhinted() == &Value::MaxCardsDrawnThisTurn(PlayerFilter::You)
+                && *operator == expected
+                && right.unhinted() == &amount)
+    };
+    let none_drawn =
+        |condition: &C| drawn_compare(condition, crate::effect::ValueComparisonOperator::Equal, Value::Fixed(0));
+    if !except_first_of_draw_step {
+        return none_drawn(condition);
+    }
+    let C::Or(first, second) = condition else {
+        return false;
+    };
+    let C::And(turn, at_most_one) = second.as_ref() else {
+        return false;
+    };
+    none_drawn(first)
+        && matches!(turn.as_ref(), C::YourTurn)
+        && drawn_compare(
+            at_most_one,
+            crate::effect::ValueComparisonOperator::LessThanOrEqual,
+            Value::Fixed(1),
+        )
+}
+
 fn except_first(except: bool) -> &'static str {
     if except { " except the first one you draw in each of your draw steps" } else { "" }
 }
@@ -61,6 +95,18 @@ fn damage_source_objects(source: &ObjectFilter) -> String {
     } else {
         description
     };
+    // "a Giant source you control" (Calamity Bearer): a subtype-only dealer
+    // in no zone is any source of that subtype.
+    let description = if source.zone.is_none()
+        && source.card_types.is_empty()
+        && !source.subtypes.is_empty()
+        && !description.contains("source")
+        && let Some(at) = description.find(" you control")
+    {
+        format!("{} source{}", &description[..at], &description[at..])
+    } else {
+        description
+    };
     article(&description)
 }
 
@@ -80,6 +126,12 @@ fn damage_scope(
         recipients.push(article(&objects(o)));
     }
     let to = if recipients.is_empty() {
+        String::new()
+    } else if matches!(player_filter, Some(PlayerFilter::Any))
+        && object_filter.as_ref().is_some_and(|filter| *filter == ObjectFilter::default())
+    {
+        // Any player and any object, with no zone: every damage recipient,
+        // so no recipient is named (Fire Servant).
         String::new()
     } else if recipients == ["a player", "a permanent"] {
         // Oracle prints the any-recipient pair "to a permanent or player"
@@ -269,10 +321,22 @@ fn enter_as_copy(spec: &ironsmith_core::EnterAsCopyAsEntersSpec<
     let mut types: Vec<String> = spec.added_supertypes.iter().map(|t| format!("{t:?}").to_ascii_lowercase()).collect();
     types.extend(spec.added_subtypes.iter().map(|t| format!("{t:?}")));
     types.extend(spec.added_card_types.iter().map(|t| format!("{t:?}").to_ascii_lowercase()));
+    // "except it isn't legendary, is an artifact in addition to its other
+    // types, and has myriad" (Auton Soldier): with type additions present,
+    // the removed supertype is printed first.
+    let removed_supertypes_lead = !types.is_empty();
+    if removed_supertypes_lead {
+        for supertype in &spec.removed_supertypes {
+            exceptions.push(format!("it isn't {}", format!("{supertype:?}").to_ascii_lowercase()));
+        }
+    }
     if !types.is_empty() {
+        // Supertypes are adjectives: "it's legendary and snow in addition to
+        // its other types" (Moritte of the Frost), "it's legendary" (Sakashima).
+        let supertypes_only = spec.added_subtypes.is_empty() && spec.added_card_types.is_empty();
         exceptions.push(format!(
             "it's {} {}",
-            with_indefinite_article(&types.join(" ")),
+            if supertypes_only { types.join(" and ") } else { with_indefinite_article(&types.join(" ")) },
             if spec.removes_other_card_types { "and loses all other card types" } else { "in addition to its other types" }
         ));
     }
@@ -287,12 +351,49 @@ fn enter_as_copy(spec: &ironsmith_core::EnterAsCopyAsEntersSpec<
             with_indefinite_article(&objects(&conditional.source_filter))
         ));
     }
-    for supertype in &spec.removed_supertypes {
-        exceptions.push(format!("it isn't {}", format!("{supertype:?}").to_ascii_lowercase()));
+    if !removed_supertypes_lead {
+        for supertype in &spec.removed_supertypes {
+            exceptions.push(format!("it isn't {}", format!("{supertype:?}").to_ascii_lowercase()));
+        }
     }
+    // "if it's a creature, it enters with two additional +1/+1 counters on it
+    // and has changeling" (Moritte of the Frost): counters and abilities that
+    // share one copied-kind gate state it once.
+    let shared_copy_gate = spec.additional_counters_source_filter.as_ref().filter(|filter| {
+        spec.added_abilities_source_filter.as_ref() == Some(*filter)
+            && !spec.added_abilities.is_empty()
+            && !spec.additional_counters.is_empty()
+            && spec.additional_x_counters.is_empty()
+    });
+    let mut gated_abilities: Option<String> = None;
     if !spec.added_abilities.is_empty() {
-        let abilities = spec.added_abilities.iter().map(ability_model).collect::<Vec<_>>();
-        exceptions.push(format!("it has {}", abilities.join(" and ")));
+        // The entering object becomes a copy of something matching the
+        // filter, so an added rule's self-reference is that object's type
+        // ("you may exile this enchantment", Estrid's Invocation).
+        let recipient = (spec.affected_filter.is_none()
+            && !spec.copy_source_self
+            && !spec.copy_source_enchanted
+            && !matches!(
+                super::render_effects::granted_ability_self_subject_for_filter(&spec.filter),
+                "this creature" | "this permanent"
+            ))
+        .then_some(&spec.filter);
+        let abilities = spec
+            .added_abilities
+            .iter()
+            .map(|ability| match recipient {
+                Some(filter) if !matches!(&ability.kind, ironsmith_core::AbilityKind::Static(_)) => {
+                    ability_model_for_recipient(ability, filter)
+                }
+                _ => ability_model(ability),
+            })
+            .collect::<Vec<_>>();
+        let joined = abilities.join(" and ");
+        if shared_copy_gate.is_some() {
+            gated_abilities = Some(joined);
+        } else {
+            exceptions.push(format!("it has {joined}"));
+        }
     }
     // "except it enters with a shield counter on it if you control that
     // creature" (Undercover Operative): the counters' copied-object gate.
@@ -300,7 +401,31 @@ fn enter_as_copy(spec: &ironsmith_core::EnterAsCopyAsEntersSpec<
         .additional_counters_source_filter
         .as_ref()
         .map_or(String::new(), |filter| format!(" if it copies {}", objects(filter)));
-    for (counter, amount) in &spec.additional_counters {
+    if let Some(gate) = shared_copy_gate {
+        let counters = spec
+            .additional_counters
+            .iter()
+            .map(|(counter, amount)| {
+                format!(
+                    "{} additional {} counter{}",
+                    if *amount == 1 { "an".to_string() } else { count_words(*amount) },
+                    describe_counter_type(*counter),
+                    if *amount == 1 { "" } else { "s" }
+                )
+            })
+            .collect::<Vec<_>>();
+        exceptions.push(format!(
+            "if it's {}, it enters with {} on it and has {}",
+            with_indefinite_article(&objects(gate)),
+            counters.join(" and "),
+            gated_abilities.take().unwrap_or_default()
+        ));
+    }
+    for (counter, amount) in spec
+        .additional_counters
+        .iter()
+        .filter(|_| shared_copy_gate.is_none())
+    {
         exceptions.push(format!(
             "it enters with {} additional {} counter{} on it{copies_gate}",
             if *amount == 1 { "an".to_string() } else { count_words(*amount) },
@@ -358,7 +483,7 @@ fn enter_as_copy(spec: &ironsmith_core::EnterAsCopyAsEntersSpec<
     {
         rest.push(format!("counters only if it copies {}", objects(filter)));
     }
-    if let Some(filter) = &spec.added_abilities_source_filter { rest.push(format!("abilities only if it copies {}", objects(filter))); }
+    if shared_copy_gate.is_none() && let Some(filter) = &spec.added_abilities_source_filter { rest.push(format!("abilities only if it copies {}", objects(filter))); }
     let mut sentences = Vec::new();
     for followup in &spec.copy_followups {
         sentences.push(match followup {
@@ -454,8 +579,15 @@ fn cant_attack_unless(
                 "you pay {{{amount_per_counter}}} for each {} counter on it",
                 describe_counter_type(*counter_type)
             ),
+            // The executor offers only permanents you control
+            // (`non_mana_attack_cost_program`), so the reading names that
+            // restriction even when the stored filter leaves it implicit.
             Cost::ReturnPermanentsToOwnersHand { filter, count } if *count == 1 => {
-                format!("you return {} to its owner's hand", article(&objects(filter)))
+                let mut filter = filter.clone();
+                if filter.controller.is_none() {
+                    filter = filter.you_control();
+                }
+                format!("you return {} to its owner's hand", article(&objects(&filter)))
             }
             Cost::ReturnPermanentsToOwnersHand { filter, count } => format!(
                 "you return {} {} to their owners' hands",
@@ -486,6 +618,56 @@ fn when_you_do<T>(trigger: &ironsmith_core::TriggeredAbility<T, Effect>) -> Stri
 
 /// Alternative price grants carry a separate cast-origin restriction and a
 /// shared use limit. Both must survive audit rendering.
+/// "Once each turn, you may pay {0} rather than pay the mana cost for a spell
+/// you cast with mana value X or less, where X is the number of time counters
+/// on this enchantment" (As Foretold): a use-limited alternative price for any
+/// spell you cast, bounded by a dynamic mana value.
+fn audit_limited_dynamic_mana_value_price_grant(grant: &crate::grant::GrantSpec) -> Option<String> {
+    let ironsmith_core::Grantable::AlternativePrice { costs, origin: None } = &grant.grantable else {
+        return None;
+    };
+    if costs.is_empty()
+        || costs.iter().any(|cost| cost.mana_cost_ref().is_none())
+        || grant.beneficiary != PlayerFilter::You
+        || !grant.additional_zones.is_empty() || grant.max_plays.is_some()
+        || !grant.cast_this_way_grants.is_empty() || !grant.permanent_this_way_grants.is_empty()
+        || !grant.on_use_effects.is_empty() || grant.instant_timing || grant.land_play_companion
+        || grant.top_card_only || grant.may_look_at_top || grant.may_look_at_linked_exile
+        || grant.requires_linked_exile_pair || grant.linked_exile_pair.is_some()
+        || grant.linked_exile_class_level.is_some() || grant.cast_this_way_filter.is_some()
+        || grant.cast_mana_spend_mode != ironsmith_core::value_model::ManaSpendMode::Normal
+    {
+        return None;
+    }
+    let lead = match grant.usage_limit {
+        Some(ironsmith_core::GrantUsageLimit::OnceEachTurn) => "Once each turn, ",
+        Some(ironsmith_core::GrantUsageLimit::OnceDuringEachOfYourTurns) => "Once during each of your turns, ",
+        _ => return None,
+    };
+    let Some(crate::filter::Comparison::LessThanOrEqualExpr(limit)) = &grant.filter.mana_value else {
+        return None;
+    };
+    if matches!(limit.unhinted(), Value::Fixed(_)) {
+        return None;
+    }
+    let mut rest = grant.filter.clone();
+    rest.mana_value = None;
+    rest.zone = None;
+    if rest.owner == Some(PlayerFilter::You) {
+        rest.owner = None;
+    }
+    rest.excluded_card_types.retain(|card_type| *card_type != CardType::Land);
+    rest.union_surface = Default::default();
+    if rest != ObjectFilter::default() {
+        return None;
+    }
+    let price = costs.iter().map(|cost| cost.display()).collect::<Vec<_>>().join(" and ");
+    Some(format!(
+        "{lead}you may pay {price} rather than pay the mana cost for a spell you cast with mana value X or less, where X is {}",
+        describe_value(limit)
+    ))
+}
+
 fn audit_alternative_price_grant(grant: &crate::grant::GrantSpec) -> Option<String> {
     let ironsmith_core::Grantable::AlternativePrice { costs, origin } = &grant.grantable else {
         return None;
@@ -551,9 +733,121 @@ fn audit_play_from_grant(grant: &crate::grant::GrantSpec) -> Option<String> {
     let mut filter = grant.filter.clone();
     filter.zone = None;
     let own = filter.owner.take();
+    // "you may play a land or cast a permanent spell from among cards in your
+    // graveyard that were put there from your library this turn" (Kagha,
+    // Shadow Archdruid): a land arm and a nonland-permanent arm, gated on
+    // the card's graveyard provenance.
+    if filter.entered_graveyard_from_library_this_turn
+        && grant.zone == Zone::Graveyard
+        && own == Some(PlayerFilter::You)
+        && let [land, permanent] = filter.any_of.as_slice()
+        && land.card_types.as_slice() == [CardType::Land]
+        && permanent.excluded_card_types.as_slice() == [CardType::Land]
+        && permanent.card_types.as_slice()
+            == [
+                CardType::Artifact,
+                CardType::Creature,
+                CardType::Enchantment,
+                CardType::Planeswalker,
+                CardType::Battle,
+            ]
+        && grant.cast_this_way_grants.is_empty()
+        && grant.permanent_this_way_grants.is_empty()
+    {
+        return Some(capitalize_first(&format!(
+            "{lead}{who} may play a land or cast a permanent spell from among cards in your graveyard that were put there from your library this turn"
+        )));
+    }
+    // "Once during each of your turns, you may cast a spell from among cards
+    // in your graveyard that were milled this turn" (Raul, Trouble Shooter):
+    // a use-limited nonland cast gated on the card's mill provenance.
+    if filter.milled_into_graveyard_this_turn
+        && grant.zone == Zone::Graveyard
+        && own == Some(PlayerFilter::You)
+        && grant.usage_limit.is_some()
+        && filter.any_of.is_empty()
+        && filter.excluded_card_types.as_slice() == [CardType::Land]
+        && grant.cast_this_way_grants.is_empty()
+        && grant.permanent_this_way_grants.is_empty()
+        && !grant.instant_timing
+        && !grant.land_play_companion
+        && grant.max_plays.is_none()
+        && matches!(grant.cast_mana_spend_mode, ironsmith_core::value_model::ManaSpendMode::Normal)
+        && {
+            let mut rest = filter.clone();
+            rest.milled_into_graveyard_this_turn = false;
+            rest.excluded_card_types.clear();
+            rest == ObjectFilter::default()
+        }
+    {
+        return Some(capitalize_first(&format!(
+            "{lead}{who} may cast a spell from among cards in your graveyard that were milled this turn"
+        )));
+    }
+    // "you may cast a creature spell from among cards in your graveyard that
+    // were put there from anywhere other than the battlefield this turn"
+    // (Banon, the Returners' Leader): the provenance gate is part of the
+    // permitted card set.
+    if filter.entered_graveyard_not_from_battlefield_this_turn
+        && grant.zone == Zone::Graveyard
+        && own == Some(PlayerFilter::You)
+        && filter.card_types.as_slice() == [CardType::Creature]
+        && grant.cast_this_way_grants.is_empty()
+        && grant.permanent_this_way_grants.is_empty()
+        && grant.max_plays.is_none()
+        && {
+            let mut rest = filter.clone();
+            rest.entered_graveyard_not_from_battlefield_this_turn = false;
+            rest.card_types.clear();
+            rest.excluded_card_types.retain(|card_type| *card_type != CardType::Land);
+            rest.union_surface = Default::default();
+            rest == ObjectFilter::default()
+        }
+    {
+        return Some(capitalize_first(&format!(
+            "{lead}{who} may cast a creature spell from among cards in your graveyard that were put there from anywhere other than the battlefield this turn"
+        )));
+    }
+    // "You may play lands and cast spells from your graveyard" (Yawgmoth's
+    // Agenda), "play lands and cast Insect spells" (Zask): a land arm and a
+    // nonland arm are a land play plus a spell cast.
+    let land_play_and_cast = match filter.any_of.as_slice() {
+        [land, nonland]
+            if land.card_types.as_slice() == [CardType::Land]
+                && nonland.excluded_card_types.as_slice() == [CardType::Land]
+                && nonland.card_types.is_empty() =>
+        {
+            let mut bare_land = land.clone();
+            bare_land.union_surface = Default::default();
+            let mut expected_land = ObjectFilter::default();
+            expected_land.card_types = vec![CardType::Land];
+            let mut rest = nonland.clone();
+            rest.excluded_card_types.clear();
+            rest.union_surface = Default::default();
+            let subtypes = std::mem::take(&mut rest.subtypes);
+            let mut rest_filter = filter.clone();
+            rest_filter.any_of.clear();
+            (bare_land == expected_land
+                && rest == ObjectFilter::default()
+                && rest_filter == ObjectFilter::default())
+            .then(|| {
+                let spells = if subtypes.is_empty() {
+                    "spells".to_string()
+                } else {
+                    format!(
+                        "{} spells",
+                        subtypes.iter().map(|subtype| subtype.to_string()).collect::<Vec<_>>().join(" ")
+                    )
+                };
+                format!("lands and cast {spells}")
+            })
+        }
+        _ => None,
+    };
     let cards = objects(&filter);
     let cards = pluralize_noun_phrase(strip_indefinite_article(&cards));
     let cards = if cards.is_empty() || cards == "permanents" { "cards".to_string() } else { cards };
+    let cards = land_play_and_cast.unwrap_or(cards);
     let whose = match own {
         Some(PlayerFilter::You) => "your ".to_string(),
         Some(other) => format!("{} ", possessive(&other)),
@@ -851,7 +1145,14 @@ pub(crate) fn mana_output_rewrite(rule: &ironsmith_core::ManaOutputRewrite) -> S
     };
     let replaced = match rule.input {
         In::Any => "any other type".to_string(),
-        In::Colored => "each colored mana".to_string(),
+        In::Colored => "any other color".to_string(),
+        // The replaced type is named by its color ("instead of white mana",
+        // Quarum Trench Gnomes); the produced symbol keeps its symbol.
+        In::Symbol(ironsmith_core::ManaSymbol::White) => "white mana".to_string(),
+        In::Symbol(ironsmith_core::ManaSymbol::Blue) => "blue mana".to_string(),
+        In::Symbol(ironsmith_core::ManaSymbol::Black) => "black mana".to_string(),
+        In::Symbol(ironsmith_core::ManaSymbol::Red) => "red mana".to_string(),
+        In::Symbol(ironsmith_core::ManaSymbol::Green) => "green mana".to_string(),
         In::Symbol(input) => symbol(&input),
     };
     let amount = match rule.quantity {
@@ -859,6 +1160,26 @@ pub(crate) fn mana_output_rewrite(rule: &ironsmith_core::ManaOutputRewrite) -> S
         Qty::Exact(1) => " and amount".to_string(),
         Qty::Exact(n) => format!(" and amount, {} times", count_words(n)),
     };
+    // "spells and abilities you control that would add colored mana instead
+    // add that much white mana" (False Dawn): the authored producer-side form
+    // of a colored-input rewrite to one colored symbol.
+    if rule.surface == ironsmith_core::ManaOutputRewriteSurface::SpellsAndAbilitiesWouldAdd
+        && rule.input == In::Colored
+        && let (Some(who), Out::Symbol(output)) = (&rule.controller, &rule.output)
+        && let Some(color) = match output {
+            ironsmith_core::ManaSymbol::White => Some("white"),
+            ironsmith_core::ManaSymbol::Blue => Some("blue"),
+            ironsmith_core::ManaSymbol::Black => Some("black"),
+            ironsmith_core::ManaSymbol::Red => Some("red"),
+            ironsmith_core::ManaSymbol::Green => Some("green"),
+            _ => None,
+        }
+    {
+        return format!(
+            "Spells and abilities {} control that would add colored mana instead add that much {color} mana",
+            player(who)
+        );
+    }
     let source = objects(&rule.source_filter);
     match &rule.output {
         Out::ByBasicLandType(mapping) => {
@@ -884,13 +1205,42 @@ pub(crate) fn mana_output_rewrite(rule: &ironsmith_core::ManaOutputRewrite) -> S
             let produced = match output {
                 Out::Symbol(output) => symbol(output),
                 Out::ChosenColor => "mana of the chosen color".to_string(),
+                Out::ChooseColor if matches!(rule.quantity, Qty::Exact(1)) => {
+                    "one mana of a color of your choice".to_string()
+                }
                 Out::ChooseColor => "mana of a color of your choice".to_string(),
                 Out::ByBasicLandType(_) => unreachable!(),
             };
-            format!(
-                "If {} {event}, it produces {produced} instead of {replaced}{amount}",
-                article(&source)
-            )
+            let head = match (&rule.controller, rule.tapped_for_mana) {
+                // "if you tap a land you control for mana" (Deep Water,
+                // Harvest Mage): the tapping player leads.
+                (Some(who), true) => format!(
+                    "If {} {} {} for mana",
+                    player(who),
+                    if matches!(who, PlayerFilter::You) { "tap" } else { "taps" },
+                    article(&source)
+                ),
+                // "if a player taps a nonbasic land for mana" (Pale Moon).
+                (None, true)
+                    if rule.surface == ironsmith_core::ManaOutputRewriteSurface::PlayerTaps
+                        || rule.surface
+                            == ironsmith_core::ManaOutputRewriteSurface::PlayerTapsNamedSource =>
+                {
+                    format!("If a player taps {} for mana", article(&source))
+                }
+                _ => format!("If {} {event}", article(&source)),
+            };
+            // "that Mountain produces" (Chaos Moon): the tapped source named again.
+            let producer = if rule.surface
+                == ironsmith_core::ManaOutputRewriteSurface::PlayerTapsNamedSource
+                && rule.controller.is_none()
+                && rule.tapped_for_mana
+            {
+                format!("that {}", strip_indefinite_article(&source))
+            } else {
+                "it".to_string()
+            };
+            format!("{head}, {producer} produces {produced} instead of {replaced}{amount}")
         }
     }
 }
@@ -970,7 +1320,31 @@ fn copy_static_ability_variants(spec: &ironsmith_core::CopyStaticAbilityVariants
     };
     let holder = with_indefinite_article(&objects(&spec.filter));
     let first_quality = if first == "protection from any color" { "protection from a color" } else { first.as_str() };
-    let mut text = format!("As long as {holder} has {first_quality}, this source has {first}");
+    // "As long as an opponent controls a creature with flying not named
+    // Escaped Shapeshifter": an opponent-controlled holder names the opponent
+    // as the controlling subject; the tested quality qualifies the noun ahead
+    // of any name exclusion.
+    let opponent_holder = (spec.filter.controller == Some(PlayerFilter::Opponent))
+        .then(|| {
+            let mut controlled = spec.filter.clone();
+            controlled.controller = None;
+            let full = objects(&controlled);
+            let mut unnamed = controlled;
+            unnamed.excluded_name = None;
+            unnamed.excluded_name_surface = Default::default();
+            let noun = objects(&unnamed);
+            full.strip_prefix(noun.as_str()).map(|tail| {
+                format!(
+                    "an opponent controls {} with {first_quality}{tail}",
+                    with_indefinite_article(&noun)
+                )
+            })
+        })
+        .flatten();
+    let mut text = match opponent_holder {
+        Some(clause) => format!("As long as {clause}, this source has {first}"),
+        None => format!("As long as {holder} has {first_quality}, this source has {first}"),
+    };
     if !rest.is_empty() {
         let list = match rest.len() {
             1 => rest[0].clone(),
@@ -1065,10 +1439,41 @@ fn replaced_event(event: &ironsmith_core::ReplacedEventSpec) -> String {
         E::LifeLoss { player: who } => format!("{} would lose life", player(who)),
         E::Destroy { target } => format!("{} would be destroyed", article(&objects(target))),
         E::ZoneChange { object, from, to } => {
+            // "If a card would be put into enchanted player's graveyard from
+            // anywhere" (Wheel of Sun and Moon): a zone-unrestricted physical
+            // card is a card, its owner names the graveyard it goes to, and no
+            // origin zone means from anywhere.
+            if object.physical_card
+                && object.zone.is_none()
+                && from.is_none()
+                && *to == Some(Zone::Graveyard)
+            {
+                let mut card = object.clone();
+                let graveyard = card
+                    .owner
+                    .take()
+                    .map_or("a graveyard".to_string(), |owner| format!("{} graveyard", possessive(&owner)));
+                return format!(
+                    "{} would be put into {graveyard} from anywhere",
+                    article(&card.description_with_default_noun("card"))
+                );
+            }
+            let self_reference = object.source;
             let object = article(&objects(object));
             match (from, to) {
                 (None, Some(Zone::Battlefield)) => format!("{object} would enter the battlefield"),
-                (Some(Zone::Battlefield), Some(Zone::Graveyard)) => format!("{object} would die"),
+                // CR 700.4: only a creature dies; another named permanent kind
+                // is put into a graveyard from the battlefield.
+                (Some(Zone::Battlefield), Some(Zone::Graveyard))
+                    if object.contains("creature")
+                        || (self_reference
+                            && !matches!(
+                                object.as_str(),
+                                "this artifact" | "this enchantment" | "this land"
+                            )) =>
+                {
+                    format!("{object} would die")
+                }
                 (Some(from), Some(to)) => format!(
                     "{object} would be put into {} from {}",
                     zone_phrase(to),
@@ -1163,6 +1568,20 @@ fn amount_replacement(
             if verb == "scry" && matches!(performer, PlayerFilter::You) && !optional {
                 return format!("If you would scry a number of cards, scry {changed} instead");
             }
+            // "You may look at an additional two cards each time you surveil"
+            // (Enhanced Surveillance).
+            if matches!(verb, "surveil" | "scry")
+                && matches!(performer, PlayerFilter::You)
+                && optional
+                && let M::Add(n) = modifier
+                && *n > 0
+            {
+                return format!(
+                    "You may look at an additional {} card{} each time you {verb}",
+                    count_words(*n),
+                    if *n == 1 { "" } else { "s" }
+                );
+            }
             format!(
                 "If {} would {verb} one or more {noun}, {subject} {}{again} {changed} instead",
                 player(performer),
@@ -1250,6 +1669,36 @@ pub(crate) fn audit_payload_reading(
             "For each time you pay this spell's optional additional cost, remove one bracketed text fragment from it".to_string()
         } else { String::new() },
         P::NamedActionPaymentAlternative { label, effects: body, .. } => format!("You may pay the cost \"{}\" rather than the cost of performing the {label} action.", effects(body)),
+        // "You can't cast this spell unless an opponent lost life this turn"
+        // (Rakdos, Lord of Riots): the authored prohibition surface.
+        P::ThisSpellCastRestriction { kind, .. }
+            if kind.cant_cast_unless_surface && kind.timing.is_none() && kind.condition.is_some() =>
+        {
+            format!(
+                "You can't cast this spell unless {}",
+                describe_condition(kind.condition.as_ref().expect("condition checked"))
+            )
+        }
+        // "You can't cast Rock Jockey if you've played a land this turn": the
+        // authored prohibition while the negated condition holds.
+        P::ThisSpellCastRestriction { kind, .. }
+            if kind.cant_cast_if_surface
+                && kind.timing.is_none()
+                && matches!(kind.condition, Some(crate::ConditionExpr::Not(_))) =>
+        {
+            match kind.condition.as_ref() {
+                Some(crate::ConditionExpr::Not(inner)) => format!(
+                    "You can't cast this spell if {}",
+                    match inner.as_ref() {
+                        crate::ConditionExpr::TurnHistory(
+                            ironsmith_core::TurnHistoryCondition::PlayerPlayedLandThisTurn(PlayerFilter::You),
+                        ) => "you've played a land this turn".to_string(),
+                        other => describe_condition(other),
+                    }
+                ),
+                _ => String::new(),
+            }
+        }
         P::NamedActionTokenAbilityGrant { display, .. } => display.clone(),
         P::ActivateAbilitiesAsThoughZone { display, .. } => display.clone(),
         P::PhaseBoundaryPlayerAction { boundary, label, condition } => {
@@ -1278,8 +1727,35 @@ pub(crate) fn audit_payload_reading(
         P::Grants(_) => crate::static_abilities::StaticAbility::from_model(model.clone())
             .grant_spec()
             .map(|grant| {
+                if let Some(evoke) = audit_granted_hand_evoke(&grant) {
+                    return evoke;
+                }
                 if let Some(price) = audit_alternative_price_grant(&grant) {
                     return price;
+                }
+                if let Some(price) = audit_limited_dynamic_mana_value_price_grant(&grant) {
+                    return price;
+                }
+                if let Some(free) = audit_source_exiled_free_cast_grant(&grant) {
+                    return free;
+                }
+                if let Some(free) = audit_limited_hand_free_cast_grant(&grant) {
+                    return free;
+                }
+                if let Some(play) = audit_active_player_source_exiled_play_refill(&grant) {
+                    return play;
+                }
+                if let Some(play) = audit_library_historic_play_with_reflexive(&grant) {
+                    return play;
+                }
+                // "you may cast a spell from among cards in your graveyard
+                // that were milled this turn" (Raul): the provenance-gated
+                // reading, even when the grant has its own display.
+                if (grant.filter.milled_into_graveyard_this_turn
+                    || grant.filter.entered_graveyard_not_from_battlefield_this_turn)
+                    && let Some(milled) = audit_play_from_grant(&grant)
+                {
+                    return milled;
                 }
                 let display = grant.display();
                 // A play permission with no prose reading reads from its
@@ -1287,11 +1763,89 @@ pub(crate) fn audit_payload_reading(
                 if display.ends_with(" have play from zone") {
                     audit_play_from_grant(&grant).unwrap_or(display)
                 } else {
-                    display
+                    let riders = audit_permanent_this_way_riders(&grant);
+                    if riders.is_empty() || display.contains(" this way") {
+                        display
+                    } else {
+                        format!("{}{riders}", display.trim_end_matches('.'))
+                    }
                 }
             })
             .unwrap_or_else(|| ironsmith_core::semantic_audit::unverified_marker(
                 "GrantSpec", model, &[])),
+        // "Other nontoken artifact creatures and Vehicles you control have
+        // modular 1" (Blaster, Combat DJ): a granted bundle that is exactly
+        // one counter keyword's abilities reads as that keyword.
+        P::GrantObjectAbilityForFilter(grant)
+            if grant.condition.is_none()
+                && granted_counter_keyword(&grant.ability, &grant.additional_abilities).is_some() =>
+        {
+            let keyword = granted_counter_keyword(&grant.ability, &grant.additional_abilities)
+                .unwrap_or_default();
+            let (subject, verb, _) = match conjunctive_controlled_set_subject(&grant.filter) {
+                Some(subject) => (subject, "are", "their"),
+                None => set_subject(&grant.filter),
+            };
+            format!("{subject} {} {keyword}", if verb == "is" { "has" } else { "have" })
+        }
+        // "The first spell you cast during each of your turns has assist"
+        // (Yume, Chronicler of Valor): the your-turn gate scopes the ordinal.
+        P::GrantObjectAbilityForFilter(grant)
+            if matches!(grant.condition, Some(crate::effect::Condition::YourTurn))
+                && grant.additional_abilities.is_empty()
+                && grant.filter.first_spell_cast_each_turn
+                && grant.filter.cast_by == Some(PlayerFilter::You)
+                && grant.filter.zone == Some(Zone::Stack)
+                && grant.filter.card_types.is_empty()
+                && grant.filter.subtypes.is_empty()
+                && matches!(&grant.ability.kind, ironsmith_core::AbilityKind::Static(_))
+                && merge_passes::is_keyword_phrase(&ability_model(&grant.ability)) =>
+        {
+            format!(
+                "The first spell you cast during each of your turns has {}",
+                ability_model(&grant.ability).to_ascii_lowercase()
+            )
+        }
+        // "Each Sliver card in each player's hand has slivercycling {3}"
+        // (Homing Sliver): an ability granted to the matching cards in every
+        // player's hand (no owner or controller scope on the hand).
+        P::GrantObjectAbilityForFilter(grant)
+            if grant.condition.is_none() && grant.additional_abilities.is_empty()
+                && grant.filter.zone == Some(Zone::Hand)
+                && grant.filter.owner.is_none()
+                && grant.filter.controller.is_none()
+                && !grant.filter.source
+                && grant.set_quantifier_surface == Some(ironsmith_core::SetQuantifierSurface::Each) =>
+        {
+            let mut cards = grant.filter.clone();
+            cards.zone = None;
+            let description = objects(&cards);
+            let noun = strip_indefinite_article(&description).trim().to_string();
+            let granted = ability_model_for_recipient(&grant.ability, &grant.filter);
+            format!("Each {noun} in each player's hand has {granted}")
+        }
+        // "Artifacts you control have "{2}, Sacrifice this artifact: ..."" (Food
+        // Fight): the granted ability's self-reference is the recipient's type.
+        P::GrantObjectAbilityForFilter(grant)
+            if grant.condition.is_none() && grant.additional_abilities.is_empty()
+                && matches!(&grant.ability.kind,
+                    ironsmith_core::AbilityKind::Activated(activated) if !activated.is_loyalty_ability)
+                && matches!(grant.filter.card_types.as_slice(),
+                    [CardType::Artifact | CardType::Enchantment | CardType::Land])
+                && !grant.filter.source =>
+        {
+            let (subject, verb, _) = set_subject(&grant.filter);
+            // The authored "All lands have ..." quantifier is kept.
+            let subject = if grant.set_quantifier_surface == Some(ironsmith_core::SetQuantifierSurface::All)
+                && !subject.starts_with("All ")
+            {
+                format!("All {}", lowercase_first(&subject))
+            } else {
+                subject
+            };
+            format!("{subject} {} {}", if verb == "is" { "has" } else { "have" },
+                ability_model_for_recipient(&grant.ability, &grant.filter))
+        }
         P::GrantObjectAbilityForFilter(grant)
             if grant.condition.is_none() && grant.additional_abilities.is_empty()
                 && matches!(&grant.ability.kind,
@@ -1320,6 +1874,72 @@ pub(crate) fn audit_payload_reading(
                 subject = format!("{} {} controls", set_subject(&recipients).0, player(controller));
             }
             format!("{subject} {} each combat if able", if verb == "is" { "attacks" } else { "attack" })
+        }
+        // A granted rules restriction on "this creature" belongs to the
+        // recipient (Infiltrator's Magemark): its self-reference names the
+        // receiving object, never the granting Aura or Equipment.
+        P::GrantObjectAbilityForFilter(grant)
+            if grant.condition.is_none() && grant.additional_abilities.is_empty()
+                && matches!(&grant.ability.kind,
+                    ironsmith_core::AbilityKind::Static(ability)
+                        if ability.id == Some(crate::static_abilities::StaticAbilityId::RuleRestriction)) =>
+        {
+            let (subject, verb, _) = set_subject(&grant.filter);
+            format!(
+                "{subject} {} {}",
+                if verb == "is" { "has" } else { "have" },
+                ability_model_for_recipient(&grant.ability, &grant.filter)
+            )
+        }
+        // "Cleric creatures have vigilance" (Akroma's Devoted): an
+        // unquantified, controller-less subtype set reads in the plural; the
+        // "All" quantifier belongs only to an authored "All Sliver creatures"
+        // (`set_quantifier_surface`).
+        P::GrantObjectAbilityForFilter(grant)
+            if grant.condition.is_none() && grant.additional_abilities.is_empty()
+                && grant.set_quantifier_surface.is_none()
+                && !grant.filter.subtypes.is_empty()
+                && matches!(grant.filter.card_types.as_slice(), [] | [CardType::Creature])
+                && grant.filter.controller.is_none()
+                && grant.filter.zone.is_none_or(|zone| zone == Zone::Battlefield)
+                && !grant.filter.other && !grant.filter.source
+                && matches!(&grant.ability.kind, ironsmith_core::AbilityKind::Static(_))
+                && merge_passes::is_keyword_phrase(&ability_model(&grant.ability)) =>
+        {
+            let (subject, verb, _) = set_subject(&grant.filter);
+            format!("{subject} {} {}", if verb == "is" { "has" } else { "have" }, ability_model(&grant.ability))
+        }
+        // "Other Dogs you control have unleash" (Tesak): the granted keyword
+        // (CR 702.98a) names itself.
+        P::GrantObjectAbilityForFilter(grant)
+            if grant.condition.is_none() && grant.additional_abilities.is_empty()
+                && matches!(&grant.ability.kind,
+                    ironsmith_core::AbilityKind::Static(ability)
+                        if ability.id == Some(crate::static_abilities::StaticAbilityId::Unleash)
+                            && matches!(ability.payload, ironsmith_core::StaticAbilityPayload::None)) =>
+        {
+            let (subject, verb, _) = set_subject(&grant.filter);
+            format!("{subject} {} unleash", if verb == "is" { "has" } else { "have" })
+        }
+        // "Each noncreature, non-Equipment artifact is an Equipment with equip
+        // {X} and "Equipped creature gets +X/+0," where X is that artifact's
+        // mana value." (Bludgeon Brawl): the equip price and the equipped
+        // creature's bonus both read the recipient's own mana value.
+        P::AddSubtypesAndGrantAbilities { filter, subtypes, abilities, .. }
+            if subtypes.as_slice() == [crate::types::Subtype::Equipment]
+                && filter.card_types.as_slice() == [CardType::Artifact]
+                && matches!(abilities.as_slice(), [equip, equipped]
+                    if matches!(&equip.kind, ironsmith_core::AbilityKind::Activated(activated)
+                        if activated.keyword == Some(ironsmith_core::ActivatedAbilityKeyword::Equip))
+                    && matches!(&equipped.kind, ironsmith_core::AbilityKind::Static(ability)
+                        if matches!(&ability.payload, P::Anthem(anthem)
+                            if anthem.toughness == ironsmith_core::AnthemValue::Fixed(0)
+                                && matches!(anthem.power, ironsmith_core::AnthemValue::Dynamic(Value::ManaValueOf(_)))))) =>
+        {
+            format!(
+                "Each {} is an Equipment with equip {{X}} and \"Equipped creature gets +X/+0,\" where X is that artifact's mana value",
+                strip_indefinite_article(&objects(filter))
+            )
         }
         P::AddSubtypesAndGrantAbilities { filter, subtypes, abilities, .. } => format!(
             "Each {} is {} in addition to its other types and has {}",
@@ -1411,12 +2031,31 @@ pub(crate) fn audit_payload_reading(
         }
         P::EntersWithCountersIfCondition { counter, count, condition, added_abilities, .. } => {
             let plural = !matches!(count, crate::effect::Value::Fixed(1));
+            // A described quantity ("the discarded card's mana value") is
+            // printed as X with a closing where-clause (Dralnu's Pet).
+            let described_count = value_words(count);
+            let where_x = (!matches!(count, crate::effect::Value::Fixed(_)) && described_count.contains(' '))
+                .then_some(described_count.clone());
             let counters = format!(
                 "{} {} counter{} on it",
-                if plural { value_words(count) } else { "a".to_string() },
+                if where_x.is_some() { "X".to_string() } else if plural { described_count } else { "a".to_string() },
                 describe_counter_type(*counter),
                 if plural { "s" } else { "" }
             );
+            if let Some(where_x) = where_x
+                && !matches!(condition, crate::ConditionExpr::ThisSpellEscaped)
+            {
+                let mut withs = added_abilities
+                    .iter()
+                    .map(|ability| ability_model(ability))
+                    .collect::<Vec<_>>();
+                withs.push(counters);
+                return Some(format!(
+                    "If {}, this source enters with {}, where X is {where_x}",
+                    describe_condition(condition),
+                    withs.join(" and with ")
+                ));
+            }
             // "This creature escapes with ..." is the escape-only entry.
             let mut text = if matches!(condition, crate::ConditionExpr::ThisSpellEscaped) {
                 format!("This source escapes with {counters}")
@@ -1456,6 +2095,31 @@ pub(crate) fn audit_payload_reading(
             cost.display(),
             if attackers.source { "" } else { " for each of those creatures" }
         ),
+        // "Enchanted creature can't be blocked unless defending player pays
+        // {3} for each creature they control that's blocking it" (Awesome
+        // Presence): a per-blocker tax on blocking the creature this source is
+        // attached to.
+        P::BlockCost {
+            blockers,
+            blocker_is_attached_to_source: false,
+            attackers,
+            cost,
+            also_attack_cost: false,
+            attack_only: false,
+            ..
+        } if *blockers == ObjectFilter::creature()
+            && attackers.with_attached_object.as_ref().is_some_and(|attached| attached.source)
+            && {
+                let mut host = attackers.clone();
+                host.with_attached_object = None;
+                host == ObjectFilter::creature()
+            } =>
+        {
+            format!(
+                "Enchanted creature can't be blocked unless defending player pays {} for each creature they control that's blocking it",
+                cost.display()
+            )
+        }
         P::BlockCost {
             blockers, blocker_is_attached_to_source, attackers, cost, also_attack_cost, attack_only, ..
         } => {
@@ -1478,6 +2142,44 @@ pub(crate) fn audit_payload_reading(
             } else {
                 format!("{}block{blocked}", if *also_attack_cost { "attack or " } else { "" })
             };
+            // "This creature can't attack or block unless you tap an untapped
+            // creature you control ..." (Hollow Warrior): an effect-only cost
+            // reads its own payment verb.
+            let effect_only_cost = matches!(cost.kind(),
+                ironsmith_core::TotalCostKind::All(costs)
+                    if !costs.is_empty() && costs.iter().all(|cost| cost.effect_ref().is_some()));
+            if blockers.source
+                && effect_only_cost
+                && let ironsmith_core::TotalCostKind::All(costs) = cost.kind()
+                && let [only] = costs.as_slice()
+                && let Some(effect) = only.effect_ref()
+                && let Some(sequence) = effect.downcast_ref::<crate::effects::SequenceEffect>()
+                && let [choose, tap] = sequence.effects.as_slice()
+                && let Some(choose) = choose.downcast_ref::<crate::effects::ChooseObjectsEffect>()
+                && let Some(tap) = tap.downcast_ref::<crate::effects::TapEffect>()
+                && matches!(tap.target.base(), crate::target::ChooseSpec::Tagged(tag) if *tag == choose.tag)
+                && choose.count.is_single()
+                && choose.filter.nonattacking
+                && choose.filter.nonblocking
+            {
+                let mut tapped = choose.filter.clone();
+                tapped.nonattacking = false;
+                tapped.nonblocking = false;
+                return Some(format!(
+                    "{} can't {action} unless you tap {} not declared as an attacking or blocking creature this combat",
+                    capitalize_first(&subject),
+                    article(&objects(&tapped))
+                ));
+            }
+            if blockers.source && effect_only_cost {
+                let payment = lowercase_first(describe_total_cost(cost).trim().trim_end_matches('.'));
+                if !payment.is_empty() {
+                    return Some(format!(
+                        "{} can't {action} unless you {payment}",
+                        capitalize_first(&subject)
+                    ));
+                }
+            }
             format!(
                 "{} can't {action} unless {} {}",
                 capitalize_first(&subject),
@@ -1595,12 +2297,44 @@ pub(crate) fn audit_payload_reading(
         } else {
             ironsmith_core::semantic_audit::unverified_marker("Companion", model, &[])
         },
+        // "Locus of Enlightenment has each activated ability of the exiled
+        // cards used to craft it" (CR 702.167c): the craft materials stay
+        // linked to the crafted permanent.
+        P::CopyActivatedAbilities(spec)
+            if spec.filter.has_craft_material_reference()
+                && !spec.only_loyalty
+                && spec.counter.is_none()
+                && !spec.exclude_source_name
+                && !spec.exclude_mana_abilities
+                && !spec.exclude_loyalty_abilities =>
+        {
+            let mut text =
+                "This source has each activated ability of the exiled cards used to craft it".to_string();
+            if spec.force_once_each_turn {
+                text.push_str(". You may activate each of those abilities only once each turn");
+            }
+            text
+        }
         P::CopyActivatedAbilities(spec) => {
-            let mut text = format!(
-                "This source has all {}abilities of all {}",
-                if spec.only_loyalty { "loyalty " } else { "activated " },
-                pluralize_relative_object_phrase(strip_indefinite_article(&objects(&spec.filter)))
-            );
+            // The object chosen as this permanent entered is one object, not
+            // a set: "the chosen permanent" (Scheming Fence).
+            let chosen_object = spec.filter.tagged_constraints.iter().any(|constraint| {
+                constraint.relation == crate::filter::TaggedOpbjectRelation::IsTaggedObject
+                    && constraint.tag.as_str() == "__chosen_objects__"
+            });
+            let mut text = if chosen_object {
+                format!(
+                    "This source has all {}abilities of {}",
+                    if spec.only_loyalty { "loyalty " } else { "activated " },
+                    objects(&spec.filter)
+                )
+            } else {
+                format!(
+                    "This source has all {}abilities of all {}",
+                    if spec.only_loyalty { "loyalty " } else { "activated " },
+                    pluralize_relative_object_phrase(strip_indefinite_article(&objects(&spec.filter)))
+                )
+            };
             // The filter's own counter requirement already reads "with cage
             // counters on them" (Mairsil, the Pretender).
             if let Some(counter) = spec.counter
@@ -1622,15 +2356,29 @@ pub(crate) fn audit_payload_reading(
                 text.push_str(" except loyalty abilities");
             }
             // A card in exile or a graveyard is never this battlefield object.
+            // Excluding this object is inert (it already has its own
+            // abilities); Oracle names the battlefield scope instead. The
+            // "all other ..." form keeps the marker for the line pass that
+            // reads it as "on the battlefield".
             if spec.exclude_source_id
                 && !spec.exclude_source_name
                 && spec.filter.controller != Some(PlayerFilter::Opponent)
                 && matches!(spec.filter.zone, None | Some(Zone::Battlefield))
             {
-                text.push_str(" other than this object");
+                if spec.filter.other {
+                    text.push_str(" other than this object");
+                } else if spec.filter.zone == Some(Zone::Battlefield)
+                    && spec.filter.controller.is_none()
+                    && spec.filter.owner.is_none()
+                    && spec.filter.tagged_constraints.is_empty()
+                    && spec.filter.with_counter.is_none()
+                    && spec.counter.is_none()
+                {
+                    text.push_str(" on the battlefield");
+                }
             }
             if spec.force_once_each_turn {
-                text.push_str(". Each of those abilities can be activated only once each turn");
+                text.push_str(". You may activate each of those abilities only once each turn");
             }
             text
         }
@@ -1705,7 +2453,20 @@ pub(crate) fn audit_payload_reading(
             "{} {} protection from {}",
             capitalize_first(&player(who)),
             if matches!(who, PlayerFilter::You) { "have" } else { "has" },
-            objects(source_filter)
+            // CR 702.16j: everything an opponent controls is "each of your
+            // opponents" (Absolute Virtue, Cliffside Rescuer).
+            if source_filter.controller == Some(PlayerFilter::Opponent) && {
+                let mut bare = source_filter.clone();
+                bare.controller = None;
+                bare == ObjectFilter::default()
+            } {
+                "each of your opponents".to_string()
+            } else if let Some(quality) = source_filter.protection_chosen_card_type_quality() {
+                // "protection from the chosen card type" (Serra's Emissary).
+                quality.to_string()
+            } else {
+                objects(source_filter)
+            }
         ),
         P::ControlAttachedPermanent(_) => "You control the permanent this is attached to".into(),
         P::ChooseBasicLandTypeAsEnters(_) => "As this permanent enters, choose a basic land type".into(),
@@ -1740,7 +2501,13 @@ pub(crate) fn audit_payload_reading(
             }
         ),
         P::AddChosenCreatureType { filter, replace_existing, .. } => {
-            let (subject, is, its) = set_subject(filter);
+            // "Each creature you control is the chosen type" (Xenograft).
+            let (subject, is, its) =
+                if filter.set_quantifier_surface() == Some(ironsmith_core::SetQuantifierSurface::Each) {
+                    (format!("Each {}", strip_indefinite_article(&objects(filter))), "is", "its")
+                } else {
+                    set_subject(filter)
+                };
             format!(
                 "{subject} {is} the chosen creature type{}",
                 if *replace_existing { String::new() } else { format!(" in addition to {its} other types") }
@@ -1754,6 +2521,14 @@ pub(crate) fn audit_payload_reading(
             "This has the abilities of ability stickers on {}",
             objects(filter)
         ),
+        P::AddChosenColor { filter, .. }
+            if filter.global_characteristic_domain_surface()
+                == Some(
+                    ironsmith_core::GlobalCharacteristicDomainSurface::CardsOutsideBattlefieldSpellsAndPermanents,
+                ) =>
+        {
+            "All cards that aren't on the battlefield, spells, and permanents are the chosen color in addition to their other colors".to_string()
+        }
         P::AddChosenColor { filter, .. } => {
             let (subject, is, its) = set_subject(filter);
             format!("{subject} {is} the chosen color in addition to {its} other colors")
@@ -1764,6 +2539,19 @@ pub(crate) fn audit_payload_reading(
         }
         P::DuplicateMatchingTriggeredAbilities { source_filter, event_matcher, count, .. } => {
             let abilities = source_filter.as_ref().map_or("a triggered ability".to_string(), |filter| {
+                // "a triggered ability of this creature or an emblem you own"
+                // (The Masamune): the source arm plus your command-zone
+                // objects, which are the emblems you own.
+                let mut command = ObjectFilter::default();
+                command.zone = Some(Zone::Command);
+                command.owner = Some(PlayerFilter::You);
+                let mut outer = filter.clone();
+                outer.any_of.clear();
+                if outer == ObjectFilter::default()
+                    && filter.any_of.as_slice() == [ObjectFilter::source(), command]
+                {
+                    return "a triggered ability of this creature or an emblem you own".to_string();
+                }
                 format!("a triggered ability of {}", with_indefinite_article(&objects(filter)))
             });
             match event_matcher {
@@ -1775,7 +2563,7 @@ pub(crate) fn audit_payload_reading(
                 None => format!("If {abilities} triggers, that ability triggers {}", times(*count)),
             }
         }
-        P::SuppressMatchingTriggeredAbilities { source_filter, event_matcher, .. } => {
+        P::SuppressMatchingTriggeredAbilities { source_filter, event_matcher, ward_only, .. } => {
             let abilities = source_filter.as_ref().map_or("abilities".to_string(), |filter| {
                 format!("abilities of {}", pluralize_relative_object_phrase(&strip_indefinite_article(&objects(filter))))
             });
@@ -1791,18 +2579,29 @@ pub(crate) fn audit_payload_reading(
                             nouns.split(" or ").map(pluralize_noun_phrase).collect::<Vec<_>>().join(" and ")
                         });
                     match plural {
-                        Some(nouns) => format!("{} entering don't cause {abilities} to trigger", capitalize_first(&nouns)),
+                        Some(nouns) => {
+                            let explicit_battlefield = trigger
+                                .downcast_ref::<crate::triggers::ZoneChangeTrigger>()
+                                .is_some_and(|zone_change| {
+                                    zone_change.object_filter.has_entered_battlefield_explicit_surface()
+                                });
+                            let entering = if explicit_battlefield { "entering the battlefield" } else { "entering" };
+                            format!("{} {entering} don't cause {abilities} to trigger", capitalize_first(&nouns))
+                        }
                         None => format!("{} doesn't cause {abilities} to trigger", capitalize_first(&gerund)),
                     }
                 }
+                None if *ward_only => format!("Ward {abilities} don't trigger"),
                 None => format!("Triggered {abilities} don't trigger"),
             }
         }
         P::AdditionalLifeCostPerTarget(life) => {
             format!("This spell costs an additional {life} life to cast for each target")
         }
+        // CR 903.8: the {2} commander tax per previous cast from the command
+        // zone is replaced by a life payment.
         P::CommanderTaxLifeSubstitution { life_per_previous_cast } => format!(
-            "You may pay {life_per_previous_cast} life for each previous cast instead of commander tax"
+            "Rather than pay {{2}} for each previous time you've cast this spell from the command zone this game, pay {life_per_previous_cast} life that many times"
         ),
         P::ChooseColorAsEnters { excluded, count, .. } => format!(
             "As this permanent enters, choose {} color{}{}",
@@ -1857,6 +2656,16 @@ pub(crate) fn audit_payload_reading(
             ..
         } => {
             let mut text = "As this permanent enters, ".to_string();
+            if *reveal_opponents_hands
+                && *require_nonland_from_revealed_opponents
+                && !*opponent_also_chooses
+                && !*exclude_basic_land_names
+            {
+                text.push_str(
+                    "each opponent reveals their hand. You choose the name of a nonland card revealed this way",
+                );
+                return Some(text);
+            }
             if *reveal_opponents_hands {
                 text.push_str("your opponents reveal their hands and ");
             }
@@ -1876,26 +2685,41 @@ pub(crate) fn audit_payload_reading(
             }
             text
         }
+        // "choose two abilities from among first strike, vigilance, and
+        // lifelink" (Greymond): every option is one combination of the list.
+        P::ChooseNamedOptionAsEnters { options, at_random: false, each_player: false, .. }
+            if listed_combination_options(options).is_some() =>
+        {
+            let (items, picks) = listed_combination_options(options).unwrap_or_default();
+            let count = number_word(picks as i32).unwrap_or_else(|| picks.to_string());
+            let list = match items.as_slice() {
+                [rest @ .., last] => format!("{}, and {last}", rest.join(", ")),
+                [] => String::new(),
+            };
+            format!("As this permanent enters, choose {count} abilities from among {list}")
+        }
         P::ChooseNamedOptionAsEnters { options, at_random, each_player, .. } => format!(
             "As this permanent enters, {} {}{}",
             if *each_player { "each player chooses" } else { "choose" },
             or_list(options),
             if *at_random { " at random" } else { "" }
         ),
-        P::ChoosePowerToughnessAsEntersOrTurnsFaceUp { options, at_random, .. } => {
+        P::ChoosePowerToughnessAsEntersOrTurnsFaceUp { options, at_random, enters_only, .. } => {
             let options = options
                 .iter()
                 .map(|option| {
                     let mut text = format!("a {}/{}", option.power, option.toughness);
+                    // "a 1/6 Wall artifact creature" (Primal Clay): the added
+                    // subtype leads the type words.
+                    for subtype in &option.added_subtypes {
+                        text.push_str(&format!(" {subtype:?}"));
+                    }
                     if let Some(types) = &option.card_types {
                         let names = types
                             .iter()
                             .map(|card_type| format!("{card_type:?}").to_ascii_lowercase())
                             .collect::<Vec<_>>();
                         text.push_str(&format!(" {}", names.join(" ")));
-                    }
-                    for subtype in &option.added_subtypes {
-                        text.push_str(&format!(" {subtype:?}"));
                     }
                     let abilities = option
                         .abilities
@@ -1910,11 +2734,27 @@ pub(crate) fn audit_payload_reading(
                     if !abilities.is_empty() {
                         text.push_str(&format!(" with {}", abilities.join(" and ")));
                     }
+                    if !option.added_subtypes.is_empty() {
+                        text.push_str(" in addition to its other types");
+                    }
                     text
                 })
                 .collect::<Vec<_>>();
+            // "As this creature enters, flip a coin. If the coin comes up
+            // heads, this creature enters as a 5/2 creature with haste. If it
+            // comes up tails, ..." (Molten Sentry): two equally likely entry
+            // characteristics are a coin flip (CR 705).
+            if *at_random
+                && *enters_only
+                && let [heads, tails] = options.as_slice()
+            {
+                return Some(format!(
+                    "As this source enters, flip a coin. If the coin comes up heads, this source enters as {heads}. If it comes up tails, this source enters as {tails}"
+                ));
+            }
             format!(
-                "As this source enters or is turned face up, it becomes {}{}",
+                "As this source {}, it becomes {}{}",
+                if *enters_only { "enters" } else { "enters or is turned face up" },
                 if *at_random { "one of these at random: " } else { "your choice of " },
                 or_list(&options)
             )
@@ -1931,7 +2771,7 @@ pub(crate) fn audit_payload_reading(
                 else { format!("put it into your {}", zone_phrase(destination)) };
             format!("{condition}instead of putting it into your graveyard as it resolves, {movement}{occurrence} and {}", effects(follow_up.flattened_default_effects()))
         }
-        P::AsEntersEffectProgram { program, also_turns_face_up, turns_face_up_only, transforms_into, transform_characteristics, .. } => {
+        P::AsEntersEffectProgram { program, also_turns_face_up, turns_face_up_only, transforms_into, transform_characteristics, uses_enters_with_counter_surface, entry_instead_surface, .. } => {
             if let Some(adjustment) = transform_characteristics {
                 use ironsmith_core::static_ability_model::TransformCharacteristicAdjustment as Adjustment;
                 let body = match adjustment {
@@ -1947,8 +2787,168 @@ pub(crate) fn audit_payload_reading(
             } else {
                 "enters"
             };
+            // "As this creature enters, roll X d6. It enters with a number of
+            // +1/+1 counters on it equal to the total of those results"
+            // (Neverwinter Hydra): the counted value is the summed roll.
+            if !*turns_face_up_only
+                && !*also_turns_face_up
+                && transforms_into.is_none()
+                && let [roll_effect, put_effect] = program.flattened_default_effects()
+                && let Some(with_id) = roll_effect.downcast_ref::<crate::effects::WithIdEffect>()
+                && with_id
+                    .effect
+                    .downcast_ref::<crate::effects::RollDiceChooseResultEffect>()
+                    .is_some_and(|roll| roll.total)
+                && let Some(put) = put_effect.downcast_ref::<crate::effects::PutCountersEffect>()
+                && matches!(put.target.base(), crate::target::ChooseSpec::Source)
+                && matches!(put.amount.unhinted(), crate::effect::Value::EffectValue(id) if *id == with_id.id)
+            {
+                let roll = effects(std::slice::from_ref(roll_effect));
+                return Some(format!(
+                    "As this permanent enters, {}. It enters with a number of {} counters on it equal to the total of those results",
+                    roll.trim().trim_end_matches('.'),
+                    describe_counter_type(put.counter_type)
+                ));
+            }
+            // "As this creature enters, remove all counters from all
+            // permanents. This creature enters with a +1/+1 counter on it for
+            // each counter removed this way." (Thief of Blood)
+            if *uses_enters_with_counter_surface
+                && !*turns_face_up_only
+                && !*also_turns_face_up
+                && transforms_into.is_none()
+                && let [prefix @ .., put_effect] = program.flattened_default_effects()
+                && !prefix.is_empty()
+                && let Some(put) = put_effect.downcast_ref::<crate::effects::PutCountersEffect>()
+                && matches!(put.target.base(), crate::target::ChooseSpec::Source)
+                && counters_removed_this_way_multiplier(&put.amount) == Some(1)
+            {
+                return Some(format!(
+                    "As this permanent enters, {}. This permanent enters with {} on it for each counter removed this way",
+                    effects(prefix),
+                    with_indefinite_article(&format!("{} counter", describe_counter_type(put.counter_type)))
+                ));
+            }
+            // "As Mimeoplasm enters, exile up to X creature cards from your
+            // graveyard. It enters with three +1/+1 counters on it for each
+            // creature card exiled this way." The counters scale with the
+            // cards this source's entry exiled, so they are part of its entry.
+            if *uses_enters_with_counter_surface
+                && !*turns_face_up_only
+                && !*also_turns_face_up
+                && transforms_into.is_none()
+                && let [exile_effect, put_effect] = program.flattened_default_effects()
+                && exile_effect.downcast_ref::<crate::effects::ExileEffect>().is_some()
+                && let Some(put) = put_effect.downcast_ref::<crate::effects::PutCountersEffect>()
+                && matches!(put.target.base(), crate::target::ChooseSpec::Source)
+                && let Value::CountScaled(filter, multiplier) = put.amount.unhinted()
+                && *multiplier > 0
+                && filter.zone == Some(Zone::Exile)
+                && filter.card_types.as_slice() == [CardType::Creature]
+                && filter.tagged_constraints.iter().any(|constraint| {
+                    constraint.relation == crate::target::TaggedOpbjectRelation::IsTaggedObject
+                        && constraint.tag.as_str() == crate::tag::SOURCE_EXILED_TAG
+                })
+            {
+                let mut residual = filter.clone();
+                residual.zone = None;
+                residual.card_types.clear();
+                residual.tagged_constraints.retain(|constraint| {
+                    !(constraint.relation == crate::target::TaggedOpbjectRelation::IsTaggedObject
+                        && constraint.tag.as_str() == crate::tag::SOURCE_EXILED_TAG)
+                });
+                residual.set_explicit_card_noun(false);
+                residual.set_explicit_card_type_noun(None);
+                if residual == ObjectFilter::default() {
+                    let amount = u32::try_from(*multiplier)
+                        .ok()
+                        .and_then(ironsmith_core::cardinal_word)
+                        .unwrap_or_else(|| multiplier.to_string());
+                    let exiled = effects(std::slice::from_ref(exile_effect));
+                    return Some(format!(
+                        "As this permanent enters, {}. It enters with {amount} {} counters on it for each creature card exiled this way",
+                        exiled.trim().trim_end_matches('.'),
+                        describe_counter_type(put.counter_type)
+                    ));
+                }
+            }
+            // "As this creature enters, exile X creature cards from your
+            // graveyard. If you can't, put this creature into its owner's
+            // graveyard instead of onto the battlefield. For each creature card
+            // exiled this way, this creature enters with a +2/+0, +1/+1, or
+            // +0/+2 counter on it." The full-count check gates the counter
+            // choices; a short exile redirects the entering source.
+            if *uses_enters_with_counter_surface
+                && !*turns_face_up_only
+                && !*also_turns_face_up
+                && transforms_into.is_none()
+                && let Some(text) =
+                    audit_exile_or_redirect_entry_with_counter_choice(program.flattened_default_effects())
+            {
+                return Some(text);
+            }
+            // CR 614.1c: "If this land would enter, instead sacrifice ...,
+            // then put this land onto the battlefield" (Sheltered Valley).
+            if *entry_instead_surface
+                && !*turns_face_up_only
+                && !*also_turns_face_up
+                && transforms_into.is_none()
+                && !program.flattened_default_effects().is_empty()
+            {
+                return Some(format!(
+                    "If this permanent would enter, instead {}, then put this permanent onto the battlefield",
+                    effects(program.flattened_default_effects())
+                ));
+            }
+            // "As Shimatsu enters, sacrifice any number of permanents.
+            // Shimatsu enters with that many +1/+1 counters on it": the
+            // counters the entering permanent gets from an earlier step's
+            // result are part of its entry, not a later placement.
+            if !*turns_face_up_only
+                && !*also_turns_face_up
+                && transforms_into.is_none()
+                && let [prefix @ .., put_effect] = program.flattened_default_effects()
+                && let Some(producer) = prefix
+                    .last()
+                    .and_then(|effect| effect.downcast_ref::<crate::effects::WithIdEffect>())
+                && let Some(put) = put_effect.downcast_ref::<crate::effects::PutCountersEffect>()
+                && matches!(put.target.base(), crate::target::ChooseSpec::Source)
+                && matches!(put.amount.unhinted(), crate::effect::Value::EffectValue(id) if *id == producer.id)
+            {
+                let steps = effects(prefix);
+                let steps = steps.trim().trim_end_matches('.');
+                let steps = steps.strip_prefix("you choose ").map_or(steps.to_string(), |rest| format!("choose {rest}"));
+                return Some(format!(
+                    "As this permanent enters, {}. This permanent enters with that many {} counters on it",
+                    lowercase_first(&steps),
+                    describe_counter_type(put.counter_type)
+                ));
+            }
             // The imperative "choose" is the controller's choice.
-            let body = effects(program.flattened_default_effects());
+            let body = match program.flattened_default_effects() {
+                // Two independent as-enters choices by you are one
+                // coordinated instruction: "choose a color and an opponent"
+                // (Call to Arms).
+                [first, second]
+                    if first
+                        .downcast_ref::<crate::effects::ChooseColorEffect>()
+                        .is_some_and(|color| color.chooser == PlayerFilter::You && color.among.is_none())
+                        && second
+                            .downcast_ref::<crate::effects::ChoosePlayerEffect>()
+                            .is_some_and(|choice| choice.chooser == PlayerFilter::You && !choice.random) =>
+                {
+                    let choice = |effect: &Effect| -> String {
+                        let text = effects(std::slice::from_ref(effect));
+                        let rest = text
+                            .strip_prefix("you choose ")
+                            .or_else(|| text.strip_prefix("choose "))
+                            .map(str::to_string);
+                        rest.unwrap_or(text)
+                    };
+                    format!("choose {} and {}", choice(first), choice(second))
+                }
+                list => effects(list),
+            };
             let body = match body.strip_prefix("you choose ") {
                 Some(rest) => format!("choose {rest}"),
                 None => body,
@@ -1970,14 +2970,22 @@ pub(crate) fn audit_payload_reading(
             objects(source_filter),
             player(target_player_filter)
         ),
+        // "If a red source you control would deal an amount of noncombat
+        // damage less than Ojer Axonil's power to an opponent, that source
+        // deals damage equal to Ojer Axonil's power instead." The floor sits
+        // between the damage amount and its recipient.
         P::MinimumDamageAmountReplacement {
             source_filter, target_player_filter, target_object_filter, floor, noncombat_only, ..
-        } => format!(
-            "If {}, it deals at least {} instead",
-            damage_scope(source_filter, target_player_filter, target_object_filter,
-                if *noncombat_only { "noncombat " } else { "" }),
-            describe_value(floor)
-        ),
+        } => {
+            let kind = if *noncombat_only { "an amount of noncombat " } else { "an amount of " };
+            let scoped = damage_scope(source_filter, target_player_filter, target_object_filter, kind);
+            let unscoped = damage_scope(source_filter, &None, &None, kind);
+            let recipient = scoped.strip_prefix(unscoped.as_str()).unwrap_or("");
+            let floor = describe_value(floor);
+            format!(
+                "If {unscoped} less than {floor}{recipient}, that source deals damage equal to {floor} instead"
+            )
+        }
         // "Double all damage Wolverine would deal", "Double all damage
         // equipped creature would deal": one specific source doubling all
         // of its damage to any recipient.
@@ -2001,6 +3009,31 @@ pub(crate) fn audit_payload_reading(
             let source = if source.starts_with("this ") { source } else { "equipped creature".to_string() };
             format!("Double all damage {source} would deal")
         }
+        // "Double all damage that sources you control of the chosen type
+        // would deal" (Collective Inferno): the authored imperative over a
+        // class of dealers, with no recipient restriction.
+        P::DoubleDamageAmountReplacement {
+            source_filter, target_player_filter, target_object_filter, factor,
+            combat_only: false, noncombat_only: false, double_all_damage_surface: true, ..
+        } if matches!(*factor, 2 | 3)
+            && damage_scope(source_filter, target_player_filter, target_object_filter, "")
+                .ends_with(" would deal damage") =>
+        {
+            let dealers = damage_source_objects(source_filter);
+            // "Double all damage that creature sources you control would
+            // deal" (Absorbing Man and Titania): an unzoned creature dealer
+            // is a creature source in any zone, not a creature permanent.
+            let dealers = if source_filter.zone.is_none()
+                && source_filter.card_types.as_slice() == [CardType::Creature]
+            {
+                dealers.replacen("creature", "creature source", 1)
+            } else {
+                dealers
+            };
+            let dealers = pluralize_relative_object_phrase(strip_indefinite_article(&dealers));
+            let verb = if *factor == 2 { "Double" } else { "Triple" };
+            format!("{verb} all damage that {dealers} would deal")
+        }
         P::DoubleDamageAmountReplacement {
             source_filter, target_player_filter, target_object_filter, factor, combat_only, noncombat_only, ..
         } => format!(
@@ -2008,6 +3041,16 @@ pub(crate) fn audit_payload_reading(
             damage_scope(source_filter, target_player_filter, target_object_filter,
                 if *combat_only { "combat " } else if *noncombat_only { "noncombat " } else { "" }),
             match *factor { 2 => "double that damage".to_string(), 3 => "triple that damage".to_string(), n => format!("{} that much damage", multiple(n)) }
+        ),
+        // "If this creature would deal combat damage to a creature, prevent
+        // that damage and that creature's owner shuffles it into their
+        // library" (Weeping Angel): the shield's scope, then its follow-up.
+        P::DamagePreventionWithFollowUp { source_filter, target_filter, combat_only, effects: body, .. } => format!(
+            "If {} would deal {}damage to {}, prevent that damage and {}",
+            damage_source_objects(source_filter),
+            match combat_only { Some(true) => "combat ", Some(false) => "noncombat ", None => "" },
+            article(&objects(target_filter)),
+            effects(body),
         ),
         P::PreventHalfDamageReplacement {
             source_filter, target_player_filter, target_object_filter, round_up, ..
@@ -2036,12 +3079,20 @@ pub(crate) fn audit_payload_reading(
             let kind = if counter_type.is_some() { format!("one or more {kind}") } else { kind };
             if matches!(actor, Some(PlayerFilter::You)) {
                 let noun = match (*includes_permanents || player_filter.is_none(), player_filter.is_some()) {
-                    (true, true) => "permanent or player",
-                    (false, true) => "player",
-                    _ => "permanent",
+                    (true, true) => "permanent or player".to_string(),
+                    (false, true) => "player".to_string(),
+                    // "on that artifact" / "on that creature": a recipient of
+                    // one card type is named by it.
+                    _ => match filter.card_types.as_slice() {
+                        [card_type] if filter.all_card_types.is_empty() => card_type.name().to_string(),
+                        _ => "permanent".to_string(),
+                    },
                 };
+                let counters = counter_type.map_or("of each of those kinds of counters".to_string(), |c| {
+                    format!("{} counters", describe_counter_type(c))
+                });
                 return Some(format!(
-                    "If you would put {kind} counters on {}, put {} that many of each of those kinds of counters on that {noun} instead",
+                    "If you would put {kind} counters on {}, put {} that many {counters} on that {noun} instead",
                     recipients.join(" or "),
                     if *halve { "half" } else { "twice" }
                 ));
@@ -2089,6 +3140,36 @@ pub(crate) fn audit_payload_reading(
                 count_words(additional.unsigned_abs() as u32)
             )
         }
+        // "If you would get one or more counters, you get that many plus one
+        // of each of those kinds of counters instead" (Winding Constrictor):
+        // a player placement replacement applies to that player only; the
+        // runtime ignores the object filter when `player_filter` is set.
+        P::AddCountersPlacementReplacement {
+            player_filter: Some(player_filter), counter_type, additional, cause: None, ..
+        } if *additional > 0 => {
+            let who = player(player_filter);
+            let get = if who == "you" { "get" } else { "gets" };
+            let (kind, added) = match counter_type {
+                Some(counter) => {
+                    let kind = describe_counter_type(*counter);
+                    (
+                        format!("{kind} "),
+                        format!(
+                            "{} {kind} counter{}",
+                            count_words(*additional as u32),
+                            if *additional == 1 { "" } else { "s" }
+                        ),
+                    )
+                }
+                None => (
+                    String::new(),
+                    format!("{} of each of those kinds of counters", count_words(*additional as u32)),
+                ),
+            };
+            format!(
+                "If {who} would get one or more {kind}counters, {who} {get} that many plus {added} instead"
+            )
+        }
         P::AddCountersPlacementReplacement { filter, player_filter, counter_type, additional, cause, .. } => format!(
             "If one or more {}counters would be put on {}{}{}, that many plus {} {} put on that permanent instead",
             counter_type.map_or(String::new(), |c| format!("{} ", describe_counter_type(c))),
@@ -2102,6 +3183,15 @@ pub(crate) fn audit_payload_reading(
                 "of each of those kinds of counters are".to_string()
             }
         ),
+        // "If you would get one or more poison counters, instead you get one
+        // poison counter and you can't get additional poison counters this
+        // turn": the first counters of the turn are capped at one.
+        P::PlayerCounterPerTurnLimitReplacement { player_filter: PlayerFilter::You, counter_type, maximum: 1, .. } => {
+            let kind = describe_counter_type(*counter_type);
+            format!(
+                "If you would get one or more {kind} counters, instead you get one {kind} counter and you can't get additional {kind} counters this turn"
+            )
+        }
         P::PlayerCounterPerTurnLimitReplacement { player_filter, counter_type, maximum, .. } => format!(
             "{} can't get more than {maximum} {} counters each turn",
             capitalize_first(&player(player_filter)),
@@ -2180,6 +3270,23 @@ pub(crate) fn audit_payload_reading(
                     may(*optional),
                 ));
             }
+            // "If a Rigger you control would assemble a Contraption, it
+            // assembles two Contraptions instead": the replacement repeats
+            // the replaced action a number of times.
+            if let [repeat] = replacement_effects.as_slice()
+                && let Some(emit) = repeat.downcast_ref::<crate::effects::EmitKeywordActionEffect>()
+                && emit.action == *action
+                && emit.amount > 1
+                && *action == ironsmith_core::KeywordActionKind::AssembleContraption
+            {
+                return Some(format!(
+                    "If {} would {}, {}it assembles {} Contraptions instead",
+                    article(&objects(source_filter)),
+                    action.infinitive(),
+                    may(*optional),
+                    count_words(emit.amount),
+                ));
+            }
             format!(
                 "If {} would {}, {}instead {effects_text}",
                 article(&objects(source_filter)),
@@ -2197,12 +3304,71 @@ pub(crate) fn audit_payload_reading(
                 Some(performer) => format!("{} with {}", player(performer), article(&objects(source_filter))),
                 None => article(&objects(source_filter)),
             };
+            // "If you would planeswalk, instead look at ..., then planeswalk"
+            // (Susan Foreman): the substitute program ends by performing the
+            // replaced action once.
+            if !*optional
+                && let [rest @ .., last] = replacement_effects.as_slice()
+                && !rest.is_empty()
+                && let Some(emit) = last.downcast_ref::<crate::effects::EmitKeywordActionEffect>()
+                && emit.action == *action
+                && emit.amount == 1
+                && emit.object_tags.is_empty()
+            {
+                return Some(format!(
+                    "If {subject} would {}, instead {}, then {}",
+                    action.infinitive(),
+                    effects(rest),
+                    action.infinitive()
+                ));
+            }
             format!(
                 "If {subject} would {}, {}{} instead",
                 action.infinitive(),
                 may(*optional),
                 effects(replacement_effects)
             )
+        }
+        // "The first time you would draw a card each turn except the first
+        // card you draw during each of your draw steps, you draw four cards
+        // instead" (Reed Richards): the draw-count gate the first-draw
+        // replacement builds reads as the printed first-draw window.
+        P::ConditionalDrawReplacement { condition, replacement_effects, optional: false, except_first_of_draw_step, .. }
+            if is_first_draw_each_turn_gate(condition, *except_first_of_draw_step) =>
+        {
+            let except = if *except_first_of_draw_step {
+                " except the first card you draw during each of your draw steps"
+            } else {
+                ""
+            };
+            // "instead look at the top two cards of your library. Put one of
+            // them into your graveyard and the other back on top of your
+            // library. Then draw a card." (Scion of Halaster): the substitute
+            // program's closing draw is the replaced drawer's, who is you
+            // under this gate.
+            if let [prefix @ .., last] = replacement_effects.as_slice()
+                && prefix.len() > 1
+                && let Some(draw) = last.downcast_ref::<crate::effects::DrawCardsEffect>()
+                && draw.player == PlayerFilter::IteratedPlayer
+            {
+                let mut own_draw = draw.clone();
+                own_draw.player = PlayerFilter::You;
+                format!(
+                    "The first time you would draw a card each turn{except}, instead {}. Then {}",
+                    effects(prefix),
+                    effects(&[Effect::new(own_draw)])
+                )
+            } else if replacement_effects.len() > 1 {
+                format!(
+                    "The first time you would draw a card each turn{except}, instead {}",
+                    effects(replacement_effects)
+                )
+            } else {
+                format!(
+                    "The first time you would draw a card each turn{except}, {} instead",
+                    effects(replacement_effects)
+                )
+            }
         }
         P::ConditionalDrawReplacement { condition, replacement_effects, optional, except_first_of_draw_step, .. } => {
             // A timing window reads as the window ("during your draw step").
@@ -2211,12 +3377,75 @@ pub(crate) fn audit_payload_reading(
                 Some(window) => format!(" {window}"),
                 None => format!(" while {condition}"),
             };
+            // "instead return a creature card from your graveyard to the
+            // battlefield. If you can't, you lose the game." (Out of the
+            // Tombs): the final step is a didn't-happen fallback on the
+            // replacement step just before it.
+            let fallback = match replacement_effects.as_slice() {
+                [prefix @ .., last] if !prefix.is_empty() => last
+                    .downcast_ref::<crate::effects::IfEffect>()
+                    .filter(|fallback| {
+                        fallback.predicate == EffectPredicate::DidNotHappen
+                            && fallback.else_.is_empty()
+                            && !fallback.then.is_empty()
+                            && !fallback.per_player_result
+                            && prefix
+                                .last()
+                                .and_then(|step| step.downcast_ref::<crate::effects::WithIdEffect>())
+                                .is_some_and(|step| step.id == fallback.condition)
+                    })
+                    .map(|fallback| (prefix, fallback)),
+                _ => None,
+            };
+            // "instead you may skip that draw. If you do, until your next
+            // turn, you can't be attacked ..." (Island Sanctuary): a lone
+            // restriction is the consequence of the skipped draw.
+            let skip_then_consequence = *optional
+                && matches!(
+                    replacement_effects.as_slice(),
+                    [only] if only.downcast_ref::<crate::effects::CantEffect>().is_some()
+                );
+            if skip_then_consequence {
+                format!(
+                    "If you would draw a card{}{when}, instead you may skip that draw. If you do, {}",
+                    except_first(*except_first_of_draw_step),
+                    effects(replacement_effects)
+                )
+            } else if let Some((prefix, fallback)) = fallback {
+                format!(
+                    "If you would draw a card{}{when}, {}instead {}. If you can't, {}",
+                    except_first(*except_first_of_draw_step),
+                    may(*optional),
+                    effects(prefix),
+                    effects(&fallback.then)
+                )
+            } else if matches!(
+                replacement_effects.as_slice(),
+                [only] if only.downcast_ref::<crate::effects::SearchLibraryEffect>().is_some()
+            ) {
+                // "you may instead search your library for a card, put that
+                // card into your hand, then shuffle" (Archmage Ascension): a
+                // multi-step search replacement leads with "instead".
+                format!(
+                    "If you would draw a card{}{when}, {}instead {}",
+                    except_first(*except_first_of_draw_step),
+                    may(*optional),
+                    effects(replacement_effects)
+                )
+            } else if let Some(body) = audit_chosen_kind_reveal_until(replacement_effects) {
+                format!(
+                    "If you would draw a card{}{when}, {}instead {body}",
+                    except_first(*except_first_of_draw_step),
+                    may(*optional)
+                )
+            } else {
             format!(
                 "If you would draw a card{}{when}, {}{} instead",
                 except_first(*except_first_of_draw_step),
                 may(*optional),
                 effects(replacement_effects)
             )
+            }
         }
         P::CreateOneOfEachTokenReplacement { kinds, .. } => {
             // The executor matches exactly these token kinds under your
@@ -2235,6 +3464,30 @@ pub(crate) fn audit_payload_reading(
             player(drawer),
             except_first_for(*except_first_of_draw_step, drawer)
         ),
+        // "If a player would draw a card, they reveal it instead. Then any
+        // other player may pay 2 life. ..." (Zur's Weirding): another drawer
+        // revealing the top card of their own library reveals the card the
+        // draw would take; only that reveal replaces the draw, and the rest
+        // follows it.
+        P::DrawReplacementWithEffects {
+            drawer,
+            except_first_of_draw_step,
+            replacement_effects,
+            cycling_source: None,
+            ..
+        } if !matches!(drawer, PlayerFilter::You)
+            && replacement_effects.len() > 1
+            && replacement_effects[0]
+                .downcast_ref::<crate::effects::RevealTopEffect>()
+                .is_some_and(|reveal| reveal.player == PlayerFilter::IteratedPlayer) =>
+        {
+            format!(
+                "If {} would draw a card{}, they reveal it instead. Then {}",
+                player(drawer),
+                except_first_for(*except_first_of_draw_step, drawer),
+                effects(&replacement_effects[1..])
+            )
+        }
         P::DrawReplacementWithEffects { drawer, except_first_of_draw_step, replacement_effects, cycling_source, .. } => format!(
             "If {} would draw a card{}{}, {} instead",
             player(drawer),
@@ -2309,14 +3562,47 @@ pub(crate) fn audit_payload_reading(
                 player(who)
             )
         }
+        // CR 609.4b any-type permissions printed as their own line.
+        P::ManaSpendPermission { permission, .. }
+            if permission.mode == ironsmith_core::value_model::ManaSpendMode::AnyType
+                && permission.mana_source_filter.is_none()
+                && permission.any_color_mana_symbol.is_none()
+                && permission.mana_symbol_as.is_none()
+                && !permission.other_mana_only_as_colorless
+                && match (&permission.player, &permission.scope) {
+                    // "You can spend mana of any type to cast creature
+                    // spells" (Vizier of the Menagerie).
+                    (PlayerFilter::You, ironsmith_core::ManaSpendScope::CastingSpellsMatching(filter)) => {
+                        filter.zone.is_none()
+                            && filter.any_of.iter().all(|branch| branch.zone.is_none())
+                    }
+                    // "Mana of any type can be spent to activate Sharkey's
+                    // abilities" (Sharkey, Tyrant of the Shire).
+                    (PlayerFilter::Any, ironsmith_core::ManaSpendScope::ActivationCostsOf(filter)) => {
+                        filter.source
+                    }
+                    _ => false,
+                } =>
+        {
+            match &permission.scope {
+                ironsmith_core::ManaSpendScope::ActivationCostsOf(filter) => format!(
+                    "Mana of any type can be spent to activate {}'s abilities",
+                    objects(filter)
+                ),
+                scope => format!(
+                    "You can spend mana of any type{}",
+                    mana_spend_scope(scope)
+                ),
+            }
+        }
         P::ManaSpendPermission { permission, .. } => mana_spend_permission(permission),
         P::TargetingAsThoughNoAbility(spec) => targeting_as_though_no_ability(spec),
         P::PreventDamageToSelfPutCountersInstead { counter_type, .. } => format!(
-            "If damage would be dealt to this permanent, prevent it and put that many {} counters on it",
+            "If damage would be dealt to this permanent, put that many {} counters on it instead",
             describe_counter_type(*counter_type)
         ),
         P::HealDamageBeforeDamageToSelf { .. } => {
-            "Before damage is dealt to this permanent, remove the damage already marked on it".into()
+            "If damage would be dealt to this permanent, instead that damage is dealt, but all other damage already dealt to it is healed".into()
         }
         P::PreventConstrainedDamageToSelfPutCountersInstead { counter_type, source_filter, combat_only, .. } => format!(
             // Oracle: "prevent that damage. Put a +1/+1 counter on this
@@ -2376,12 +3662,26 @@ pub(crate) fn audit_payload_reading(
             let quantity=if *loss { "that much life" } else { "that much" };
             format!("If {} would {verb} life, they {verb} {quantity} plus {additional} instead", player(who))
         },
-        P::TokenCreationTemplates { controller, token_filter, templates, mode, choose_one, optional, .. } => {
+        P::TokenCreationTemplates { controller, token_filter, templates, mode, choose_one, optional, surface, .. } => {
             // AppendOnce adds one of each template to the event; the other
             // modes add (AppendForEach) or substitute (ReplaceEach) one per
             // matching token created.
             use ironsmith_core::TokenCreationTemplateMode as Mode;
             let created = pluralize_relative_object_phrase(strip_indefinite_article(&objects(token_filter)));
+            // "you may instead choose a creature other than Esix and create
+            // that many tokens that are copies of that creature": the copied
+            // object is a non-target choice made by the replacement.
+            if let [template] = templates.as_slice()
+                && matches!(mode, Mode::ReplaceEach)
+                && *optional
+                && !*choose_one
+                && matches!(controller, PlayerFilter::You)
+                && let Some(chosen) = audit_chosen_other_token_copy_template(template)
+            {
+                return Some(format!(
+                    "If you would create one or more {created}, you may instead choose {chosen} other than this permanent and create that many tokens that are copies of that creature"
+                ));
+            }
             let per_token = !matches!(mode, Mode::AppendOnce);
             let added = templates
                 .iter()
@@ -2389,6 +3689,14 @@ pub(crate) fn audit_payload_reading(
                     let text = effects(std::slice::from_ref(template));
                     let text = text.strip_prefix("create ").unwrap_or(&text).to_string();
                     if !per_token {
+                        // "those tokens plus an additional Map token"
+                        // (Worldwalker Helm): the authored "additional".
+                        if surface.additional_word {
+                            return with_indefinite_article(&format!(
+                                "additional {}",
+                                strip_indefinite_article(&text)
+                            ));
+                        }
                         return text;
                     }
                     let plural = text
@@ -2400,12 +3708,56 @@ pub(crate) fn audit_payload_reading(
                     format!("that many {plural}")
                 })
                 .collect::<Vec<_>>();
-            let added = if *choose_one { format!("your choice of {}", or_list(&added)) } else { added.join(" and ") };
+            let added = match (*choose_one, *optional) {
+                // "you may instead create that many X or that many Y": the
+                // optional choice already covers which one.
+                (true, true) => or_list(&added),
+                (true, false) => format!("your choice of {}", or_list(&added)),
+                (false, _) => added.join(" and "),
+            };
             let result = match mode {
                 Mode::ReplaceEach => added,
                 Mode::AppendOnce | Mode::AppendForEach => format!("those tokens plus {added}"),
             };
-            if *optional {
+            // "If you would create a Fish token, create a 3/3 blue Shark
+            // creature token instead" (Fisher's Talent) / "If you would
+            // create one or more artifact tokens, instead create those tokens
+            // plus an additional Map token" (Worldwalker Helm): the authored
+            // active creation clause.
+            if surface.active && !*optional && matches!(controller, PlayerFilter::You) {
+                let source = if surface.singular_source {
+                    with_indefinite_article(strip_indefinite_article(&objects(token_filter)))
+                } else {
+                    format!("one or more {created}")
+                };
+                // "If you would create a Food token, instead create a Food
+                // token and a Treasure token" (Bilbo): one replaced token
+                // reads as single tokens, not "that many".
+                let result = if surface.singular_source && matches!(mode, Mode::ReplaceEach) {
+                    let singles = templates
+                        .iter()
+                        .map(|template| {
+                            let text = effects(std::slice::from_ref(template));
+                            text.strip_prefix("create ").unwrap_or(&text).to_string()
+                        })
+                        .collect::<Vec<_>>();
+                    if *choose_one {
+                        format!("your choice of {}", or_list(&singles))
+                    } else {
+                        singles.join(" and ")
+                    }
+                } else {
+                    result
+                };
+                return Some(if surface.leading_instead {
+                    format!("If you would create {source}, instead create {result}")
+                } else {
+                    format!("If you would create {source}, create {result} instead")
+                });
+            }
+            if *optional && matches!(controller, PlayerFilter::You) {
+                format!("If you would create one or more {created}, you may instead create {result}")
+            } else if *optional {
                 format!(
                     "If one or more {created} would be created under {} control, you may instead create {result}",
                     possessive(controller)
@@ -2482,10 +3834,16 @@ pub(crate) fn audit_payload_reading(
             player(who),
             if matches!(who, PlayerFilter::You) { "flip" } else { "they flip" }
         ),
-        P::FirstCoinBatchHeadsWin { player: who } => format!(
-            "{} wins the first coin flip each batch",
-            capitalize_first(&player(who))
-        ),
+        P::FirstCoinBatchHeadsWin { player: who } => {
+            let you = matches!(who, PlayerFilter::You);
+            format!(
+                "The first time {} {} one or more coins each turn, those coins come up heads and {} {} those flips",
+                player(who),
+                if you { "flip" } else { "flips" },
+                if you { "you" } else { "that player" },
+                if you { "win" } else { "wins" }
+            )
+        }
         P::ExtraPlanarDieIgnoreOne { player: who } => format!(
             "If {} would roll one or more planar dice, instead {} that many planar dice plus one and ignore one",
             player(who),
@@ -2502,6 +3860,62 @@ pub(crate) fn audit_payload_reading(
             replacement_effects,
             ..
         } if replacement_effects.is_empty() => "If this source would be destroyed, regenerate it".to_string(),
+        P::EventReplacementWithEffects {
+            event: ironsmith_core::ReplacedEventSpec::DamageToPlayer {
+                player: who,
+                source_filter: None,
+                combat_only,
+            },
+            replacement_effects,
+            optional,
+            ..
+        } => format!(
+            "If {}damage would be dealt to {}, {}{} instead",
+            if *combat_only { "combat " } else { "" },
+            player(who),
+            may(*optional),
+            effects(replacement_effects)
+        ),
+        // "If your life total would be reduced to 0 or less, instead transform
+        // this creature and your life total becomes 3. Then if this creature
+        // didn't transform this way, you lose the game." (Enduring Angel): the
+        // transform and the life-total change are one compound substitute; the
+        // checked follow-up is its own sentence.
+        P::EventReplacementWithEffects { event, replacement_effects, optional: false, .. }
+            if matches!(event, ironsmith_core::ReplacedEventSpec::LifeReducedToZeroOrLess { .. })
+                && replacement_effects.len() >= 3
+                && super::render_effects::unwrap_basic_tag_wrappers(&replacement_effects[0])
+                    .downcast_ref::<crate::effects::TransformEffect>()
+                    .is_some()
+                && super::render_effects::unwrap_basic_tag_wrappers(&replacement_effects[1])
+                    .downcast_ref::<crate::effects::SetLifeTotalEffect>()
+                    .is_some() =>
+        {
+            let rest = audit_untransformed_follow_up(&replacement_effects[0], &replacement_effects[2..])
+                .unwrap_or_else(|| effects(&replacement_effects[2..]));
+            let rest = if rest.starts_with("then ") { rest } else { format!("then {rest}") };
+            format!(
+                "If {}, instead {} and {}. {}",
+                replaced_event(event),
+                effects(&replacement_effects[..1]),
+                effects(&replacement_effects[1..2]),
+                capitalize_first(&rest)
+            )
+        }
+        // "If an opponent who controls at least as many lands as you do would
+        // put a land onto the battlefield, ..." (Land Equilibrium).
+        P::EventReplacementWithEffects {
+            event: ironsmith_core::ReplacedEventSpec::ZoneChange {
+                object,
+                from: None,
+                to: Some(Zone::Battlefield),
+            },
+            replacement_effects,
+            optional: false,
+            ..
+        } if audit_parity_gated_entry_then_sacrifice(object, replacement_effects).is_some() => {
+            audit_parity_gated_entry_then_sacrifice(object, replacement_effects).unwrap_or_default()
+        }
         P::EventReplacementWithEffects { event, replacement_effects, optional, .. } => format!(
             "If {}, {}{} instead",
             replaced_event(event),
@@ -2532,12 +3946,23 @@ pub(crate) fn audit_payload_reading(
             format!("All morph costs cost {{{generic_increase}}} more")
         }
         P::UnlockCostReduction { generic_reduction } => {
-            format!("Unlock costs cost {{{generic_reduction}}} less")
+            format!("Unlock costs you pay cost {{{generic_reduction}}} less")
         }
-        P::SourceHasFullTextOfTopGraveyardCard { filter, .. } => format!(
-            "This has the full text of the top {} of your graveyard",
-            objects(filter)
-        ),
+        P::SourceHasFullTextOfTopGraveyardCard { filter, abilities, .. } => {
+            let mut card = filter.clone();
+            card.zone = None;
+            card.set_explicit_card_noun(true);
+            let card = with_indefinite_article(strip_indefinite_article(&objects(&card)).trim());
+            let granted = abilities.iter().map(ability_model).collect::<Vec<_>>();
+            let rider = if granted.is_empty() {
+                String::new()
+            } else {
+                format!(" and has the text {}", granted.join(" and "))
+            };
+            format!(
+                "As long as the top card of your graveyard is {card}, this permanent has the full text of that card{rider}"
+            )
+        }
         P::RevealActionOffer { label, source_zones, max_per_player_turn, arrival_zone, effects: program, .. } => {
             let zones = if source_zones.len() == 2 && source_zones.contains(&Zone::Hand) && source_zones.contains(&Zone::Library) {
                 "a hidden zone".to_string()
@@ -2558,26 +3983,39 @@ pub(crate) fn audit_payload_reading(
             format!("If {} would create real cards{}, use the supplied card definition named {} instead",player(actor),operation_label.as_ref().map_or(String::new(),|label|format!(" as part of the named {label} action")),name)
         },
         P::MaySkipDrawStepWithFollowup { if_you_do, .. } => format!(
-            "You may skip your draw step; if you do, {}",
+            "If you would begin your draw step, you may skip that step instead. If you do, {}",
             effects(if_you_do)
         ),
         P::PlayerMaySacrificePermanentToIgnoreSourceEffectUntilEndOfTurn { player: who, .. } => format!(
             "{} may sacrifice a permanent to ignore this permanent's effect until end of turn",
             capitalize_first(&player(who))
         ),
-        P::CastTargetRestriction { forbidden, .. } => {
-            format!("Spells and abilities can't target {}", objects(forbidden))
-        }
+        // CR 601.2c: only this spell's own target announcement is limited;
+        // the resolution recheck ignores it (Enthralling Hold, Dream Leash).
+        P::CastTargetRestriction { forbidden, .. } => format!(
+            "You can't choose {} as this spell's target as you cast it",
+            article(&objects(forbidden))
+        ),
         P::EntersAttachedToChosenObject { filter, .. } => format!(
-            "This enters attached to a chosen {}",
-            objects(filter)
+            "As this enters, choose {} it could be attached to. If you do, it enters attached to that {}",
+            article(&objects(filter)),
+            if filter.card_types.as_slice() == [CardType::Creature] { "creature" } else { "permanent" }
         ),
-        P::AdditionalSacrificePerManaSymbol { activated_abilities, symbol, sacrifice, .. } => format!(
-            "For each {} in the cost of {}, sacrifice {} as an additional cost",
-            describe_mana_symbol(*symbol),
-            if *activated_abilities { "activated abilities" } else { "spells" },
-            objects(sacrifice)
-        ),
+        P::AdditionalSacrificePerManaSymbol { activated_abilities, symbol, sacrifice, .. } => {
+            // The payer is implied by the quoted cost ("Sacrifice a Swamp").
+            let mut sacrificed = sacrifice.clone();
+            sacrificed.controller = None;
+            let (subject, verb, costs) = if *activated_abilities {
+                ("Activated abilities", "activate", "activation costs")
+            } else {
+                ("Spells", "cast", "mana costs")
+            };
+            format!(
+                "{subject} cost an additional \"Sacrifice {}\" to {verb} for each {} mana symbol in their {costs}",
+                objects(&sacrificed),
+                mana_symbol_name(symbol)
+            )
+        }
         // "If a spell or ability you control would counter a spell, instead
         // exile that spell and you may play that card without paying its
         // mana cost."
@@ -2607,10 +4045,173 @@ pub(crate) fn audit_payload_reading(
             "If a source controlled by one of the chosen players would deal damage to the other chosen player or a permanent that player controls, that source deals {} to that player or permanent instead",
             match *factor { 2 => "double that damage".to_string(), 3 => "triple that damage".to_string(), n => format!("{} that much damage", multiple(n)) }
         ),
+        // "The first time you would create one or more tokens each turn, you
+        // may instead create ..." (Moonlit Meditation; Mirrormind Crown adds
+        // "As long as this Equipment is attached to a creature").
+        P::Conditional { ability, condition, .. }
+            if matches!(
+                &ability.payload,
+                P::TokenCreationTemplates { controller: PlayerFilter::You, optional: true, .. }
+            ) && (audit_no_token_created_this_turn(condition)
+                || matches!(condition, crate::ConditionExpr::And(left, right)
+                    if audit_no_token_created_this_turn(left) || audit_no_token_created_this_turn(right)))
+                && audit_payload_reading(ability)
+                    .is_some_and(|inner| inner.starts_with("If you would create one or more tokens, ")) =>
+        {
+            let inner = audit_payload_reading(ability).unwrap_or_default();
+            let body = inner.strip_prefix("If you would create one or more tokens, ").unwrap_or(&inner);
+            let first = format!("the first time you would create one or more tokens each turn, {body}");
+            match condition {
+                crate::ConditionExpr::And(left, right) => {
+                    let other = if audit_no_token_created_this_turn(left) { right } else { left };
+                    // "The first time you would create one or more tokens
+                    // during each of your turns" (Esix, Fractal Bloom).
+                    if matches!(other.as_ref(), crate::ConditionExpr::YourTurn) {
+                        format!(
+                            "The first time you would create one or more tokens during each of your turns, {body}"
+                        )
+                    } else {
+                        format!("As long as {}, {first}", describe_condition(other))
+                    }
+                }
+                _ => capitalize_first(&first),
+            }
+        }
+        // "Solved — Creatures you control get +1/+0." (Case of the Gateway
+        // Express): a Case's solved static keeps its printed label.
+        P::Conditional { ability, condition, .. }
+            if matches!(condition, crate::ConditionExpr::SourceCaseSolved)
+                && (ability.id == Some(crate::static_abilities::StaticAbilityId::Anthem)
+                    || matches!(&ability.payload, P::TokenCreationTemplates { .. })) =>
+        {
+            let inner = audit_payload_reading(ability).unwrap_or_else(|| {
+                crate::static_abilities::StaticAbility::from_model(ability.as_ref().clone()).display()
+            });
+            format!("Solved — {}", capitalize_first(inner.trim().trim_end_matches('.')))
+        }
+        // "As long as enchanted creature isn't legendary, it doesn't untap
+        // during its controller's untap step" (Stunning Strike): a negated
+        // attached-object supertype gate on a restriction of that object.
+        P::Conditional { ability, condition: crate::ConditionExpr::Not(negated), .. }
+            if audit_attached_supertype_exclusion(negated).is_some()
+                && audit_attached_restriction_subject_rest(ability).is_some() =>
+        {
+            let excluded = audit_attached_supertype_exclusion(negated).unwrap_or_default();
+            let (subject, rest) = audit_attached_restriction_subject_rest(ability).unwrap_or_default();
+            format!("As long as {subject} isn't {excluded}, it {rest}")
+        }
+        P::Conditional {
+            ability,
+            condition: crate::ConditionExpr::CountComparison {
+                count: crate::static_abilities::AnthemCountExpression::MatchingFilter(filter),
+                comparison: ironsmith_core::Comparison::Equal(n),
+                ..
+            },
+            ..
+        } if ability.id == Some(crate::static_abilities::StaticAbilityId::LegendRuleDoesntApply)
+            && matches!(ability.payload, P::None)
+            && filter.name.is_some()
+            && filter.zone == Some(Zone::Battlefield)
+            && filter.controller.is_none() =>
+        {
+            let amount = ironsmith_core::cardinal_word(*n as u32).unwrap_or_else(|| n.to_string());
+            format!(
+                "If there are exactly {amount} {} on the battlefield, the \"legend rule\" doesn't apply to them",
+                pluralize_noun_phrase(strip_indefinite_article(&objects(filter)))
+            )
+        }
+        // "As long as this Equipment is attached to a creature, your
+        // opponents can't cast spells during your turn" (Conqueror's Flail):
+        // the attachment gate leads; the your-turn half is the ban's window.
+        P::Conditional { ability, condition: crate::ConditionExpr::And(attached, timing), .. }
+            if ability.id == Some(crate::static_abilities::StaticAbilityId::OpponentsCantCastSpells)
+                && matches!(ability.payload, P::None)
+                && matches!(timing.as_ref(),
+                    crate::ConditionExpr::ActivationTiming(ActivationTiming::DuringYourTurn))
+                && matches!(attached.as_ref(), crate::ConditionExpr::AttachedToSourceMatches(filter)
+                    if { let mut bare = filter.clone(); bare.zone = Some(Zone::Battlefield); bare == ObjectFilter::creature() }) =>
+        {
+            "As long as this source is attached to a creature, your opponents can't cast spells during your turn"
+                .to_string()
+        }
+        // "You may cast this card from your graveyard if a non-Zombie creature
+        // died this turn. If you do, it enters with a +1/+1 counter on it"
+        // (Undead Sprinter): the gate qualifies the permission itself, before
+        // its cast rider.
+        P::Conditional { ability, condition, .. }
+            if matches!(&ability.payload,
+                P::Grants(spec) if matches!(spec.grantable, ironsmith_core::Grantable::PlayFrom))
+                && capitalize_first(audit_conditional_inner_reading(ability).trim())
+                    .starts_with("You may cast this card from ") =>
+        {
+            let inner = capitalize_first(audit_conditional_inner_reading(ability).trim());
+            let inner = inner.trim_end_matches('.');
+            let condition = describe_condition(condition);
+            let gate = condition.strip_prefix("as long as ").unwrap_or(&condition);
+            match inner.split_once(". ") {
+                Some((permission, rider)) => format!("{permission} if {gate}. {rider}"),
+                None => format!("{inner} if {gate}"),
+            }
+        }
+        // "Enchanted creature doesn't untap during your untap step if this
+        // Aura has a pupa counter on it" (Cocoon): an attached object's untap
+        // restriction gated to your turn applies during your untap step.
+        P::Conditional { ability, condition: crate::ConditionExpr::And(left, right), .. }
+            if matches!(
+                &ability.payload,
+                P::RuleRestriction {
+                    restriction: crate::effect::Restriction::Untap(_),
+                    additional_restrictions,
+                    ..
+                } if additional_restrictions.is_empty()
+            ) && (matches!(left.as_ref(), crate::ConditionExpr::YourTurn)
+                != matches!(right.as_ref(), crate::ConditionExpr::YourTurn))
+                && audit_attached_restriction_subject_rest(ability).is_some() =>
+        {
+            let (subject, _) = audit_attached_restriction_subject_rest(ability).unwrap_or_default();
+            let gate = if matches!(left.as_ref(), crate::ConditionExpr::YourTurn) { right } else { left };
+            format!(
+                "{} doesn't untap during your untap step as long as {}",
+                capitalize_first(&subject),
+                describe_condition(gate)
+            )
+        }
+        // "You can't play lands if this creature was cast this turn" (Rock
+        // Jockey): a rule gated on the source's own cast this turn reads with
+        // "if" — a past cast is not a lasting state.
+        P::Conditional { ability, condition: condition @ crate::ConditionExpr::And(left, right), .. }
+            if matches!(&ability.payload, P::RuleRestriction { .. })
+                && matches!(
+                    left.as_ref(),
+                    crate::ConditionExpr::TurnHistory(
+                        ironsmith_core::TurnHistoryCondition::SourceWasCast { .. }
+                    )
+                )
+                && matches!(
+                    right.as_ref(),
+                    crate::ConditionExpr::TurnHistory(
+                        ironsmith_core::TurnHistoryCondition::SourceEnteredBattlefieldThisTurn { .. }
+                    )
+                ) =>
+        {
+            let inner = audit_payload_reading(ability).unwrap_or_else(|| {
+                crate::static_abilities::StaticAbility::from_model(ability.as_ref().clone()).display()
+            });
+            format!("{} if {}", inner.trim().trim_end_matches('.'), describe_condition(condition))
+        }
         P::Conditional { ability, condition, .. } => {
             let inner = audit_payload_reading(ability).unwrap_or_else(|| {
                 crate::static_abilities::StaticAbility::from_model(ability.as_ref().clone()).display()
             });
+            // "During your main phase, each card in your graveyard has beam me
+            // up. ..." (Scotty, Miracle Worker): the main-phase gate leads the
+            // rule it scopes.
+            if matches!(condition, crate::ConditionExpr::SourceControllersMainPhase) {
+                return Some(format!(
+                    "During your main phase, {}",
+                    lowercase_first(inner.trim().trim_end_matches('.'))
+                ));
+            }
             let condition = describe_condition(condition);
             let trimmed = inner.trim();
             // A replacement or prevention instruction is a whole sentence;
@@ -2637,6 +4238,17 @@ pub(crate) fn audit_payload_reading(
                     "As long as {rest}, {}",
                     lowercase_first(trimmed.trim_end_matches('.'))
                 ),
+                // "As long as you control your commander, activated abilities
+                // of cards in your graveyard cost {2} less to activate. This
+                // effect can't reduce ..." (Convergence of Dominion): a gate
+                // over a multi-sentence rule scopes all of it, so it leads.
+                Some(rest)
+                    if trimmed.contains(". ")
+                        && !trimmed.contains(" as long as ")
+                        && !trimmed.contains('"') =>
+                {
+                    format!("As long as {rest}, {}", lowercase_first(trimmed.trim_end_matches('.')))
+                }
                 _ => format!("{inner} as long as {condition}"),
             }
         }
@@ -2666,7 +4278,8 @@ pub(crate) fn audit_payload_reading(
             Some(limit) => format!("A deck can have up to {limit} copies of this card"),
         },
         P::DeckConstructionColorChoice { count } => format!(
-            "As its owner creates their deck, they choose {count} different colors for this card"
+            "As you create your deck, circle {} of the colors below",
+            count_words(*count)
         ),
         P::CommanderDeckAllowance { allowance, .. } => allowance.describe(),
         P::Toxic { amount } => format!("Toxic {amount}"),
@@ -2678,16 +4291,49 @@ pub(crate) fn audit_payload_reading(
         P::MustAttackDraftNotedPlayers { card_name } => format!(
             "This creature attacks a player you noted for cards named {card_name} each combat if able"
         ),
+        // CR 905: typed draft-time instructions read in printed order; the
+        // card's own name is resolved by the audit assembly ("~").
+        P::DraftRule { rule } if rule.actions != 0 && !rule.unmodeled => {
+            let mut parts = Vec::new();
+            if rule.face_up {
+                parts.push("Draft this card face up.".to_string());
+            }
+            if rule.revealed
+                && !rule
+                    .draft_actions()
+                    .any(|action| action == ironsmith_core::DraftAction::RevealAndNoteDraftedCount)
+            {
+                parts.push("Reveal this card as you draft it.".to_string());
+            }
+            for action in rule.draft_actions() {
+                parts.push(action.reading("~"));
+                // "... you may draft an additional card from that booster
+                // pack. If you do, put this card into that booster pack."
+                if rule.exchange_pick && action == ironsmith_core::DraftAction::DraftAdditionalCard {
+                    parts.push("If you do, put this card into that booster pack.".to_string());
+                }
+            }
+            parts.join(" ").trim_end_matches('.').to_string()
+        }
         P::DraftRule { rule } => {
             let mut parts = Vec::new();
             if rule.face_up {
                 parts.push("draft this card face up".to_string());
             }
-            if rule.revealed {
-                parts.push("this card is revealed as it's drafted".to_string());
-            }
-            if rule.notes_passing_player {
-                parts.push("its drafter notes the player who passed it".to_string());
+            // "Reveal this card as you draft it and note the player who
+            // passed it to you." (Cogwork Tracker): one instruction.
+            if rule.revealed && rule.notes_passing_player {
+                parts.push(
+                    "reveal this card as you draft it and note the player who passed it to you"
+                        .to_string(),
+                );
+            } else {
+                if rule.revealed {
+                    parts.push("this card is revealed as it's drafted".to_string());
+                }
+                if rule.notes_passing_player {
+                    parts.push("its drafter notes the player who passed it".to_string());
+                }
             }
             if rule.chosen_colors > 0 {
                 parts.push(format!("{} colors are chosen as it's drafted", rule.chosen_colors));
@@ -2722,6 +4368,7 @@ pub(crate) fn audit_payload_reading(
                 M::TapCreaturesForMana => "Each creature you tap while casting this spell pays for {1} or one mana of that creature's color.".into(),
                 M::DestroyAttachmentInstead => "If enchanted permanent would be destroyed, instead remove all damage from it and destroy this Aura.".into(),
                 M::AttachWhileCreature => "This permanent can be attached while it's a creature.".into(),
+                M::NoteExiledCardManaValues => "Note the mana value of each card as it's put into exile".into(),
                 M::ClassTriggerChoiceAdjustment { action,class,.. } => format!("As you {action}, you may choose another {class} ability to trigger."),
                 M::ClassTriggerMultiplication { class,once_each_turn,.. } => format!("{}If you would trigger a {class} ability of a permanent you control, you may have that ability trigger twice instead.",if *once_each_turn { "Once each turn, " } else { "" }),
                 M::PermanentCountGrantsDesignation { minimum, historic_only, enduring_story, tapped_only, named_designation, history_requirements } => if !history_requirements.is_empty() { format!("If you {}, you are in your {} for the rest of the game.", history_requirements.iter().map(|requirement| requirement.clause()).collect::<Vec<_>>().join(", "), named_designation.as_deref().unwrap_or("designation")) } else { format!("If you control {minimum} or more {}, you {} for the rest of the game.", if *historic_only { "artifacts, legendaries, and/or Sagas" } else if *tapped_only { "tapped permanents" } else { "permanents" }, if let Some(name) = named_designation { format!("are in your {name}") } else if *enduring_story { "have an enduring story".into() } else { "get the city's blessing".into() }) },
@@ -2809,6 +4456,832 @@ pub(crate) fn audit_payload_reading(
                 }
             }
         }
+        // CR 103.2 pregame action over the drafted pool (Caller of the
+        // Untamed, Arcane Savant, Volatile Chimera): read from the typed
+        // card types and count bounds.
+        P::PregameAction {
+            kind: ironsmith_core::PregameActionKind::ExileDraftedCardsBeforeShuffle(spec),
+            ..
+        } => {
+            let types = spec
+                .card_types
+                .iter()
+                .map(|card_type| card_type.name().to_ascii_lowercase())
+                .collect::<Vec<_>>()
+                .join(" or ");
+            let noun = if types.is_empty() { "card".to_string() } else { format!("{types} card") };
+            let (amount, plural) = match (spec.minimum, spec.maximum) {
+                (1, Some(1)) => (with_indefinite_article(&noun), false),
+                (minimum, None) => (format!("{} or more {noun}s", count_words(minimum)), true),
+                (minimum, Some(maximum)) if minimum == maximum => {
+                    (format!("{} {noun}s", count_words(minimum)), true)
+                }
+                (minimum, Some(maximum)) => (
+                    format!("between {} and {} {noun}s", count_words(minimum), count_words(maximum)),
+                    true,
+                ),
+            };
+            let verb = if plural { "aren't" } else { "isn't" };
+            format!(
+                "Before you shuffle your deck to start the game, you may reveal this card from your deck and exile {amount} you drafted that {verb} in your deck"
+            )
+        }
+        // The pregame color choice is the commander's (CR 903.3): every
+        // printing of this kind gates it on "if this is your commander".
+        P::PregameAction { kind: ironsmith_core::PregameActionKind::ChooseColor, .. } => {
+            "If this is your commander, choose a color before the game begins".to_string()
+        }
         _ => return None,
+    })
+}
+
+/// "you didn't create a token this turn": no token created by you so far.
+fn audit_no_token_created_this_turn(condition: &crate::ConditionExpr) -> bool {
+    let crate::ConditionExpr::ValueComparison { left, operator, right } = condition else {
+        return false;
+    };
+    let Value::TurnHistoryCount(ironsmith_core::TurnHistoryCount::TokensCreatedMatching { player, filter }) =
+        left.unhinted()
+    else {
+        return false;
+    };
+    let mut bare = filter.clone();
+    bare.zone = None;
+    bare.token = false;
+    *player == PlayerFilter::You
+        && *operator == crate::effect::ValueComparisonOperator::Equal
+        && right.unhinted() == &Value::Fixed(0)
+        && bare == ObjectFilter::default()
+}
+
+/// "When you cast an Equipment spell this way, it gains "When this Equipment
+/// enters, attach it to target creature you control."" (Galea, Kindler of
+/// Hope): a permission's recipient rider read from its typed holder filter
+/// and granted ability.
+/// "Elemental permanent spells you cast from your hand gain evoke {4} as you
+/// cast them" (Ashling, the Limitless): a granted evoke alternative cost
+/// (CR 702.74a) over permanent spells cast from your hand. The evoked
+/// permanent's sacrifice is the keyword's own rider, so it is not restated.
+fn audit_granted_hand_evoke(grant: &crate::grant::GrantSpec) -> Option<String> {
+    let ironsmith_core::Grantable::AlternativeCast(method) = &grant.grantable else {
+        return None;
+    };
+    if method.name() != "Evoke"
+        || method.cast_from_zone() != Zone::Hand
+        || grant.zone != Zone::Hand
+        || !grant.additional_zones.is_empty()
+        || grant.permanent_this_way_grants.len() != 1
+        || !grant.cast_this_way_grants.is_empty()
+        || grant.filter.owner != Some(PlayerFilter::You)
+        || grant.filter.excluded_card_types.as_slice() != [CardType::Land]
+        || grant.filter.subtypes.is_empty()
+        || ![CardType::Artifact, CardType::Creature, CardType::Enchantment, CardType::Planeswalker]
+            .iter()
+            .all(|card_type| grant.filter.card_types.contains(card_type))
+    {
+        return None;
+    }
+    let cost = method.total_cost()?.mana_cost()?.to_oracle();
+    let kinds = grant
+        .filter
+        .subtypes
+        .iter()
+        .map(ToString::to_string)
+        .collect::<Vec<_>>()
+        .join(" ");
+    Some(format!(
+        "{kinds} permanent spells you cast from your hand gain evoke {cost} as you cast them"
+    ))
+}
+
+fn audit_permanent_this_way_riders(grant: &crate::grant::GrantSpec) -> String {
+    let mut text = String::new();
+    for granted in &grant.permanent_this_way_grants {
+        let Some(model) = granted.compiled_model() else { continue };
+        let P::GrantObjectAbilityForFilter(rider) = &model.payload else { continue };
+        if rider.condition.is_some() || !rider.additional_abilities.is_empty() {
+            continue;
+        }
+        let noun = rider
+            .filter
+            .subtypes
+            .iter()
+            .map(ToString::to_string)
+            .chain(rider.filter.card_types.iter().map(|card_type| card_type.to_string().to_ascii_lowercase()))
+            .collect::<Vec<_>>()
+            .join(" ");
+        let spell = if noun.is_empty() { "spell".to_string() } else { format!("{noun} spell") };
+        let ability = ability_model_for_recipient(&rider.ability, &rider.filter);
+        text.push_str(&format!(
+            ". When you cast {} this way, it gains {ability}",
+            with_indefinite_article(&spell)
+        ));
+    }
+    text
+}
+
+/// "Once during each of your turns, you may play a land or cast a spell from
+/// among the cards exiled with this permanent without paying its mana cost"
+/// (Hauken's Insight): a free cast over the source's linked exile, read from
+/// the typed origin, free method, source-exiled link, use limit and land
+/// companion.
+fn audit_source_exiled_free_cast_grant(grant: &crate::grant::GrantSpec) -> Option<String> {
+    let ironsmith_core::Grantable::AlternativeCast(method) = &grant.grantable else {
+        return None;
+    };
+    if grant.zone != Zone::Exile
+        || method.cast_from_zone() != Zone::Exile
+        || method.mana_cost().is_some()
+        || !method.non_mana_costs().is_empty()
+        || method.cast_condition().is_some()
+        || !grant.additional_zones.is_empty()
+        || !grant.cast_this_way_grants.is_empty()
+        || !grant.permanent_this_way_grants.is_empty()
+    {
+        return None;
+    }
+    let mut spell = grant.filter.clone();
+    let linked = spell.tagged_constraints.len();
+    // "from among cards exiled with Maralen this turn": the linked exile
+    // narrowed to the cards you exiled with this source this turn.
+    let this_turn = spell.tagged_constraints.iter().any(|constraint| {
+        constraint.tag.as_str() == ironsmith_core::tag::SOURCE_EXILED_BY_YOU_THIS_TURN_TAG
+    });
+    spell.tagged_constraints.retain(|constraint| {
+        constraint.tag.as_str() != ironsmith_core::tag::SOURCE_EXILED_TAG
+            && constraint.tag.as_str() != ironsmith_core::tag::SOURCE_EXILED_BY_YOU_THIS_TURN_TAG
+    });
+    if linked != 1 + usize::from(this_turn) || !spell.tagged_constraints.is_empty() {
+        return None;
+    }
+    spell.zone = None;
+    spell.excluded_card_types.retain(|card_type| *card_type != CardType::Land);
+    let spell = if spell == ObjectFilter::default() {
+        "a spell".to_string()
+    } else {
+        with_indefinite_article(&super::normalize_common::describe_cast_spell_filter(
+            &spell,
+            super::normalize_common::CastSpellFilterContext::Standalone,
+        ))
+    };
+    let lead = match grant.usage_limit {
+        None => "",
+        Some(ironsmith_core::GrantUsageLimit::OnceEachTurn) => "Once each turn, ",
+        Some(ironsmith_core::GrantUsageLimit::OnceDuringEachOfYourTurns) => "Once during each of your turns, ",
+        Some(ironsmith_core::GrantUsageLimit::DuringYourTurns) => "During your turn, ",
+    };
+    let land = if grant.land_play_companion { "play a land or " } else { "" };
+    Some(capitalize_first(&format!(
+        "{lead}{} may {land}cast {spell} from among {} without paying its mana cost",
+        player(&grant.beneficiary),
+        if this_turn {
+            "cards exiled with this permanent this turn"
+        } else {
+            "the cards exiled with this permanent"
+        }
+    )))
+}
+
+
+/// "Once during each of your turns, you may cast an instant or sorcery spell
+/// from your hand without paying its mana cost" (Zaffai and the Tempests);
+/// "... cast a spell from your hand or the top of your library ..." (One with
+/// the Multiverse): a use-limited free cast of one of your own cards. The
+/// unlimited form ("You may cast spells from your hand without paying their
+/// mana costs", Omniscience) keeps its plural reading.
+/// "Once each turn, you may play a historic land or cast a historic spell
+/// from the top of your library. When you do, create a Food token." (The
+/// Fourth Doctor): a use-limited play permission over a historic land branch
+/// and a historic nonland branch, with an effect each use performs.
+fn audit_library_historic_play_with_reflexive(grant: &crate::grant::GrantSpec) -> Option<String> {
+    if !matches!(grant.grantable, ironsmith_core::Grantable::PlayFrom)
+        || grant.zone != Zone::Library
+        || !matches!(grant.usage_limit, Some(ironsmith_core::GrantUsageLimit::OnceEachTurn))
+        || grant.beneficiary != PlayerFilter::You
+        || grant.on_use_effects.is_empty()
+        || !grant.additional_zones.is_empty()
+        || !grant.cast_this_way_grants.is_empty()
+        || !grant.permanent_this_way_grants.is_empty()
+        || grant.max_plays.is_some()
+    {
+        return None;
+    }
+    let [first, second] = grant.filter.any_of.as_slice() else {
+        return None;
+    };
+    let bare = |branch: &ObjectFilter| {
+        let mut rest = branch.clone();
+        rest.historic = false;
+        rest.zone = None;
+        rest.union_surface = Default::default();
+        rest
+    };
+    let land = |branch: &ObjectFilter| {
+        let mut rest = bare(branch);
+        branch.historic
+            && rest.card_types.as_slice() == [CardType::Land]
+            && {
+                rest.card_types.clear();
+                rest == ObjectFilter::default()
+            }
+    };
+    let nonland = |branch: &ObjectFilter| {
+        let mut rest = bare(branch);
+        branch.historic
+            && rest.excluded_card_types.as_slice() == [CardType::Land]
+            && {
+                rest.excluded_card_types.clear();
+                rest == ObjectFilter::default()
+            }
+    };
+    if !((land(first) && nonland(second)) || (land(second) && nonland(first))) {
+        return None;
+    }
+    Some(format!(
+        "Once each turn, you may play a historic land or cast a historic spell from the top of your library. When you do, {}",
+        effects(&grant.on_use_effects)
+    ))
+}
+
+fn audit_limited_hand_free_cast_grant(grant: &crate::grant::GrantSpec) -> Option<String> {
+    let ironsmith_core::Grantable::AlternativeCast(method) = &grant.grantable else {
+        return None;
+    };
+    let lead = match grant.usage_limit {
+        None => return None,
+        Some(ironsmith_core::GrantUsageLimit::OnceEachTurn) => "Once each turn, ",
+        Some(ironsmith_core::GrantUsageLimit::OnceDuringEachOfYourTurns) => "Once during each of your turns, ",
+        Some(ironsmith_core::GrantUsageLimit::DuringYourTurns) => return None,
+    };
+    if grant.zone != Zone::Hand
+        || method.cast_from_zone() != Zone::Hand
+        || method.mana_cost().is_some()
+        || !method.non_mana_costs().is_empty()
+        || method.cast_condition().is_some()
+        || grant.beneficiary != PlayerFilter::You
+        || grant.max_plays.is_some()
+        || !grant.cast_this_way_grants.is_empty()
+        || !grant.permanent_this_way_grants.is_empty()
+        || !grant.on_use_effects.is_empty()
+        || grant.instant_timing
+        || grant.land_play_companion
+        || grant.cast_this_way_filter.is_some()
+        || grant.cast_mana_spend_mode != ironsmith_core::value_model::ManaSpendMode::Normal
+    {
+        return None;
+    }
+    let origin = match grant.additional_zones.as_slice() {
+        [] => "from your hand",
+        [Zone::Library] if grant.top_card_only => "from your hand or the top of your library",
+        _ => return None,
+    };
+    let mut spell = grant.filter.clone();
+    spell.zone = None;
+    if spell.owner == Some(PlayerFilter::You) {
+        spell.owner = None;
+    }
+    spell.excluded_card_types.retain(|card_type| *card_type != CardType::Land);
+    let spell = if spell == ObjectFilter::default() {
+        "a spell".to_string()
+    } else {
+        with_indefinite_article(&super::normalize_common::describe_cast_spell_filter(
+            &spell,
+            super::normalize_common::CastSpellFilterContext::Standalone,
+        ))
+    };
+    Some(format!("{lead}you may cast {spell} {origin} without paying its mana cost"))
+}
+
+/// "legendary" for an attached-object match that names only one supertype.
+fn audit_attached_supertype_exclusion(condition: &crate::ConditionExpr) -> Option<String> {
+    let crate::ConditionExpr::AttachedToSourceMatches(filter) = condition else {
+        return None;
+    };
+    let [supertype] = filter.supertypes.as_slice() else {
+        return None;
+    };
+    let mut rest = filter.clone();
+    rest.supertypes.clear();
+    rest.zone = None;
+    (rest == ObjectFilter::default()).then(|| supertype.name().to_ascii_lowercase())
+}
+
+/// The attached subject ("enchanted creature") and the rest of a single
+/// rule restriction's typed reading ("doesn't untap during ...").
+fn audit_attached_restriction_subject_rest(
+    ability: &crate::static_abilities::CompiledStaticAbility,
+) -> Option<(String, String)> {
+    let P::RuleRestriction { restriction, additional_restrictions, .. } = &ability.payload else {
+        return None;
+    };
+    if !additional_restrictions.is_empty() {
+        return None;
+    }
+    let reading = lowercase_first(audit_rule_restriction_reading(restriction).trim());
+    let reading = reading.trim_end_matches('.');
+    ["enchanted creature", "enchanted permanent", "equipped creature"]
+        .iter()
+        .find_map(|subject| {
+            let rest = reading.strip_prefix(subject)?.strip_prefix(' ')?;
+            (!rest.is_empty()).then(|| (subject.to_string(), rest.to_string()))
+        })
+}
+
+/// "choose land or nonland and reveal cards from the top of your library
+/// until you reveal a card of the chosen kind. Put that card into your hand
+/// and put all other cards revealed this way on the bottom of your library
+/// in any order" (Abundance, Pavel Chekov): a land / nonland choice whose
+/// two modes each reveal to the first match of that kind, put it into your
+/// hand, and put the rest on the bottom in one shared order.
+fn audit_chosen_kind_reveal_until(replacement: &[Effect]) -> Option<String> {
+    let [choice] = replacement else { return None; };
+    let choice = choice.downcast_ref::<crate::effects::ChooseModeEffect>()?;
+    if !choice.common_prefix_effects.is_empty() {
+        return None;
+    }
+    let [land_mode, nonland_mode] = choice.modes.as_slice() else { return None; };
+    let mode_order = |mode_effects: &[Effect], land_kind: bool| -> Option<ironsmith_core::LibraryBottomOrder> {
+        let [consult, keep, rest] = mode_effects else { return None; };
+        let consult = consult.downcast_ref::<crate::effects::ConsultTopOfLibraryEffect>()?;
+        let keep = keep.downcast_ref::<crate::effects::MoveToZoneEffect>()?;
+        let rest = rest.downcast_ref::<crate::effects::PutTaggedRemainderOnLibraryBottomEffect>()?;
+        let kind_matches = if land_kind {
+            consult.filter.card_types.as_slice() == [CardType::Land]
+                && consult.filter.excluded_card_types.is_empty()
+        } else {
+            consult.filter.excluded_card_types.as_slice() == [CardType::Land]
+                && consult.filter.card_types.is_empty()
+        };
+        (kind_matches
+            && consult.player == PlayerFilter::You
+            && consult.mode == crate::effects::consult_helpers::LibraryConsultMode::Reveal
+            && matches!(consult.stop_rule, crate::effects::ConsultTopOfLibraryStopRule::FirstMatch)
+            && consult.max_exposed.is_none()
+            && keep.zone == Zone::Hand
+            && matches!(keep.target.base(), crate::target::ChooseSpec::Tagged(_))
+            && rest.tag == consult.all_tag
+            && rest.keep_tagged.as_ref() == Some(&consult.match_tag)
+            && rest.player == PlayerFilter::You)
+            .then_some(rest.order)
+    };
+    let order = mode_order(land_mode.effects.as_slice(), true)?;
+    if mode_order(nonland_mode.effects.as_slice(), false)? != order {
+        return None;
+    }
+    Some(format!(
+        "choose land or nonland and reveal cards from the top of your library until you reveal a card of the chosen kind. Put that card into your hand and put all other cards revealed this way on the bottom of your library in {} order",
+        match order {
+            ironsmith_core::LibraryBottomOrder::Random => "a random",
+            ironsmith_core::LibraryBottomOrder::ChooserChooses => "any",
+        }
+    ))
+}
+
+/// "then if this creature didn't transform this way, you lose the game"
+/// (Enduring Angel): an empty receipt of the substitute's own tagged
+/// transform names that transform, not a count of objects.
+fn audit_untransformed_follow_up(transform: &Effect, rest: &[Effect]) -> Option<String> {
+    let tagged = transform.downcast_ref::<crate::effects::TaggedEffect>()?;
+    let transformed = tagged.effect.downcast_ref::<crate::effects::TransformEffect>()?;
+    let [follow_up] = rest else {
+        return None;
+    };
+    let conditional = follow_up.downcast_ref::<crate::effects::ConditionalEffect>()?;
+    if !conditional.if_false.is_empty() || conditional.if_true.is_empty() {
+        return None;
+    }
+    let crate::effect::Condition::ValueComparison {
+        left,
+        operator: crate::effect::ValueComparisonOperator::Equal,
+        right,
+    } = &conditional.condition
+    else {
+        return None;
+    };
+    if !matches!(right.unhinted(), crate::effect::Value::Fixed(0)) {
+        return None;
+    }
+    let crate::effect::Value::TaggedSnapshotCount { tag, .. } = left.unhinted() else {
+        return None;
+    };
+    if *tag != tagged.tag {
+        return None;
+    }
+    Some(format!(
+        "then if {} didn't transform this way, {}",
+        describe_transform_target(&transformed.target),
+        effects(&conditional.if_true)
+    ))
+}
+
+/// The reading of a conditional static's inner ability: its payload reading,
+/// or the engine display when the family has none (as the generic
+/// `Conditional` arm reads it).
+fn audit_conditional_inner_reading(ability: &crate::static_abilities::CompiledStaticAbility) -> String {
+    audit_payload_reading(ability).unwrap_or_else(|| {
+        crate::static_abilities::StaticAbility::from_model(ability.clone()).display()
+    })
+}
+
+/// The chosen object of a token-copy replacement template that copies one
+/// non-target "other" creature: "a creature" (read with "other than this
+/// permanent"). Any entry-state or count rider declines.
+fn audit_chosen_other_token_copy_template(template: &Effect) -> Option<String> {
+    let copy = template.downcast_ref::<crate::effects::CreateTokenCopyEffect>()?;
+    let crate::target::ChooseSpec::WithCount(inner, count) = &copy.target else {
+        return None;
+    };
+    let crate::target::ChooseSpec::Object(filter) = inner.as_ref() else {
+        return None;
+    };
+    if count.min != 1
+        || count.max != Some(1)
+        || !matches!(copy.count.unhinted(), Value::Fixed(1))
+        || copy.enters_tapped
+        || copy.has_haste
+        || copy.enters_attacking
+        || !filter.other
+        || filter.card_types.as_slice() != [CardType::Creature]
+        || !filter.tagged_constraints.is_empty()
+    {
+        return None;
+    }
+    let mut chosen = filter.clone();
+    chosen.other = false;
+    Some(with_indefinite_article(strip_indefinite_article(&objects(&chosen))))
+}
+
+/// "If Ugin's Nexus would be put into a graveyard from the battlefield,
+/// instead exile it and ...": a replacement of the source's own
+/// battlefield-to-graveyard move on a card that is not a creature. CR 700.4
+/// keeps "dies" for creatures, so the zone move is named. The reading keeps
+/// the generic replacement shape and the "a this" self-subject that the audit
+/// assembly resolves to the card's own subject.
+pub(crate) fn audit_noncreature_self_graveyard_replacement(
+    model: &crate::static_abilities::CompiledStaticAbility,
+    card_types: &[CardType],
+) -> Option<String> {
+    if card_types.is_empty() || card_types.contains(&CardType::Creature) {
+        return None;
+    }
+    let P::EventReplacementWithEffects {
+        event:
+            ironsmith_core::ReplacedEventSpec::ZoneChange {
+                object,
+                from: Some(Zone::Battlefield),
+                to: Some(Zone::Graveyard),
+            },
+        replacement_effects,
+        optional,
+        ..
+    } = &model.payload
+    else {
+        return None;
+    };
+    if !object.source || replacement_effects.is_empty() {
+        return None;
+    }
+    let subject = article(&objects(object));
+    if subject.contains("creature") {
+        return None;
+    }
+    Some(format!(
+        "If {subject} would be put into a graveyard from the battlefield, {}{} instead",
+        may(*optional),
+        effects(replacement_effects)
+    ))
+}
+
+/// The program of an exile-X-as-enters cost whose shortfall redirects the
+/// entering source to its owner's graveyard and whose full exile gives the
+/// source one counter of a chosen kind per exiled card (Frankenstein's
+/// Monster): `[Tagged(Exile X), Conditional(count == X, [ForEachTagged
+/// [ChooseMode(put one counter of kind K on this)]], [RedirectEnteringSource
+/// (Graveyard)])]`.
+fn audit_exile_or_redirect_entry_with_counter_choice(program_effects: &[Effect]) -> Option<String> {
+    let [exile_effect, conditional_effect] = program_effects else {
+        return None;
+    };
+    let mut exile_inner: &Effect = exile_effect;
+    while let Some(tagged) = exile_inner.downcast_ref::<crate::effects::TaggedEffect>() {
+        exile_inner = &*tagged.effect;
+    }
+    let exile = exile_inner.downcast_ref::<crate::effects::ExileEffect>()?;
+    let crate::target::ChooseSpec::Object(exiled_filter) = exile.spec.base() else {
+        return None;
+    };
+    let conditional = conditional_effect.downcast_ref::<crate::effects::ConditionalEffect>()?;
+    let [redirect] = conditional.if_false.as_slice() else {
+        return None;
+    };
+    if redirect
+        .downcast_ref::<crate::effects::RedirectEnteringSourceEffect>()?
+        .destination
+        != Zone::Graveyard
+    {
+        return None;
+    }
+    let [for_each] = conditional.if_true.as_slice() else {
+        return None;
+    };
+    let for_each = for_each.downcast_ref::<crate::effects::ForEachTaggedEffect>()?;
+    let [choice] = for_each.effects.as_slice() else {
+        return None;
+    };
+    let choice = choice.downcast_ref::<crate::effects::ChooseModeEffect>()?;
+    let kinds = choice
+        .modes
+        .iter()
+        .map(|mode| {
+            let [put] = mode.effects.as_slice() else {
+                return None;
+            };
+            let put = put.downcast_ref::<crate::effects::PutCountersEffect>()?;
+            (matches!(put.target.base(), crate::target::ChooseSpec::Source)
+                && matches!(put.amount.unhinted(), Value::Fixed(1)))
+            .then(|| describe_counter_type(put.counter_type))
+        })
+        .collect::<Option<Vec<_>>>()?;
+    let kinds = match kinds.as_slice() {
+        [first, second] => format!("{first} or {second}"),
+        [rest @ .., last] if rest.len() >= 2 => format!("{}, or {last}", rest.join(", ")),
+        _ => return None,
+    };
+    let noun = if exiled_filter.card_types.as_slice() == [CardType::Creature] {
+        "creature card"
+    } else {
+        "card"
+    };
+    let exiled = effects(std::slice::from_ref(exile_effect));
+    Some(format!(
+        "As this permanent enters, {}. If you can't, put this permanent into its owner's graveyard instead of onto the battlefield. For each {noun} exiled this way, this permanent enters with {} on it",
+        exiled.trim().trim_end_matches('.'),
+        with_indefinite_article(&format!("{kinds} counter"))
+    ))
+}
+
+/// "choose two abilities from among first strike, vigilance, and lifelink"
+/// (Greymond, Avacyn's Stalwart): the parser records each chosen combination
+/// as one named option ("first strike and vigilance", ...). The listed set
+/// and the count are read back only when the options are exactly every
+/// combination of that set, in listed order.
+fn listed_combination_options(options: &[String]) -> Option<(Vec<String>, usize)> {
+    fn extend(
+        start: usize,
+        count: usize,
+        picks: usize,
+        current: &mut Vec<usize>,
+        out: &mut Vec<Vec<usize>>,
+    ) {
+        if current.len() == picks {
+            out.push(current.clone());
+            return;
+        }
+        for index in start..count {
+            current.push(index);
+            extend(index + 1, count, picks, current, out);
+            current.pop();
+        }
+    }
+    let parts = options
+        .iter()
+        .map(|option| option.split(" and ").collect::<Vec<_>>())
+        .collect::<Vec<_>>();
+    let picks = parts.first()?.len();
+    if picks < 2
+        || parts.iter().any(|option| {
+            option.len() != picks || option.iter().any(|item| item.is_empty() || item.contains(','))
+        })
+    {
+        return None;
+    }
+    let mut items: Vec<String> = Vec::new();
+    for option in &parts {
+        for item in option {
+            if !items.iter().any(|known| known == item) {
+                items.push(item.to_string());
+            }
+        }
+    }
+    if items.len() <= picks {
+        return None;
+    }
+    let mut combinations = Vec::new();
+    extend(0, items.len(), picks, &mut Vec::new(), &mut combinations);
+    let expected = combinations
+        .iter()
+        .map(|combination| {
+            combination
+                .iter()
+                .map(|index| items[*index].as_str())
+                .collect::<Vec<_>>()
+                .join(" and ")
+        })
+        .collect::<Vec<_>>();
+    (expected.as_slice() == options).then_some((items, picks))
+}
+
+/// "If an opponent who controls at least as many lands as you do would put a
+/// land onto the battlefield, that player instead puts that land onto the
+/// battlefield then sacrifices a land of their choice." (Land Equilibrium):
+/// the entry of a land an opponent owns is replaced, while that player
+/// controls at least as many of those permanents as you, by the same entry
+/// followed by that player's sacrifice of one they control; otherwise the
+/// entry happens unchanged.
+fn audit_parity_gated_entry_then_sacrifice(
+    object: &ObjectFilter,
+    replacement: &[Effect],
+) -> Option<String> {
+    use crate::effect::Value;
+    if object.owner != Some(PlayerFilter::Opponent) || object.zone.is_some() {
+        return None;
+    }
+    let [gate] = replacement else {
+        return None;
+    };
+    let gate = gate.downcast_ref::<crate::effects::ConditionalEffect>()?;
+    let crate::effect::Condition::ValueComparison {
+        left,
+        operator: crate::effect::ValueComparisonOperator::GreaterThanOrEqual,
+        right,
+    } = &gate.condition
+    else {
+        return None;
+    };
+    let (Value::Count(theirs), Value::Count(yours)) = (left.unhinted(), right.unhinted()) else {
+        return None;
+    };
+    let mut counted = object.clone();
+    counted.owner = None;
+    let counts_controlled_by = |filter: &ObjectFilter, player: PlayerFilter| {
+        let mut expected = counted.clone();
+        expected.zone = Some(Zone::Battlefield);
+        expected.controller = Some(player);
+        *filter == expected
+    };
+    if counted == ObjectFilter::default()
+        || !counts_controlled_by(theirs, PlayerFilter::IteratedPlayer)
+        || !counts_controlled_by(yours, PlayerFilter::You)
+    {
+        return None;
+    }
+    let puts_it_onto_battlefield = |effect: &Effect| {
+        effect
+            .downcast_ref::<crate::effects::MoveToZoneEffect>()
+            .is_some_and(|movement| {
+                movement.zone == Zone::Battlefield
+                    && matches!(movement.target.base(), crate::target::ChooseSpec::Tagged(_))
+            })
+    };
+    let [otherwise] = gate.if_false.as_slice() else {
+        return None;
+    };
+    let [instead] = gate.if_true.as_slice() else {
+        return None;
+    };
+    let instead = instead.downcast_ref::<crate::effects::SequenceEffect>()?;
+    let [put, choose, sacrifice] = instead.effects.as_slice() else {
+        return None;
+    };
+    let choose = choose.downcast_ref::<crate::effects::ChooseObjectsEffect>()?;
+    let sacrifice = sacrifice.downcast_ref::<crate::effects::zones::SacrificePlayerEffect>()?;
+    if !puts_it_onto_battlefield(otherwise)
+        || !puts_it_onto_battlefield(put)
+        || choose.is_search
+        || choose.chooser != PlayerFilter::IteratedPlayer
+        || choose.count.min != 1
+        || choose.count.max != Some(1)
+        || choose.count.random
+        || choose.filter.controller != Some(PlayerFilter::IteratedPlayer)
+        || sacrifice.player != PlayerFilter::IteratedPlayer
+        || !matches!(sacrifice.count.unhinted(), Value::Fixed(1))
+        || !sacrifice
+            .filter
+            .tagged_constraints
+            .iter()
+            .any(|constraint| constraint.tag == choose.tag)
+    {
+        return None;
+    }
+    let mut sacrificed = choose.filter.clone();
+    sacrificed.zone = None;
+    sacrificed.controller = None;
+    let noun = objects(&counted);
+    let noun = strip_indefinite_article(&noun).to_string();
+    let sacrificed = objects(&sacrificed);
+    Some(format!(
+        "If an opponent who controls at least as many {} as you do would put {} onto the battlefield, that player instead puts that {noun} onto the battlefield then sacrifices {} of their choice",
+        pluralize_noun_phrase(&noun),
+        with_indefinite_article(&noun),
+        with_indefinite_article(strip_indefinite_article(&sacrificed)),
+    ))
+}
+
+/// "During each player's turn, that player may play a land or cast a spell
+/// from among cards exiled with this enchantment, and they may spend mana as
+/// though it were mana of any color to cast that spell. When they do, exile
+/// the top card of their library." (Share the Spoils): the active player's
+/// once-a-turn play from the source's linked exile, its spending rider, and
+/// the effect run when the permission is used.
+fn audit_active_player_source_exiled_play_refill(grant: &crate::grant::GrantSpec) -> Option<String> {
+    if !matches!(grant.grantable, ironsmith_core::Grantable::PlayFrom)
+        || grant.zone != Zone::Exile
+        || grant.beneficiary != PlayerFilter::Active
+        || grant.usage_limit != Some(ironsmith_core::GrantUsageLimit::OnceEachTurn)
+        || grant.cast_mana_spend_mode != ironsmith_core::value_model::ManaSpendMode::AnyColor
+        || !grant.additional_zones.is_empty()
+        || !grant.cast_this_way_grants.is_empty()
+        || !grant.permanent_this_way_grants.is_empty()
+        || grant.max_plays.is_some()
+        || grant.may_look_at_linked_exile
+        || grant.source_exiled_surface.is_some()
+    {
+        return None;
+    }
+    let mut pool = grant.filter.clone();
+    if pool.zone != Some(Zone::Exile) {
+        return None;
+    }
+    pool.zone = None;
+    let [constraint] = pool.tagged_constraints.as_slice() else {
+        return None;
+    };
+    if constraint.relation != crate::filter::TaggedOpbjectRelation::IsTaggedObject
+        || constraint.tag.as_str() != crate::tag::SOURCE_EXILED_TAG
+    {
+        return None;
+    }
+    pool.tagged_constraints.clear();
+    if pool != ObjectFilter::default() {
+        return None;
+    }
+    let [refill] = grant.on_use_effects.as_slice() else {
+        return None;
+    };
+    let refill = refill.downcast_ref::<crate::effects::ExileTopOfLibraryEffect>()?;
+    if refill.player != PlayerFilter::You
+        || refill.face_down
+        || !matches!(refill.count.unhinted(), crate::effect::Value::Fixed(1))
+    {
+        return None;
+    }
+    Some(
+        "During each player's turn, that player may play a land or cast a spell from among cards exiled with this permanent, and they may spend mana as though it were mana of any color to cast that spell. When they do, exile the top card of their library"
+            .to_string(),
+    )
+}
+
+
+/// A granted ability bundle that is exactly one counter keyword's printed
+/// abilities ("This creature enters with a +1/+1 counter on it" plus the
+/// modular dies trigger) reads as the keyword ("modular 1").
+fn granted_counter_keyword(ability: &AbilityModel, additional: &[AbilityModel]) -> Option<String> {
+    if additional.is_empty() {
+        return None;
+    }
+    let abilities = std::iter::once(ability)
+        .chain(additional.iter())
+        .map(|ability| crate::static_abilities::StaticAbilityModelInterpreter::ability_from_model(ability))
+        .collect::<Vec<_>>();
+    let (keyword, consumed) = super::ast_render::describe_structural_counter_keyword_bundle(&abilities)?;
+    (consumed == abilities.len()).then(|| keyword.to_ascii_lowercase())
+}
+
+/// "Other nontoken artifact creatures and Vehicles you control" (Blaster,
+/// Combat DJ): a conjunctive two-branch set whose `other` and controller are
+/// shared names that scope once, around the joined branch nouns.
+fn conjunctive_controlled_set_subject(filter: &ObjectFilter) -> Option<String> {
+    if filter.any_of.len() != 2
+        || !filter.has_conjunctive_set_surface()
+        || filter.controller != Some(PlayerFilter::You)
+    {
+        return None;
+    }
+    let mut shell = filter.clone();
+    shell.any_of.clear();
+    shell.other = false;
+    shell.controller = None;
+    shell.zone = None;
+    shell.union_surface = Default::default();
+    if shell != ObjectFilter::default() {
+        return None;
+    }
+    let branches = filter
+        .any_of
+        .iter()
+        .map(|branch| {
+            if branch.controller.is_some() || branch.owner.is_some() || branch.other || !branch.any_of.is_empty() {
+                return None;
+            }
+            Some(pluralize_relative_object_phrase(strip_indefinite_article(&objects(branch))))
+        })
+        .collect::<Option<Vec<_>>>()?;
+    let [first, second] = branches.as_slice() else {
+        return None;
+    };
+    Some(if filter.other {
+        format!("Other {first} and {second} you control")
+    } else {
+        format!("{} and {second} you control", capitalize_first(first))
     })
 }

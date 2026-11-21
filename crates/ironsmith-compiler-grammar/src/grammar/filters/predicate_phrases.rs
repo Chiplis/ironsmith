@@ -2256,7 +2256,7 @@ fn parse_basic_land_types_controller_clause(clause: LexedClause<'_>) -> Option<P
     None
 }
 
-fn parse_there_are_source_counters_at_least_predicate(
+pub fn parse_there_are_source_counters_at_least_predicate(
     tokens: &[OwnedLexToken],
 ) -> Option<PredicateAst> {
     let clause = LexedClause::new(tokens);

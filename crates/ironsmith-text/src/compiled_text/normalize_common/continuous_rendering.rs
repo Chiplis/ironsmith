@@ -1792,6 +1792,21 @@ pub(crate) fn describe_apply_continuous_clauses_with_self_subject(
     if is_structural_vanishing_grant(effect) {
         return vec![format!("{gains} vanishing")];
     }
+    // "It gains this card's other abilities." (Symbiote Spider-Man): the
+    // granted abilities are the source card's other printed abilities.
+    if effect.clause_surface
+        == Some(ironsmith_core::ContinuousClauseSurface::SourceCardOtherAbilities)
+        && effect.runtime_modifications.is_empty()
+        && effect
+            .modification
+            .iter()
+            .chain(effect.additional_modifications.iter())
+            .all(|modification| {
+                matches!(modification, crate::continuous::Modification::AddAbilityGeneric(_))
+            })
+    {
+        return vec![format!("{add_ability_verb} this card's other abilities")];
+    }
 
     let mut clauses = Vec::new();
 
@@ -2259,6 +2274,14 @@ pub(crate) fn describe_apply_continuous_clauses_with_self_subject(
                     "{loses} {ability_text}{}",
                     prohibition_suffix(&ability_text)
                 ));
+            } else if let crate::ability::AbilityKind::Static(static_ability) = &ability.kind
+                && static_ability.id() == crate::static_abilities::StaticAbilityId::Landwalk
+            {
+                // A lost landwalk is named by its keyword; the reminder text
+                // belongs to a printed keyword line, not to its removal.
+                let ability_text =
+                    lowercase_first(static_ability.display().trim().trim_end_matches('.'));
+                clauses.push(format!("{loses} {ability_text}"));
             } else {
                 let ability_text = lowercase_first(&describe_inline_ability_with_self_subject(
                     ability,
@@ -2619,6 +2642,8 @@ struct CreatureSubtypeSettingFold<'a> {
     subtypes: &'a [crate::types::Subtype],
     colors: Option<crate::color::ColorSet>,
     base_pt: Option<(&'a Value, &'a Value)>,
+    /// Authored "is a Werewolf" rather than "becomes a Werewolf".
+    copular: bool,
 }
 
 impl CreatureSubtypeSettingFold<'_> {
@@ -2649,10 +2674,12 @@ impl CreatureSubtypeSettingFold<'_> {
             })
             .unwrap_or_default();
         if plural_target {
-            format!("become {descriptor}{pt_suffix}")
+            let verb = if self.copular { "are" } else { "become" };
+            format!("{verb} {descriptor}{pt_suffix}")
         } else {
+            let verb = if self.copular { "is" } else { "becomes" };
             format!(
-                "becomes {}{pt_suffix}",
+                "{verb} {}{pt_suffix}",
                 with_indefinite_article(&descriptor)
             )
         }
@@ -2689,6 +2716,7 @@ fn creature_subtype_setting_fold<'a>(
         subtypes,
         colors: None,
         base_pt: None,
+        copular: effect.clause_surface == Some(ironsmith_core::ContinuousClauseSurface::Copular),
     };
     for (index, modification) in modifications.iter().enumerate() {
         match modification {
@@ -4658,7 +4686,10 @@ pub(crate) fn describe_apply_continuous_effect(
     if effect.until == Until::EndOfTurn && effect.condition.is_none() {
         let joined = join_with_and(&clauses);
         if let Some((keyword_grant, evasion)) =
-            joined.split_once(" and \"Can't be blocked except by ")
+            joined
+                .split_once(" and \"Can't be blocked except by ")
+                .or_else(|| joined.split_once(" and \"This source can't be blocked except by "))
+                .or_else(|| joined.split_once(" and \"This creature can't be blocked except by "))
             && let Some(blockers) = evasion.strip_suffix(".\"")
             && !keyword_grant.contains('"')
             && !blockers.contains('"')
@@ -6307,7 +6338,7 @@ fn restriction_backref_subject(filter: &ObjectFilter) -> Option<String> {
     let it_only = filter.tagged_constraints.len() == 1
         && filter.tagged_constraints.iter().all(|c| {
             c.relation == crate::filter::TaggedOpbjectRelation::IsTaggedObject
-                && matches!(c.tag.as_str(), "__it__" | "it")
+                && matches!(c.tag.as_str(), "__it__" | "it" | "triggering")
         })
         && filter.card_types.is_empty()
         && filter.subtypes.is_empty()
@@ -6547,7 +6578,10 @@ pub(crate) fn describe_restriction(restriction: &crate::effect::Restriction) -> 
             if ironsmith_core::semantic_audit::semantic_audit_active()
                 && filter.zone.is_none()
                 && filter.card_types.is_empty()
-                && let Some(rest) = subject.strip_prefix("permanents with ")
+                && let Some(rest) = subject
+                    .strip_prefix("permanents with ")
+                    .or_else(|| subject.strip_prefix("a permanent with "))
+                    .or_else(|| subject.strip_prefix("permanent with "))
             {
                 return format!("activated abilities of sources with {rest} can't be activated");
             }
@@ -6907,6 +6941,40 @@ pub(crate) fn describe_restriction(restriction: &crate::effect::Restriction) -> 
             // creatures you control can attack on your behalf.
             format!("You can't attack {}", describe_player_filter(player))
         }
+        crate::effect::Restriction::AttackPlayer { attackers, player }
+            if *player == PlayerFilter::You
+                // A single excluded keyword reads "Creatures without flying
+                // can't attack you" (Form of the Dragon); the "except by"
+                // form lists two or more.
+                && attackers.excluded_static_abilities.len()
+                    + attackers.excluded_ability_markers.len()
+                    >= 2
+                && {
+                    let mut rest = attackers.clone();
+                    rest.excluded_static_abilities.clear();
+                    rest.excluded_ability_markers.clear();
+                    rest == crate::target::ObjectFilter::creature()
+                } =>
+        {
+            // "you can't be attacked except by creatures with flying and/or
+            // islandwalk" (Island Sanctuary).
+            let mut labels = attackers
+                .excluded_static_abilities
+                .iter()
+                .filter_map(|ability| ironsmith_core::describe_filter_static_ability(*ability))
+                .map(str::to_string)
+                .collect::<Vec<_>>();
+            labels.extend(
+                attackers
+                    .excluded_ability_markers
+                    .iter()
+                    .map(|marker| marker.to_ascii_lowercase()),
+            );
+            format!(
+                "you can't be attacked except by creatures with {}",
+                labels.join(" and/or ")
+            )
+        }
         crate::effect::Restriction::AttackPlayer { attackers, player } => {
             let attacker_text = if attackers == &crate::target::ObjectFilter::creature() {
                 "creatures".to_string()
@@ -7057,15 +7125,29 @@ pub(crate) fn describe_restriction(restriction: &crate::effect::Restriction) -> 
             }
             // Lure on one earlier-chosen creature: "all creatures able to
             // block it do so".
-            if blockers.description().eq_ignore_ascii_case("creature")
-                && let [constraint] = attacker.tagged_constraints.as_slice()
+            if let [constraint] = attacker.tagged_constraints.as_slice()
                 && constraint.relation == crate::filter::TaggedOpbjectRelation::IsTaggedObject
                 && attacker.card_types.is_empty()
                 && attacker.subtypes.is_empty()
                 && attacker.controller.is_none()
                 && !attacker.source
             {
-                return "All creatures able to block it do so".to_string();
+                let blockers_text = blockers.description();
+                if blockers_text.eq_ignore_ascii_case("creature") {
+                    return "All creatures able to block it do so".to_string();
+                }
+                // "All creatures your opponents control able to block that
+                // creature this turn do so": the same lure over a narrowed
+                // class of blockers.
+                if blockers.tagged_constraints.is_empty()
+                    && !blockers.source
+                    && blockers.card_types.as_slice() == [crate::types::CardType::Creature]
+                {
+                    return format!(
+                        "All {} able to block that creature do so",
+                        pluralize_relative_object_phrase(strip_indefinite_article(&blockers_text))
+                    );
+                }
             }
             format!(
                 "{} must block {} if able",
@@ -7311,9 +7393,26 @@ pub(crate) fn describe_restriction(restriction: &crate::effect::Restriction) -> 
                 && filter.tagged_constraints.iter().all(|constraint| {
                     constraint.relation == crate::filter::TaggedOpbjectRelation::IsTaggedObject
                 })
+                && !filter.tagged_constraints.iter().any(|constraint| {
+                    matches!(constraint.tag.as_str(), "equipped" | "enchanted" | "fortified")
+                })
                 && filter.card_types.as_slice() == [CardType::Creature] =>
         {
             "You can't sacrifice those creatures".to_string()
+        }
+        // "Creatures you control but don't own ... can't be sacrificed"
+        // (Garland, Royal Kidnapper): a controlled set reads in the plural.
+        crate::effect::Restriction::BeSacrificed(filter)
+            if filter.controller.is_some()
+                && !filter.source
+                && filter.tagged_constraints.is_empty()
+                && filter.specific.is_none()
+                && !filter.card_types.is_empty() =>
+        {
+            format!(
+                "{} can't be sacrificed",
+                pluralize_noun_phrase(strip_indefinite_article(&filter.description()))
+            )
         }
         crate::effect::Restriction::BeSacrificed(filter) => {
             format!("{} can't be sacrificed", filter.description())
@@ -7551,6 +7650,39 @@ pub(crate) fn describe_restriction(restriction: &crate::effect::Restriction) -> 
             format!("{} can't phase in", filter.description())
         }
         crate::effect::Restriction::AttackOrBlock(filter) => {
+            // "Creatures that are enchanted can't attack or block" (Song of
+            // Serenity): the authored postpositive attachment state.
+            if filter.has_relative_attachment_state_surface()
+                && let Some(attached) = filter.with_attached_object.as_deref()
+                && !attached.source
+                && attached.subtypes.as_slice() == [Subtype::Aura]
+                && {
+                    let mut bare = attached.clone();
+                    bare.subtypes.clear();
+                    bare == ObjectFilter::default()
+                }
+            {
+                let mut host = filter.clone();
+                host.with_attached_object = None;
+                host.set_relative_attachment_state_surface(false);
+                return format!(
+                    "{} that are enchanted can't attack or block",
+                    pluralize_noun_phrase(strip_indefinite_article(&host.description()))
+                );
+            }
+            // A generic attachment state ("creatures that are enchanted") is
+            // a set of objects; only a source-anchored attachment is this
+            // Aura's own host ("enchanted creature").
+            if filter
+                .with_attached_object
+                .as_deref()
+                .is_some_and(|attached| !attached.source)
+            {
+                return format!(
+                    "{} can't attack or block",
+                    pluralize_noun_phrase(strip_indefinite_article(&filter.description()))
+                );
+            }
             format!("{} can't attack or block", filter.description())
         }
         crate::effect::Restriction::AttackOrBlockAlone(filter) => {
@@ -8136,6 +8268,34 @@ fn describe_prior_effect_result_surface_inner(
                 describe_prior_effect_action(surface.action)
             );
         }
+        // "If the player doesn't discard a card this way" (Chains of
+        // Mephistopheles): a negated single-object result of a named actor.
+        if surface.actor != crate::effect::PriorEffectResultActor::Passive
+            && surface.quantifier == crate::effect::PriorEffectResultQuantifier::One
+            && surface.required_count.is_none()
+            && surface.shared_characteristic.is_none()
+            && !surface.put_into_exile_surface
+            && surface.action != crate::effect::PriorEffectAction::PutOntoBattlefield
+        {
+            let (actor, auxiliary) = match surface.actor {
+                crate::effect::PriorEffectResultActor::You => ("you", "don't"),
+                crate::effect::PriorEffectResultActor::ThatPlayer => (
+                    if surface.definite_player_surface { "the player" } else { "that player" },
+                    "doesn't",
+                ),
+                crate::effect::PriorEffectResultActor::It => ("it", "doesn't"),
+                crate::effect::PriorEffectResultActor::Passive => ("the prior action", "doesn't"),
+            };
+            let mut filter = surface.filter.clone();
+            filter.zone = None;
+            filter.set_prior_effect_action_surface(None);
+            let base = strip_leading_article(&filter.description()).trim().to_string();
+            return format!(
+                "{actor} {auxiliary} {} {} this way",
+                describe_prior_result_active_action(surface.action),
+                with_indefinite_article(&base)
+            );
+        }
         return format!("not ({})", describe_prior_effect_result_surface(&positive));
     }
     if surface.action == crate::effect::PriorEffectAction::Returned
@@ -8292,13 +8452,19 @@ fn describe_prior_effect_result_surface_inner(
     let actor = match surface.actor {
         crate::effect::PriorEffectResultActor::Passive => None,
         crate::effect::PriorEffectResultActor::You => Some("you"),
-        crate::effect::PriorEffectResultActor::ThatPlayer => Some("that player"),
+        crate::effect::PriorEffectResultActor::ThatPlayer => Some(if surface.definite_player_surface {
+            "the player"
+        } else {
+            "that player"
+        }),
         crate::effect::PriorEffectResultActor::It => Some("it"),
     };
     if let Some(actor) = actor {
         let action = describe_prior_result_active_action(surface.action);
         if object.is_empty() {
-            return format!("{actor} {action} this way");
+            let phrase = format!("{action} this way");
+            let phrase = if actor == "you" { phrase } else { normalize_third_person_verb_phrase(&phrase) };
+            return format!("{actor} {phrase}");
         }
         // "When you put one or more Equipment onto the battlefield this
         // way" (Gilgamesh): the object sits between the verb and its
@@ -8306,7 +8472,9 @@ fn describe_prior_effect_result_surface_inner(
         if surface.action == crate::effect::PriorEffectAction::PutOntoBattlefield {
             return format!("{actor} put {object} onto the battlefield this way");
         }
-        return format!("{actor} {action} {object} this way");
+        let phrase = format!("{action} {object} this way");
+        let phrase = if actor == "you" { phrase } else { normalize_third_person_verb_phrase(&phrase) };
+        return format!("{actor} {phrase}");
     }
 
     if surface.put_into_exile_surface && surface.action == crate::effect::PriorEffectAction::Exiled
@@ -8986,6 +9154,10 @@ pub(crate) fn pluralize_relative_object_phrase(phrase: &str) -> String {
             pluralize_noun_phrase(head.trim()),
             tail.trim()
         )
+    } else if let Some((head, tail)) = phrase.split_once(" of the chosen ") {
+        // A chosen-characteristic qualifier is postpositive ("land of the
+        // chosen land type" -> "lands of the chosen land type").
+        format!("{} of the chosen {}", pluralize_noun_phrase(head.trim()), tail.trim())
     } else if let Some((head, tail)) = phrase.split_once(" in ")
         && (tail.ends_with(" hand") || tail.ends_with(" graveyard") || tail.ends_with(" library"))
     {

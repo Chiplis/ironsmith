@@ -951,6 +951,11 @@ fn linked_result_actor(effect: &Effect) -> Option<PlayerFilter> {
     if let Some(pay) = effect.downcast_ref::<crate::effects::PayAnyLifeEffect>() {
         return choose_spec_player_filter(&pay.player);
     }
+    // "Turn this creature face up. If you can't, exile it" (Etrata, Deadly
+    // Fugitive): the ability's controller turns its source face up.
+    if effect.downcast_ref::<crate::effects::TurnFaceUpEffect>().is_some() {
+        return Some(PlayerFilter::You);
+    }
     if let Some(move_to_zone) = effect.downcast_ref::<crate::effects::MoveToZoneEffect>() {
         return Some(
             move_to_zone
@@ -958,6 +963,17 @@ fn linked_result_actor(effect: &Effect) -> Option<PlayerFilter> {
                 .clone()
                 .unwrap_or(PlayerFilter::You),
         );
+    }
+    // "Target opponent gains control of target nonland permanent you
+    // control. If they do, you draw three cards." (Rules of Acquisition):
+    // the control change reports the gaining player's result.
+    if let Some(apply) = effect.downcast_ref::<crate::effects::ApplyContinuousEffect>()
+        && apply.modification.is_none()
+        && apply.additional_modifications.is_empty()
+        && let [crate::effects::continuous::RuntimeModification::ChangeControllerToPlayer(player)] =
+            apply.runtime_modifications.as_slice()
+    {
+        return Some(player.clone());
     }
     if effect
         .downcast_ref::<crate::effects::ReturnToHandEffect>()
@@ -1111,6 +1127,13 @@ fn describe_linked_action_result_condition(
     predicate: &EffectPredicate,
 ) -> Option<String> {
     let effect = linked_result_setup_effect(effect);
+    // "remove a +1/+1 counter from it instead. If you do, untap it"
+    // (Bewitching Leechcraft): the removal is the controller's own action.
+    if effect.downcast_ref::<crate::effects::RemoveCountersEffect>().is_some()
+        && matches!(predicate, EffectPredicate::Happened)
+    {
+        return Some("If you do".to_string());
+    }
     if let Some(unless_pays) = effect.downcast_ref::<crate::effects::UnlessPaysEffect>() {
         let who = linked_result_player_pronoun(&unless_pays.player);
         return match predicate {
@@ -1272,9 +1295,7 @@ pub(crate) fn describe_explicit_alternative_result_condition(
     effect: &Effect,
     predicate: &EffectPredicate,
 ) -> Option<String> {
-    if effect
-        .downcast_ref::<crate::effects::FlipCoinEffect>()
-        .is_some_and(|flip| flip.player == PlayerFilter::You)
+    if result_setup_coin_flip(effect).is_some_and(|flip| flip.player == PlayerFilter::You)
     {
         return match predicate {
             EffectPredicate::Happened => Some("If you lose the flip".to_string()),
@@ -1542,10 +1563,7 @@ pub(crate) fn describe_with_id_if_clause(
     } else {
         if_effect
     };
-    let setup_is_coin_flip = with_id
-        .effect
-        .downcast_ref::<crate::effects::FlipCoinEffect>()
-        .is_some();
+    let setup_is_coin_flip = result_setup_coin_flip(&with_id.effect).is_some();
     let then_text = describe_linked_source_subtype_removal_branch(with_id, if_effect)
         .or_else(|| describe_destroy_then_token_with_destroyed_stats_branch(with_id, if_effect))
         .or_else(|| describe_bounded_x_payment_draw_branch(with_id, if_effect))
@@ -2697,7 +2715,8 @@ fn describe_coin_flip_outcome_branch(effects: &[Effect]) -> Option<String> {
     } else {
         effects
     };
-    describe_conditional_branch_effect_list(effects)
+    describe_exile_and_return_at_next_end_step_branch(effects)
+        .or_else(|| describe_conditional_branch_effect_list(effects))
         .or_else(|| describe_triggering_spell_return_branch(effects))
         .or_else(|| describe_tagged_counter_spell_branch(effects))
 }
@@ -3199,9 +3218,20 @@ pub(super) fn describe_timed_keyword_choice(
         };
         let apply = structural_unwrap_render_wrappers(effect)
             .downcast_ref::<crate::effects::ApplyContinuousEffect>()?;
+        // A bare keyword marker whose granted expansion is rampage N reads as
+        // that keyword (Gabriel Angelfire: "... trample, or rampage 3").
+        let marker_rampage = match (&apply.modification, apply.additional_modifications.as_slice()) {
+            (
+                Some(crate::continuous::Modification::AddAbility(marker)),
+                [crate::continuous::Modification::AddAbilityGeneric(expansion)],
+            ) if marker.id() == crate::static_abilities::StaticAbilityId::KeywordMarker => {
+                granted_rampage_expansion_amount(expansion)
+            }
+            _ => None,
+        };
         if apply.until == Until::Forever
             || apply.condition.is_some()
-            || !apply.additional_modifications.is_empty()
+            || (marker_rampage.is_none() && !apply.additional_modifications.is_empty())
             || !apply.runtime_modifications.is_empty()
             || apply.require_creature_target
             || until.as_ref().is_some_and(|previous| previous != &apply.until)
@@ -3223,9 +3253,24 @@ pub(super) fn describe_timed_keyword_choice(
         if ability.granted_inline_ability().is_some() {
             return None;
         }
-        abilities.push(ability.display().to_ascii_lowercase());
+        abilities.push(match marker_rampage {
+            Some(amount) => format!("rampage {amount}"),
+            None => ability.display().to_ascii_lowercase(),
+        });
     }
     let (subject, plural) = subject?;
+    // "This creature gains your choice of flying, vigilance, or lifelink until
+    // end of turn": the controller is the stated chooser of the inline
+    // alternative, rather than an imperative "choose" sentence.
+    if choose.chooser == Some(PlayerFilter::You) {
+        return Some(format!(
+            "{} {} your choice of {} {}",
+            capitalize_first(&subject),
+            if plural { "gain" } else { "gains" },
+            join_with_or(&abilities),
+            describe_until(&until?)
+        ));
+    }
     Some(format!(
         "choose {}. {} {} that ability {}",
         join_with_or(&abilities),
@@ -7051,6 +7096,9 @@ pub(crate) fn describe_effect(effect: &Effect) -> String {
     if let Some(text) = describe_control_gated_create_then_attach_those(effect) {
         return text;
     }
+    if let Some(text) = describe_may_put_chosen_hand_card_conditional_entry(effect) {
+        return text;
+    }
     with_effect_render_depth(|| describe_effect_impl(effect))
 }
 
@@ -9325,4 +9373,180 @@ pub(crate) fn reflexive_source_power_gate_opening(
         return None;
     };
     Some(format!("When its power becomes {power} this way"))
+}
+
+/// The coin flip a result gate reads. "If this permanent is on the
+/// battlefield, flip a coin. If you win the flip, ..." (Frenetic Sliver):
+/// the setup is a leading-if conditional whose only branch is the flip. It
+/// captures no condition result, so its outcome is the flip's outcome.
+pub(crate) fn result_setup_coin_flip(effect: &Effect) -> Option<&crate::effects::FlipCoinEffect> {
+    if let Some(flip) = effect.downcast_ref::<crate::effects::FlipCoinEffect>() {
+        return Some(flip);
+    }
+    let conditional = effect.downcast_ref::<crate::effects::ConditionalEffect>()?;
+    if conditional.capture_condition_result || !conditional.if_false.is_empty() {
+        return None;
+    }
+    let [only] = conditional.if_true.as_slice() else {
+        return None;
+    };
+    only.downcast_ref::<crate::effects::FlipCoinEffect>()
+}
+
+/// "If you win the flip, exile this permanent and return it to the
+/// battlefield under its owner's control at the beginning of the next end
+/// step." (Frenetic Sliver): one result-branch sentence whose exile of the
+/// source and one-shot owner return at the next end step share the branch,
+/// rather than sitting in separate source sentences.
+fn describe_exile_and_return_at_next_end_step_branch(effects: &[Effect]) -> Option<String> {
+    let [exile_effect, schedule_effect] = effects else {
+        return None;
+    };
+    let exile = structural_unwrap_render_wrappers(exile_effect)
+        .downcast_ref::<crate::effects::ExileEffect>()?;
+    if !matches!(exile.spec.base(), ChooseSpec::Source) || exile.face_down {
+        return None;
+    }
+    let schedule = structural_unwrap_render_wrappers(schedule_effect)
+        .downcast_ref::<crate::effects::ScheduleDelayedTriggerEffect>()?;
+    if !schedule.one_shot
+        || schedule.start_next_turn
+        || schedule.until_end_of_turn
+        || schedule.until_end_of_combat
+        || schedule.intervening_if.is_some()
+        || !schedule
+            .trigger
+            .downcast_ref::<crate::triggers::BeginningOfEndStepTrigger>()
+            .is_some_and(|trigger| trigger.player == PlayerFilter::Any)
+    {
+        return None;
+    }
+    let [segment] = schedule.effects.segments.as_slice() else {
+        return None;
+    };
+    if !segment.self_replacements.is_empty() {
+        return None;
+    }
+    let [return_effect] = segment.default_effects.as_slice() else {
+        return None;
+    };
+    let returned = structural_unwrap_render_wrappers(return_effect)
+        .downcast_ref::<crate::effects::MoveToZoneEffect>()?;
+    if returned.zone != Zone::Battlefield
+        || returned.verb_surface != ironsmith_core::MoveToZoneVerbSurface::Return
+        || returned.battlefield_controller != crate::effects::BattlefieldController::Owner
+        || returned.enters_tapped
+        || returned.enters_attacking
+        || returned.enters_face_down
+        || returned.enters_transformed
+        || !returned.enters_with_counters.is_empty()
+        || !matches!(
+            returned.target.base(),
+            ChooseSpec::Tagged(tag) if tag.as_str() == "__source_exiled__"
+        )
+    {
+        return None;
+    }
+    let exile_text = describe_effect(exile_effect);
+    let exile_text = exile_text.trim().trim_end_matches('.');
+    if exile_text.is_empty() || exile_text.contains(". ") {
+        return None;
+    }
+    Some(format!(
+        "{exile_text} and return it to the battlefield under its owner's control at the beginning of the next end step"
+    ))
+}
+
+
+/// "you may put a creature card from your hand onto the battlefield. If that
+/// card is an enchantment card, it enters tapped and attacking." (Summoner's
+/// Grimoire): the optional put chooses the hand card, then the chosen card's
+/// characteristics select whether that same move enters tapped (and
+/// attacking).
+fn describe_may_put_chosen_hand_card_conditional_entry(effect: &Effect) -> Option<String> {
+    let may = unwrap_basic_tag_wrappers(effect).downcast_ref::<crate::effects::MayEffect>()?;
+    if !matches!(may.decider, None | Some(PlayerFilter::You))
+        || may.pay_as_cost
+        || may.payment_receipt.is_some()
+    {
+        return None;
+    }
+    let mut steps: Vec<&Effect> = Vec::new();
+    for step in &may.effects {
+        let step = unwrap_basic_tag_wrappers(step);
+        if let Some(sequence) = step.downcast_ref::<crate::effects::SequenceEffect>() {
+            steps.extend(sequence.effects.iter().map(unwrap_basic_tag_wrappers));
+        } else {
+            steps.push(step);
+        }
+    }
+    let [choose, conditional] = steps.as_slice() else {
+        return None;
+    };
+    let choose = choose.downcast_ref::<crate::effects::ChooseObjectsEffect>()?;
+    let conditional = conditional.downcast_ref::<crate::effects::ConditionalEffect>()?;
+    let crate::effect::Condition::TaggedObjectMatches(tag, quality) = &conditional.condition else {
+        return None;
+    };
+    let in_hand = choose.zone == Some(Zone::Hand) || choose.filter.zone == Some(Zone::Hand);
+    if *tag != choose.tag
+        || !in_hand
+        || !choose.additional_zones.is_empty()
+        || choose.chooser != PlayerFilter::You
+        || choose.filter.owner != Some(PlayerFilter::You)
+        || choose.count.min != 1
+        || choose.count.max != Some(1)
+    {
+        return None;
+    }
+    let [entered] = conditional.if_true.as_slice() else {
+        return None;
+    };
+    let [plain] = conditional.if_false.as_slice() else {
+        return None;
+    };
+    let entered =
+        unwrap_basic_tag_wrappers(entered).downcast_ref::<crate::effects::MoveToZoneEffect>()?;
+    let plain =
+        unwrap_basic_tag_wrappers(plain).downcast_ref::<crate::effects::MoveToZoneEffect>()?;
+    let moves_chosen = |moved: &crate::effects::MoveToZoneEffect| {
+        moved.zone == Zone::Battlefield
+            && matches!(moved.target.base(), ChooseSpec::Tagged(moved_tag) if *moved_tag == choose.tag)
+    };
+    if !moves_chosen(entered)
+        || !moves_chosen(plain)
+        || !entered.enters_tapped
+        || plain.enters_tapped
+        || plain.enters_attacking
+    {
+        return None;
+    }
+    let mut normalized = entered.clone();
+    normalized.enters_tapped = false;
+    normalized.enters_attacking = false;
+    if format!("{normalized:?}") != format!("{plain:?}") {
+        return None;
+    }
+    let mut noun = choose.filter.clone();
+    noun.zone = None;
+    noun.owner = None;
+    let noun = noun.description();
+    let noun = strip_leading_article(noun.trim());
+    let mut quality = quality.clone();
+    let antecedent = quality
+        .demonstrative_antecedent_surface()
+        .map_or("that card", |antecedent| antecedent.phrase());
+    quality.set_demonstrative_antecedent_surface(None);
+    quality.zone = None;
+    let quality = quality.description();
+    let quality = strip_leading_article(quality.trim());
+    if noun.is_empty() || quality.is_empty() {
+        return None;
+    }
+    let entry = if entered.enters_attacking { "tapped and attacking" } else { "tapped" };
+    Some(format!(
+        "You may put {} from your hand onto the battlefield. If {antecedent} is {}, it enters {entry}",
+        with_indefinite_article(noun),
+        with_indefinite_article(quality)
+    ))
 }

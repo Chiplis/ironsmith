@@ -33,6 +33,14 @@ pub struct LineSemanticFacts {
     /// Extracted before reminder text is removed from authored rules tokens.
     pub station_creature_threshold: Option<i32>,
     pub supported_sneak_form: bool,
+    /// "Create a Black Lotus token. (It's a {0} artifact with "...")": the
+    /// named token's characteristics come only from the reminder after its
+    /// creating instruction, so none of them is authored by the instruction.
+    pub named_token_definition_reminder: bool,
+    /// "When this Aura enters attached to a <type>, ... that <type>": the
+    /// preprocess read the host anaphor as the Aura's attached object; this
+    /// is the authored host card type.
+    pub enters_attached_host_trigger: Option<crate::types::CardType>,
     /// The official keyword ability this line prints ("Equip {2}",
     /// "Cumulative upkeep {1}", "Max speed — …"). Every ability the line
     /// lowers to carries it as identity.
@@ -41,6 +49,10 @@ pub struct LineSemanticFacts {
     /// "{TK}{TK} —" prefix; the row's body is this line's text. The line's
     /// abilities are the row's sticker (CR 123.7), not the sheet's own.
     pub sticker_ticket_cost: Option<u32>,
+    /// "It gains this card's other abilities." (Symbiote Spider-Man): the
+    /// preprocess quoted the card's other printed abilities into this line's
+    /// grant; the authored grant named them by reference.
+    pub source_card_other_abilities_grant: bool,
     pub static_ability: StaticLineSemanticFacts,
     pub statement: StatementLineSemanticFacts,
     pub triggered_ability: TriggeredLineSemanticFacts,

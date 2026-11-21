@@ -1437,6 +1437,14 @@ pub fn force_implicit_vote_token_controller_you(effects: &mut [EffectAst]) {
                     *player = PlayerAst::You;
                 }
             }
+            // "For each money vote, choose a permanent owned by the voter"
+            // (Expropriate): the imperative choice is the controller's, not
+            // the voter's, even though the option iterates over voters.
+            EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects { player, .. }) => {
+                if matches!(*player, PlayerAst::Implicit) {
+                    *player = PlayerAst::You;
+                }
+            }
             _ => for_each_nested_effects_mut(effect, true, |nested| {
                 force_implicit_vote_token_controller_you(nested);
             }),

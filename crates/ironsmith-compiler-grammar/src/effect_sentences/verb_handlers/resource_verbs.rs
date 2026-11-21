@@ -117,7 +117,11 @@ pub fn parse_effect_with_verb(
                 if let Some(player) = extract_subject_player(subject)
                     && let EffectAst::SubjectVerb(SubjectVerbEffectAst {
                         subject: counter_subject,
-                        action: SubjectVerbActionAst::Counters(CounterActionAst::PutCounters { .. }),
+                        action:
+                            SubjectVerbActionAst::Counters(
+                                CounterActionAst::PutCounters { .. }
+                                | CounterActionAst::PutCountersAll { .. },
+                            ),
                     }) = &mut effect
                     && counter_subject.player == PlayerAst::Implicit
                 {
@@ -1500,6 +1504,27 @@ fn may_assign_as_unblocked_body(tokens: &[crate::lexer::OwnedLexToken]) -> Optio
     .then_some(duration)
 }
 
+/// Assimilating a card: it is put onto the battlefield under your control
+/// with a +1/+1 counter, as a Borg artifact creature that loses its other
+/// creature types.
+pub(super) fn assimilate_card_movement(target: TargetAst) -> EffectAst {
+    let mut movement = EffectAst::subject_verb_move_to_zone(target, Zone::Battlefield, false, ReturnControllerAst::You, false, None);
+    if let EffectAst::SubjectVerb(effect) = &mut movement
+        && let SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::MoveToZone { entry_type_changes, entry_counters, .. }) = &mut effect.action
+    {
+        *entry_type_changes = Some(ironsmith_core::effect::BattlefieldEntryTypeChanges {
+            color_changes: Vec::new(),
+            set_card_types: None,
+            added_card_types: vec![CardType::Artifact, CardType::Creature],
+            removed_subtype_families: vec![crate::types::SubtypeFamily::Creature],
+            added_subtypes: vec![Subtype::Borg],
+        });
+        entry_counters.push(ironsmith_core::BattlefieldEntryCounterSpec::new(
+            crate::object::CounterType::PlusOnePlusOne, 1, ironsmith_core::BattlefieldEntryCounterSurface::Inline));
+    }
+    movement
+}
+
 /// A keyword action lowered onto ordinary control, counter, type and entry operations.
 fn parse_assimilate(tokens: &[OwnedLexToken], subject: Option<SubjectAst>) -> Result<EffectAst, CardTextError> {
     if extract_subject_player(subject).is_some_and(|player| !matches!(player, PlayerAst::You | PlayerAst::Implicit)) {
@@ -1508,21 +1533,7 @@ fn parse_assimilate(tokens: &[OwnedLexToken], subject: Option<SubjectAst>) -> Re
     let target = parse_target_phrase(tokens)?;
     let is_card = crate::lexer::token_word_refs(tokens).iter().any(|word| matches!(*word, "card" | "cards"));
     if is_card {
-        let mut movement = EffectAst::subject_verb_move_to_zone(target, Zone::Battlefield, false, ReturnControllerAst::You, false, None);
-        if let EffectAst::SubjectVerb(effect) = &mut movement
-            && let SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::MoveToZone { entry_type_changes, entry_counters, .. }) = &mut effect.action
-        {
-            *entry_type_changes = Some(ironsmith_core::effect::BattlefieldEntryTypeChanges {
-                color_changes: Vec::new(),
-                set_card_types: None,
-                added_card_types: vec![CardType::Artifact, CardType::Creature],
-                removed_subtype_families: vec![crate::types::SubtypeFamily::Creature],
-                added_subtypes: vec![Subtype::Borg],
-            });
-            entry_counters.push(ironsmith_core::BattlefieldEntryCounterSpec::new(
-                crate::object::CounterType::PlusOnePlusOne, 1, ironsmith_core::BattlefieldEntryCounterSurface::Inline));
-        }
-        return Ok(movement);
+        return Ok(assimilate_card_movement(target));
     }
     let tag = crate::util::helper_tag_for_tokens(tokens, "assimilated_permanent");
     let referenced = TargetAst::Tagged(tag.clone().into(), None);

@@ -23,6 +23,17 @@ fn program_choices(program: &ResolutionProgram) -> usize {
     let mut count=0;for effect in program.all_effects(){source_choices(effect,&mut count);}count
 }
 fn bind_value(value: &mut Value, pair: LinkedExilePair) -> usize {
+    // "equal to the chosen number" outside any resolution that chooses a
+    // number (a cast-trigger filter, a cast restriction) names the number
+    // the source's own entry choice produced.
+    if let Value::PendingPriorEffectMetric(query) = value
+        && query.action == Some(ironsmith_core::PriorEffectAction::ChosenNumber)
+        && query.filter.is_none()
+        && query.player.is_none()
+    {
+        *value = Value::SourceChosenNumber { if_unset: None, pair: Some(pair) };
+        return 1;
+    }
     match value {
         Value::SourceChosenNumber { pair: binding, .. } => { *binding=Some(pair);1 }
         Value::SurfaceHinted {value,..}|Value::Scaled(value,_)|Value::DividedRoundedDown(value,_)|Value::HalfRoundedDown(value)=>bind_value(value,pair),

@@ -1,4 +1,40 @@
 {
+        if idx + 1 < filtered.len()
+            && let Some(compact) =
+                describe_entered_attached_host_copy(filtered[idx], filtered[idx + 1])
+        {
+            parts.push(compact);
+            idx += 2;
+            continue;
+        }
+        if idx + 1 < filtered.len()
+            && let Some(compact) =
+                describe_consult_then_grant_to_match(filtered[idx], filtered[idx + 1])
+        {
+            parts.push(compact);
+            idx += 2;
+            continue;
+        }
+        if idx + 1 < filtered.len()
+            && let Some(compact) = describe_control_target_then_former_opponent_draws(
+                filtered[idx],
+                filtered[idx + 1],
+            )
+        {
+            parts.push(compact);
+            idx += 2;
+            continue;
+        }
+        if idx + 1 < filtered.len()
+            && let Some(compact) = describe_tagged_and_related_others_shared_pump_grant(
+                filtered[idx],
+                filtered[idx + 1],
+            )
+        {
+            parts.push(compact);
+            idx += 2;
+            continue;
+        }
         if let Some((compact, consumed)) = describe_single_consult_move_shuffle(&filtered[idx..]) {
             parts.push(compact);
             idx += consumed;
@@ -1230,6 +1266,8 @@
             let mut branch_parts = Vec::new();
             let mut saw_happened_branch = false;
             let mut happened_branch = None;
+            let mut negated_prior_condition: Option<String> = None;
+            let mut negated_prior_definite_player = false;
             let mut lookahead = idx + 1;
             // A silent tagging step between the optional setup and its result
             // gate ("you may look at the top five cards of your library. If
@@ -1264,6 +1302,14 @@
                 let Some(mut branch_text) = describe_with_id_if_clause(with_id, if_effect) else {
                     break;
                 };
+                if targeted_source_damage::prior_result_definite_player(if_effect)
+                    && let Some((condition, followup)) = branch_text.split_once(", ")
+                {
+                    branch_text = format!(
+                        "{condition}, {}",
+                        targeted_source_damage::definite_player_pronoun_followup(followup)
+                    );
+                }
                 let contextual_followup = happened_branch
                     .and_then(|prior| {
                         describe_player_or_planeswalker_backref_count_damage(prior, if_effect)
@@ -1289,6 +1335,22 @@
                         format!("Otherwise, {followup}")
                     };
                 }
+                if if_effect.predicate == EffectPredicate::DidNotHappen
+                    && if_effect.else_.is_empty()
+                    && let Some(condition) = negated_prior_condition.as_deref()
+                    && let Some((_, followup)) = branch_text.split_once(", ")
+                {
+                    let followup = if negated_prior_definite_player {
+                        targeted_source_damage::definite_player_pronoun_followup(followup)
+                    } else {
+                        followup.to_string()
+                    };
+                    branch_text = format!("If {condition}, {followup}");
+                }
+                negated_prior_condition =
+                    targeted_source_damage::negated_prior_result_branch_condition(if_effect);
+                negated_prior_definite_player =
+                    targeted_source_damage::prior_result_definite_player(if_effect);
                 saw_happened_branch |= if_effect.predicate == EffectPredicate::Happened
                     && if_effect.else_.is_empty();
                 if if_effect.predicate == EffectPredicate::Happened && if_effect.else_.is_empty() {
@@ -1761,6 +1823,15 @@
         {
             parts.push(compact);
             idx += 5;
+            continue;
+        }
+        if idx + 2 < filtered.len()
+            && let Some(compact) = describe_for_players_choose_move_then_combined_characteristics(
+                &filtered[idx..idx + 3],
+            )
+        {
+            parts.push(compact);
+            idx += 3;
             continue;
         }
         if idx + 1 < filtered.len()
@@ -3072,6 +3143,100 @@
             continue;
         }
         if idx + 1 < filtered.len()
+            && let Some(compact) = describe_choose_one_per_distinct_power_then_destroy_rest(
+                &filtered[idx],
+                &filtered[idx + 1],
+            )
+        {
+            parts.push(compact);
+            idx += 2;
+            continue;
+        }
+        if idx + 1 < filtered.len()
+            && let Some(compact) =
+                describe_choose_one_then_put_counter(&filtered[idx], &filtered[idx + 1])
+        {
+            parts.push(compact);
+            idx += 2;
+            continue;
+        }
+        if idx + 1 < filtered.len()
+            && let Some(compact) = describe_choose_outside_game_then_put_into_hand(
+                &filtered[idx],
+                &filtered[idx + 1],
+            )
+        {
+            parts.push(compact);
+            idx += 2;
+            continue;
+        }
+        if idx + 1 < filtered.len()
+            && let Some(compact) =
+                describe_choose_one_then_turn_face_up(&filtered[idx], &filtered[idx + 1])
+        {
+            parts.push(compact);
+            idx += 2;
+            continue;
+        }
+        if idx + 1 < filtered.len()
+            && let Some(compact) = targeted_source_damage::describe_where_x_damage_then_gain_x_life(
+                &filtered[idx],
+                &filtered[idx + 1],
+            )
+        {
+            parts.push(compact);
+            idx += 2;
+            continue;
+        }
+        if idx + 1 < filtered.len()
+            && let Some(compact) =
+                targeted_source_damage::describe_prior_result_branch_then_negated_branch(
+                    &filtered[idx],
+                    &filtered[idx + 1],
+                )
+        {
+            parts.push(compact);
+            idx += 2;
+            continue;
+        }
+        if idx + 1 < filtered.len()
+            && let Some(compact) =
+                targeted_source_damage::describe_granting_source_controller_sacrifices_and_draws(
+                    &filtered[idx],
+                    &filtered[idx + 1],
+                )
+        {
+            parts.push(compact);
+            idx += 2;
+            continue;
+        }
+        if idx + 1 < filtered.len()
+            && let Some(compact) = targeted_source_damage::describe_choose_one_then_manifest_from_hand(
+                &filtered[idx],
+                &filtered[idx + 1],
+            )
+        {
+            parts.push(compact);
+            idx += 2;
+            continue;
+        }
+        if idx + 1 < filtered.len()
+            && let Some(compact) =
+                describe_choose_then_distribute_counters(&filtered[idx], &filtered[idx + 1])
+        {
+            parts.push(compact);
+            idx += 2;
+            continue;
+        }
+        if idx + 1 < filtered.len()
+            && let Some(compact) =
+                describe_targeted_source_characteristic_damage(&filtered[idx], &filtered[idx + 1])
+        {
+            parts.push(compact);
+            idx += 2;
+            continue;
+        }
+        if idx + 1 < filtered.len()
             && let Some(tagged) = filtered[idx].downcast_ref::<crate::effects::TaggedEffect>()
             && let Some(cant) = filtered[idx + 1].downcast_ref::<crate::effects::CantEffect>()
             && let Some(compact) = describe_tagged_target_then_cant_restriction(tagged, cant)
@@ -3711,6 +3876,31 @@
             });
         let current = sibling_otherwise.as_ref().unwrap_or(filtered[idx]);
         let mut rendered = describe_effect(current);
+        // "Then if this creature didn't transform this way, you lose the
+        // game" (Enduring Angel): an empty receipt of an earlier tagged
+        // transform names that transform, not a count of objects.
+        if let Some(conditional) = current.downcast_ref::<crate::effects::ConditionalEffect>()
+            && conditional.if_false.is_empty()
+            && !conditional.if_true.is_empty()
+            && let Condition::ValueComparison {
+                left,
+                operator: crate::effect::ValueComparisonOperator::Equal,
+                right,
+            } = &conditional.condition
+            && matches!(right.unhinted(), Value::Fixed(0))
+            && let Value::TaggedSnapshotCount { tag, .. } = left.unhinted()
+            && let Some(transformed) = filtered[..idx].iter().find_map(|earlier| {
+                let tagged = earlier.downcast_ref::<crate::effects::TaggedEffect>()?;
+                (tagged.tag == *tag).then_some(())?;
+                tagged.effect.downcast_ref::<crate::effects::TransformEffect>()
+            })
+        {
+            rendered = format!(
+                "If {} didn't transform this way, {}",
+                describe_transform_target(&transformed.target),
+                lowercase_first(describe_effect_list(&conditional.if_true).trim().trim_end_matches('.'))
+            );
+        }
 
         if !rendered.is_empty() {
             let mut is_battlefield_move_result_followup = false;

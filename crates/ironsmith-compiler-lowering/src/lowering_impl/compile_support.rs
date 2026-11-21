@@ -3486,6 +3486,12 @@ fn build_builtin_token_definition(shape: token_grammar::BuiltinTokenShape) -> Ca
         token_grammar::BuiltinTokenShape::Tarmogoyf => {
             crate::cards::tokens::tarmogoyf_token_definition()
         }
+        token_grammar::BuiltinTokenShape::BaneslayerAngel => {
+            crate::cards::tokens::baneslayer_angel_token_definition()
+        }
+        token_grammar::BuiltinTokenShape::AkromaAngelOfWrath => {
+            crate::cards::tokens::akroma_angel_of_wrath_token_definition()
+        }
     }
 }
 

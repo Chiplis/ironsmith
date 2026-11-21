@@ -965,12 +965,19 @@ fn parse_attached_granted_triggered_line(
     }
     let LineAst::Triggered {
         trigger,
-        effects,
+        mut effects,
         max_triggers_per_turn,
     } = crate::clause_support::parse_triggered_line_lexed(&trimmed)?
     else {
         return Ok(None);
     };
+    if max_triggers_per_turn.is_none() {
+        crate::clause_support::preserve_triggered_line_source_boundaries(
+            &trimmed,
+            &trigger,
+            &mut effects,
+        );
+    }
     let trigger = match trigger_surface::parse_trigger_intro_surface_tokens(&trimmed) {
         Some(intro) => crate::semantic_line_parsing::apply_trigger_intro_surface(
             trigger,

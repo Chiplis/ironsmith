@@ -93,6 +93,7 @@ pub struct NormalizedAdditionalCostChoiceOptionAst {
 pub struct NormalizedModalModeAst {
     pub info: LineInfo,
     pub description: String,
+    pub flavor_label: Option<String>,
     pub point_cost: Option<u32>,
     pub additional_mana_cost: Option<crate::mana::ManaCost>,
     pub prepared: PreparedEffectsForLowering,

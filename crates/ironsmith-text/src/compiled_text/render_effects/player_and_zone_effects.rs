@@ -1575,6 +1575,26 @@ pub(crate) fn describe_create_for_each_count(value: &Value) -> Option<String> {
                 *controller_surface,
             ))
         }
+        // "for each creature that left the battlefield under your control
+        // this turn" (Kutzil's Flanker): the controller is the one it left
+        // under, not a current-controller qualifier.
+        Value::TurnHistoryCount(ironsmith_core::TurnHistoryCount::MovedZones {
+            filter,
+            from: Some(Zone::Battlefield),
+            to: None,
+        }) => {
+            let mut subject_filter = filter.clone();
+            let controller = subject_filter.controller.take();
+            subject_filter.zone = None;
+            let subject = describe_for_each_filter(&subject_filter);
+            Some(match controller {
+                Some(controller) => format!(
+                    "{subject} that left the battlefield under {} control this turn",
+                    describe_possessive_player_filter(&controller)
+                ),
+                None => format!("{subject} that left the battlefield this turn"),
+            })
+        }
         Value::TurnHistoryCount(ironsmith_core::TurnHistoryCount::EnteredBattlefield(filter)) => {
             let mut subject_filter = filter.clone();
             let controller = subject_filter.controller.take();
@@ -3024,6 +3044,21 @@ pub(crate) fn describe_choose_then_exile(
     if choose.is_search || !exile_uses_chosen_tag(&exile.spec, choose.tag.as_str()) {
         return None;
     }
+    // "{15}, Exile The Dominion Bracelet:" — inside an ability an attachment
+    // grants, the exiled object is the granting attachment, which the
+    // card-level renderer names.
+    if choose.count.min == 1
+        && choose.count.max == Some(1)
+        && choose.filter.tagged_constraints.iter().any(|constraint| {
+            constraint.relation == crate::filter::TaggedOpbjectRelation::IsTaggedObject
+                && constraint.tag.as_str() == crate::tag::GRANTING_SOURCE_TAG
+        })
+    {
+        return Some(format!(
+            "Exile {}",
+            crate::compiled_text::GRANTING_SOURCE_RENDER_SURFACE
+        ));
+    }
 
     let face_state_suffix = if exile.face_down {
         " face down"
@@ -3064,7 +3099,21 @@ pub(crate) fn describe_choose_then_exile(
         }
         let chooser = describe_player_filter(&choose.chooser);
         let verb = player_verb(&chooser, "exile", "exiles");
-        let chosen = describe_choose_selection(choose);
+        let mut chosen = describe_choose_selection(choose);
+        // "Target opponent exiles a creature they control" (Doomfall): the
+        // chooser's own permanents read reflexively.
+        let controller_is_chooser = match (&choose.chooser, choose.filter.controller.as_ref()) {
+            (PlayerFilter::Target(chooser), Some(PlayerFilter::AliasedTarget(controller))) => {
+                chooser == controller
+            }
+            (chooser, Some(controller)) => chooser == controller && *chooser != PlayerFilter::You,
+            _ => false,
+        };
+        if controller_is_chooser
+            && let Some(head) = chosen.strip_suffix(" that player controls")
+        {
+            chosen = format!("{head} they control");
+        }
         return Some(format!("{chooser} {verb} {chosen}{face_state_suffix}"));
     }
 
@@ -4144,6 +4193,19 @@ pub(super) fn battlefield_entry_counter_phrase(
             let amount = number_word(*amount).unwrap_or_else(|| amount.to_string());
             format!("{amount} {modifier}{counter_type} counters")
         }
+        // "return it to the battlefield with one fewer revival counter on
+        // it" (Nine-Lives Familiar): the returned object's own count of the
+        // same counter kind, less one.
+        Value::Add(left, right)
+            if !additional
+                && matches!(right.unhinted(), Value::Fixed(-1))
+                && matches!(
+                    left.unhinted(),
+                    Value::CountersOn(_, Some(kind)) if *kind == counter.counter_type
+                ) =>
+        {
+            format!("one fewer {counter_type} counter")
+        }
         amount => format!(
             "{} {modifier}{counter_type} counters",
             describe_value(amount)
@@ -5056,6 +5118,16 @@ pub(super) fn describe_exile_top_clause(
     exile_top: &crate::effects::ExileTopOfLibraryEffect,
     suppress_count_where_clause: bool,
 ) -> Option<(String, bool)> {
+    // "that player exiles that card face up" (Uba Mask): the would-be-drawn
+    // card of a draw replacement, named as Oracle names it.
+    if exile_top.surface == Some(ironsmith_core::ExileTopLibrarySurface::DrawnCardFaceUp)
+        && matches!(exile_top.count.unhinted(), Value::Fixed(1))
+        && !exile_top.face_down
+    {
+        let actor = capitalize_first(&describe_player_filter(&exile_top.player));
+        let verb = if exile_top.player == PlayerFilter::You { "exile" } else { "exiles" };
+        return Some((format!("{actor} {verb} that card face up"), true));
+    }
     let owner = if exile_top.player == PlayerFilter::DamagedPlayer {
         // This action immediately follows the combat-damage trigger that
         // introduced the player, so Oracle keeps the demonstrative antecedent

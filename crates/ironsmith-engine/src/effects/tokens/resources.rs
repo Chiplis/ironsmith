@@ -8,6 +8,11 @@ pub struct TokenCreationLimits {
     pub max_live_objects: usize,
     pub max_instructions: u32,
     pub max_nesting: u32,
+    /// Most tokens with the same name one creation event may create. Larger
+    /// proposals (exponential doublers, copy loops) create this many and the
+    /// rest are not created, so the board keeps growing but never explodes in
+    /// a single batch.
+    pub max_tokens_per_name_per_batch: u32,
 }
 impl Default for TokenCreationLimits {
     fn default() -> Self {
@@ -16,6 +21,7 @@ impl Default for TokenCreationLimits {
             max_live_objects: 65_536,
             max_instructions: 4_096,
             max_nesting: 64,
+            max_tokens_per_name_per_batch: 512,
         }
     }
 }
@@ -221,6 +227,24 @@ pub(crate) fn reserve_token_creation_up_to(
             Err(error) => return Err(error),
         }
     }
+}
+/// Bound one final token-creation event: at most
+/// `max_tokens_per_name_per_batch` tokens of each name, then as many as the
+/// creation budget grants. Applied after replacement effects, so doublers
+/// count toward the cap.
+pub(crate) fn limit_token_batch(
+    game: &mut crate::game_state::GameState,
+    event: &mut crate::events::CreateTokensEvent,
+) -> Result<(), ExecutionError> {
+    let cap = game.token_creation_limits().max_tokens_per_name_per_batch;
+    if event.total_count() > u128::from(cap) {
+        *event = event.capped_per_name(cap);
+    }
+    let granted = reserve_token_creation_up_to(game, event.total_count())?;
+    if granted < event.total_count() {
+        *event = event.truncated_to(granted);
+    }
+    Ok(())
 }
 /// Consume one reserved slot for an inserted token. `Ok(false)` means other
 /// allocations since the reservation used the remaining live-object budget:

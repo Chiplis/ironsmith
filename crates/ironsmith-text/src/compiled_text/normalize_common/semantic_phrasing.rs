@@ -6675,7 +6675,11 @@ pub(crate) fn normalize_common_semantic_phrasing(line: &str) -> String {
     }
     // "Search your library for ... Then shuffle." (Sunforger): after a
     // search of your library, Oracle's shuffle instruction omits the zone.
-    if normalized.contains_lit("earch your library for ") {
+    // After "... shuffle that pile." the library shuffle must name its zone
+    // (Parallel Thoughts, Mangara's Tome): the previous shuffle was the pile.
+    if normalized.contains_lit("earch your library for ")
+        && !normalized.contains_lit("shuffle that pile. Then shuffle your library")
+    {
         normalized = normalized.replace_lit(". Then shuffle your library", ". Then shuffle");
     }
     // "Target creature you control assigns combat damage equal to its

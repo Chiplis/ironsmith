@@ -2949,6 +2949,13 @@ pub(crate) fn restore_authored_source_trigger_surface(
         TriggerSpec::ThisAttacks => {
             *trigger = TriggerSpec::Attacks(ObjectFilter::source_with_surface(surface.clone()));
         }
+        // "Whenever Lieutenant Sulu becomes tapped": the source's own tap
+        // event, named by the authored alias.
+        TriggerSpec::ThisBecomesTapped => {
+            *trigger = TriggerSpec::PermanentBecomesTapped(ObjectFilter::source_with_surface(
+                surface.clone(),
+            ));
+        }
         _ => {}
     }
 }

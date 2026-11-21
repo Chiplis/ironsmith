@@ -991,7 +991,11 @@ pub(super) fn compile_subject_verb_late(
                 .is_target()
                 .then(|| reserved_or_next_object_tag(ctx, "damage_source"));
             let mut recipient_refs = current_reference_env(ctx);
+            // Inside "for each opponent, ... deals damage to that player" the
+            // iterated player is the recipient; the source's controller is
+            // never the antecedent there.
             if let Some(tag) = source_tag.as_ref()
+                && !ctx.iterated_player
                 && let ChooseSpec::Object(filter) = source_spec.base()
                 && (filter.controller.is_some() || filter.owner.is_some())
             {
@@ -1963,7 +1967,18 @@ pub(super) fn compile_subject_verb_late(
             count,
             filter,
         }) => {
-            let resolved_filter = resolve_it_tag(filter, &current_reference_env(ctx))?;
+            // "Target player puts a +1/+1 counter on each creature they
+            // control" (Shadrix Silverquill): the targeted actor is announced
+            // and "they" names that player.
+            let target_actor = if matches!(player, PlayerAst::Target | PlayerAst::TargetOpponent) {
+                Some(resolve_subject_verb_subject(role, player, ctx, true, true, true)?)
+            } else {
+                None
+            };
+            let resolved_filter = match &target_actor {
+                Some(actor) => actor.resolve_object_refs_and_bind_player_refs_in_filter(filter, ctx)?,
+                None => resolve_it_tag(filter, &current_reference_env(ctx))?,
+            };
             // "put a number of +1/+1 counters on each other creature you
             // control equal to that creature's toughness": with no outer
             // object antecedent, the pronoun in the amount names the object
@@ -1997,7 +2012,14 @@ pub(super) fn compile_subject_verb_late(
                 effect = effect.tag_all(tag.clone());
                 ctx.last_object_tag = Some(tag);
             }
-            Ok((vec![effect], Vec::new()))
+            match target_actor {
+                Some(actor) => {
+                    let mut effects = actor.target_prelude();
+                    effects.push(effect);
+                    Ok((effects, actor.into_choices()))
+                }
+                None => Ok((vec![effect], Vec::new())),
+            }
         }
         SubjectVerbActionAst::Counters(CounterActionAst::RemoveUpToAnyCounters {
             amount,

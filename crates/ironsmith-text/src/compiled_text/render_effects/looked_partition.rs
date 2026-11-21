@@ -647,8 +647,18 @@ pub(super) fn describe_looked_card_selected_partition(
         return None;
     }
 
-    let selected_reference =
-        describe_selected_partition_reference(&choose.count, selected_destination)?;
+    // "Put one of them into your graveyard and the other back on top of your
+    // library" (Scion of Halaster): your own one-card graveyard pick with the
+    // remainder returned to the top reads "one of them".
+    let selected_reference = if selected_destination == LookedPartitionDestination::Graveyard
+        && matches!(remainder_destination, LookedPartitionDestination::LibraryTop(_))
+        && look.player == PlayerFilter::You
+        && exact_nonrandom_choice_count(&choose.count) == Some(1)
+    {
+        "one of them".to_string()
+    } else {
+        describe_selected_partition_reference(&choose.count, selected_destination)?
+    };
     let selected_destination_text = match selected_destination {
         LookedPartitionDestination::Hand => "into your hand".to_string(),
         LookedPartitionDestination::Graveyard => {
@@ -681,6 +691,11 @@ pub(super) fn describe_looked_card_selected_partition(
             format!("{back}on top of {library}{order}")
         }
     };
+    let single_remainder = matches!(
+        (look.count.clone(), exact_nonrandom_choice_count(&choose.count)),
+        (Value::Fixed(looked), Some(selected))
+            if looked > 0 && looked as usize == selected.saturating_add(1)
+    );
     let remainder_destination_text = match remainder_destination {
         LookedPartitionDestination::LibraryTop(order) => {
             let library = if look.player == PlayerFilter::You {
@@ -690,7 +705,16 @@ pub(super) fn describe_looked_card_selected_partition(
             } else {
                 "the library"
             };
-            format!("on top of {library}{order}")
+            // A single card left after your graveyard pick goes "back" on
+            // top, with no order (Scion of Halaster).
+            if single_remainder
+                && selected_destination == LookedPartitionDestination::Graveyard
+                && look.player == PlayerFilter::You
+            {
+                format!("back on top of {library}")
+            } else {
+                format!("on top of {library}{order}")
+            }
         }
         LookedPartitionDestination::Graveyard => {
             if look.player == PlayerFilter::You {

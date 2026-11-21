@@ -1949,7 +1949,7 @@ pub(super) fn describe_with_id_reflexive_names_counted_may_sacrifice() {
 
     assert_eq!(
         describe_effect_list(&[payment, reflexive]),
-        "You may sacrifice up to three Zombies. When you sacrifice one or more Zombies this way, you draw a card"
+        "You may sacrifice up to three Zombies. When you do, you draw a card"
     );
 }
 
@@ -2016,7 +2016,7 @@ pub(super) fn describe_counted_sacrifice_reflexive_names_sacrificed_objects() {
 
     assert_eq!(
         describe_effect_list(&[choose, sacrifice, reflexive]),
-        "Sacrifice up to three Zombies. When you sacrifice one or more Zombies this way, you draw a card"
+        "Sacrifice up to three Zombies. When you do, you draw a card"
     );
 }
 

@@ -193,14 +193,29 @@ pub fn parse_attached_type_transform_line(
         if preserve_other_types {
             out.push(StaticAbility::add_card_types(filter.clone(), set_card_types).into());
         } else {
-            out.push(
-                StaticAbility::set_card_types_with_surface(
-                    filter.clone(),
-                    set_card_types,
-                    line_text.clone(),
-                )
-                .into(),
+            // "Enchanted permanent is an enchantment and loses all other card
+            // types" (One with the Stars): keep the authored explicit loss on
+            // a lone card-type descriptor.
+            let explicit_type_loss = parsed.loss
+                == Some(attached_grammar::AttachedTransformLossKind::OtherCardTypes)
+                && parsed.ability_tokens.is_none()
+                && add_subtypes.is_empty()
+                && set_colors.is_empty()
+                && !make_colorless;
+            let mut set_types = StaticAbility::set_card_types_with_surface(
+                filter.clone(),
+                set_card_types,
+                line_text.clone(),
             );
+            if explicit_type_loss
+                && let ironsmith_core::StaticAbilityPayload::SetCardTypes {
+                    loses_other_card_types_surface,
+                    ..
+                } = &mut set_types.payload
+            {
+                *loses_other_card_types_surface = true;
+            }
+            out.push(set_types.into());
         }
     }
     if !add_subtypes.is_empty() {

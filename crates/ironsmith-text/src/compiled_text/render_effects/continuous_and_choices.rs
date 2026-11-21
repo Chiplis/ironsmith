@@ -2102,8 +2102,17 @@ pub(crate) fn describe_look_at_top_then_reveal_put_all_matching_onto_battlefield
         crate::effects::consult_helpers::LibraryBottomOrder::ChooserChooses => " in any order",
     };
 
+    // "Put all permanent cards revealed this way ..." (Branching Timeline)
+    // versus "Put all land cards from among them ..." (Animist's Awakening).
+    let pool = if tag_matching.filter.prior_effect_action_surface()
+        == Some(crate::effect::PriorEffectAction::Revealed)
+    {
+        "revealed this way"
+    } else {
+        "from among them"
+    };
     Some(format!(
-        "Reveal the top {count_text} {noun} of {owner} library{count_where_clause}. Put all {matching} from among them onto the battlefield{battlefield_suffix} and the rest on the bottom of {owner} library{order_text}"
+        "Reveal the top {count_text} {noun} of {owner} library{count_where_clause}. Put all {matching} {pool} onto the battlefield{battlefield_suffix} and the rest on the bottom of {owner} library{order_text}"
     ))
 }
 

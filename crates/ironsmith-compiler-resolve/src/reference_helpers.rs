@@ -3455,6 +3455,19 @@ pub fn resolve_attach_object_spec(
     object: &TargetAst,
     refs: &ReferenceEnv,
 ) -> Result<(ChooseSpec, Vec<ChooseSpec>), CardTextError> {
+    // A source named by the card's own name ("attach Shifting Shadow to
+    // it") is the source itself; keep its authored surface so a quoted
+    // granted ability can bind it to the granting attachment.
+    if let TargetAst::Object(filter, None, _) = object
+        && filter.source_surface.is_some()
+        && {
+            let mut plain = filter.clone();
+            plain.source_surface = None;
+            plain == ObjectFilter::source()
+        }
+    {
+        return Ok((choose_spec_for_target(object), Vec::new()));
+    }
     match object {
         TargetAst::Source(_) => Ok((choose_spec_for_target(object), Vec::new())),
         TargetAst::Tagged(tag, _) => {

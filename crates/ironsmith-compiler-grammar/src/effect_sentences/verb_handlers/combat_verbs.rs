@@ -153,10 +153,18 @@ pub fn parse_attach_object_phrase(tokens: &[OwnedLexToken]) -> Result<TargetAst,
     let shape = combat_grammar::parse_combat_attach_object_shape_lexed(tokens)
         .ok_or_else(|| CardTextError::ParseError("missing object to attach".to_string()))?;
     match shape {
-        combat_grammar::CombatAttachObjectShape::Source
-        | combat_grammar::CombatAttachObjectShape::NameLikeSource => {
-            Ok(TargetAst::Source(object_span))
-        }
+        combat_grammar::CombatAttachObjectShape::Source => Ok(TargetAst::Source(object_span)),
+        // "attach Shifting Shadow to it" (Shifting Shadow, Nettlevine
+        // Blight): the card's own name keeps its authored surface so lowering
+        // can bind a quoted granted ability's reference to the granting Aura
+        // (CR 113.3) instead of the creature that has the ability.
+        combat_grammar::CombatAttachObjectShape::NameLikeSource => Ok(TargetAst::Object(
+            ObjectFilter::source_with_surface(crate::target::SourceReferenceSurface::FullName(
+                crate::lexer::token_word_refs(tokens).join(" "),
+            )),
+            None,
+            object_span,
+        )),
         combat_grammar::CombatAttachObjectShape::Tagged(shape) => {
             if let Some(tagged_filter) = attach_tagged_filter(shape) {
                 Ok(TargetAst::Object(tagged_filter, None, None))

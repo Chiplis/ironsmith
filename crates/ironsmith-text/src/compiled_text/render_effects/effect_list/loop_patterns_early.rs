@@ -1,4 +1,27 @@
 {
+        // "That player draws up to three cards" (Fatal Lore): the drawer's own
+        // zero-to-N number choice and the draw of exactly that number, after
+        // other effects of the same list.
+        if idx + 1 < filtered.len()
+            && let Some(compact) = describe_choose_number_then_draw_that_many(&[
+                filtered[idx].clone(),
+                filtered[idx + 1].clone(),
+            ])
+        {
+            parts.push(compact);
+            idx += 2;
+            continue;
+        }
+        if idx + 1 < filtered.len()
+            && let Some(compact) = describe_tap_target_then_greater_power_difference_counters(
+                filtered[idx],
+                filtered[idx + 1],
+            )
+        {
+            parts.push(compact);
+            idx += 2;
+            continue;
+        }
         if filtered[idx]
             .downcast_ref::<crate::effects::TagTriggeringSourceEffect>()
             .is_some_and(|tag| is_implicit_reference_tag(tag.tag.as_str()))

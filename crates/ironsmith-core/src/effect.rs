@@ -506,6 +506,11 @@ pub struct PriorEffectResultSurface {
     /// Characteristic that at least one pair among the matching result objects
     /// must share, for predicates such as "two cards that share a color".
     pub shared_characteristic: Option<crate::ObjectCharacteristic>,
+    /// Authored definite iterated-player actor: "If the player discards a
+    /// card this way, they draw a card" (Chains of Mephistopheles), rather
+    /// than "that player". Presentation only; `actor` stays `ThatPlayer`.
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub definite_player_surface: bool,
 }
 
 impl PriorEffectResultSurface {
@@ -524,6 +529,7 @@ impl PriorEffectResultSurface {
             quantifier,
             required_count: None,
             shared_characteristic: None,
+            definite_player_surface: false,
         }
     }
 
@@ -1313,6 +1319,21 @@ pub enum AnimationDurationSurface {
     Leading,
 }
 
+/// Oracle wording of an `ApplyContinuousEffect` clause whose default reading
+/// differs from what was printed. Presentation only: the rules meaning is
+/// carried entirely by the effect's modifications.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, TagKeyWalk)]
+pub enum ContinuousClauseSurface {
+    /// "... and is a Werewolf" (Werewolf Pack Leader): a creature-type
+    /// setting (CR 205.1a) stated with the copula instead of "becomes".
+    Copular,
+    /// "It gains this card's other abilities." (Symbiote Spider-Man): the
+    /// granted abilities are exactly the source card's other printed
+    /// abilities, named by reference rather than quoted.
+    SourceCardOtherAbilities,
+}
+
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq, TagKeyWalk)]
 pub struct ApplyContinuousEffect<
@@ -1343,6 +1364,10 @@ pub struct ApplyContinuousEffect<
     /// resolutions never stack duplicate copies of the same ability.
     #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "std::ops::Not::not"))]
     pub grant_only_if_absent: bool,
+    /// Authored clause wording (presentation only); see
+    /// [`ContinuousClauseSurface`].
+    #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "Option::is_none"))]
+    pub clause_surface: Option<ContinuousClauseSurface>,
 }
 
 impl<Target, Modification, RuntimeModification, Condition, SourceType>
@@ -1350,6 +1375,7 @@ impl<Target, Modification, RuntimeModification, Condition, SourceType>
 {
     pub fn new(target: Target, modification: Modification, until: Until) -> Self {
         Self {
+            clause_surface: None,
             target,
             target_spec: None,
             modification: Some(modification),
@@ -1372,6 +1398,7 @@ impl<Target, Modification, RuntimeModification, Condition, SourceType>
 
     pub fn new_runtime(target: Target, modification: RuntimeModification, until: Until) -> Self {
         Self {
+            clause_surface: None,
             target,
             target_spec: None,
             modification: None,
@@ -1397,6 +1424,7 @@ impl<Target, Modification, RuntimeModification, Condition, SourceType>
         Target: From<ChooseSpec>,
     {
         Self {
+            clause_surface: None,
             target: target_spec.clone().into(),
             target_spec: Some(target_spec),
             modification: Some(modification),
@@ -1426,6 +1454,7 @@ impl<Target, Modification, RuntimeModification, Condition, SourceType>
         Target: From<ChooseSpec>,
     {
         Self {
+            clause_surface: None,
             target: target_spec.clone().into(),
             target_spec: Some(target_spec),
             modification: None,
@@ -1514,6 +1543,11 @@ impl<Target, Modification, RuntimeModification, Condition, SourceType>
 
     pub fn grant_only_if_absent(mut self) -> Self {
         self.grant_only_if_absent = true;
+        self
+    }
+
+    pub fn with_clause_surface(mut self, surface: Option<ContinuousClauseSurface>) -> Self {
+        self.clause_surface = surface;
         self
     }
 }
@@ -2519,6 +2553,12 @@ pub struct ChooseModeEffect<E> {
     /// the range. Appended.
     #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "Vec::is_empty"))]
     pub allowed_mode_counts: Vec<u32>,
+    /// Authored flavor label of each mode ("• Follow the 3rd Rule — ...",
+    /// Rules of Acquisition), parallel to `modes`; an empty string is an
+    /// unlabeled mode and the list is empty when no mode is labeled. Like an
+    /// ability word it has no rules meaning. Presentation only. Appended.
+    #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "Vec::is_empty"))]
+    pub mode_flavor_labels: Vec<String>,
 }
 
 impl<E> ChooseModeEffect<E> {
@@ -2569,6 +2609,7 @@ impl<E> ChooseModeEffect<E> {
             cost_choice_keywords: Vec::new(),
             announced_modes: None,
             allowed_mode_counts: Vec::new(),
+            mode_flavor_labels: Vec::new(),
         }
     }
 
@@ -2777,6 +2818,10 @@ pub enum SearchResultReferenceSurface {
     It,
     ThoseCards,
     Them,
+    /// "the top card of the pile you exiled" (Parallel Thoughts): the move
+    /// selects one random member of the source's face-down shuffled exile
+    /// pile; this records the authored pile reference.
+    TopCardOfExiledPile,
 }
 
 impl SearchResultReferenceSurface {
@@ -2787,6 +2832,7 @@ impl SearchResultReferenceSurface {
             Self::It => "it",
             Self::ThoseCards => "those cards",
             Self::Them => "them",
+            Self::TopCardOfExiledPile => "the top card of the pile you exiled",
         }
     }
 }

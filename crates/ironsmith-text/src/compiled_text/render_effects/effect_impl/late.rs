@@ -125,6 +125,124 @@
         ))
     }
 
+    /// Under the shared "Create a [colors] creature token with those
+    /// characteristics." header, each mode is the token's characteristic
+    /// list alone: its blueprint without the article, the "creature token"
+    /// noun the header prints, or the colors every blueprint shares.
+    fn describe_modal_token_characteristics(
+        choose_mode: &crate::effects::ChooseModeEffect,
+    ) -> Option<Vec<String>> {
+        describe_modal_shared_characteristics_body(choose_mode)?;
+        let creates = choose_mode
+            .modes
+            .iter()
+            .map(|mode| match mode.effects.as_slice() {
+                [only] => unwrap_modal_common_suffix_effect(only)
+                    .downcast_ref::<crate::effects::CreateTokenEffect>(),
+                _ => None,
+            })
+            .collect::<Option<Vec<_>>>()?;
+        let first_colors = creates.first()?.token.card.color_indicator;
+        let shared_colors = match first_colors {
+            Some(first)
+                if !first.is_empty()
+                    && creates
+                        .iter()
+                        .all(|create| create.token.card.color_indicator == Some(first)) =>
+            {
+                Some(format!(
+                    "{} ",
+                    crate::compiled_text::normalize_common::describe_token_color_words(
+                        first, false
+                    )
+                ))
+            }
+            _ => None,
+        };
+        creates
+            .iter()
+            .map(|create| {
+                let blueprint = describe_create_token_blueprint(create);
+                let body = blueprint
+                    .strip_prefix("a ")
+                    .or_else(|| blueprint.strip_prefix("an "))
+                    .unwrap_or(&blueprint);
+                let (head, tail) = body.split_once(" creature token")?;
+                let head = match shared_colors.as_deref() {
+                    Some(colors) => head.replacen(colors, "", 1),
+                    None => head.to_string(),
+                };
+                Some(format!("{head}{tail}"))
+            })
+            .collect()
+    }
+
+    /// Under the shared "Until end of turn, target creature you control has
+    /// that base power and toughness, becomes that creature type, and gains
+    /// that ability." header, each mode is its characteristic list alone:
+    /// "1/3 Turtle with hexproof" (Wild Shape).
+    fn describe_modal_animate_characteristics(
+        choose_mode: &crate::effects::ChooseModeEffect,
+    ) -> Option<Vec<String>> {
+        describe_modal_shared_characteristics_body(choose_mode)?;
+        choose_mode
+            .modes
+            .iter()
+            .map(|mode| {
+                let mut applies = Vec::new();
+                if !collect_modal_continuous_effects(&mode.effects, &mut applies) {
+                    return None;
+                }
+                let [animate, grant] = applies.as_slice() else {
+                    return None;
+                };
+                let mut pt = None;
+                let mut kinds = None;
+                for modification in animate
+                    .modification
+                    .iter()
+                    .chain(animate.additional_modifications.iter())
+                {
+                    match modification {
+                        crate::continuous::Modification::SetPowerToughness {
+                            power, toughness, ..
+                        } => {
+                            pt = Some(format!(
+                                "{}/{}",
+                                describe_value(power),
+                                describe_value(toughness)
+                            ));
+                        }
+                        crate::continuous::Modification::AddSubtypes(added) if !added.is_empty() => {
+                            kinds = Some(
+                                added
+                                    .iter()
+                                    .map(|subtype| subtype.to_string())
+                                    .collect::<Vec<_>>()
+                                    .join(" "),
+                            );
+                        }
+                        _ => {}
+                    }
+                }
+                let Some(crate::continuous::Modification::AddAbility(ability)) =
+                    grant.modification.as_ref()
+                else {
+                    return None;
+                };
+                if !ability.is_keyword() || !grant.additional_modifications.is_empty() {
+                    return None;
+                }
+                Some(format!(
+                    "{} {} with {}",
+                    pt?,
+                    kinds?,
+                    ability.display().to_ascii_lowercase()
+                ))
+            })
+            .collect()
+    }
+
     fn modal_common_return_effect(
         mode: &crate::effect::EffectMode,
     ) -> Option<&crate::effects::ReturnFromGraveyardToHandEffect> {
@@ -520,6 +638,8 @@
         {
             header = format!("You may choose {rest}");
         }
+        // The base P/T each tier names once its shared program is the header.
+        let mut tier_pt_modes: Option<Vec<String>> = None;
         if choose_mode.tiered {
             header = if choose_mode.descriptive_mode_costs { "Choose one additional cost" } else { "Tiered (Choose one additional cost.)" }.to_string();
             // "Until end of turn, target creature you control gains ... and
@@ -546,14 +666,15 @@
                     let needle = format!("base power and toughness {pt}");
                     let rendered = rendered.trim().trim_end_matches('.');
                     rendered.contains(&needle).then(|| {
-                        rendered.replace(&needle, "the chosen base power and toughness")
+                        (rendered.replace(&needle, "the chosen base power and toughness"), pt.clone())
                     })
                 })
                 .collect::<Option<Vec<_>>>();
             if let Some(shared) = shared
-                && let Some(first) = shared.first()
-                && shared.iter().all(|text| text == first)
+                && let Some((first, _)) = shared.first()
+                && shared.iter().all(|(text, _)| text == first)
             {
+                tier_pt_modes = Some(shared.iter().map(|(_, pt)| pt.clone()).collect());
                 // A quoted grant followed by the shared P/T conjunct closes
                 // its quote without the sentence period.
                 let first = first
@@ -630,10 +751,12 @@
                 "Choose one that hasn't been chosen —".to_string()
             };
         }
+        let mut shared_x_header = false;
         if let Some(basis) = describe_shared_spells_cast_modal_x_basis(choose_mode)
             && let Some(prefix) = header.strip_suffix(" —")
         {
-            header = format!("{prefix}. X is {basis} —");
+            header = format!("{prefix}. X is {basis}.");
+            shared_x_header = true;
         }
         if !choose_mode.common_prefix_effects.is_empty() {
             let normalized_header = header
@@ -652,7 +775,14 @@
             {
                 common = lowercase_first(&common);
             }
-            header = format!("{normalized_header} and {common}.");
+            // "choose one that hasn't been chosen and you lose 2 life —"
+            // (Zuko, Conflicted): the shared action sits inside the header,
+            // which still introduces the bullets with its dash.
+            header = if header.trim_end().ends_with('—') && choose_mode.disallow_previously_chosen_modes {
+                format!("{normalized_header} and {common} —")
+            } else {
+                format!("{normalized_header} and {common}.")
+            };
         }
         if choose_mode.distinct_player_targets_per_mode
             && let Some(prefix) = header.strip_suffix(" —")
@@ -692,13 +822,74 @@
                 && !source.eq_ignore_ascii_case("POISON")
                 && !source.to_ascii_lowercase().contains("enters with")
         });
+        let characteristic_modes = if ironsmith_core::semantic_audit::semantic_audit_active() {
+            describe_modal_token_characteristics(choose_mode)
+                .or_else(|| describe_modal_animate_characteristics(choose_mode))
+        } else {
+            None
+        };
         let modes = choose_mode
             .modes
             .iter()
             .enumerate()
             .map(|(mode_idx, mode)| {
-                let mode_effects = describe_effect_list(&mode.effects);
-                let description_raw = if use_mode_source_text {
+                // The header already carries the shared return ("Return
+                // those cards from your graveyard to your hand."): a mode
+                // that is only that return names its target.
+                let mode_effects = match modal_common_return_effect(mode) {
+                    Some(returned)
+                        if mode.effects.len() == 1
+                            && describe_modal_common_suffix(choose_mode).is_some() =>
+                    {
+                        describe_choose_spec_without_graveyard_zone(&returned.target)
+                    }
+                    _ => shared_x_header
+                        .then(|| describe_mode_effects_with_shared_x(&mode.effects))
+                        .flatten()
+                        .unwrap_or_else(|| {
+                            // "An opponent chooses one — ... that player
+                            // controls": the cast chooser is the chosen player.
+                            if choose_mode.cast_chooser.is_some() {
+                                ironsmith_core::filter_model::with_chosen_player_as_that_player(|| {
+                                    describe_effect_list(&mode.effects)
+                                })
+                            } else {
+                                describe_effect_list(&mode.effects)
+                            }
+                        }),
+                };
+                let mode_effects = match tier_pt_modes.as_ref().and_then(|pts| pts.get(mode_idx)) {
+                    Some(pt) => pt.clone(),
+                    None => mode_effects,
+                };
+                // "An opponent chooses one — • You put ..." (Misfortune, Fatal
+                // Lore): when another player picks the mode, a mode whose
+                // first action is the controller's names that actor.
+                let mode_effects = if choose_mode.cast_chooser.is_some()
+                    && mode_leads_with_your_action(&mode.effects)
+                    && !mode_effects.trim().is_empty()
+                    && !mode_effects.trim_start().starts_with("You ")
+                    && !mode_effects.trim_start().starts_with("you ")
+                {
+                {
+                    let prefixed = format!("You {}", lowercase_first(mode_effects.trim_start()));
+                    // "• You put ... and gain 4 life" (Misfortune): the named
+                    // actor is also the subject of the trailing life gain.
+                    if mode_trails_with_your_life_gain(&mode.effects) {
+                        prefixed.replacen(" and you gain ", " and gain ", 1)
+                    } else {
+                        prefixed
+                    }
+                }
+                } else {
+                    mode_effects
+                };
+                let characteristic = characteristic_modes
+                    .as_ref()
+                    .and_then(|texts| texts.get(mode_idx));
+                let description_raw = if let Some(characteristic) = characteristic {
+                    characteristic.as_str()
+                } else if use_mode_source_text {
                     mode.source_text.trim()
                 } else {
                     mode_effects.trim()
@@ -716,6 +907,17 @@
                         .unwrap_or(1)
                         .max(1);
                     Some(format!("{} — ", "{P}".repeat(cost as usize)))
+                } else if !use_mode_source_text
+                    && characteristic.is_none()
+                    && let Some(flavor) = choose_mode
+                        .mode_flavor_labels
+                        .get(mode_idx)
+                        .map(|label| label.trim())
+                        .filter(|label| !label.is_empty())
+                {
+                    // "• Follow the 3rd Rule — Gain control ..." (Rules of
+                    // Acquisition): the mode's typed flavor label.
+                    Some(format!("{flavor} — "))
                 } else {
                     None
                 };
@@ -1366,9 +1568,16 @@
         let has_added_types =
             !create_copy.added_card_types.is_empty() || !create_copy.added_subtypes.is_empty();
         let has_added_colors = !create_copy.added_colors.is_empty();
+        // "except it's not legendary and it's a 4/4 Hero in addition to its
+        // other types" (Ember Island Production): with the legendary removal
+        // the base P/T qualifies the added-type identity below.
+        let pt_in_added_identity = create_copy.removed_supertypes.contains(&Supertype::Legendary)
+            && create_copy.set_card_types.is_none()
+            && create_copy.set_subtypes.is_none();
         if has_added_types
             && create_copy.set_colors.is_none()
             && !has_added_colors
+            && !pt_in_added_identity
             && let Some((power, toughness)) = base_power_toughness.take()
         {
             let subject = if singular_copy { "it's" } else { "they're" };
@@ -1404,6 +1613,12 @@
                 {
                     base_power_toughness = None;
                     format!("{power}/{toughness} {descriptor}")
+                } else if let Some((power, toughness)) = base_power_toughness
+                    && pt_in_added_identity
+                    && create_copy.set_colors.is_none()
+                {
+                    base_power_toughness = None;
+                    format!("a {power}/{toughness} {descriptor}")
                 } else {
                     with_indefinite_article(&descriptor)
                 };
@@ -1758,6 +1973,27 @@
             "Manifest dread".to_string()
         } else {
             format!("{} manifests dread", capitalize_first(&describe_player_filter(&manifest.player)))
+        };
+    }
+    // "look at the top two cards of your planar deck, put one on the bottom
+    // of your planar deck and the other on top" (Susan Foreman).
+    if let Some(reorder) = effect.downcast_ref::<crate::effects::ReorderTopPlanarDeckEffect>() {
+        let deck = format!("{} planar deck", describe_possessive_player_filter(&reorder.player));
+        let looker = if reorder.chooser == PlayerFilter::You {
+            "Look at".to_string()
+        } else {
+            format!(
+                "{} looks at",
+                capitalize_first(&describe_player_filter(&reorder.chooser))
+            )
+        };
+        return if reorder.count == 2 {
+            format!(
+                "{looker} the top two cards of {deck}, put one on the bottom of {deck} and the other on top"
+            )
+        } else {
+            let count = number_word(reorder.count as i32).unwrap_or_else(|| reorder.count.to_string());
+            format!("{looker} the top {count} cards of {deck} and put them back in any order")
         };
     }
     if let Some(manifest) = effect.downcast_ref::<crate::effects::ManifestObjectsEffect>() {
@@ -3028,6 +3264,13 @@
         if connive.descriptive {
             return format!("The controller of {} draws {}, then discards that many cards. Put a +1/+1 counter on that permanent for each nonland card discarded this way", describe_choose_spec(&connive.target), describe_value(&connive.count));
         }
+        // CR 702.51: the creatures tapped to pay convoke are published under
+        // the engine's convoke tag; each of them connives on its own.
+        if matches!(&connive.target, ChooseSpec::Tagged(tag) if tag.as_str() == "convoked_this_spell")
+            && matches!(connive.count, Value::Fixed(1))
+        {
+            return "Each creature that convoked this spell connives".to_string();
+        }
         let target = describe_choose_spec(&connive.target);
         // "up to one target creature you control connives": at most one
         // object, so it reads in the singular.
@@ -3590,16 +3833,15 @@
                 copy_spell.target_reference_kind,
                 None | Some(StackObjectKind::Spell)
             )
-            && filter
-                == &ObjectFilter::permanent_card()
-                    .in_zone(Zone::Battlefield)
-                    .you_control()
             && copy_spell.count_surface.is_none()
             && copy_spell.copier == PlayerFilter::You
             && copy_spell.removed_supertypes.is_empty()
             && !copy_spell.has_characteristic_modifiers()
         {
-            return "Copy it for each kind of counter among permanents you control".to_string();
+            return format!(
+                "Copy it for each kind of counter among {}",
+                describe_count_filter_value_subject(filter)
+            );
         }
         if copy_spell.count == Value::Fixed(1)
             && matches!(
@@ -4149,6 +4391,17 @@
                 "Add X mana of any one color{}, where X is the number of {}",
                 describe_add_mana_destination_suffix(&add_one.player),
                 count_subject
+            );
+        }
+        // "add that much mana of any one color" (Photon, Mighty Marvel): the
+        // triggering event's amount is the antecedent "that much".
+        if matches!(
+            add_one.amount.unhinted(),
+            Value::EventValue(crate::effect::EventValueSpec::Amount)
+        ) {
+            return format!(
+                "Add that much mana of any one color{}",
+                describe_add_mana_destination_suffix(&add_one.player)
             );
         }
         if !matches!(&add_one.amount, Value::Fixed(_) | Value::X) {
@@ -4885,14 +5138,13 @@
     if let Some(redirect_all) =
         effect.downcast_ref::<crate::effects::RedirectAllDamageThisTurnToTargetEffect>()
     {
-        // The scoped redirection has no structural reader yet: an audit
-        // reports its fields instead of the authored sentence.
+        // The scoped redirection reads from its typed recipient, source,
+        // combat-only flag, destination and bounded duration.
         if let Some(scope) = &redirect_all.scope {
-            return ironsmith_core::semantic_audit::retained(
-                "TimedDamageRedirectionScope",
-                &scope.display,
-                scope,
-            );
+            if !ironsmith_core::semantic_audit::semantic_audit_active() {
+                return scope.display.clone();
+            }
+            return describe_timed_damage_redirection_scope(scope, &redirect_all.target);
         }
         let target_set = if redirect_all.player_filter == crate::target::PlayerFilter::You
             && redirect_all.object_filter == crate::target::ObjectFilter::permanent().you_control()
@@ -5228,6 +5480,37 @@
                         "Prevent all damage that would be dealt this turn by {source_phrase}"
                     );
                 }
+                // "by creatures other than Werewolves and Wolves" (Moonmist):
+                // creature sources excluding only a subtype list.
+                if prevent_all.damage_filter.combat_only
+                    && let Some(source_filter) = &prevent_all.damage_filter.from_source
+                    // A single excluded subtype reads "non-Elf creatures".
+                    && source_filter.excluded_subtypes.len() >= 2
+                    && {
+                        let mut rest = source_filter.clone();
+                        rest.excluded_subtypes.clear();
+                        rest.zone = None;
+                        rest.union_surface = Default::default();
+                        let mut creature = ObjectFilter::default();
+                        creature.card_types = vec![CardType::Creature];
+                        rest == creature
+                    }
+                {
+                    let excepted = source_filter
+                        .excluded_subtypes
+                        .iter()
+                        .map(|subtype| pluralize_noun_phrase(&subtype.to_string()))
+                        .collect::<Vec<_>>();
+                    let excepted = match excepted.as_slice() {
+                        [only] => only.clone(),
+                        [init @ .., last] if init.len() == 1 => format!("{} and {last}", init[0]),
+                        [init @ .., last] => format!("{}, and {last}", init.join(", ")),
+                        [] => String::new(),
+                    };
+                    return format!(
+                        "Prevent all combat damage that would be dealt this turn by creatures other than {excepted}"
+                    );
+                }
                 // "except combat damage that would be dealt by enchanted
                 // creatures and enchantment creatures" (Inspire Awe): the
                 // source set is every creature outside the excepted sets.
@@ -5467,6 +5750,37 @@
             && exile.spec.source_reference_surface().is_some()
         {
             return format!("{} at the beginning of the next end step", describe_effect(effect));
+        }
+        // "That player puts this card from its owner's graveyard onto the
+        // battlefield under their control at the beginning of the next end
+        // step" (Endless Whispers): the source card returns from its owner's
+        // graveyard under the declared player's control. The declared player
+        // is the actor, and the timing trails the action, as printed.
+        if schedule.one_shot && !schedule.start_next_turn
+            && schedule.duration == ironsmith_core::DelayedTriggerDuration::Forever
+            && !schedule.until_end_of_turn && !schedule.until_end_of_combat
+            && !schedule.watch_ability_source && !schedule.watch_all_object_targets
+            && schedule.while_any_tagged_object_in_zone.is_none()
+            && schedule.target_objects.is_empty() && schedule.target_tag.is_none()
+            && schedule.target_filter.is_none() && schedule.prepayment.is_none()
+            && schedule.controller == PlayerFilter::You
+            && schedule.trigger.downcast_ref::<crate::triggers::BeginningOfEndStepTrigger>().is_some_and(|trigger| trigger.player == PlayerFilter::Any)
+            && let [segment] = schedule.effects.segments.as_slice()
+            && segment.self_replacements.is_empty()
+            && let [effect] = segment.default_effects.as_slice()
+            && let Some(put) = effect.downcast_ref::<crate::effects::PutOntoBattlefieldEffect>()
+            && !put.tapped
+            && put.enters_with_counters.is_empty()
+            && matches!(put.controller, PlayerFilter::AliasedTarget(_))
+            && let ChooseSpec::Object(filter) = put.target.base()
+            && filter.source
+            && filter.zone == Some(Zone::Graveyard)
+            && let Some(surface) = put.target.source_reference_surface()
+        {
+            return format!(
+                "That player puts {} from its owner's graveyard onto the battlefield under their control at the beginning of the next end step",
+                surface.display_text()
+            );
         }
 
         if !schedule.one_shot && schedule.until_end_of_turn && !schedule.start_next_turn
@@ -6800,6 +7114,35 @@
             );
         }
         let replacement = lowercase_first(&describe_effect_list(&register.replacement_effects));
+        // A window-bounded replacement applies to every matching draw in the
+        // window, not only the next one (Plagiarize).
+        let window = match register.mode {
+            crate::effects::ReplacementApplyMode::UntilEndOfTurn => Some("Until end of turn"),
+            crate::effects::ReplacementApplyMode::UntilYourNextTurn => Some("Until your next turn"),
+            _ => None,
+        };
+        if let Some(window) = window
+            && !register.lose_game
+        {
+            // Another player's draw replaced by your single draw is the
+            // redirect shape: the drawer skips that draw and you draw.
+            let redirect = register.player_target.is_some()
+                && match register.replacement_effects.as_slice() {
+                    [only] => only
+                        .downcast_ref::<crate::effects::DrawCardsEffect>()
+                        .is_some_and(|draw| {
+                            matches!(draw.player, PlayerFilter::You)
+                                && matches!(draw.count.unhinted(), crate::effect::Value::Fixed(1))
+                        }),
+                    _ => false,
+                };
+            if redirect {
+                return format!(
+                    "{window}, if {player} would {event}, instead that player skips that draw and you draw a card"
+                );
+            }
+            return format!("{window}, if {player} would {event}, instead {replacement}");
+        }
         return format!(
             "The next time {player} would {event}{duration}, instead {replacement}"
         );
@@ -6808,6 +7151,16 @@
         // An audit reads the typed permission and its duration.
         if !ironsmith_core::semantic_audit::semantic_audit_active() {
             return register.display.clone();
+        }
+        // "For one spell this turn, you may spend mana as though it were mana
+        // of any type to pay that spell's mana cost" (North Star): the
+        // single-use scope names its own window.
+        if matches!(register.permission.scope, ironsmith_core::ManaSpendScope::OneSpellCast) {
+            let permission = crate::compiled_text::audit_readings::mana_spend_permission_for_scope(
+                &register.permission,
+                " to pay that spell's mana cost",
+            );
+            return format!("For one spell this turn, {}", lowercase_first(&permission));
         }
         let permission =
             crate::compiled_text::audit_readings::mana_spend_permission(&register.permission);
@@ -6823,14 +7176,30 @@
     if let Some(register) = effect.downcast_ref::<crate::effects::RegisterManaRewriteEffect>() {
         // An audit reads the typed rewrite and its duration; a targeted
         // rewrite has no structural reader and reports its fields.
-        if !ironsmith_core::semantic_audit::semantic_audit_active() || register.target.is_some() {
+        let rewrite = crate::compiled_text::audit_readings::mana_output_rewrite(&register.rule);
+        // A targeted rewrite's tapped source is its target: "If target Plains
+        // is tapped for mana, it produces colorless mana instead of white
+        // mana" (Quarum Trench Gnomes).
+        let targeted = register.target.as_ref().and_then(|target| {
+            if register.rule.controller.is_some() || !register.rule.tapped_for_mana {
+                return None;
+            }
+            let (_, rest) = rewrite.split_once(" is tapped for mana, it produces ")?;
+            Some(format!(
+                "If {} is tapped for mana, it produces {rest}",
+                describe_choose_spec(target)
+            ))
+        });
+        if !ironsmith_core::semantic_audit::semantic_audit_active()
+            || (register.target.is_some() && targeted.is_none())
+        {
             return ironsmith_core::semantic_audit::retained(
                 "RegisterManaRewriteEffect",
                 &register.display,
                 register,
             );
         }
-        let rewrite = crate::compiled_text::audit_readings::mana_output_rewrite(&register.rule);
+        let rewrite = targeted.unwrap_or(rewrite);
         let duration = match register.mode {
             crate::effects::ReplacementApplyMode::OneShot
             | crate::effects::ReplacementApplyMode::UntilEndOfTurn => "Until end of turn, ",
@@ -8427,6 +8796,108 @@
             }
             return format!("{look}{permission_text}{duration}. If you cast a spell this way, {payment} rather than pay its mana cost");
         }
+        // "you may cast a creature spell from that player's graveyard this
+        // turn, and you may spend mana as though it were mana of any color
+        // to cast that spell" (Whispersteel Dagger): a single cast from the
+        // graveyard of the card's owner, who is not the beneficiary.
+        if matches!(grant.spec.grantable, crate::grant::Grantable::PlayFrom)
+            && grant.duration == crate::grant::GrantDuration::UntilEndOfTurn
+            && grant.spec.zone == Zone::Graveyard
+            && grant.spec.max_plays == Some(1)
+            && grant.player == crate::filter::PlayerFilter::You
+            && grant.spec.beneficiary == crate::filter::PlayerFilter::You
+            && grant.spec.usage_limit.is_none()
+            && grant.spec.additional_zones.is_empty()
+            && grant.spec.cast_this_way_grants.is_empty()
+            && grant.spec.permanent_this_way_grants.is_empty()
+            && grant.spec.cast_this_way_filter.is_none()
+            && !grant.spec.instant_timing
+            && grant.spec.filter.excluded_card_types.as_slice() == [CardType::Land]
+            && let Some(owner) = grant.spec.filter.owner.as_ref()
+            && *owner != crate::filter::PlayerFilter::You
+        {
+            let mana = match grant.spec.cast_mana_spend_mode {
+                ironsmith_core::value_model::ManaSpendMode::Normal => Some(""),
+                ironsmith_core::value_model::ManaSpendMode::AnyColor => Some(
+                    ", and you may spend mana as though it were mana of any color to cast that spell",
+                ),
+                ironsmith_core::value_model::ManaSpendMode::AnyType => {
+                    Some(", and mana of any type can be spent to cast that spell")
+                }
+                _ => None,
+            };
+            if let Some(mana) = mana {
+                let mut spells = grant.spec.filter.clone();
+                spells.owner = None;
+                spells.zone = None;
+                spells.excluded_card_types.clear();
+                let spell =
+                    describe_cast_spell_filter(&spells, CastSpellFilterContext::Standalone);
+                return format!(
+                    "You may cast {} from {} graveyard this turn{mana}",
+                    with_indefinite_article(strip_leading_article(&spell)),
+                    describe_possessive_player_filter(owner)
+                );
+            }
+        }
+        // "You may play lands and cast spells from that player's hand this
+        // turn" (Sen Triplets); "... from other players' graveyards this turn
+        // as though those cards were in your graveyard" (Shaman's Trance): a
+        // land arm and a nonland arm over another player's cards.
+        if matches!(grant.spec.grantable, crate::grant::Grantable::PlayFrom)
+            && grant.duration == crate::grant::GrantDuration::UntilEndOfTurn
+            && grant.player == crate::filter::PlayerFilter::You
+            && grant.spec.beneficiary == crate::filter::PlayerFilter::You
+            && grant.spec.usage_limit.is_none()
+            && grant.spec.max_plays.is_none()
+            && grant.spec.additional_zones.is_empty()
+            && grant.spec.cast_this_way_grants.is_empty()
+            && grant.spec.permanent_this_way_grants.is_empty()
+            && grant.spec.cast_this_way_filter.is_none()
+            && !grant.spec.instant_timing
+            && !grant.spec.land_play_companion
+            && !grant.spec.top_card_only
+            && matches!(
+                grant.spec.cast_mana_spend_mode,
+                ironsmith_core::value_model::ManaSpendMode::Normal
+            )
+            && let [land_arm, spell_arm] = grant.spec.filter.any_of.as_slice()
+            && land_arm.card_types.as_slice() == [CardType::Land]
+            && spell_arm.excluded_card_types.as_slice() == [CardType::Land]
+            && let Some(owner) = grant.spec.filter.owner.as_ref()
+        {
+            let mut bare_land = land_arm.clone();
+            bare_land.card_types.clear();
+            bare_land.zone = None;
+            let mut bare_spell = spell_arm.clone();
+            bare_spell.excluded_card_types.clear();
+            bare_spell.zone = None;
+            let mut outer = grant.spec.filter.clone();
+            outer.any_of.clear();
+            outer.owner = None;
+            outer.zone = None;
+            let origin = match (grant.spec.zone, owner) {
+                (Zone::Hand, crate::filter::PlayerFilter::Target(_)) => Some("that player's hand"),
+                (Zone::Graveyard, crate::filter::PlayerFilter::NotYou) => {
+                    Some("other players' graveyards")
+                }
+                _ => None,
+            };
+            let as_though = if grant.spec.zone == Zone::Graveyard {
+                " as though those cards were in your graveyard"
+            } else {
+                ""
+            };
+            if let Some(origin) = origin
+                && bare_land == crate::filter::ObjectFilter::default()
+                && bare_spell == crate::filter::ObjectFilter::default()
+                && outer == crate::filter::ObjectFilter::default()
+            {
+                return format!(
+                    "You may play lands and cast spells from {origin} this turn{as_though}"
+                );
+            }
+        }
         let permission = grant.spec.clone().with_beneficiary(grant.player.clone()).display();
         // A captured permission surface already states its turn bound.
         if grant.duration == crate::grant::GrantDuration::UntilEndOfTurn
@@ -8434,6 +8905,24 @@
             && permission.contains(" this turn")
         {
             return permission;
+        }
+        // "Until end of turn, you may look at the top card of your library
+        // any time, and you may play lands and cast spells from the top of
+        // your library" (The Belligerent): the look permission is part of
+        // the same one-turn top-of-library grant.
+        if matches!(grant.spec.grantable, crate::grant::Grantable::PlayFrom)
+            && grant.duration == crate::grant::GrantDuration::UntilEndOfTurn
+            && grant.spec.may_look_at_top
+            && grant.spec.top_card_only
+            && grant.spec.zone == Zone::Library
+            && grant.player == crate::filter::PlayerFilter::You
+            && grant.spec.cast_this_way_grants.is_empty()
+            && !permission.contains("look at")
+            && let Some(rest) = permission.strip_prefix("You may ")
+        {
+            return format!(
+                "Until end of turn, you may look at the top card of your library any time, and you may {rest}"
+            );
         }
         // A one-turn play permission reads "You may play ... this turn".
         if matches!(grant.spec.grantable, crate::grant::Grantable::PlayFrom)

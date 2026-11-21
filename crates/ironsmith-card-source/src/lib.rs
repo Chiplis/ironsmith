@@ -57,28 +57,38 @@ pub fn normalize_lookup_name(name: &str) -> String {
 }
 
 pub fn strip_parenthetical_text(text: &str) -> String {
+    // A reminder parenthetical may wrap onto the next line ("(As this Saga
+    // enters and after your draw\nstep, add a lore counter. ...)", Those Old
+    // Scientists). When the text's parentheses balance, the depth carries
+    // across line breaks; otherwise each line is stripped on its own.
+    let balanced = text.matches('(').count() == text.matches(')').count();
+    let mut depth = 0usize;
     text.lines()
-        .map(strip_parenthetical_text_from_line)
+        .map(|line| {
+            if !balanced {
+                depth = 0;
+            }
+            strip_parenthetical_text_from_line(line, &mut depth)
+        })
         .filter(|line| !line.is_empty())
         .collect::<Vec<_>>()
         .join("\n")
 }
 
-fn strip_parenthetical_text_from_line(line: &str) -> String {
+fn strip_parenthetical_text_from_line(line: &str, depth: &mut usize) -> String {
     let mut stripped = String::with_capacity(line.len());
-    let mut depth = 0usize;
     for ch in line.chars() {
         match ch {
             '(' => {
-                if depth == 0 {
+                if *depth == 0 {
                     while stripped.ends_with([' ', '\t']) {
                         stripped.pop();
                     }
                 }
-                depth += 1;
+                *depth += 1;
             }
-            ')' => depth = depth.saturating_sub(1),
-            _ if depth == 0 => stripped.push(ch),
+            ')' => *depth = depth.saturating_sub(1),
+            _ if *depth == 0 => stripped.push(ch),
             _ => {}
         }
     }

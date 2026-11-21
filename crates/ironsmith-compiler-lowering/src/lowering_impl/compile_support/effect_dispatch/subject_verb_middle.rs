@@ -3621,20 +3621,26 @@ pub(super) fn compile_subject_verb_middle(
             target,
             subtypes,
             duration,
-        }) => compile_tagged_effect_for_target(target, ctx, "subtyped", |spec| {
-            Effect::new(
-                crate::effects::ApplyContinuousEffect::with_spec(
-                    spec,
-                    crate::continuous::Modification::RemoveAllSubtypesOfFamily(
-                        crate::types::SubtypeFamily::Creature,
-                    ),
-                    duration.clone(),
+            copular_surface,
+        }) => {
+            let clause_surface =
+                (*copular_surface).then_some(ironsmith_core::ContinuousClauseSurface::Copular);
+            compile_tagged_effect_for_target(target, ctx, "subtyped", |spec| {
+                Effect::new(
+                    crate::effects::ApplyContinuousEffect::with_spec(
+                        spec,
+                        crate::continuous::Modification::RemoveAllSubtypesOfFamily(
+                            crate::types::SubtypeFamily::Creature,
+                        ),
+                        duration.clone(),
+                    )
+                    .with_additional_modification(
+                        crate::continuous::Modification::AddSubtypes(subtypes.clone()),
+                    )
+                    .with_clause_surface(clause_surface),
                 )
-                .with_additional_modification(
-                    crate::continuous::Modification::AddSubtypes(subtypes.clone()),
-                ),
-            )
-        }),
+            })
+        }
         SubjectVerbActionAst::Characteristics(
             CharacteristicActionAst::BecomeSaddledUntilEndOfTurn { target },
         ) => compile_tagged_effect_for_target(target, ctx, ironsmith_core::keyword_forms::SADDLED, |spec| {
@@ -3996,7 +4002,9 @@ pub(super) fn compile_subject_verb_middle(
             target,
             abilities,
             duration,
+            leading_choose_surface,
         }) => {
+            let leading_choose_surface = matches!(leading_choose_surface, true);
             let modifications=abilities.iter().map(|ability|lower_granted_ability_grant_modifications(std::slice::from_ref(ability))).collect::<Result<Vec<_>,_>>()?;
             if modifications.is_empty() {
                 return compile_tagged_effect_for_target(target, ctx, "granted", |spec| {
@@ -4023,8 +4031,13 @@ pub(super) fn compile_subject_verb_middle(
                         }).into_iter().collect(),
                     })
                     .collect::<Vec<_>>();
-                let mut choice=crate::effects::ChooseModeEffect::choose_one(modes)
-                    .with_chooser(crate::target::PlayerFilter::You);
+                let mut choice=crate::effects::ChooseModeEffect::choose_one(modes);
+                // "gains your choice of" names the controller as the inline
+                // chooser; a leading "Choose ..." sentence keeps the default
+                // (controller) chooser and its imperative surface.
+                if !leading_choose_surface {
+                    choice = choice.with_chooser(crate::target::PlayerFilter::You);
+                }
                 choice.decision_labels=abilities.iter().map(|ability|granted_ability_choice_label(ability,&spec).unwrap_or_default()).collect();
                 Effect::new(choice)
             })

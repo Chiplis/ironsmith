@@ -1389,3 +1389,60 @@ pub(super) fn noted_target_face_down_program(sentences: &[SentenceInput]) -> Res
     for sentence in &sentences[1..] { effects.extend(super::parse_effect_sentence_lexed(sentence.lowered())?); }
     Ok(Some(effects))
 }
+
+/// "Each opponent reveals cards from the top of their library until they
+/// reveal a creature card. Assimilate one of the creature cards revealed this
+/// way. Then each opponent puts the other cards they revealed this way on the
+/// bottom of their library in a random order." (Gift of Perfection): every
+/// opponent's reveal completes before one choice among all of their matches;
+/// the chosen card is assimilated and every other revealed card goes to the
+/// bottom of its owner's library in a random order.
+pub(super) fn per_opponent_reveal_assimilate_one(sentences: &[SentenceInput]) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    use crate::cards::builders::{ForEachEffectAst, LibraryActionAst, LibraryBottomOrderAst,
+        LibraryConsultModeAst, SubjectVerbActionAst, SubjectVerbEffectAst, TargetAst};
+    let [reveal, assimilate, bottom] = sentences else { return Ok(None); };
+    let words = |sentence: &SentenceInput| crate::lexer::parser_token_word_refs(sentence.lowered()).join(" ");
+    let reveal_words = words(reveal);
+    let Some(matched) = reveal_words
+        .strip_prefix("each opponent reveals cards from the top of their library until they reveal ")
+        .and_then(|rest| rest.strip_prefix("a ").or_else(|| rest.strip_prefix("an ")))
+        .and_then(|rest| rest.strip_suffix(" card"))
+    else { return Ok(None); };
+    let bottom_words = words(bottom);
+    if words(assimilate) != format!("assimilate one of the {matched} cards revealed this way")
+        || bottom_words.strip_prefix("then ").unwrap_or(&bottom_words)
+            != "each opponent puts the other cards they revealed this way on the bottom of their library in a random order"
+    { return Ok(None); }
+    let mut effects = super::parse_effect_sentence_lexed(reveal.lowered())?;
+    let pooled_matches = helper_tag_for_tokens(reveal.lowered(), "opponent_reveal_pooled_matches");
+    let mut revealed = None;
+    if let [EffectAst::ForEach(ForEachEffectAst::ForEachOpponent { effects: body })] = effects.as_mut_slice() {
+        for effect in body.iter_mut() {
+            if let EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                action: SubjectVerbActionAst::Library(LibraryActionAst::ConsultTopOfLibrary {
+                    mode: LibraryConsultModeAst::Reveal, accumulated_match_tag, all_tag, ..
+                }),
+                ..
+            }) = effect
+                && revealed.is_none()
+            {
+                *accumulated_match_tag = Some(pooled_matches.clone());
+                revealed = Some(all_tag.clone());
+            }
+        }
+    }
+    let Some(revealed) = revealed else { return Ok(None); };
+    let chosen = helper_tag_for_tokens(assimilate.lowered(), "assimilated_reveal_choice");
+    effects.push(EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseTaggedObjectsInZone {
+        filter: ObjectFilter::tagged(pooled_matches),
+        count: ChoiceCount::exactly(1),
+        player: PlayerAst::You,
+        tag: chosen.clone(),
+        zone: Zone::Library,
+    }));
+    effects.push(super::verb_handlers::assimilate_card_movement(TargetAst::Tagged(chosen.clone(), None)));
+    effects.push(EffectAst::subject_verb_put_tagged_remainder_on_bottom_of_library(
+        revealed, Some(chosen), LibraryBottomOrderAst::Random, PlayerAst::You,
+    ));
+    Ok(Some(effects))
+}

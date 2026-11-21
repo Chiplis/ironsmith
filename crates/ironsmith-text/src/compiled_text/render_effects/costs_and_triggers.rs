@@ -2332,6 +2332,20 @@ pub(super) fn describe_choose_then_unattach_cost(
     if choose.filter.source && exact == 1 {
         return Some("Unattach this source".to_string());
     }
+    // "{T}, Unattach Shuriken:" (Shuriken, Leonin Bola): inside an ability an
+    // attachment grants, the unattached object is the granting attachment,
+    // which the card-level renderer names.
+    if exact == 1
+        && choose.filter.tagged_constraints.iter().any(|constraint| {
+            constraint.relation == crate::filter::TaggedOpbjectRelation::IsTaggedObject
+                && constraint.tag.as_str() == crate::tag::GRANTING_SOURCE_TAG
+        })
+    {
+        return Some(format!(
+            "Unattach {}",
+            crate::compiled_text::GRANTING_SOURCE_RENDER_SURFACE
+        ));
+    }
     let noun = if choose.filter.card_types == [CardType::Artifact]
         && choose.filter.subtypes == [crate::types::Subtype::Equipment]
     {
@@ -3640,7 +3654,7 @@ pub(crate) fn pluralize_word(word: &str) -> String {
             "fungi".to_string()
         };
     }
-    if matches!(lower.as_str(), "myr" | "merfolk" | "treefolk" | "equipment") {
+    if matches!(lower.as_str(), "myr" | "merfolk" | "treefolk" | "equipment" | "starfish" | "fish") {
         return word.to_string();
     }
     if lower == "mouse" {
@@ -4096,6 +4110,15 @@ pub(crate) fn pluralize_noun_phrase(phrase: &str) -> String {
         " of the chosen color",
         " that aren't of the chosen type",
         " with different names",
+        // Space-sculptor sector qualifiers (CR 702.158) follow the noun; the
+        // negated forms come first so "not" stays in the qualifier.
+        " not in the alpha sector",
+        " not in the beta sector",
+        " not in the gamma sector",
+        " in the chosen sector",
+        " in the alpha sector",
+        " in the beta sector",
+        " in the gamma sector",
     ] {
         if let Some(head) = base.strip_suffix(suffix) {
             let head = head.trim_end();
@@ -4122,7 +4145,12 @@ pub(crate) fn pluralize_noun_phrase(phrase: &str) -> String {
             trailing
         );
     }
-    if base.eq_ignore_ascii_case("fungus") {
+    // A Latin "-us" subtype ends in "s" without being plural (Nautiluses,
+    // Octopuses).
+    if base.eq_ignore_ascii_case("fungus")
+        || base.eq_ignore_ascii_case("nautilus")
+        || base.eq_ignore_ascii_case("octopus")
+    {
         format!("{}{}", pluralize_word(base), trailing)
     } else if base.ends_with('s') {
         format!("{base}{trailing}")
@@ -4352,6 +4380,21 @@ pub(super) fn describe_for_players_choose_then_destroy_chosen_collection(
         ));
     }
 
+    // "For each opponent, choose an artifact or land that player controls.
+    // Destroy the chosen permanents." (Ultimate Magic: Meteor): the destroy
+    // consumes the whole chosen collection by its tag.
+    if matches!(&destroy.spec, ChooseSpec::Tagged(tag) if tag == &choose.tag) {
+        let chosen_kind = match choose.filter.card_types.as_slice() {
+            [card_type] if choose.filter.any_of.is_empty() => {
+                pluralize_noun_phrase(&card_type.name().to_ascii_lowercase())
+            }
+            _ => "permanents".to_string(),
+        };
+        let selection = describe_choose_selection(choose);
+        return Some(format!(
+            "For each {quantified}, {chooser} {selection}. Destroy the chosen {chosen_kind}"
+        ));
+    }
     let destroy_filter = match destroy.spec.base() {
         ChooseSpec::All(filter) | ChooseSpec::Object(filter) => filter,
         _ => return None,
@@ -5867,7 +5910,8 @@ pub(crate) fn describe_for_players_choose_move_then_characteristics(
         || !forever_on_moved(ability_apply)
         || !first_apply.additional_modifications.is_empty()
         || !second_apply.additional_modifications.is_empty()
-        || !apply_continuous_grants_decayed(ability_apply)
+        || !(apply_continuous_grants_decayed(ability_apply)
+            || apply_continuous_grants_typed_decayed(ability_apply))
     {
         return None;
     }
@@ -5906,6 +5950,22 @@ pub(crate) fn describe_for_players_choose_move_then_characteristics(
 pub(crate) fn describe_for_players_choose_move_then_combined_characteristics(
     effects: &[&Effect],
 ) -> Option<String> {
+    // The three characteristic grants may stay one sequence after the move
+    // (Ghouls' Night Out); they are the same three typed grants.
+    if let [for_players_effect, move_effect, sequence_effect] = effects
+        && let Some(sequence) = unwrap_basic_tag_wrappers(sequence_effect)
+            .downcast_ref::<crate::effects::SequenceEffect>()
+        && let [first, second, third] = sequence.effects.as_slice()
+        && let Some(text) = describe_for_players_choose_move_then_characteristics(&[
+            *for_players_effect,
+            *move_effect,
+            first,
+            second,
+            third,
+        ])
+    {
+        return Some(text);
+    }
     let [for_players_effect, move_effect, apply_effect] = effects else {
         return None;
     };
@@ -6414,8 +6474,12 @@ fn describe_choose_then_sacrifice_selection(
         };
         if let Some((fraction, rounded)) = fraction {
             let kind = pluralize_noun_phrase(&describe_sacrifice_choice_kind(choose));
+            // "Target player sacrifices half the permanents they control"
+            // (Curse of the Cabal): the counted set is controlled by the
+            // acting player, bound as the iterated player.
             let controls = choose.filter.controller.as_ref().is_some_and(|controller| {
                 sacrifice_choice_players_match(controller, &choose.chooser)
+                    || *controller == PlayerFilter::IteratedPlayer
             });
             let control_suffix = if controls {
                 if render_player == &PlayerFilter::You {
@@ -7240,6 +7304,28 @@ pub(crate) fn describe_tagged_target_then_cant_restriction(
             "{subject} can't attack or block until your next turn"
         ));
     }
+    // "Up to one target creature can't block for as long as you control
+    // this Saga" (There and Back Again): a lasting attack or block
+    // restriction on the declared target reads its own duration.
+    let lasting = match &cant.restriction {
+        crate::effect::Restriction::Block(filter) => Some((filter, "can't block")),
+        crate::effect::Restriction::Attack(filter) => Some((filter, "can't attack")),
+        _ => None,
+    };
+    if matches!(
+        cant.duration,
+        crate::effect::Until::YouStopControllingThis | crate::effect::Until::YourNextTurn
+    ) && matches!(cant.start, crate::effect::RestrictionStart::Immediate)
+        && cant.duration_surface == crate::effect::RestrictionDurationSurface::Default
+        && let Some((filter, verb)) = lasting
+        && filter.tagged_constraints.iter().any(|constraint| {
+            constraint.relation == crate::filter::TaggedOpbjectRelation::IsTaggedObject
+                && constraint.tag.as_str() == tagged.tag.as_str()
+        })
+    {
+        let subject = capitalize_first(&describe_choose_spec(&target_only.target));
+        return Some(format!("{subject} {verb} {}", describe_until(&cant.duration)));
+    }
     if cant.duration != crate::effect::Until::EndOfTurn {
         return None;
     }
@@ -7756,6 +7842,14 @@ pub(crate) fn describe_for_each_filter(filter: &ObjectFilter) -> String {
         && !rest.starts_with("without ")
         && !rest.starts_with("that ")
         && !rest.starts_with("that's ")
+        // "permanents named Food Fight you control": a name qualifier
+        // needs its noun head (Food Fight).
+        && !rest.starts_with("named ")
+        && !rest.starts_with("not named ")
+        // A coordinated head ("permanent and each suspended card") is not a
+        // qualifier on the noun; stripping it leaves "each or ...".
+        && !rest.starts_with("or ")
+        && !rest.starts_with("and ")
         && matches!(filter.zone, None | Some(Zone::Battlefield))
         && !filter.chosen_creature_type
         && !filter.chosen_card_type
@@ -8039,4 +8133,42 @@ fn with_their_choice_before_relative_clause(chosen: &str) -> String {
         Some((head, relative)) => format!("{head} of their choice that {relative}"),
         None => format!("{chosen} of their choice"),
     }
+}
+
+/// Decayed (CR 702.147a) read from its typed expansion: a keyword-identity
+/// marker granted together with "can't block" and the "whenever this
+/// creature attacks, sacrifice it at end of combat" trigger. The marker's
+/// own display is retained label prose, which an audit cannot read.
+pub(super) fn apply_continuous_grants_typed_decayed(
+    apply: &crate::effects::ApplyContinuousEffect,
+) -> bool {
+    let Some(crate::continuous::Modification::AddAbility(marker)) = &apply.modification else {
+        return false;
+    };
+    if marker.id() != crate::static_abilities::StaticAbilityId::KeywordMarker {
+        return false;
+    }
+    let mut cant_block = false;
+    let mut sacrifice_trigger = false;
+    for modification in &apply.additional_modifications {
+        match modification {
+            crate::continuous::Modification::AddAbility(ability)
+                if ability.id() == crate::static_abilities::StaticAbilityId::CantBlock
+                    && !cant_block =>
+            {
+                cant_block = true;
+            }
+            crate::continuous::Modification::AddAbilityGeneric(ability) if !sacrifice_trigger => {
+                let crate::ability::AbilityKind::Triggered(triggered) = &ability.kind else {
+                    return false;
+                };
+                if !crate::compiled_text::normalize_common::is_decayed_sacrifice_trigger(triggered) {
+                    return false;
+                }
+                sacrifice_trigger = true;
+            }
+            _ => return false,
+        }
+    }
+    cant_block && sacrifice_trigger
 }

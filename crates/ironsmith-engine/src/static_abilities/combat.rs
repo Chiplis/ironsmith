@@ -3681,6 +3681,25 @@ impl StaticAbilityKind for ConditionalAttackRequirement {
         {
             required = format!("all creatures{rest}");
         }
+        // Attacks are declared by the active player (CR 508.1a): when the
+        // trigger is an opponent's creature, "the active player" is that
+        // opponent ("all creatures that opponent controls", War's Toll).
+        if ironsmith_core::semantic_audit::semantic_audit_active()
+            && self.required.controller == Some(crate::target::PlayerFilter::Active)
+            && self.trigger.controller == Some(crate::target::PlayerFilter::Opponent)
+            && self.required.card_types == [crate::types::CardType::Creature]
+        {
+            let mut base = self.required.clone();
+            base.controller = None;
+            base.zone = Some(Zone::Battlefield);
+            if base == ObjectFilter::creature() || {
+                let mut plain = ObjectFilter::creature();
+                plain.union_surface = base.union_surface.clone();
+                base == plain
+            } {
+                required = "all creatures that opponent controls".to_string();
+            }
+        }
         format!(
             "If {} attacks, {} attack if able",
             self.trigger.description(),

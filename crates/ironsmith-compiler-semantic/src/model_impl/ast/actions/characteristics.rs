@@ -72,6 +72,9 @@ pub enum CharacteristicActionAst {
         target: TargetAst,
         subtypes: Vec<Subtype>,
         duration: Until,
+        /// Authored with the copula ("and is a Werewolf") instead of
+        /// "becomes". Presentation only.
+        copular_surface: bool,
     },
     BecomeSaddledUntilEndOfTurn {
         target: TargetAst,

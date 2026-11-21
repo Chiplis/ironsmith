@@ -35,7 +35,6 @@ pub(super) fn audit_ability_line_rephrasings(line: String, def: &CardDefinition)
     line = line
         .replace("that object's power", "its power")
         .replace("that object's toughness", "its toughness");
-    line = reflexive_when_you_do(&line);
     line = shared_trigger_subject(&line);
     line = sacrifice_cost_without_you_control(&line);
     line = line.replace(
@@ -165,7 +164,7 @@ pub(super) fn audit_ability_line_rephrasings(line: String, def: &CardDefinition)
     line = serial_predicate_list_r5f(&line);
     line = self_zone_references_r5f(&line, def);
     line = keyword_non_mana_cost_dash_r5f(&line);
-    line = line.replace(", Octopus, ", ", Octopuses, ");
+
     // The replaced life gain is yours, so you draw (Nefarious Lich).
     line = line.replace("If you would gain life, that player draws ", "If you would gain life, draw ");
     // Basic land types are proper subtypes (CR 205.3i): "are Plains",
@@ -788,21 +787,6 @@ fn targets_only_a_single(line: &str) -> String {
     out
 }
 
-/// A reflexive trigger on the sacrifice just made reads "When you do".
-fn reflexive_when_you_do(line: &str) -> String {
-    const MARK: &str = ". When you sacrifice one or more ";
-    let Some(at) = line.find(MARK) else {
-        return line.to_string();
-    };
-    let rest = &line[at + MARK.len()..];
-    let Some((noun, tail)) = rest.split_once(" this way, ") else {
-        return line.to_string();
-    };
-    if noun.contains(' ') {
-        return line.to_string();
-    }
-    format!("{}. When you do, {tail}", &line[..at])
-}
 
 /// "Whenever X enters or X attacks" -> "Whenever X enters or attacks".
 fn shared_trigger_subject(line: &str) -> String {
@@ -1104,6 +1088,15 @@ fn commander_name(line: &str, name: &str) -> String {
 /// do: "• Collective Defiance deals 4 damage", "• This creature deals 4
 /// damage".
 fn mode_source_damage(line: &str, def: &CardDefinition) -> String {
+    // A modal ability's header and bullets are one rendered line joined by
+    // newlines (render_effects/effect_impl/late.rs `bullet_modes`).
+    if line.contains('\n') {
+        return line
+            .split('\n')
+            .map(|part| mode_source_damage(part, def))
+            .collect::<Vec<_>>()
+            .join("\n");
+    }
     let Some(rest) = line.strip_prefix("• Deal ") else {
         return line.to_string();
     };
@@ -1193,10 +1186,6 @@ fn audit_ability_line_rephrasings_r5t(line: String) -> String {
         .replace("that non-wall creature", "that non-Wall creature")
         .replace("Eldrazis", "Eldrazi");
     line = line
-        .replace(
-            "if you've drawn two or more cards this turn",
-            "if you drew two or more cards this turn",
-        )
         .replace(
             "If the attacking player does, the attacking player draws a card.",
             "If the player does, they draw a card.",

@@ -269,6 +269,21 @@ pub fn parse_if_result_predicate_lexed_tokens(
         if passive_no_result && surface.actor == PriorEffectResultActor::Passive {
             surface.negated = true;
         }
+        // "If the player discards a card this way" (Chains of
+        // Mephistopheles): the article is dropped by `normalized`, so read
+        // the authored definite actor from the raw words.
+        {
+            let raw_words = crate::lexer::parser_token_word_refs(tokens);
+            let raw_words = raw_words
+                .strip_prefix(&["if"])
+                .or_else(|| raw_words.strip_prefix(&["when"]))
+                .unwrap_or(&raw_words);
+            if surface.actor == PriorEffectResultActor::ThatPlayer
+                && raw_words.starts_with(&["the", "player"])
+            {
+                surface.definite_player_surface = true;
+            }
+        }
         return Some(IfResultPredicate::PriorEffectResult(surface));
     }
     let words = normalized
