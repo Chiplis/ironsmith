@@ -2122,6 +2122,13 @@ impl StaticAbilityKind for CostReduction {
         Some(self)
     }
 
+    fn activity_is_constant(&self) -> bool {
+
+        false
+
+    }
+
+
     fn is_active(&self, game: &crate::game_state::GameState, source: crate::ids::ObjectId) -> bool {
         cost_modifier_condition_is_active(&self.condition, game, source)
     }
@@ -2864,6 +2871,13 @@ impl StaticAbilityKind for ActivatedAbilityCostReduction {
         true
     }
 
+    fn activity_is_constant(&self) -> bool {
+
+        false
+
+    }
+
+
     fn is_active(&self, game: &crate::game_state::GameState, source: crate::ids::ObjectId) -> bool {
         cost_modifier_condition_is_active(&self.static_condition, game, source)
     }
@@ -3036,6 +3050,13 @@ impl StaticAbilityKind for ActivatedAbilityCostIncrease {
     fn with_static_condition(&self, condition: crate::ConditionExpr) -> Option<StaticAbility> {
         Some(StaticAbility::new(self.clone().with_condition(condition)))
     }
+
+    fn activity_is_constant(&self) -> bool {
+
+        false
+
+    }
+
 
     fn is_active(&self, game: &crate::game_state::GameState, source: crate::ids::ObjectId) -> bool {
         cost_modifier_condition_is_active(&self.condition, game, source)
@@ -3883,6 +3904,13 @@ impl StaticAbilityKind for ThisSpellCostReduction {
         Some(self)
     }
 
+    fn activity_is_constant(&self) -> bool {
+
+        false
+
+    }
+
+
     fn is_active(&self, game: &crate::game_state::GameState, source: crate::ids::ObjectId) -> bool {
         this_spell_cost_condition_is_active_for_cast(game, source, &self.condition, &[])
     }
@@ -3967,6 +3995,13 @@ impl StaticAbilityKind for ThisSpellCostReductionManaCost {
     fn this_spell_cost_reduction_mana_cost(&self) -> Option<&ThisSpellCostReductionManaCost> {
         Some(self)
     }
+
+    fn activity_is_constant(&self) -> bool {
+
+        false
+
+    }
+
 
     fn is_active(&self, game: &crate::game_state::GameState, source: crate::ids::ObjectId) -> bool {
         this_spell_cost_condition_is_active_for_cast(game, source, &self.condition, &[])
@@ -4155,6 +4190,13 @@ impl StaticAbilityKind for CostIncrease {
         Some(self)
     }
 
+    fn activity_is_constant(&self) -> bool {
+
+        false
+
+    }
+
+
     fn is_active(&self, game: &crate::game_state::GameState, source: crate::ids::ObjectId) -> bool {
         cost_modifier_condition_is_active(&self.condition, game, source)
     }
@@ -4317,6 +4359,13 @@ impl StaticAbilityKind for CostReductionManaCost {
         Some(self)
     }
 
+    fn activity_is_constant(&self) -> bool {
+
+        false
+
+    }
+
+
     fn is_active(&self, game: &crate::game_state::GameState, source: crate::ids::ObjectId) -> bool {
         cost_modifier_condition_is_active(&self.condition, game, source)
     }
@@ -4422,6 +4471,13 @@ impl StaticAbilityKind for CostIncreaseManaCost {
     fn cost_increase_mana_cost(&self) -> Option<&CostIncreaseManaCost> {
         Some(self)
     }
+
+    fn activity_is_constant(&self) -> bool {
+
+        false
+
+    }
+
 
     fn is_active(&self, game: &crate::game_state::GameState, source: crate::ids::ObjectId) -> bool {
         cost_modifier_condition_is_active(&self.condition, game, source)

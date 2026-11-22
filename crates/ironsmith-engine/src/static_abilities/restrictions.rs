@@ -26,6 +26,13 @@ impl StaticAbilityKind for BlockingAsThoughNoLandwalk {
         self.spec.display.clone()
     }
 
+    fn activity_is_constant(&self) -> bool {
+
+        false
+
+    }
+
+
     fn is_active(&self, game: &GameState, source: ObjectId) -> bool {
         !game.is_phased_out(source)
     }
@@ -510,6 +517,13 @@ impl StaticAbilityKind for MinimumSpellTotalMana {
             self.minimum, self.minimum
         )
     }
+
+    fn activity_is_constant(&self) -> bool {
+
+        false
+
+    }
+
 
     fn is_active(&self, game: &GameState, source: ObjectId) -> bool {
         game.object(source).is_some_and(|object| {
@@ -1068,6 +1082,13 @@ impl StaticAbilityKind for RuleRestriction {
     )> {
         Some((&self.restriction, &self.display, self.condition.as_ref()))
     }
+
+    fn activity_is_constant(&self) -> bool {
+
+        false
+
+    }
+
 
     fn is_active(&self, game: &GameState, source: ObjectId) -> bool {
         let Some(condition) = &self.condition else {

@@ -6548,7 +6548,7 @@ retain_original_types: false, retain_original_name: false,
             || self.battlefield_flags.rooms_with_no_unlocked_door.contains(&id)
     }
 
-    fn effect_free_fingerprint(&self) -> crate::game_state::EffectFreeFingerprint {
+    pub(crate) fn effect_free_fingerprint(&self) -> crate::game_state::EffectFreeFingerprint {
         crate::game_state::EffectFreeFingerprint {
             turn_number: self.turn.turn_number,
             active_player: self.turn.active_player,
@@ -8316,6 +8316,7 @@ retain_original_types: false, retain_original_name: false,
                 && (object.level_granted_abilities().iter().any(Self::static_ability_requires_cant_update)
                     || live_grants.iter().any(Self::static_ability_requires_cant_update)));
         let granted: Vec<_> = live_grants.iter().cloned().map(crate::ability::Ability::static_ability).collect();
+        let unmodified = crate::continuous::unmodified_ability_occurrences(object, self.turn.turn_number);
         // `may_have_triggered_abilities_for_event_kind`'s per-object reading.
         let (mut triggers_on_any_kind, mut trigger_kinds) = (false, 0u128);
         let mut subscribe = |ability: &crate::ability::Ability| {
@@ -8354,10 +8355,8 @@ retain_original_types: false, retain_original_name: false,
                     AbilityKind::Static(static_ability) if Self::static_is_history_designation(static_ability)))
                 || object.level_granted_abilities().iter().any(Self::static_is_history_designation)
                 || live_grants.iter().any(Self::static_is_history_designation),
-            enter_as_copy: crate::continuous::unmodified_ability_occurrences(object, self.turn.turn_number)
-                .iter()
-                .any(|ability| matches!(&ability.kind,
-                    AbilityKind::Static(static_ability) if static_ability.enter_as_copy_as_enters().is_some())),
+            enter_as_copy: unmodified.iter().any(|ability| matches!(&ability.kind,
+                AbilityKind::Static(static_ability) if static_ability.enter_as_copy_as_enters().is_some())),
             goad: object.abilities.iter().any(|ability| matches!(&ability.kind,
                 AbilityKind::Static(static_ability) if Self::GOAD_STATIC_IDS.contains(&static_ability.id()))),
             grant_holder: !object.temporary_static_ability_grants.is_empty()
@@ -8369,8 +8368,34 @@ retain_original_types: false, retain_original_name: false,
                     .any(crate::triggers::class_event_choice::static_is_class_event_choice)
                 || live_grants.iter().any(crate::triggers::class_event_choice::static_is_class_event_choice),
             triggers_on_any_kind,
+            permission_grantor: object.linked_face_layout == crate::card::LinkedFaceLayout::Split
+                || self.merged_permanent(object.stable_id).is_some()
+                || unmodified.iter().chain(object.counters.occurrence_abilities()).any(|ability| matches!(&ability.kind,
+                    AbilityKind::Static(static_ability) if Self::static_grants_permission(static_ability))),
             trigger_kinds,
         }
+    }
+
+    /// A static that `GrantRegistry::collect_static_grants` reads: a grant
+    /// spec or a linked-exile inspection pair.
+    pub(crate) fn static_grants_permission(ability: &crate::static_abilities::StaticAbility) -> bool {
+        ability.grant_spec().is_some() || ability.source_exiled_inspection_pair().is_some()
+    }
+
+    /// Whether any object may currently have a static that grants a
+    /// permission. `false` proves `collect_static_grants` finds nothing:
+    /// every object's statics are its unmodified ones (no level or temporary
+    /// grant), none of which grants, and no live effect adds or copies one.
+    pub(crate) fn board_may_hold_static_grants(
+        &self,
+        effects: &[crate::continuous::ContinuousEffect],
+    ) -> bool {
+        let summary = self.board_static_summary();
+        summary.permission_grantor
+            || summary.grant_holder
+            || effects.iter().any(|effect| {
+                Self::modification_may_grant_static_ability(&effect.modification, &Self::static_grants_permission)
+            })
     }
 
     /// Every object's `ObjectStaticSummary` combined. Kept as per-flag

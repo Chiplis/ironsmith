@@ -3433,6 +3433,23 @@ impl StaticAbilityKind for StaticAbilityModelInterpreter {
             .generate_replacement_effect(source, controller)
     }
 
+    fn activity_is_constant(&self) -> bool {
+        self.id() != StaticAbilityId::RuleRestriction
+            && !matches!(
+                &self.model.payload,
+                ironsmith_core::StaticAbilityPayload::Conditional { .. }
+            )
+            && self.activated_ability_cost_reduction.is_none()
+            && self.activated_ability_cost_increase.is_none()
+            && self.cost_reduction.is_none()
+            && self.cost_reduction_mana_cost.is_none()
+            && self.cost_increase.is_none()
+            && self.cost_increase_mana_cost.is_none()
+            && self
+                .leaf_static_ability()
+                .is_none_or(StaticAbility::activity_is_constant)
+    }
+
     fn is_active(&self, game: &GameState, source: ObjectId) -> bool {
         // Native restrictions own contextual predicates, including the
         // opposing attacker. Evaluating them in a source-only frame first

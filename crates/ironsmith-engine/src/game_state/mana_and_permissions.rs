@@ -223,6 +223,7 @@ impl GameState {
     fn assert_static_replacements_match_full_publication(&self) {
         let mut fresh = self.clone();
         fresh.source_indexes().borrow_mut().replacements = Default::default();
+        fresh.source_indexes().borrow_mut().replacement_delta = None;
         fresh.source_indexes().borrow_mut().replacement_publication = None;
         fresh.effect_store.replacement_effects.clear_static_ability_effects();
         let Ok(groups) = crate::replacement_ability_processor::generate_replacement_effect_groups(&fresh) else {

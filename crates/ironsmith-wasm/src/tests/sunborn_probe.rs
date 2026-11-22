@@ -91,6 +91,16 @@ fn run_probe(wasm: &mut WasmGame) {
 }
 
 fn pass(wasm: &mut WasmGame) {
+    if matches!(wasm.pending_decision.as_ref(), Some(DecisionContext::Attackers(_))) {
+        wasm.dispatch_typed_command(crate::UiCommand::DeclareAttackers { declarations: Vec::new(), bands: Vec::new() }, 0.0)
+            .expect("declare no attackers");
+        return;
+    }
+    if matches!(wasm.pending_decision.as_ref(), Some(DecisionContext::Blockers(_))) {
+        wasm.dispatch_typed_command(crate::UiCommand::DeclareBlockers { declarations: Vec::new() }, 0.0)
+            .expect("declare no blockers");
+        return;
+    }
     let index = match wasm.pending_decision.as_ref() {
         Some(DecisionContext::Priority(ctx)) => ctx
             .actions
@@ -106,3 +116,101 @@ fn pass(wasm: &mut WasmGame) {
     .expect("pass priority");
 }
 
+
+/// Two consecutive upkeeps: the second Followed Footsteps trigger sees the
+/// 512 token copies from the first as 512 more doublers. Passes priority
+/// through the whole turn cycle in between, timing every dispatch.
+#[test]
+#[ignore = "timing probe; run with --ignored --nocapture"]
+fn sunborn_footsteps_second_batch_probe() {
+    let _guard = crate::test_id_counter_guard();
+    let mut wasm = sunborn_footsteps_game(11);
+    let plains = card("Plains", "Type: Basic Land — Plains\n({T}: Add {W}.)");
+    for player in [PlayerId::from_index(0), PlayerId::from_index(1)] {
+        for _ in 0..20 {
+            wasm.game.create_object_from_definition(&plains, player, Zone::Library);
+        }
+    }
+    let t = std::time::Instant::now();
+    wasm.advance_until_decision().expect("upkeep trigger reaches priority");
+    eprintln!("advance: {:?}", t.elapsed());
+    let start = wasm.game.turn.turn_number;
+    let mut slow = std::time::Duration::ZERO;
+    for _ in 0..400 {
+        let before = wasm.game.battlefield.len();
+        let (turn, step) = (wasm.game.turn.turn_number, wasm.game.turn.step);
+        let t = std::time::Instant::now();
+        pass(&mut wasm);
+        let elapsed = t.elapsed();
+        let t2 = std::time::Instant::now();
+        wasm.snapshot_json().expect("snapshot");
+        let snap = t2.elapsed();
+        slow += elapsed + snap;
+        if elapsed.as_millis() > 20 || snap.as_millis() > 20 || wasm.game.battlefield.len() != before {
+            eprintln!("turn {turn} {step:?} pass {elapsed:?} snapshot {snap:?} battlefield {} stack {}", wasm.game.battlefield.len(), wasm.game.stack.len());
+        }
+        if wasm.game.turn.turn_number >= start + 2 && wasm.game.stack.is_empty() && wasm.game.battlefield.len() > 600 {
+            break;
+        }
+    }
+    eprintln!("total dispatch+snapshot: {slow:?}");
+}
+
+/// Times what the browser does after each Followed Footsteps batch: the
+/// resolving dispatch (deferred priority analysis, as in the browser) and the
+/// background priority analysis over every source on the board.
+#[test]
+#[ignore = "timing probe; run with --ignored --nocapture"]
+fn sunborn_footsteps_analysis_probe() {
+    let _guard = crate::test_id_counter_guard();
+    let batches: usize = std::env::var("BATCHES").ok().and_then(|v| v.parse().ok()).unwrap_or(2);
+    let analyse_from: usize = std::env::var("ANALYSE_FROM").ok().and_then(|v| v.parse().ok()).unwrap_or(1);
+    let previous = ironsmith::game_loop::priority_analysis_deferred();
+    let mut wasm = sunborn_footsteps_game(11);
+    wasm.set_deferred_priority_analysis(true);
+    let plains = card("Plains", "Type: Basic Land — Plains\n({T}: Add {W}.)");
+    for player in [PlayerId::from_index(0), PlayerId::from_index(1)] {
+        for _ in 0..20 {
+            wasm.game.create_object_from_definition(&plains, player, Zone::Library);
+        }
+    }
+    wasm.advance_until_decision().expect("upkeep trigger reaches priority");
+    for batch in 1..=batches {
+        // Pass until the trigger resolves (batch 1 is already on the stack).
+        let mut resolve = std::time::Duration::ZERO;
+        loop {
+            let had_stack = !wasm.game.stack.is_empty();
+            let before = wasm.game.battlefield.len();
+            let t = std::time::Instant::now();
+            pass(&mut wasm);
+            if had_stack {
+                resolve += t.elapsed();
+            }
+            if wasm.game.battlefield.len() > before + 100 {
+                break;
+            }
+        }
+        eprintln!("batch {batch}: resolve dispatches {resolve:?} battlefield {}", wasm.game.battlefield.len());
+        if batch >= analyse_from {
+            let t = std::time::Instant::now();
+            assert!(wasm.begin_priority_analysis("probe".into()), "priority decision is pending");
+            let mut steps = 0usize;
+            loop {
+                steps += 1;
+                match wasm.advance_priority_analysis_step("probe", 8).expect("analysis step") {
+                    Some(step) if step.finished => break,
+                    Some(_) => {}
+                    None => break,
+                }
+            }
+            eprintln!("batch {batch}: priority analysis {:?} over {steps} steps", t.elapsed());
+        }
+        if batch < batches {
+            // Pass to the next upkeep trigger.
+            while wasm.game.stack.is_empty() {
+                pass(&mut wasm);
+            }
+        }
+    }
+    ironsmith::game_loop::set_priority_analysis_deferred(previous);
+}

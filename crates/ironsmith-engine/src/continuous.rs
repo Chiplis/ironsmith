@@ -1378,6 +1378,10 @@ pub struct ContinuousEffectManager {
     /// entries use the object's own entry timestamp.
     object_entry_moments: FxMap<ObjectId, u64>,
 
+    /// Objects whose entry, counter or attachment timestamp changed, for
+    /// indexes that skip unchanged objects (never gameplay state).
+    timestamp_changes: crate::incremental::ChangeJournal<ObjectId>,
+
     /// First entry timestamp of the open simultaneous action, when one is open.
     open_entry_moment: Option<Option<u64>>,
 
@@ -2104,6 +2108,7 @@ impl ContinuousEffectManager {
     pub fn record_entry(&mut self, object_id: ObjectId) {
         let ts = self.next_timestamp();
         self.object_entry_timestamps.insert(object_id, ts);
+        self.timestamp_changes.record(object_id);
         if let Some(moment) = self.open_entry_moment.as_mut() {
             let moment = *moment.get_or_insert(ts);
             self.object_entry_moments.insert(object_id, moment);
@@ -2137,6 +2142,7 @@ impl ContinuousEffectManager {
         let ts = self.next_timestamp();
         self.counter_timestamps
             .insert((object_id, counter_type), ts);
+        self.timestamp_changes.record(object_id);
     }
 
     /// Record when an aura/equipment becomes attached.
@@ -2144,6 +2150,7 @@ impl ContinuousEffectManager {
     pub fn record_attachment(&mut self, attachment_id: ObjectId) {
         let ts = self.next_timestamp();
         self.attachment_timestamps.insert(attachment_id, ts);
+        self.timestamp_changes.record(attachment_id);
     }
 
     /// Get the timestamp for when an object entered its current zone.
@@ -2165,6 +2172,7 @@ impl ContinuousEffectManager {
         let ts = self.next_timestamp();
         self.object_entry_timestamps.insert(object_id, ts);
         self.object_entry_moments.remove(&object_id);
+        self.timestamp_changes.record(object_id);
     }
 
     /// Get the timestamp for an object's counters.
@@ -2202,6 +2210,20 @@ impl ContinuousEffectManager {
         self.counter_timestamps
             .retain(|(id, _), _| *id != object_id);
         self.attachment_timestamps.remove(&object_id);
+        self.timestamp_changes.record(object_id);
+    }
+
+    /// The position in the timestamp-change journal (see `timestamp_changes`).
+    pub(crate) fn timestamp_cursor(&self) -> crate::incremental::ChangeCursor {
+        self.timestamp_changes.cursor()
+    }
+
+    /// Objects whose timestamps changed since `cursor`; `None` if unknown.
+    pub(crate) fn timestamp_changes_since(
+        &self,
+        cursor: &crate::incremental::ChangeCursor,
+    ) -> Option<Vec<ObjectId>> {
+        self.timestamp_changes.since(cursor)
     }
 }
 

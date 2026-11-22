@@ -1467,6 +1467,13 @@ impl StaticAbilityKind for Grants {
         ))
     }
 
+    fn activity_is_constant(&self) -> bool {
+
+        false
+
+    }
+
+
     fn is_active(&self, game: &GameState, source: ObjectId) -> bool {
         let Some(condition) = &self.condition else {
             return true;

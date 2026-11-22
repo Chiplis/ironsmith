@@ -2405,6 +2405,13 @@ impl GrantRegistry {
             .is_none()
             .then(|| game.try_all_continuous_effects_arc().ok())
             .flatten();
+        // Nothing on the board grants a permission and no live effect can
+        // add one: skip reading every object's characteristics.
+        if let Some(effects) = effects.as_deref()
+            && !game.board_may_hold_static_grants(effects)
+        {
+            return (grants, inspection);
+        }
         let mut collect_from_source = |source_id: ObjectId, source_is_battlefield: bool| {
             if source_is_battlefield && game.is_phased_out(source_id) {
                 return;

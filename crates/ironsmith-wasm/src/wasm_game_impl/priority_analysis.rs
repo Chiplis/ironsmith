@@ -14,8 +14,8 @@ pub(super) struct PriorityAnalysisJob {
     unresolved: bool,
 }
 
-struct PriorityAnalysisStep {
-    finished: bool,
+pub(crate) struct PriorityAnalysisStep {
+    pub(crate) finished: bool,
     /// Whether this step replaced the published priority menu.
     published: bool,
 }
@@ -65,7 +65,7 @@ impl WasmGame {
     /// retires a provisional one, nor finishes leaves the published menu as
     /// it was: rebuilding, re-keying and re-encoding an identical decision on
     /// every candidate is a fixed cost paid once per object on the board.
-    fn advance_priority_analysis_step(&mut self, token: &str, budget: usize) -> Result<Option<PriorityAnalysisStep>, ironsmith::game_loop::GameLoopError> {
+    pub(crate) fn advance_priority_analysis_step(&mut self, token: &str, budget: usize) -> Result<Option<PriorityAnalysisStep>, ironsmith::game_loop::GameLoopError> {
         let Some(mut job) = self.priority_analysis_job.take() else {
             return Ok(None);
         };
@@ -396,8 +396,52 @@ impl WasmGame {
             return false;
         }
         let mut candidates = std::collections::VecDeque::new();
-        for player in self.game.priority_team_players() {
+        let players: Vec<_> = self.game.priority_team_players().into_iter().collect();
+        // A permanent with nothing to activate, cast or turn up is checked
+        // once here instead of by two whole-board computations of its own.
+        let battlefield: Vec<_> = self.game.battlefield.iter().copied()
+            .filter(|id| !ctx.actions.iter().any(|action| ironsmith::decision::legal_action_source(action) == Some(*id)))
+            .collect();
+        let inert = ironsmith::decision::priority_analysis_inert_sources(&self.game, &players, &battlefield);
+        #[cfg(any(debug_assertions, test))]
+        if battlefield.len() <= 64 {
+            let counters = snapshot_id_counters();
+            for &player in &players {
+                for &source in &inert {
+                    let presented = ironsmith::decision::compute_actions_assuming_mana_for_presentation(&self.game, player, Some(source));
+                    let paid = ironsmith::decision::compute_actions_for_source(&self.game, player, Some(source));
+                    let only_pass = |actions: &Result<Vec<LegalAction>, _>| actions.as_ref()
+                        .is_ok_and(|actions| actions.iter().all(|action| matches!(action, LegalAction::PassPriority)));
+                    assert!(only_pass(&presented) && only_pass(&paid),
+                        "inert analysis source {source:?} offers {presented:?} / {paid:?}");
+                }
+            }
+            restore_id_counters(counters);
+        }
+        // An inert source's computations offer only Pass priority, which its
+        // step would add to the lists when it is the first candidate.
+        let mut actions = ctx.payment_proven_actions.clone().unwrap_or_else(|| vec![LegalAction::PassPriority]);
+        let mut presentation_actions = ctx.presentation_actions.clone();
+        if let Some(&first) = players.first()
+            && let Some(source) = ironsmith::decision::priority_analysis_sources(&self.game, first).first().copied()
+            && inert.contains(&source)
+        {
+            let counters = snapshot_id_counters();
+            let presented = ironsmith::decision::compute_actions_assuming_mana_for_presentation(&self.game, first, Some(source));
+            let paid = ironsmith::decision::compute_actions_for_source(&self.game, first, Some(source));
+            restore_id_counters(counters);
+            for action in presented.unwrap_or_default() {
+                if !presentation_actions.contains(&action) { presentation_actions.push(action); }
+            }
+            for action in paid.unwrap_or_default() {
+                if !actions.contains(&action) { actions.push(action); }
+            }
+        }
+        for player in players {
             for source in ironsmith::decision::priority_analysis_sources(&self.game, player) {
+                if inert.contains(&source) {
+                    continue;
+                }
                 candidates.push_back(PriorityCandidate { player, source: Some(source), session: ironsmith::decision::ManaAnalysisSession::menu_bound(), work_units: 0, presentation_checked: false });
             }
             candidates.push_back(PriorityCandidate { player, source: None, session: ironsmith::decision::ManaAnalysisSession::menu_bound(), work_units: 0, presentation_checked: false });
@@ -408,8 +452,8 @@ impl WasmGame {
             game: self.game.clone(),
             player: ctx.player,
             candidates,
-            actions: ctx.payment_proven_actions.clone().unwrap_or_else(|| vec![LegalAction::PassPriority]),
-            presentation_actions: ctx.presentation_actions.clone(),
+            actions,
+            presentation_actions,
             provisional_actions: ctx.actions.iter().filter(|action| !matches!(action, LegalAction::PassPriority)).cloned().collect(),
             unresolved: false,
         }));

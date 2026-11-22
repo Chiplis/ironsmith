@@ -1131,7 +1131,7 @@ pub(crate) type ObjectMap = PersistentMap<ObjectId, Arc<Object>>;
 #[derive(Debug, Clone, Default)]
 pub struct ObjectStore {
     objects: ObjectMap,
-    changes: crate::incremental::ChangeJournal<ObjectId>,
+    pub(crate) changes: crate::incremental::ChangeJournal<ObjectId>,
     render_changes: crate::incremental::ChangeJournal<ObjectId>,
     /// Fast index: stable id -> current object id.
     stable_id_index: PersistentMap<StableId, ObjectId>,
@@ -2054,16 +2054,20 @@ pub(crate) struct ObjectStaticSummary {
     pub(crate) class_event_choice: bool,
     /// A functioning triggered ability that subscribes to every event kind.
     pub(crate) triggers_on_any_kind: bool,
+    /// An unmodified static that grants a permission or a linked-exile
+    /// inspection (`GameState::static_grants_permission`), or text this
+    /// summary cannot see (a merged permanent, a split card's other half).
+    pub(crate) permission_grantor: bool,
     /// Bit `kind as u8` for each event kind a functioning triggered ability
     /// subscribes to (`may_have_triggered_abilities_for_event_kind`).
     pub(crate) trigger_kinds: u128,
 }
 
 impl ObjectStaticSummary {
-    fn flags(self) -> [bool; 10] {
+    fn flags(self) -> [bool; 11] {
         [self.may_emit, self.level_grants_emitter, self.pt_counters, self.requires_cant_update,
             self.history_designation, self.enter_as_copy, self.goad, self.grant_holder,
-            self.class_event_choice, self.triggers_on_any_kind]
+            self.class_event_choice, self.triggers_on_any_kind, self.permission_grantor]
     }
 
     pub(crate) fn or(self, other: Self) -> Self {
@@ -2078,6 +2082,7 @@ impl ObjectStaticSummary {
             grant_holder: self.grant_holder || other.grant_holder,
             class_event_choice: self.class_event_choice || other.class_event_choice,
             triggers_on_any_kind: self.triggers_on_any_kind || other.triggers_on_any_kind,
+            permission_grantor: self.permission_grantor || other.permission_grantor,
             trigger_kinds: self.trigger_kinds | other.trigger_kinds,
         }
     }
@@ -2087,13 +2092,13 @@ impl ObjectStaticSummary {
 /// combined summary follows object changes without re-inspecting the rest.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct SummaryCounts {
-    flags: [u32; 10],
+    flags: [u32; 11],
     kinds: [u32; 128],
 }
 
 impl Default for SummaryCounts {
     fn default() -> Self {
-        Self { flags: [0; 10], kinds: [0; 128] }
+        Self { flags: [0; 11], kinds: [0; 128] }
     }
 }
 
@@ -2122,15 +2127,15 @@ impl SummaryCounts {
 
     pub(crate) fn combined(&self) -> ObjectStaticSummary {
         let [may_emit, level_grants_emitter, pt_counters, requires_cant_update, history_designation,
-            enter_as_copy, goad, grant_holder, class_event_choice, triggers_on_any_kind] =
-            self.flags.map(|count| count != 0);
+            enter_as_copy, goad, grant_holder, class_event_choice, triggers_on_any_kind,
+            permission_grantor] = self.flags.map(|count| count != 0);
         let trigger_kinds = self.kinds.iter().enumerate()
             .filter(|(_, count)| **count != 0)
             .fold(0u128, |mask, (bit, _)| mask | (1 << bit));
         ObjectStaticSummary {
             may_emit, level_grants_emitter, pt_counters, requires_cant_update,
             history_designation, enter_as_copy, goad, grant_holder, class_event_choice,
-            triggers_on_any_kind, trigger_kinds,
+            triggers_on_any_kind, permission_grantor, trigger_kinds,
         }
     }
 }
@@ -2147,11 +2152,32 @@ pub(crate) struct SourceIndexes {
     /// mutation) on one turn (temporary grants expire by turn).
     pub(crate) board_summary: Option<(crate::incremental::ChangeCursor, u32, SummaryCounts, ObjectStaticSummary)>,
     /// Replacement effects a source generates from its abilities.
-    pub(crate) replacements:
-        PersistentMap<ObjectId, Arc<SourceIndexEntry<Arc<[crate::replacement::ReplacementEffect]>>>>,
+    pub(crate) replacements: PersistentMap<ObjectId, Arc<SourceIndexEntry<ReplacementIndexOutput>>>,
+    /// Where the last effect-free replacement generation left the object and
+    /// timestamp journals, so the next one re-checks only what changed.
+    pub(crate) replacement_delta: Option<ReplacementDeltaMemo>,
     /// The replacement manager's `static_publication` token when this index
     /// last published, so `replacements` describes what that manager holds.
     pub(crate) replacement_publication: Option<Arc<()>>,
+}
+
+/// One source's indexed replacement output.
+#[derive(Debug, Clone)]
+pub(crate) struct ReplacementIndexOutput {
+    pub(crate) effects: Arc<[crate::replacement::ReplacementEffect]>,
+    /// Every static the source has, printed or calculated, is active in
+    /// every game state, so its effect-free characteristics (and this
+    /// output) change only with the object, its timestamps or the
+    /// effect-free fingerprint.
+    pub(crate) self_contained: bool,
+}
+
+/// See `SourceIndexes::replacement_delta`.
+#[derive(Debug, Clone)]
+pub(crate) struct ReplacementDeltaMemo {
+    pub(crate) objects: crate::incremental::ChangeCursor,
+    pub(crate) timestamps: crate::incremental::ChangeCursor,
+    pub(crate) fingerprint: EffectFreeFingerprint,
 }
 
 /// Debug text with per-calculation allocation numbers erased, for the

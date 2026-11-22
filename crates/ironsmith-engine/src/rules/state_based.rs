@@ -3580,6 +3580,10 @@ mod tests {
             fn display(&self) -> String {
                 "Indestructible during your turn".into()
             }
+            fn activity_is_constant(&self) -> bool {
+                false
+            }
+
             fn is_active(&self, game: &GameState, source: ObjectId) -> bool {
                 game.controller_of_id(source) == Some(game.turn.active_player)
             }

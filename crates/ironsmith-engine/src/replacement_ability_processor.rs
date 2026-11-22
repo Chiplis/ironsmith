@@ -75,7 +75,23 @@ pub(crate) fn generate_replacement_effect_groups(
         if !indexes.replacements.is_empty() {
             indexes.replacements = Default::default();
         }
+        indexes.replacement_delta = None;
     }
+    // Objects changed since the last effect-free generation. A
+    // self-contained entry of any other object still describes it: its
+    // allocation, timestamps and the fingerprint are those it was indexed
+    // under, and none of its statics' activity can have changed.
+    let fingerprint = view.as_ref().map(|_| game.effect_free_fingerprint());
+    let changed: Option<std::collections::HashSet<crate::ids::ObjectId>> = fingerprint.as_ref().and_then(|fingerprint| {
+        let indexes = game.source_indexes().borrow();
+        let memo = indexes.replacement_delta.as_ref()?;
+        if memo.fingerprint != *fingerprint {
+            return None;
+        }
+        let mut changed: std::collections::HashSet<_> = game.object_store.changes.since(&memo.objects)?.into_iter().collect();
+        changed.extend(game.effect_store.continuous_effects.timestamp_changes_since(&memo.timestamps)?);
+        Some(changed)
+    });
     let mut reused = std::collections::HashMap::new();
     let asked: Vec<_> = object_ids
         .iter()
@@ -91,8 +107,15 @@ pub(crate) fn generate_replacement_effect_groups(
             if !source_output_is_indexable(object) || game.is_phased_out(*id) {
                 return true;
             }
-            let Some(chars) = view.characteristics(*id) else { return true };
             let entry = game.source_indexes().borrow().replacements.get(id).cloned();
+            if let (Some(changed), Some(entry)) = (&changed, &entry)
+                && entry.output.self_contained
+                && !changed.contains(id)
+            {
+                reused.insert(*id, entry.clone());
+                return false;
+            }
+            let Some(chars) = view.characteristics(*id) else { return true };
             match entry {
                 Some(entry) if entry.is_for(&chars) => {
                     reused.insert(*id, entry);
@@ -107,7 +130,7 @@ pub(crate) fn generate_replacement_effect_groups(
     let mut groups = Vec::new();
     for object_id in object_ids {
         if let Some(entry) = reused.remove(&object_id) {
-            groups.push((object_id, SourceReplacements::Reused(entry.output.clone())));
+            groups.push((object_id, SourceReplacements::Reused(entry.output.effects.clone())));
             continue;
         }
         let Some(object) = game.object(object_id) else {
@@ -126,7 +149,13 @@ pub(crate) fn generate_replacement_effect_groups(
             && effects.iter().all(replacement_output_is_indexable)
             && let Some(shared) = view.characteristics(object_id)
         {
-            let entry = crate::game_state::SourceIndexEntry::new(&shared, effects.clone().into());
+            let self_contained = !object.subtypes.contains(&crate::types::Subtype::Room)
+                && object.abilities.iter().chain(shared.abilities.iter()).all(|ability| match &ability.kind {
+                    AbilityKind::Static(static_ability) => static_ability.activity_is_constant(),
+                    _ => true,
+                });
+            let output = crate::game_state::ReplacementIndexOutput { effects: effects.clone().into(), self_contained };
+            let entry = crate::game_state::SourceIndexEntry::new(&shared, output);
             game.source_indexes().borrow_mut().replacements.insert(object_id, entry);
         } else if view.is_some() {
             // Published unindexed: an older entry no longer describes it.
@@ -135,6 +164,14 @@ pub(crate) fn generate_replacement_effect_groups(
         if !effects.is_empty() {
             groups.push((object_id, SourceReplacements::Fresh(effects)));
         }
+    }
+
+    if let Some(fingerprint) = fingerprint {
+        game.source_indexes().borrow_mut().replacement_delta = Some(crate::game_state::ReplacementDeltaMemo {
+            objects: game.object_store.changes.cursor(),
+            timestamps: game.effect_store.continuous_effects.timestamp_cursor(),
+            fingerprint,
+        });
     }
 
     #[cfg(debug_assertions)]
@@ -439,6 +476,63 @@ mod tests {
         game.add_counters(source, CounterType::PlusOnePlusOne, 1);
         game.phase_out(source);
         assert!(!check(&game));
+    }
+
+    /// Delta regeneration reuses an unchanged source's output while other
+    /// objects enter, matching a full regeneration; a condition reading
+    /// other objects (a continuous self-grant, so no effect-free index) is
+    /// re-checked when a different object enters.
+    #[test]
+    fn delta_regeneration_matches_full_regeneration_as_objects_enter() {
+        let alice = PlayerId::from_index(0);
+        let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+        let conditional = ironsmith_core::StaticAbility::prevent_damage_to_self_remove_counter(
+            CounterType::PlusOnePlusOne,
+            crate::effect::Value::EventValue(crate::effect::EventValueSpec::Amount),
+        )
+        .with_condition(crate::effect::Condition::YouControl(ObjectFilter::creature()));
+        let watcher = CardDefinitionBuilder::new(CardId::new(), "Board watcher")
+            .card_types(vec![CardType::Artifact])
+            .with_ability(crate::ability::Ability::static_ability(StaticAbility::from_model(conditional)))
+            .build();
+        let land = CardDefinitionBuilder::new(CardId::new(), "Tapped land")
+            .card_types(vec![CardType::Land])
+            .with_ability(crate::ability::Ability::static_ability(StaticAbility::enters_tapped_ability()))
+            .build();
+        let bear = CardDefinitionBuilder::new(CardId::new(), "Bear")
+            .card_types(vec![CardType::Creature])
+            .build();
+        let fresh = |game: &GameState| {
+            let fresh = game.clone();
+            fresh.source_indexes().borrow_mut().replacements = Default::default();
+            fresh.source_indexes().borrow_mut().replacement_delta = None;
+            format!("{:?}", generate_replacement_effects_from_abilities(&fresh).unwrap())
+        };
+        let generate = |game: &mut GameState| {
+            game.refresh_continuous_state().unwrap();
+            game.update_replacement_effects().unwrap();
+            let effects = generate_replacement_effects_from_abilities(game).unwrap();
+            assert_eq!(format!("{effects:?}"), fresh(game), "delta generation must match a full one");
+            effects
+        };
+        let first = game.create_object_from_definition(&land, alice, Zone::Battlefield);
+        assert_eq!(generate(&mut game).len(), 1);
+        for count in 2..=4 {
+            game.create_object_from_definition(&land, alice, Zone::Battlefield);
+            let effects = generate(&mut game);
+            assert!(game.source_indexes().borrow().replacement_delta.is_some(), "the effect-free index is in use");
+            assert_eq!(effects.len(), count);
+        }
+        game.add_counters(first, CounterType::PlusOnePlusOne, 1);
+        assert_eq!(generate(&mut game).len(), 4);
+
+        let source = game.create_object_from_definition(&watcher, alice, Zone::Battlefield);
+        assert!(!generate(&mut game).iter().any(|effect| effect.source == source));
+        game.create_object_from_definition(&bear, alice, Zone::Battlefield);
+        assert!(
+            generate(&mut game).iter().any(|effect| effect.source == source),
+            "a creature entering activates the unchanged watcher"
+        );
     }
 
     #[test]

@@ -114,6 +114,55 @@ pub fn priority_analysis_sources(game: &GameState, player: PlayerId) -> Vec<Obje
     sources
 }
 
+/// Battlefield sources in `sources` that provably offer `players` no action:
+/// no activated (or mana) ability, ignore-effect or intrinsic-action static,
+/// face-down or locked-door special action, or battlefield casting permission.
+/// Mirrors every battlefield site of `compute_legal_actions_checked`, so a
+/// scoped computation for one of these returns nothing with or without
+/// assumed mana. Empty while any player may cast from the battlefield by a
+/// grant.
+pub fn priority_analysis_inert_sources(
+    game: &GameState,
+    players: &[PlayerId],
+    sources: &[ObjectId],
+) -> std::collections::HashSet<ObjectId> {
+    use crate::ability::AbilityKind;
+    use crate::static_abilities::StaticAbilityId;
+    let view = DerivedGameView::new(game);
+    if players.iter().any(|player| view.player_has_active_grants_for_zone(*player, Zone::Battlefield)) {
+        return std::collections::HashSet::new();
+    }
+    let offers_static_action = |ability: &crate::ability::Ability| {
+        let AbilityKind::Static(rule) = &ability.kind else { return false };
+        matches!(rule.id(),
+            StaticAbilityId::AttachedControllerMaySacrificePermanentToIgnoreSourceEffectUntilEndOfTurn
+            | StaticAbilityId::AttachedControllerMayPayCostToIgnoreSourceEffectUntilEndOfTurn
+            | StaticAbilityId::AnyPlayerMayPayManaToIgnoreSourceEffectUntilEndOfTurn
+            | StaticAbilityId::PlayerMaySacrificePermanentToIgnoreSourceEffectUntilEndOfTurn)
+            || matches!(rule.compiled_model().map(|model| &model.payload),
+                Some(ironsmith_core::StaticAbilityPayload::IntrinsicImmediateAction { .. }))
+    };
+    sources
+        .iter()
+        .copied()
+        .filter(|&id| {
+            let Some(object) = game.object(id) else { return false };
+            if object.zone != Zone::Battlefield
+                || game.is_face_down(id)
+                || !crate::special_actions::locked_room_doors(game, id).is_empty()
+                || object.alternative_casts.iter().any(|method| method.cast_from_zone() == Zone::Battlefield)
+                || object.abilities.iter().any(offers_static_action)
+            {
+                return false;
+            }
+            let Some(characteristics) = game.current_characteristics_shared(id) else { return false };
+            !characteristics.abilities.iter().any(|ability| {
+                matches!(ability.kind, AbilityKind::Activated(_)) || offers_static_action(ability)
+            })
+        })
+        .collect()
+}
+
 pub fn legal_action_source(action: &LegalAction) -> Option<ObjectId> {
     match action {
         LegalAction::CastSpell { spell_id, .. } => Some(*spell_id),

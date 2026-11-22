@@ -532,6 +532,14 @@ pub trait StaticAbilityKind: std::fmt::Debug + Send + Sync + StaticAbilityKindCl
         true
     }
 
+    /// Whether `is_active` answers the same for every game state. A kind
+    /// that overrides `is_active` must override this too (a source-scan
+    /// test pairs them); indexes skip re-checking the activity of an
+    /// unchanged object only while every one of its statics says yes.
+    fn activity_is_constant(&self) -> bool {
+        true
+    }
+
     fn skips_upkeep_for_player(
         &self,
         _game: &GameState,
@@ -2226,6 +2234,14 @@ impl StaticAbility {
     /// Apply game restrictions for this ability.
     pub fn apply_restrictions(&self, game: &mut GameState, source: ObjectId, controller: PlayerId) {
         self.0.apply_restrictions(game, source, controller)
+    }
+
+    /// Whether `is_active` is the same in every game state (see
+    /// `StaticAbilityKind::activity_is_constant`).
+    pub(crate) fn activity_is_constant(&self) -> bool {
+        self.id() != StaticAbilityId::RuleRestriction
+            && !crate::continuous::static_ability_has_condition(self)
+            && self.0.activity_is_constant()
     }
 
     /// Check if this ability is currently active.
@@ -5967,5 +5983,50 @@ mod preview_identity_tests {
         assert!(!committed.equipment_grant_abilities().unwrap()[0].instance_id().is_preview());
         assert_eq!(committed.instance_id(), original_id);
         assert!(committed_static_allocations_on_thread() > committed_before);
+    }
+}
+
+#[cfg(test)]
+mod activity_constancy_pairing {
+    /// Every `StaticAbilityKind::is_active` override declares whether its
+    /// activity is constant, or indexes would trust the default `true`.
+    #[test]
+    fn every_is_active_override_declares_activity_constancy() {
+        fn walk(dir: &std::path::Path, files: &mut Vec<std::path::PathBuf>) {
+            for entry in std::fs::read_dir(dir).expect("source directory reads") {
+                let path = entry.expect("source entry reads").path();
+                if path.is_dir() {
+                    walk(&path, files);
+                } else if path.extension().is_some_and(|ext| ext == "rs") {
+                    files.push(path);
+                }
+            }
+        }
+        let mut files = Vec::new();
+        walk(&std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src"), &mut files);
+        let mut unpaired = Vec::new();
+        for path in files {
+            let text = std::fs::read_to_string(&path).expect("source file reads");
+            let count = |needle: &str| {
+                text.lines()
+                    .filter(|line| {
+                        let line = line.trim_start();
+                        line.starts_with(needle) && !line.contains("_game") && !line.contains("_source")
+                    })
+                    .count()
+            };
+            // The kind method takes the game and the source; the trait's
+            // default names both `_`-prefixed and is skipped.
+            let overrides = text
+                .lines()
+                .map(str::trim_start)
+                .filter(|line| line.starts_with("fn is_active(&self, game: &") && line.contains("source: "))
+                .count();
+            let declared = count("fn activity_is_constant(&self) -> bool");
+            if overrides > declared {
+                unpaired.push(format!("{}: {overrides} is_active, {declared} activity_is_constant", path.display()));
+            }
+        }
+        assert!(unpaired.is_empty(), "is_active overrides without activity_is_constant: {unpaired:#?}");
     }
 }

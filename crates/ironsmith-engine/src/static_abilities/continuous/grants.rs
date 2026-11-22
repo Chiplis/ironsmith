@@ -1048,6 +1048,10 @@ impl StaticAbilityKind for GrantObjectAbilityForFilter {
     /// without this a conditional grant ("... have split second as long as
     /// you control a Wizard") would impose its restrictions even while the
     /// condition is false.
+    fn activity_is_constant(&self) -> bool {
+        false
+    }
+
     fn is_active(&self, game: &GameState, source: ObjectId) -> bool {
         // A per-controller count is decided by each player's split grant.
         if self.condition_is_receiver_qualification() || self.has_per_controller_count() {
