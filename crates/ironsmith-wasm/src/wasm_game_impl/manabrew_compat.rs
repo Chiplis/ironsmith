@@ -1335,7 +1335,7 @@ impl WasmGame {
                 viewer == Some(object.owner)
                     || viewer == Some(self.manabrew_game().controlling_player_for(object.owner))
             }
-            Zone::Library => false,
+            Zone::Library => self.manabrew_library_top_is_visible(id, object.owner, viewer),
             // CR 708.9: at the end of the game all face-down permanents are
             // revealed to all players. A concession ends the match in the host
             // result without marking an engine player as the winner.
@@ -1348,6 +1348,31 @@ impl WasmGame {
                     .can_player_look_at_face_down_exiled_card(id, viewer)
             }),
             _ => true,
+        }
+    }
+
+    /// The standing library-top views the native snapshot adds on top of the
+    /// one-shot view effects: "You may look at the top card of your library
+    /// any time" (Bolas's Citadel), a top revealed by a static, or a granted
+    /// look at another player's top. A top that changed while an action is
+    /// being announced stays hidden until the announcement ends.
+    fn manabrew_library_top_is_visible(
+        &self,
+        id: ObjectId,
+        owner: PlayerId,
+        viewer: Option<PlayerId>,
+    ) -> bool {
+        let game = self.manabrew_game();
+        if !self.static_library_top_visibility_window().allows(game, owner) {
+            return false;
+        }
+        match viewer {
+            Some(viewer) => library_top_visible_to_perspective(game, viewer, owner, id),
+            None => {
+                game.player(owner).and_then(|player| player.library.last()) == Some(&id)
+                    && !game.has_library_top_announcement()
+                    && crate::library_top_revealed_by_static_ability(game, owner)
+            }
         }
     }
 
@@ -5620,6 +5645,120 @@ mod manabrew_tests {
             }
             _ => panic!("proliferate should dispatch directly"),
         }
+    }
+
+    /// Bolas's Citadel: its controller sees the top of their library at all
+    /// times and is offered that card from the library. The opponent sees
+    /// neither.
+    #[test]
+    fn bolass_citadel_shows_and_offers_the_library_top() {
+        use ironsmith_registry_test::compile_to_runtime_definition;
+        let _id_guard = crate::test_id_counter_guard();
+        let compile = |name: &str, text: &str| {
+            compile_to_runtime_definition(name, text, false)
+                .unwrap_or_else(|error| panic!("{name}: {error:?}"))
+        };
+        let citadel = compile(
+            "Bolas's Citadel",
+            "Mana cost: {3}{B}{B}{B}\nType: Legendary Artifact\nYou may look at the top card of your library any time.\nYou may play lands and cast spells from the top of your library. If you cast a spell this way, pay life equal to its mana value rather than pay its mana cost.\n{T}, Sacrifice ten nonland permanents: Each opponent loses 10 life.",
+        );
+        let bears = compile(
+            "Grizzly Bears",
+            "Mana cost: {1}{G}\nType: Creature — Bear\nPower/Toughness: 2/2",
+        );
+        let mut game = game();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        game.manabrew_human_players = vec![true, true];
+        game.game.turn.active_player = alice;
+        game.game.turn.priority_player = Some(alice);
+        game.game.turn.phase = ironsmith::game_state::Phase::FirstMain;
+        game.game.turn.step = None;
+        game.game.create_object_from_definition(&citadel, alice, Zone::Battlefield);
+        game.game.create_object_from_definition(&bears, alice, Zone::Library);
+        let top = game.game.create_object_from_definition(&bears, alice, Zone::Library);
+        game.game.refresh_continuous_state().unwrap();
+        let top_id = object_id(&game.game, top);
+
+        let library = |game: &WasmGame, viewer: PlayerId| {
+            game.manabrew_state(Some(viewer))
+                .game_view
+                .zones
+                .into_iter()
+                .find(|zone| zone.zone == ZoneKind::Library && zone.owner_id == "player-0")
+                .expect("Alice library exists")
+        };
+        let alice_library = library(&game, alice);
+        assert_eq!(alice_library.count, 2);
+        assert!(
+            matches!(alice_library.cards.as_slice(), [CardView::Visible(card)] if card.id == top_id),
+            "Alice should see exactly her library top: {:?}",
+            alice_library.cards
+        );
+        assert!(library(&game, bob).cards.is_empty(), "Bob must not see Alice's top");
+
+        let _menu_policy = ManabrewMenuPolicy::enter(&game.manabrew_human_players);
+        let context = ironsmith::game_loop::priority_context(&game.game, alice)
+            .expect("priority menu computes");
+        game.pending_decision = Some(DecisionContext::Priority(context));
+        let prompt = game
+            .ensure_manabrew_prompt()
+            .expect("prompt maps")
+            .expect("prompt exists");
+        let PromptInput::ChooseAction(choose) = &prompt.input else {
+            panic!("priority should map to chooseAction");
+        };
+        let cast_id = choose
+            .actions
+            .iter()
+            .find(|action| matches!(
+                &action.kind,
+                AvailableActionKind::Cast { card_id, .. } if *card_id == top_id
+            ))
+            .unwrap_or_else(|| panic!("the library top should be castable: {:?}", choose.actions))
+            .id
+            .clone();
+
+        // Taking the offer casts the card for 2 life (its mana value).
+        let mut output = PromptOutput::ChooseAction(ChooseActionOutput::Act { action_id: cast_id });
+        for _ in 0..6 {
+            let open = game.manabrew_open_prompt.clone().expect("a prompt is open");
+            let ManabrewResponseAction::Dispatch(command) = game
+                .manabrew_response_action(&open, output)
+                .expect("response maps")
+            else {
+                panic!("response should dispatch an engine command");
+            };
+            game.dispatch_typed_command(command, 0.0).expect("engine accepts the response");
+            game.manabrew_open_prompt = None;
+            if game.manabrew_game().stack.len() == 1 {
+                break;
+            }
+            let prompt = game
+                .ensure_manabrew_prompt()
+                .expect("prompt maps")
+                .expect("the cast is still being announced");
+            output = match &prompt.input {
+                PromptInput::PayManaCost(_) => {
+                    PromptOutput::PayManaCost(PayManaCostOutput::Pay { auto: true })
+                }
+                other => panic!("unexpected prompt while casting: {other:?}"),
+            };
+        }
+        let game_state = game.manabrew_game();
+        assert_eq!(game_state.stack.len(), 1, "Grizzly Bears should be on the stack");
+        assert_eq!(
+            game_state.object(game_state.stack[0].object_id).map(|object| object.name.to_string()),
+            Some("Grizzly Bears".to_string())
+        );
+        assert_eq!(game_state.player(alice).unwrap().life, 18, "Citadel pays life, not mana");
+        let next_top = object_id(game_state, *game_state.player(alice).unwrap().library.last().unwrap());
+        let alice_library = library(&game, alice);
+        assert!(
+            matches!(alice_library.cards.as_slice(), [CardView::Visible(card)] if card.id == next_top),
+            "the new top is visible once the cast is done: {:?}",
+            alice_library.cards
+        );
     }
 }
 
