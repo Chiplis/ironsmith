@@ -1762,6 +1762,14 @@ struct RuntimeCacheState {
     tap_sensitivity: Cell<Option<(u64, bool)>>,
     /// `object_ids_in_deterministic_order` for one object membership.
     deterministic_object_ids: RefCell<Option<(u64, Arc<Vec<ObjectId>>)>>,
+    /// The simultaneous entry batch whose static replacement publication is
+    /// held fixed (see `with_frozen_static_replacements`). Clones taken
+    /// inside the batch share it; it ends for all of them when the batch's
+    /// guard drops.
+    pub(crate) static_replacements_frozen: RefCell<std::sync::Weak<()>>,
+    /// The identical-object entry group in progress (see
+    /// `GameState::with_grouped_entry`), shared by clones taken inside it.
+    pub(crate) grouped_entry: RefCell<Option<GroupedEntry>>,
     /// While a batch of simultaneous untaps runs, `untap` records that the
     /// can't-effect tracker is stale here instead of rebuilding it once per
     /// permanent. `None` outside a batch; `Some(pending)` inside one.
@@ -1849,6 +1857,8 @@ impl Clone for RuntimeCacheState {
             turn_sensitivity: Cell::new(self.turn_sensitivity.get()),
             tap_sensitivity: Cell::new(self.tap_sensitivity.get()),
             deterministic_object_ids: RefCell::new(self.deterministic_object_ids.borrow().clone()),
+            static_replacements_frozen: RefCell::new(self.static_replacements_frozen.borrow().clone()),
+            grouped_entry: RefCell::new(self.grouped_entry.borrow().clone()),
             cant_update_deferral: Cell::new(self.cant_update_deferral.get()),
             // A clone taken inside a derivation is not itself inside one.
             derived_tap_read_depth: Cell::new(0),
@@ -1917,6 +1927,8 @@ impl RuntimeCacheState {
             turn_sensitivity: Cell::new(None),
             tap_sensitivity: Cell::new(None),
             deterministic_object_ids: RefCell::new(None),
+            static_replacements_frozen: RefCell::new(std::sync::Weak::new()),
+            grouped_entry: RefCell::new(None),
             cant_update_deferral: Cell::new(None),
             derived_tap_read_depth: Cell::new(0),
             derived_state_read_tapped: Cell::new(false),
@@ -2171,6 +2183,23 @@ pub(crate) struct ReplacementIndexOutput {
     /// effect-free fingerprint.
     pub(crate) self_contained: bool,
 }
+
+/// One group of identical objects entering one by one inside a frozen
+/// simultaneous entry (see `GameState::with_grouped_entry`).
+#[derive(Debug, Clone)]
+pub(crate) struct GroupedEntry {
+    /// Alive exactly while the group runs.
+    pub(crate) hold: std::sync::Weak<()>,
+    /// The group member whose entry is being prepared.
+    pub(crate) entrant: Option<ObjectId>,
+    pub(crate) template: GroupedEntryTemplate,
+}
+
+/// What the group's first plain entry of one shape found when its
+/// replacements were matched against these candidate positions: `true` when
+/// no registered replacement applied.
+pub(crate) type GroupedEntryTemplate =
+    Vec<(crate::events::zones::PlainEntryShape, Arc<[u32]>, bool)>;
 
 /// See `SourceIndexes::replacement_delta`.
 #[derive(Debug, Clone)]

@@ -214,3 +214,139 @@ fn sunborn_footsteps_analysis_probe() {
     }
     ironsmith::game_loop::set_priority_analysis_deferred(previous);
 }
+
+/// CR 614.12: permanents entering simultaneously don't apply their
+/// "enters with" replacements to each other. Two doubled copies of a
+/// counter-granting creature each get one counter, from the original only.
+#[test]
+fn simultaneous_token_copies_do_not_apply_entry_replacements_to_each_other() {
+    let _guard = crate::test_id_counter_guard();
+    let mut wasm = WasmGame::new();
+    let alice = PlayerId::from_index(0);
+    let sunborn = card(
+        "Exalted Sunborn",
+        "Mana cost: {3}{W}{W}\nType: Creature — Angel Wizard\nPower/Toughness: 4/5\nFlying, lifelink\nIf one or more tokens would be created under your control, twice that many of those tokens are created instead.",
+    );
+    let counter_giver = card(
+        "Counter Giver",
+        "Mana cost: {2}{G}\nType: Creature — Beast\nPower/Toughness: 2/2\nEach other creature you control enters with an additional +1/+1 counter on it.",
+    );
+    let footsteps = card(
+        "Followed Footsteps",
+        "Mana cost: {3}{U}{U}\nType: Enchantment — Aura\nEnchant creature\nAt the beginning of your upkeep, create a token that's a copy of enchanted creature.",
+    );
+    wasm.game.create_object_from_definition(&sunborn, alice, Zone::Battlefield);
+    let giver = wasm.game.create_object_from_definition(&counter_giver, alice, Zone::Battlefield);
+    let aura = wasm.game.create_object_from_definition(&footsteps, alice, Zone::Battlefield);
+    assert!(wasm.game.attach_object_to_target(aura, ironsmith::object::AttachmentTarget::Object(giver)));
+    wasm.game.turn.active_player = alice;
+    wasm.game.turn.priority_player = Some(alice);
+    wasm.game.turn.phase = Phase::Beginning;
+    wasm.game.turn.step = Some(Step::Upkeep);
+    wasm.game.refresh_continuous_state().unwrap();
+    wasm.runner = Some(TurnRunner::from_state_for_sync(TurnState::Upkeep));
+    wasm.advance_until_decision().expect("upkeep trigger reaches priority");
+    let before: std::collections::HashSet<_> = wasm.game.battlefield.iter().copied().collect();
+    while !wasm.game.stack.is_empty() {
+        pass(&mut wasm);
+    }
+    let counters: Vec<u32> = wasm
+        .game
+        .battlefield
+        .iter()
+        .filter(|id| !before.contains(id))
+        .map(|id| {
+            wasm.game
+                .object(*id)
+                .and_then(|object| object.counters.get(&ironsmith::object::CounterType::PlusOnePlusOne).copied())
+                .unwrap_or(0)
+        })
+        .collect();
+    assert_eq!(counters, vec![1, 1], "each copy gets only the original's counter");
+}
+
+/// An upkeep with `cards` on Alice's battlefield and a "create two copies of
+/// enchanted creature" Aura on `cards[enchanted]`, passed until the stack is
+/// empty. Returns each new permanent's name and +1/+1 counters.
+fn twin_copy_upkeep(cards: &[(&str, &str)], enchanted: usize) -> Vec<(String, u32)> {
+    let mut wasm = WasmGame::new();
+    let alice = PlayerId::from_index(0);
+    let ids: Vec<_> = cards
+        .iter()
+        .map(|(name, text)| wasm.game.create_object_from_definition(&card(name, text), alice, Zone::Battlefield))
+        .collect();
+    let aura = card(
+        "Twin Footsteps",
+        "Mana cost: {3}{U}{U}\nType: Enchantment — Aura\nEnchant creature\nAt the beginning of your upkeep, create two tokens that are copies of enchanted creature.",
+    );
+    let aura = wasm.game.create_object_from_definition(&aura, alice, Zone::Battlefield);
+    assert!(wasm.game.attach_object_to_target(aura, ironsmith::object::AttachmentTarget::Object(ids[enchanted])));
+    wasm.game.turn.active_player = alice;
+    wasm.game.turn.priority_player = Some(alice);
+    wasm.game.turn.phase = Phase::Beginning;
+    wasm.game.turn.step = Some(Step::Upkeep);
+    wasm.game.refresh_continuous_state().unwrap();
+    wasm.runner = Some(TurnRunner::from_state_for_sync(TurnState::Upkeep));
+    wasm.advance_until_decision().expect("upkeep trigger reaches priority");
+    let before: std::collections::HashSet<_> = wasm.game.battlefield.iter().copied().collect();
+    while !wasm.game.stack.is_empty() {
+        pass(&mut wasm);
+    }
+    let mut created: Vec<(String, u32)> = wasm
+        .game
+        .battlefield
+        .iter()
+        .filter(|id| !before.contains(id))
+        .filter_map(|id| wasm.game.object(*id))
+        .map(|object| {
+            (
+                object.name.to_string(),
+                object.counters.get(&ironsmith::object::CounterType::PlusOnePlusOne).copied().unwrap_or(0),
+            )
+        })
+        .collect();
+    created.sort();
+    created
+}
+
+const BEAR: (&str, &str) = ("Grizzly Bears", "Mana cost: {1}{G}\nType: Creature — Bear\nPower/Toughness: 2/2");
+
+/// A replacement that applies to every copy is matched for each of them,
+/// not only the first.
+#[test]
+fn grouped_token_copies_each_receive_an_applying_entry_replacement() {
+    let _guard = crate::test_id_counter_guard();
+    let giver = (
+        "Counter Giver",
+        "Mana cost: {2}{G}\nType: Creature — Beast\nPower/Toughness: 2/2\nEach other creature you control enters with an additional +1/+1 counter on it.",
+    );
+    assert_eq!(
+        twin_copy_upkeep(&[BEAR, giver], 0),
+        vec![("Grizzly Bears".to_string(), 1), ("Grizzly Bears".to_string(), 1)],
+    );
+}
+
+/// Tokens a replacement adds are not members of the copies' group: an
+/// entry replacement that applies only to them still applies, although the
+/// copies matched none.
+#[test]
+fn replacement_added_tokens_are_matched_apart_from_the_grouped_copies() {
+    let _guard = crate::test_id_counter_guard();
+    let squirrel_maker = (
+        "Squirrel Maker",
+        "Mana cost: {2}{B}{G}\nType: Creature — Squirrel Warrior\nPower/Toughness: 3/3\nIf one or more tokens would be created under your control, those tokens plus that many 1/1 green Squirrel creature tokens are created instead.",
+    );
+    let patron = (
+        "Squirrel Patron",
+        "Mana cost: {1}{G}\nType: Creature — Elf\nPower/Toughness: 1/1\nEach other Squirrel you control enters with an additional +1/+1 counter on it.",
+    );
+    assert_eq!(
+        twin_copy_upkeep(&[BEAR, squirrel_maker, patron], 0),
+        vec![
+            ("Grizzly Bears".to_string(), 0),
+            ("Grizzly Bears".to_string(), 0),
+            ("Squirrel Token".to_string(), 1),
+            ("Squirrel Token".to_string(), 1),
+        ],
+    );
+}

@@ -88,6 +88,57 @@ struct PermanentObjectViewCacheKey {
     chosen_values: Vec<String>,
 }
 
+impl PermanentObjectView {
+    /// Whether this permanent grants a look at hidden cards, the one thing
+    /// the snapshot reads from its characteristics beyond the view's fields.
+    fn reveals_hidden_cards(&self) -> bool {
+        self.characteristics.as_ref().is_some_and(|chars| {
+            chars.static_abilities.iter().any(|ability| {
+                matches!(
+                    ability.id(),
+                    StaticAbilityId::LookAtTopCardOfLibrary
+                        | StaticAbilityId::AllPlayersLookAtYourTopLibraryCard
+                        | StaticAbilityId::AllPlayersLookAtTopCardsOfLibraries
+                        | StaticAbilityId::OpponentsPlayWithHandsRevealed
+                        | StaticAbilityId::ControllerPlaysWithHandRevealed
+                        | StaticAbilityId::PlayersPlayWithHandsRevealed
+                )
+            })
+        })
+    }
+
+    /// Whether a snapshot built from `other` shows exactly what one built
+    /// from this view shows: every rendered field is equal and both reveal
+    /// the same hidden cards.
+    fn renders_as(&self, other: &Self) -> bool {
+        self.reveals_hidden_cards() == other.reveals_hidden_cards()
+            && self.id == other.id
+            && self.stable_id == other.stable_id
+            && self.name == other.name
+            && self.token == other.token
+            && self.tapped == other.tapped
+            && self.damage == other.damage
+            && self.lane == other.lane
+            && self.face_down == other.face_down
+            && self.characteristic_signature == other.characteristic_signature
+            && self.counter_signature == other.counter_signature
+            && self.mana_cost == other.mana_cost
+            && self.oracle_text == other.oracle_text
+            && self.abilities == other.abilities
+            && self.power_toughness == other.power_toughness
+            && self.summoning_sick == other.summoning_sick
+            && self.has_active_aura == other.has_active_aura
+            && self.power_toughness_without_counters == other.power_toughness_without_counters
+            && self.pt_modified_by_effect == other.pt_modified_by_effect
+            && self.counters == other.counters
+            && self.intrinsic_mana == other.intrinsic_mana
+            && self.color_identity == other.color_identity
+            && self.card_types == other.card_types
+            && self.colors == other.colors
+            && self.chosen_values == other.chosen_values
+    }
+}
+
 #[derive(Debug, Clone)]
 struct PermanentObjectView {
     characteristics: Option<Arc<ironsmith::continuous::CalculatedCharacteristics>>,
@@ -425,6 +476,8 @@ struct IncrementalBattlefieldGroups {
     visibility_candidates: HashSet<ObjectId>,
     visibility: HashMap<ObjectId, (PlayerId, u8)>,
     membership: HashMap<ObjectId, (PlayerId, BattlefieldGroupKey, u128)>,
+    /// The view each member was grouped from.
+    member_views: HashMap<ObjectId, Arc<PermanentObjectView>>,
     members: HashMap<(PlayerId, BattlefieldGroupKey), std::collections::BTreeMap<u128, ObjectId>>,
     snapshots: HashMap<(PlayerId, BattlefieldGroupKey), Arc<PermanentSnapshot>>,
     player_outputs: HashMap<PlayerId, (Arc<Vec<Arc<PermanentSnapshot>>>, usize)>,
@@ -451,8 +504,13 @@ impl IncrementalBattlefieldGroups {
             game.turn.phase as u8,
             game.turn.step.map(|step| step as u8),
         );
-        let rebuild = membership.is_none() || changed.is_none() || self.revision != Some(revision);
+        let rebuild = membership.is_none() || changed.is_none() || self.revision.is_none();
+        // A new derived revision can change any permanent's view without a
+        // render change; every permanent the journal does not name is
+        // re-checked below rather than regrouped from scratch.
+        let recheck = !rebuild && self.revision != Some(revision);
         let mut dirty = if rebuild {
+            self.member_views.clear();
             self.membership.clear();
             self.members.clear();
             self.snapshots.clear();
@@ -468,6 +526,31 @@ impl IncrementalBattlefieldGroups {
             dirty.extend(self.protected.symmetric_difference(protected).copied());
             dirty
         };
+        if recheck {
+            // An unnamed permanent whose view renders exactly as the one it
+            // was grouped from, under the same controller and sickness, keeps
+            // its group: a group snapshot reads only its members' views and
+            // their (journaled) objects.
+            let named: HashSet<ObjectId> = dirty.iter().copied().collect();
+            let mut regrouped = Vec::new();
+            for id in game.battlefield.iter().copied().filter(|id| !named.contains(id)) {
+                let Some(object) = game.object(id) else { continue };
+                let unchanged = self.membership.get(&id).is_some_and(|(player, key, _)| {
+                    let view = views.battlefield_view(game, object);
+                    self.member_views
+                        .get(&id)
+                        .is_some_and(|held| Arc::ptr_eq(held, &view) || held.renders_as(&view))
+                        && *player == game.current_controller(id).unwrap_or(object.owner)
+                        && key.summoning_sick == game.is_summoning_sick(id)
+                        && key.force_single_object
+                            == (protected.contains(&id) || view.face_down).then_some(id.0)
+                });
+                if !unchanged {
+                    regrouped.push(id);
+                }
+            }
+            dirty.extend(regrouped);
+        }
         if !rebuild {
             let mut pending = dirty.clone();
             let mut seen: HashSet<_> = dirty.iter().copied().collect();
@@ -513,6 +596,7 @@ impl IncrementalBattlefieldGroups {
             }
             self.visibility_candidates.remove(&id);
             self.visibility.remove(&id);
+            self.member_views.remove(&id);
             if let Some((player, key, label)) = self.membership.remove(&id) {
                 let group = (player, key);
                 if let Some(members) = self.members.get_mut(&group) {
@@ -541,19 +625,7 @@ impl IncrementalBattlefieldGroups {
             }
 
             let view = views.battlefield_view(game, object);
-            if view.characteristics.as_ref().is_some_and(|chars| {
-                chars.static_abilities.iter().any(|ability| {
-                    matches!(
-                        ability.id(),
-                        StaticAbilityId::LookAtTopCardOfLibrary
-                            | StaticAbilityId::AllPlayersLookAtYourTopLibraryCard
-                            | StaticAbilityId::AllPlayersLookAtTopCardsOfLibraries
-                            | StaticAbilityId::OpponentsPlayWithHandsRevealed
-                            | StaticAbilityId::ControllerPlaysWithHandRevealed
-                            | StaticAbilityId::PlayersPlayWithHandsRevealed
-                    )
-                })
-            }) {
+            if view.reveals_hidden_cards() {
                 self.visibility_candidates.insert(id);
             }
 
@@ -571,6 +643,7 @@ impl IncrementalBattlefieldGroups {
                 force_single_object: (protected.contains(&id) || view.face_down).then_some(id.0),
             };
             self.membership.insert(id, (player, key.clone(), label));
+            self.member_views.insert(id, view.clone());
             let group = (player, key);
             self.members
                 .entry(group.clone())
@@ -612,15 +685,25 @@ impl IncrementalBattlefieldGroups {
                 self.snapshots.remove(&group);
                 continue;
             }
-            let members = &self.members[&group];
-            let (snapshots, _) =
-                grouped_battlefield_for_ids(game, members.values().copied(), protected, views);
+            // Every member was grouped from the view recorded for it.
+            let member_views: Vec<_> = self.members[&group]
+                .values()
+                .map(|id| self.member_views[id].clone())
+                .collect();
+            let snapshot = permanent_group_snapshot(game, &group.1, member_views);
             self.groups_rebuilt += 1;
-            debug_assert_eq!(snapshots.len(), 1);
-            self.snapshots.insert(
-                group,
-                Arc::new(snapshots.into_iter().next().expect("nonempty group")),
-            );
+            #[cfg(debug_assertions)]
+            {
+                let (snapshots, _) = grouped_battlefield_for_ids(
+                    game, self.members[&group].values().copied(), protected, views,
+                );
+                debug_assert_eq!(snapshots.len(), 1);
+                debug_assert_eq!(
+                    format!("{:?}", snapshots[0]), format!("{snapshot:?}"),
+                    "a group snapshot from recorded views must match one from fresh views"
+                );
+            }
+            self.snapshots.insert(group, Arc::new(snapshot));
         }
         for player in dirty_players {
             let output = self.collect_for_player(player);
@@ -2115,7 +2198,20 @@ fn grouped_battlefield_for_ids(
 
     let snapshots = groups
         .into_iter()
-        .map(|(key, mut members)| {
+        .map(|(key, members)| permanent_group_snapshot(game, &key, members))
+        .collect();
+
+    (snapshots, total)
+}
+
+/// One battlefield group's snapshot, from its key and its members' views.
+fn permanent_group_snapshot(
+    game: &GameState,
+    key: &BattlefieldGroupKey,
+    mut members: Vec<Arc<PermanentObjectView>>,
+) -> PermanentSnapshot {
+    {
+        {
             members.sort_unstable_by_key(|view| view.id);
             let representative = members.first();
             let member_ids: Vec<u64> = members.iter().map(|view| view.id).collect();
@@ -2190,10 +2286,8 @@ fn grouped_battlefield_for_ids(
                 card_types,
                 colors,
             }
-        })
-        .collect();
-
-    (snapshots, total)
+        }
+    }
 }
 
 fn pseudo_hand_glow_kind_with_grants(
@@ -7049,6 +7143,49 @@ retain_original_types: false, retain_original_name: false,
             serde_json::to_value(groups.for_player(alice).0).unwrap(),
             serde_json::to_value(full).unwrap()
         );
+    }
+
+    /// A new derived revision regroups only the permanents whose rendered
+    /// view changed, and the result still equals a full rebuild.
+    #[test]
+    fn revision_only_changes_regroup_just_the_permanents_whose_view_changed() {
+        let _id_counter_guard = crate::test_id_counter_guard();
+        use ironsmith::continuous::{ContinuousEffect, EffectTarget, Modification};
+        let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+        let alice = PlayerId::from_index(0);
+        let card = test_bears_card();
+        let bears: Vec<_> = (0..3)
+            .map(|_| game.create_object_from_card(&card, alice, Zone::Battlefield))
+            .collect();
+        game.refresh_continuous_state().expect("test continuous state should refresh");
+        let none = HashSet::new();
+        let views = SnapshotObjectViewCache::default();
+        let mut groups = IncrementalBattlefieldGroups::default();
+        let full = |game: &GameState| {
+            serde_json::to_value(grouped_battlefield_for_player(game, alice, &HashSet::new()).0).unwrap()
+        };
+        groups.update(&game, &none, &views);
+        assert_eq!(groups.for_player(alice).0.len(), 1);
+        let before = groups.for_player(alice).0;
+        let visited = groups.objects_updated;
+
+        game.invalidate_continuous_state_public();
+        game.refresh_continuous_state().expect("test continuous state should refresh");
+        groups.update(&game, &none, &views);
+        assert_eq!(groups.objects_updated, visited, "an unchanged view is not regrouped");
+        assert!(Arc::ptr_eq(&before, &groups.for_player(alice).0));
+        assert_eq!(serde_json::to_value(groups.for_player(alice).0).unwrap(), full(&game));
+
+        game.effect_store.continuous_effects.add_effect(ContinuousEffect::new(
+            bears[0],
+            alice,
+            EffectTarget::Specific(bears[0]),
+            Modification::ModifyPowerToughness { power: 1, toughness: 1 },
+        ));
+        game.refresh_continuous_state().expect("test continuous state should refresh");
+        groups.update(&game, &none, &views);
+        assert_eq!(groups.for_player(alice).0.len(), 2, "the pumped bear leaves the group");
+        assert_eq!(serde_json::to_value(groups.for_player(alice).0).unwrap(), full(&game));
     }
 
     #[test]

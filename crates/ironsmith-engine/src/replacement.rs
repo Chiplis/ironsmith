@@ -682,11 +682,89 @@ pub struct FollowedReplacementObject {
     pub on_stack: bool,
 }
 
+/// The registered effects in order, with a per-event-kind index of the
+/// positions whose matcher may observe that kind. Reads go through `Deref`;
+/// every write goes through `mutate`, which discards the index.
+#[derive(Default)]
+pub(crate) struct IndexedReplacementEffects {
+    effects: Vec<ReplacementEffect>,
+    candidates: std::sync::Mutex<
+        std::collections::HashMap<crate::events::EventKind, std::sync::Arc<[u32]>>,
+    >,
+}
+
+impl IndexedReplacementEffects {
+    fn index(
+        &self,
+    ) -> std::sync::MutexGuard<'_, std::collections::HashMap<crate::events::EventKind, std::sync::Arc<[u32]>>> {
+        self.candidates.lock().unwrap_or_else(std::sync::PoisonError::into_inner)
+    }
+
+    /// The effects, for a write that may change which kinds they observe.
+    fn mutate(&mut self) -> &mut Vec<ReplacementEffect> {
+        self.candidates
+            .get_mut()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .clear();
+        &mut self.effects
+    }
+
+    /// The effects, for a write that changes neither positions nor matchers
+    /// (renumbering ids), so the index stays valid.
+    fn mutate_ids(&mut self) -> &mut [ReplacementEffect] {
+        &mut self.effects
+    }
+
+    /// Positions, in order, of the effects whose matcher may observe an event
+    /// of `kind` or the zone change an entry or discard is also asked as.
+    fn candidates_for(&self, kind: crate::events::EventKind) -> std::sync::Arc<[u32]> {
+        if let Some(positions) = self.index().get(&kind) {
+            return positions.clone();
+        }
+        let positions: std::sync::Arc<[u32]> = self
+            .effects
+            .iter()
+            .enumerate()
+            .filter(|(_, effect)| {
+                effect.matcher.as_ref().is_some_and(|matcher| {
+                    matcher.may_match_event_kind(kind)
+                        || matcher.may_match_event_kind(crate::events::EventKind::ZoneChange)
+                })
+            })
+            .map(|(position, _)| position as u32)
+            .collect();
+        self.index().insert(kind, positions.clone());
+        positions
+    }
+}
+
+impl Clone for IndexedReplacementEffects {
+    fn clone(&self) -> Self {
+        Self {
+            effects: self.effects.clone(),
+            candidates: std::sync::Mutex::new(self.index().clone()),
+        }
+    }
+}
+
+impl std::fmt::Debug for IndexedReplacementEffects {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.effects.fmt(f)
+    }
+}
+
+impl std::ops::Deref for IndexedReplacementEffects {
+    type Target = Vec<ReplacementEffect>;
+    fn deref(&self) -> &Vec<ReplacementEffect> {
+        &self.effects
+    }
+}
+
 /// Manages all replacement effects in the game.
 #[derive(Debug, Clone, Default)]
 pub struct ReplacementEffectManager {
     /// All active replacement effects
-    effects: Vec<ReplacementEffect>,
+    effects: IndexedReplacementEffects,
 
     /// Source type for each effect (by ID)
     effect_sources: std::collections::HashMap<u64, ReplacementEffectSource>,
@@ -756,6 +834,13 @@ impl ReplacementEffectManager {
         &self.effects
     }
 
+    /// Positions in `effects()`, in order, of the effects whose matcher may
+    /// observe an event of `kind` (or the zone change an entry or discard is
+    /// also asked as). Built once per kind until the effects change.
+    pub(crate) fn event_kind_candidates(&self, kind: crate::events::EventKind) -> std::sync::Arc<[u32]> {
+        self.effects.candidates_for(kind)
+    }
+
     /// Snapshot effect sources in deterministic order.
     pub fn effect_sources_snapshot(&self) -> Vec<(u64, ReplacementEffectSource)> {
         let mut entries: Vec<(u64, ReplacementEffectSource)> = self
@@ -810,14 +895,14 @@ impl ReplacementEffectManager {
         self.next_id += 1;
         effect.id = id;
         effect.registration_id = persistent.then_some(id);
-        self.effects.push(effect);
+        self.effects.mutate().push(effect);
         id
     }
 
     /// Remove an effect by ID.
     pub fn remove_effect(&mut self, id: ReplacementEffectId) {
         self.static_publication = None;
-        self.effects.retain(|e| e.id != id);
+        self.effects.mutate().retain(|e| e.id != id);
         self.effect_sources.remove(&id.0);
         self.one_shot_effects.remove(&id);
         self.batch_one_shot_effects.remove(&id);
@@ -847,6 +932,11 @@ impl ReplacementEffectManager {
     /// The followed card `old` became `new` in `new_zone` (CR 400.7). A move
     /// onto the stack rebinds the replacement to that spell; any other move
     /// (including the spell leaving the stack unreplaced) ends it.
+    /// Whether a replacement follows `object` (see `rebind_followed_object`).
+    pub fn follows_object(&self, object: ObjectId) -> bool {
+        self.followed_objects.values().any(|followed| followed.object == object)
+    }
+
     pub fn rebind_followed_object(&mut self, old: ObjectId, new: ObjectId, new_zone: Zone) {
         let affected: Vec<_> = self
             .followed_objects
@@ -856,7 +946,7 @@ impl ReplacementEffectManager {
             .collect();
         for (id, followed) in affected {
             if new_zone == Zone::Stack && !followed.on_stack {
-                if let Some(effect) = self.effects.iter_mut().find(|effect| effect.id == id) {
+                if let Some(effect) = self.effects.mutate().iter_mut().find(|effect| effect.id == id) {
                     effect.matcher = Some(Box::new(
                         crate::events::zones::matchers::WouldChangeZoneMatcher::new(
                             crate::target::ObjectFilter::specific(new),
@@ -916,7 +1006,7 @@ impl ReplacementEffectManager {
                 index += 1;
                 continue;
             }
-            let effect = self.effects.remove(index);
+            let effect = self.effects.mutate().remove(index);
             suspended.push(SuspendedReplacementEffect {
                 index: index + suspended.len(),
                 effect,
@@ -936,7 +1026,7 @@ impl ReplacementEffectManager {
         for entry in suspended {
             let id = entry.effect.id;
             let index = entry.index.min(self.effects.len());
-            self.effects.insert(index, entry.effect);
+            self.effects.mutate().insert(index, entry.effect);
             if let Some(source) = entry.source {
                 self.effect_sources.insert(id.0, source);
             }
@@ -1094,12 +1184,12 @@ impl ReplacementEffectManager {
     /// `clear_static_ability_effects` removes them, for republication.
     pub(crate) fn take_static_ability_effects(&mut self) -> Vec<ReplacementEffect> {
         self.static_publication = None;
-        let (taken, kept): (Vec<_>, Vec<_>) = std::mem::take(&mut self.effects)
+        let (taken, kept): (Vec<_>, Vec<_>) = std::mem::take(self.effects.mutate())
             .into_iter()
             .partition(|effect| {
                 self.effect_sources.get(&effect.id.0) == Some(&ReplacementEffectSource::StaticAbility)
             });
-        self.effects = kept;
+        *self.effects.mutate() = kept;
         let ids: Vec<_> = taken.iter().map(|effect| effect.id).collect();
         self.forget_removed_ids(&ids);
         taken
@@ -1113,7 +1203,7 @@ impl ReplacementEffectManager {
         }
         self.static_publication = None;
         let removed: std::collections::HashSet<ReplacementEffectId> = ids.iter().copied().collect();
-        self.effects.retain(|effect| !removed.contains(&effect.id));
+        self.effects.mutate().retain(|effect| !removed.contains(&effect.id));
         self.forget_removed_ids(ids);
     }
 
@@ -1147,8 +1237,8 @@ impl ReplacementEffectManager {
             self.forget_removed_ids(&[old]);
             let id = ReplacementEffectId::new(self.next_id);
             self.next_id += 1;
-            self.effects[index].id = id;
-            self.effects[index].registration_id = None;
+            self.effects.mutate_ids()[index].id = id;
+            self.effects.mutate_ids()[index].registration_id = None;
             self.effect_sources.insert(id.0, ReplacementEffectSource::StaticAbility);
         }
     }
@@ -1157,7 +1247,7 @@ impl ReplacementEffectManager {
     /// `remove_effects` removes them.
     pub(crate) fn take_effects_from(&mut self, start: usize) -> Vec<ReplacementEffect> {
         self.static_publication = None;
-        let taken = self.effects.split_off(start);
+        let taken = self.effects.mutate().split_off(start);
         let ids: Vec<_> = taken.iter().map(|effect| effect.id).collect();
         self.forget_removed_ids(&ids);
         taken
@@ -1327,7 +1417,7 @@ impl ReplacementEffectManager {
         if !self.one_shot_effects.contains(&id) {
             return false;
         }
-        let Some(effect) = self.effects.iter_mut().find(|effect| effect.id == id) else {
+        let Some(effect) = self.effects.mutate().iter_mut().find(|effect| effect.id == id) else {
             return false;
         };
         let ReplacementAction::RedirectDamageAmount { amount, .. } = &mut effect.replacement
@@ -1704,6 +1794,55 @@ impl ReplacementEffect {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The per-kind index selects exactly the effects a full scan would, in
+    /// order, after every kind of write to the effect list.
+    #[test]
+    fn event_kind_candidates_follow_every_effect_list_write() {
+        use crate::events::EventKind;
+        let player = PlayerId::from_index(0);
+        let entry = |raw| ReplacementEffect::with_matcher(
+            ObjectId::from_raw(raw), player, crate::ThisWouldEnterBattlefieldMatcher, ReplacementAction::EnterTapped,
+        );
+        let damage = |raw| ReplacementEffect::with_matcher(
+            ObjectId::from_raw(raw), player, DamageToPlayerMatcher::to_you(), ReplacementAction::Double,
+        );
+        let check = |manager: &ReplacementEffectManager| {
+            for kind in [EventKind::EnterBattlefield, EventKind::Damage, EventKind::Draw] {
+                let expected: Vec<u32> = manager.effects().iter().enumerate()
+                    .filter(|(_, effect)| effect.matcher.as_ref().is_some_and(|matcher| {
+                        matcher.may_match_event_kind(kind) || matcher.may_match_event_kind(EventKind::ZoneChange)
+                    }))
+                    .map(|(position, _)| position as u32)
+                    .collect();
+                assert_eq!(manager.event_kind_candidates(kind).to_vec(), expected, "{kind:?}");
+            }
+        };
+        let mut manager = ReplacementEffectManager::new();
+        check(&manager);
+        let first = manager.add_static_ability_effect(entry(1));
+        manager.add_effect(damage(2));
+        check(&manager);
+        manager.add_static_ability_effect(entry(3));
+        let cached = manager.event_kind_candidates(EventKind::EnterBattlefield);
+        check(&manager);
+        manager.remove_effect(first);
+        check(&manager);
+        assert!(!std::sync::Arc::ptr_eq(&cached, &manager.event_kind_candidates(EventKind::EnterBattlefield)));
+        let start = manager.static_tail_start().expect("statics trail the list");
+        let len = manager.effects().len() - start;
+        let before = manager.event_kind_candidates(EventKind::EnterBattlefield);
+        manager.reregister_static_range(start, len);
+        assert!(std::sync::Arc::ptr_eq(&before, &manager.event_kind_candidates(EventKind::EnterBattlefield)), "renumbering ids keeps the index");
+        check(&manager);
+        let copy = manager.clone();
+        manager.take_static_ability_effects();
+        check(&manager);
+        check(&copy);
+        manager.add_static_ability_effect(entry(4));
+        manager.take_effects_from(0);
+        check(&manager);
+    }
 
     #[test]
     fn damage_occurrence_clone_preserves_identity_and_isolates_nested_and_entry_lifetimes() {

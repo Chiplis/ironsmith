@@ -890,7 +890,11 @@ fn commit_token_copy_proposal(
             programs,
         } => {
             ctx.provenance = provenance;
-            commit_token_copy_original(proposal, game, ctx, event, programs)?
+            game.with_frozen_static_replacements(|game| {
+                game.with_grouped_entry(|game| {
+                    commit_token_copy_original(proposal, game, ctx, event, programs)
+                })
+            })?
         }
     };
     drop(phase);
@@ -964,6 +968,7 @@ fn commit_token_copy_original(
             let token_is_creature = token.is_creature();
             if !super::resources::commit_token_slot_within_budget(game)? { break; }
             game.add_object(token);
+            game.set_grouped_entrant(Some(id));
             let attachment = None;
             let entry_result = game.move_created_token_with_entry_instructions(
                 id,
@@ -1036,6 +1041,7 @@ fn commit_token_copy_original(
         }
     }
 
+    game.set_grouped_entrant(None);
     let mut actual_creation = replacement.clone();
     actual_creation.count = created_ids.len() as u32;
     actual_creation.token = Some(token_preview);

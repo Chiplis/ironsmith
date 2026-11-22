@@ -93,7 +93,67 @@ pub(crate) struct CopyExceptionContribution {
     pub(crate) enters_tapped: bool,
 }
 
+/// What a plain entry proposes, apart from which object enters (see
+/// `EnterBattlefieldEvent::plain_entry_shape`).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct PlainEntryShape {
+    pub(crate) from: Option<Zone>,
+    pub(crate) enters_tapped: bool,
+    pub(crate) enters_attacking: bool,
+    pub(crate) enters_face_down: bool,
+    pub(crate) enters_with_counters: Vec<(CounterType, u32)>,
+    pub(crate) controller_override: Option<PlayerId>,
+    /// The entry carries its object's completed snapshot (the same for
+    /// identical objects apart from which object it is).
+    pub(crate) completed: bool,
+    /// The entry carries an (empty) prepared-choice record.
+    pub(crate) prepared: bool,
+}
+
 impl EnterBattlefieldEvent {
+    /// This entry's proposal when it carries nothing tied to one object (no
+    /// creation, copy choice, linked exile, program, or made choice): two
+    /// such entries of identical objects differ only in which object enters.
+    pub(crate) fn plain_entry_shape(&self) -> Option<PlainEntryShape> {
+        static DEFAULT_CHOICES: std::sync::OnceLock<String> = std::sync::OnceLock::new();
+        let plain = self.creation.is_none()
+            && self.linked_exile_with_entering.is_empty()
+            && self.enters_as_copy_of.is_none()
+            && self.copy_followups.is_empty()
+            && self.copy_duration.is_none()
+            && self.copy_name_override.is_none()
+            && self.added_colors.is_empty()
+            && self.added_card_types.is_empty()
+            && !self.removes_other_card_types
+            && self.added_supertypes.is_empty()
+            && self.removed_supertypes.is_empty()
+            && self.added_subtypes.is_empty()
+            && self.added_abilities.is_empty()
+            && self.set_base_power_toughness.is_none()
+            && self.pending_program.is_none()
+            && self.emerge_sacrifice.is_none()
+            && self.prior_copy_exceptions.is_none();
+        let empty = |choices: &crate::game_state::PreparedEtbChoices| {
+            format!("{choices:?}")
+                == *DEFAULT_CHOICES.get_or_init(|| {
+                    format!("{:?}", crate::game_state::PreparedEtbChoices::default())
+                })
+        };
+        let plain = plain
+            && empty(&self.program_choices)
+            && self.prepared_choices.as_ref().is_none_or(empty);
+        plain.then(|| PlainEntryShape {
+            from: self.from,
+            enters_tapped: self.enters_tapped,
+            enters_attacking: self.enters_attacking,
+            enters_face_down: self.enters_face_down,
+            enters_with_counters: self.enters_with_counters.clone(),
+            controller_override: self.controller_override,
+            completed: self.completed_snapshot.is_some(),
+            prepared: self.prepared_choices.is_some(),
+        })
+    }
+
     /// CR 707.9e: when another copy effect applies, the exceptions and
     /// additional effects of the earlier copy choice no longer happen.
     pub(crate) fn discard_prior_copy_exceptions(&mut self) {

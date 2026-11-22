@@ -1764,9 +1764,13 @@ impl GameState {
         let new_id = self.new_object_id();
         // A replacement waiting for this card follows it onto the stack and
         // ends on any other zone change (CR 400.7).
-        self.effect_store
-            .replacement_effects
-            .rebind_followed_object(old_id, new_id, new_zone);
+        // Checked through a shared reference first: a write copies the whole
+        // manager while a checkpoint shares it.
+        if self.effect_store.replacement_effects.follows_object(old_id) {
+            self.effect_store
+                .replacement_effects
+                .rebind_followed_object(old_id, new_id, new_zone);
+        }
         let mut new_object = old_object;
         new_object.id = new_id;
         new_object.zone = new_zone;

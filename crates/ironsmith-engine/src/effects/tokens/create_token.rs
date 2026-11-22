@@ -546,7 +546,7 @@ fn commit_token_proposal(
                 ExecutionError::InternalError("token original lost its preview".into())
             })?;
             ctx.provenance = provenance;
-            commit_token_original(
+            game.with_frozen_static_replacements(|game| game.with_grouped_entry(|game| commit_token_original(
                 &proposal.effect,
                 &proposal.resolved_token,
                 &proposal.initial_counters,
@@ -558,7 +558,7 @@ fn commit_token_proposal(
                 programs,
                 proposal.instruction.take(),
                 proposal.entry_attachment_plan.take(),
-            )?
+            )))?
         }
     };
     if let Some((action, amount)) = proposal.completion {
@@ -704,6 +704,7 @@ fn commit_token_original(
     
             if !super::resources::commit_token_slot_within_budget(game)? { break; }
             game.add_object(token_obj);
+            game.set_grouped_entrant(Some(id));
             let attachment = None;
             let entry_result = game.move_created_token_with_entry_instructions(
                 id,
@@ -808,6 +809,7 @@ fn commit_token_original(
         }
     }
 
+    game.set_grouped_entrant(None);
     let mut actual_creation = replacement.clone();
     actual_creation.count = created_ids.len() as u32;
     actual_creation.token = Some(token_preview);

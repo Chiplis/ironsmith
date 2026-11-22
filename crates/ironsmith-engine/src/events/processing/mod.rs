@@ -2770,6 +2770,31 @@ fn find_applicable_trait_replacements(
     additional_effects: &[ReplacementEffect],
     event_source_snapshot: Option<&crate::snapshot::ObjectSnapshot>,
 ) -> Result<Vec<(ReplacementEffect, ReplacementPriority)>, crate::effects::ExecutionError> {
+    // A plain entry of a grouped identical object whose first sibling matched
+    // nothing among the same candidates matches nothing either (see
+    // `GameState::with_grouped_entry`).
+    let grouped = crate::events::downcast_event::<crate::events::EnterBattlefieldEvent>(event.inner())
+        .filter(|_| {
+            additional_effects.is_empty()
+                && event_source_snapshot.is_none()
+                && state.applied_effects.is_empty()
+                && state.applied_effect_keys.is_empty()
+                && state.additional_programs.is_empty()
+                && state.damage_remainders.is_empty()
+        })
+        .and_then(|etb| Some((etb.object, etb.plain_entry_shape()?)));
+    let original = game;
+    if let Some((entrant, shape)) = &grouped {
+        let candidates = original
+            .effect_store
+            .replacement_effects
+            .event_kind_candidates(event.kind());
+        if original.grouped_entry_found_no_replacement(*entrant, shape, &candidates)
+            && std::env::var_os("IRONSMITH_EFFECT_FREE_SHADOW").is_none()
+        {
+            return Ok(Vec::new());
+        }
+    }
     let query = game
         .continuous_query_snapshot()
         .map_err(crate::effects::ExecutionError::ContinuousDiscovery)?;
@@ -2787,16 +2812,29 @@ fn find_applicable_trait_replacements(
                 || matcher.may_match_event_kind(crate::events::EventKind::ZoneChange)
         })
     };
-    // Registered effects first, then this event's ephemeral ones; already
+    // Registered effects first (from the manager's per-kind index, in
+    // registration order), then this event's ephemeral ones; already
     // applied effects are skipped (Rule 614.5).
-    let candidates: Vec<&ReplacementEffect> = game
-        .effect_store
-        .replacement_effects
-        .effects()
+    let manager = &game.effect_store.replacement_effects;
+    let registered = manager.effects();
+    let positions = manager.event_kind_candidates(kind);
+    let candidates: Vec<&ReplacementEffect> = positions
         .iter()
-        .chain(additional_effects)
-        .filter(|effect| !state.was_applied_effect(effect) && may_observe(effect))
+        .map(|&position| &registered[position as usize])
+        .chain(additional_effects.iter().filter(|effect| may_observe(effect)))
+        .filter(|effect| !state.was_applied_effect(effect))
         .collect();
+    #[cfg(debug_assertions)]
+    debug_assert_eq!(
+        candidates.iter().map(|effect| effect.id).collect::<Vec<_>>(),
+        registered
+            .iter()
+            .chain(additional_effects)
+            .filter(|effect| !state.was_applied_effect(effect) && may_observe(effect))
+            .map(|effect| effect.id)
+            .collect::<Vec<_>>(),
+        "the event-kind index must select exactly the observing effects"
+    );
     // Built even with no candidates: its discovery errors are part of the
     // replacement outcome for an entry.
     let prospective_etb_game =
@@ -2818,6 +2856,18 @@ fn find_applicable_trait_replacements(
         )? {
             applicable.push((effect.clone(), priority));
         }
+    }
+
+    if let Some((entrant, shape)) = grouped {
+        #[cfg(debug_assertions)]
+        if original.grouped_entry_found_no_replacement(
+            entrant,
+            &shape,
+            &original.effect_store.replacement_effects.event_kind_candidates(kind),
+        ) {
+            assert!(applicable.is_empty(), "a grouped sibling's entry matched a replacement its first sibling did not");
+        }
+        original.record_grouped_entry_match(entrant, shape, positions, applicable.is_empty());
     }
 
     Ok(applicable)

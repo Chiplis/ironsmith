@@ -100,6 +100,9 @@ impl GameState {
     pub fn update_replacement_effects(
         &mut self,
     ) -> Result<(), crate::static_ability_processor::StaticEffectDiscoveryError> {
+        if self.runtime_cache.static_replacements_frozen.borrow().strong_count() > 0 {
+            return Ok(());
+        }
         // Replacement sources' conditions can read tapped state.
         self.enter_derived_tap_reads();
         let result = self.update_replacement_effects_inner();
@@ -275,6 +278,105 @@ impl GameState {
                     .replacement_effects
                     .add_static_ability_effect(decline);
             }
+        }
+    }
+
+    /// Run one simultaneous entry with the static replacement effects
+    /// published and held fixed while its objects enter one by one: CR
+    /// 614.12 reads the battlefield before the event, so an entrant's statics
+    /// never replace a sibling's entry (each entrant's own abilities are read
+    /// from the entrant). Every clone taken inside shares the hold, which
+    /// ends with this call; the entrants' effects are then published.
+    pub(crate) fn with_frozen_static_replacements<T>(
+        &mut self,
+        run: impl FnOnce(&mut Self) -> Result<T, crate::effects::ExecutionError>,
+    ) -> Result<T, crate::effects::ExecutionError> {
+        if self.runtime_cache.static_replacements_frozen.borrow().strong_count() > 0 {
+            return run(self);
+        }
+        self.update_replacement_effects()
+            .map_err(crate::effects::ExecutionError::ContinuousDiscovery)?;
+        let hold = std::sync::Arc::new(());
+        *self.runtime_cache.static_replacements_frozen.borrow_mut() = std::sync::Arc::downgrade(&hold);
+        let result = run(self);
+        drop(hold);
+        *self.runtime_cache.static_replacements_frozen.borrow_mut() = std::sync::Weak::new();
+        let thawed = self.update_replacement_effects();
+        let value = result?;
+        thawed.map_err(crate::effects::ExecutionError::ContinuousDiscovery)?;
+        Ok(value)
+    }
+
+    /// Run the entries of a group of identical objects (the copies one token
+    /// instruction creates) inside a frozen simultaneous entry. The first
+    /// plain entry matches registered replacements in full; when none applies
+    /// a later member's identical plain entry, against the same unchanged
+    /// candidates, finds none either (CR 614.12: all of them are checked
+    /// against the battlefield before the event), so its matching is skipped.
+    /// Outside a frozen entry this only runs `run`.
+    pub(crate) fn with_grouped_entry<T>(&mut self, run: impl FnOnce(&mut Self) -> T) -> T {
+        if self.runtime_cache.static_replacements_frozen.borrow().strong_count() == 0
+            || self.active_grouped_entry().is_some()
+        {
+            return run(self);
+        }
+        let hold = Arc::new(());
+        *self.runtime_cache.grouped_entry.borrow_mut() = Some(crate::game_state::GroupedEntry {
+            hold: Arc::downgrade(&hold),
+            entrant: None,
+            template: Vec::new(),
+        });
+        let result = run(self);
+        drop(hold);
+        *self.runtime_cache.grouped_entry.borrow_mut() = None;
+        result
+    }
+
+    fn active_grouped_entry(&self) -> Option<std::cell::RefMut<'_, crate::game_state::GroupedEntry>> {
+        std::cell::RefMut::filter_map(self.runtime_cache.grouped_entry.borrow_mut(), |entry| {
+            entry.as_mut().filter(|entry| entry.hold.strong_count() > 0)
+        })
+        .ok()
+        .filter(|_| self.runtime_cache.static_replacements_frozen.borrow().strong_count() > 0)
+    }
+
+    /// The group member about to enter; `None` once the group's own members
+    /// are done (later entries in the same event are not members).
+    pub(crate) fn set_grouped_entrant(&self, entrant: Option<ObjectId>) {
+        if let Some(mut entry) = self.active_grouped_entry() {
+            entry.entrant = entrant;
+        }
+    }
+
+    /// For the current member's plain entry: whether the group's first entry
+    /// of the same shape found no applicable replacement among `candidates`.
+    pub(crate) fn grouped_entry_found_no_replacement(
+        &self,
+        entrant: ObjectId,
+        shape: &crate::events::zones::PlainEntryShape,
+        candidates: &Arc<[u32]>,
+    ) -> bool {
+        self.active_grouped_entry().is_some_and(|entry| {
+            entry.entrant == Some(entrant)
+                && entry.template.iter().any(|(held, matched, found_none)| {
+                    *found_none && held == shape && Arc::ptr_eq(matched, candidates)
+                })
+        })
+    }
+
+    /// Record what the group's first plain entry of this shape found.
+    pub(crate) fn record_grouped_entry_match(
+        &self,
+        entrant: ObjectId,
+        shape: crate::events::zones::PlainEntryShape,
+        candidates: Arc<[u32]>,
+        found_none: bool,
+    ) {
+        if let Some(mut entry) = self.active_grouped_entry()
+            && entry.entrant == Some(entrant)
+            && !entry.template.iter().any(|(held, _, _)| *held == shape)
+        {
+            entry.template.push((shape, candidates, found_none));
         }
     }
 
