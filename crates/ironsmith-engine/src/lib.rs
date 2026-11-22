@@ -122,6 +122,9 @@ pub mod types;
 pub mod zone;
 
 pub(crate) type FxMap<K, V> = std::collections::HashMap<K, V, rustc_hash::FxBuildHasher>;
+/// A persistent `FxMap`: clones share structure, so a map that grows with
+/// the board costs nothing to copy with the game.
+pub(crate) type FxPersistentMap<K, V> = im::HashMap<K, V, rustc_hash::FxBuildHasher>;
 
 #[cfg(test)]
 mod tests;

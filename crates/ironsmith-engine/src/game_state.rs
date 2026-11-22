@@ -1454,7 +1454,9 @@ pub struct EffectStore {
     pub named_action_uses: HashMap<crate::action_use_receipts::ActionUseKey, (u32, u32)>,
     pub source_object_collections: Vec<SourceObjectCollection>,
     pub delayed_triggers: Vec<crate::triggers::DelayedTrigger>,
-    pub pending_trigger_events: Vec<crate::triggers::TriggerEvent>,
+    /// Persistent: a resolving instruction queues one event per object it
+    /// affects while the game is copied many times per object.
+    pub pending_trigger_events: im::Vector<crate::triggers::TriggerEvent>,
     pub(crate) departure_hand_reveal_frames: std::collections::HashMap<ObjectId,crate::effects::player::HandRevealFrame>,
     pub(crate) pending_hand_reveal_windows: Vec<crate::effects::player::HandRevealWindow>,
     pub(crate) hand_reveal_events_captured: crate::cow::CowArc<std::collections::HashMap<(u32,usize),crate::triggers::TriggerEvent>>,
@@ -1464,7 +1466,7 @@ pub struct EffectStore {
     pub(crate) instruction_result_records: Vec<im::Vector<crate::effect::ExecutionFact>>,
     /// Scoped observations retained for deferred action completion, independent
     /// of trigger queue consumption. Nested observers each retain their receipts.
-    pub(crate) action_observation_records: Vec<Vec<crate::triggers::TriggerEvent>>,
+    pub(crate) action_observation_records: Vec<im::Vector<crate::triggers::TriggerEvent>>,
     /// Immutable receipts from an actual original group, scoped by its retained
     /// completion owner. Read-only aliases do not publish or drain observations.
     pub(crate) retained_original_observation_scopes:
@@ -1573,7 +1575,7 @@ impl Default for EffectStore {
             named_action_uses: HashMap::new(),
             source_object_collections: Vec::new(),
             delayed_triggers: Vec::new(),
-            pending_trigger_events: Vec::new(),
+            pending_trigger_events: im::Vector::new(),
             pending_hand_reveal_windows: Vec::new(),
             departure_hand_reveal_frames: std::collections::HashMap::new(),
             hand_reveal_events_captured: Default::default(),

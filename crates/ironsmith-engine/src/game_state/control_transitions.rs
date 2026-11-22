@@ -236,7 +236,7 @@ impl GameState {
             let provenance = self.provenance_graph_mut().alloc_root_event(EventKind::CharacteristicGained);
             self.queue_trigger_event(provenance,
                 crate::triggers::TriggerEvent::new_with_provenance(event, provenance));
-            let mut receipt = self.effect_store.pending_trigger_events.pop()
+            let mut receipt = self.effect_store.pending_trigger_events.pop_back()
                 .expect("characteristic transition receipt was queued");
             let mut matched = crate::triggers::TriggerQueue::new();
             crate::game_loop::queue_triggers_from_reported_events(
@@ -244,7 +244,7 @@ impl GameState {
             );
             matched.defer_into_game(self);
             receipt.mark_triggers_captured();
-            self.effect_store.pending_trigger_events.push(receipt);
+            self.effect_store.pending_trigger_events.push_back(receipt);
         }
         for (previous, current) in transitions {
             let event = crate::events::ControlChangedEvent::new(
@@ -275,7 +275,7 @@ impl GameState {
             let mut receipt = self
                 .effect_store
                 .pending_trigger_events
-                .pop()
+                .pop_back()
                 .expect("control receipt was queued");
             let mut matched = crate::triggers::TriggerQueue::new();
             crate::game_loop::queue_triggers_from_reported_events(
@@ -286,7 +286,7 @@ impl GameState {
             );
             matched.defer_into_game(self);
             receipt.mark_triggers_captured();
-            self.effect_store.pending_trigger_events.push(receipt);
+            self.effect_store.pending_trigger_events.push_back(receipt);
         }
     }
 }

@@ -348,7 +348,7 @@ mod tests {
             let altered = if simultaneous {
                 altered.with_simultaneous_batch(Default::default())
             } else { altered };
-            game.effect_store.pending_trigger_events.push(altered);
+            game.effect_store.pending_trigger_events.push_back(altered);
             let mut queue = crate::triggers::TriggerQueue::new();
             assert!(matches!(crate::game_loop::put_triggers_on_stack_with_dm(
                 &mut game, &mut queue, &mut crate::decision::SelectFirstDecisionMaker,

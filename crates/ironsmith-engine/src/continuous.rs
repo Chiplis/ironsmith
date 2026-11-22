@@ -1361,22 +1361,22 @@ pub struct ContinuousEffectManager {
     // === Timestamp tracking per Rule 613.7 ===
     /// Timestamps for when objects entered their current zone.
     /// Per Rule 613.7d, objects get a timestamp when entering a zone.
-    object_entry_timestamps: FxMap<ObjectId, u64>,
+    object_entry_timestamps: crate::FxPersistentMap<ObjectId, u64>,
 
     /// Timestamps for when counters were last modified on objects.
     /// Per Rule 613.7c, counters of the same type share a timestamp
     /// that's updated when new counters are added.
-    counter_timestamps: FxMap<(ObjectId, CounterType), u64>,
+    counter_timestamps: crate::FxPersistentMap<(ObjectId, CounterType), u64>,
 
     /// Timestamps for when auras/equipment became attached.
     /// Per Rule 613.7e, attachments get a new timestamp when attached.
-    attachment_timestamps: FxMap<ObjectId, u64>,
+    attachment_timestamps: crate::FxPersistentMap<ObjectId, u64>,
 
     /// CR 704.5k measures how long a permanent has had the world supertype.
     /// Objects that entered during one simultaneous action share that moment
     /// even though CR 613.7m gives them distinct, ordered timestamps. Absent
     /// entries use the object's own entry timestamp.
-    object_entry_moments: FxMap<ObjectId, u64>,
+    object_entry_moments: crate::FxPersistentMap<ObjectId, u64>,
 
     /// Objects whose entry, counter or attachment timestamp changed, for
     /// indexes that skip unchanged objects (never gameplay state).

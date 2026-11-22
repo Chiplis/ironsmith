@@ -5269,7 +5269,7 @@ impl GameState {
                     event.clone()
                 };
             } else {
-                observations.push(event.clone());
+                observations.push_back(event.clone());
             }
         }
     }
@@ -6019,7 +6019,7 @@ impl GameState {
         if let Err(error)=crate::effects::capture_hand_reveal_window(self,&event) {
             self.record_token_resource_failure(&error);
         }
-        self.effect_store.pending_trigger_events.push(event);
+        self.effect_store.pending_trigger_events.push_back(event);
     }
 
     /// Drop the not-yet-matched "becomes the target" events a stack object
@@ -6093,7 +6093,7 @@ impl GameState {
 
     /// Take all pending trigger events (empties the queue).
     pub fn take_pending_trigger_events(&mut self) -> Vec<crate::triggers::TriggerEvent> {
-        std::mem::take(&mut self.effect_store.pending_trigger_events)
+        std::mem::take(&mut self.effect_store.pending_trigger_events).into_iter().collect()
     }
 
     pub(crate) fn defer_trigger_entries(
@@ -6132,7 +6132,7 @@ impl GameState {
                 retained.push(event);
             }
         }
-        self.effect_store.pending_trigger_events = retained;
+        self.effect_store.pending_trigger_events = retained.into_iter().collect();
         removed
     }
 

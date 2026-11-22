@@ -239,7 +239,7 @@ pub(crate) fn with_action_observations<T>(
     let depth = game.effect_store.action_observation_records.len();
     game.effect_store
         .action_observation_records
-        .push(Vec::new());
+        .push(im::Vector::new());
     let result = body(game);
     if game.effect_store.action_observation_records.len() != depth + 1 {
         return Err(ExecutionError::InternalError(
@@ -247,7 +247,7 @@ pub(crate) fn with_action_observations<T>(
         ));
     }
     let observations = game.effect_store.action_observation_records.pop().unwrap();
-    result.map(|value| (value, observations))
+    result.map(|value| (value, observations.into_iter().collect()))
 }
 
 /// Complete the exact original subjects after authored programs. A departure
