@@ -514,8 +514,12 @@ pub(super) fn priority_actor_for_action(
             crate::decision::compute_actions_assuming_mana_for_presentation(game, player,
                 crate::decision::legal_action_source(action))?
         } else {
-            crate::decision::compute_actions_for_source(game, player,
-                crate::decision::legal_action_source(action))?
+            crate::decision::with_bounded_payment_recheck(
+                priority_analysis_deferred() || priority_analysis_bounded(),
+                || crate::decision::compute_actions_for_source(
+                    game, player, crate::decision::legal_action_source(action),
+                ),
+            )?
         };
         if candidates.contains(action) { return Ok(Some(player)); }
     }
@@ -562,5 +566,57 @@ mod deferred_analysis_tests {
         let full = analyze_priority_context(&game, alice).expect("fixture has complete replacement state");
         assert!(full.analysis_complete);
         assert_eq!(game.turn.priority_player, Some(alice));
+    }
+}
+
+#[cfg(test)]
+mod bounded_special_action_tests {
+    use super::*;
+    use crate::{ManaCost, ManaSymbol, Phase};
+
+    #[test]
+    fn special_action_actor_recheck_does_not_restart_payment_search() {
+        let player = PlayerId::from_index(0);
+        let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+        game.turn.phase = Phase::FirstMain;
+        game.turn.step = None;
+        game.turn.active_player = player;
+        game.turn.priority_player = Some(player);
+        let spell = crate::cards::CardDefinitionBuilder::new(crate::ids::CardId::new(), "Suspend probe")
+            .card_types(vec![CardType::Creature])
+            .mana_cost(ManaCost::from_symbols(vec![ManaSymbol::Blue; 3]))
+            .suspend(2, ManaCost::new().add_generic(1))
+            .build();
+        let card = game.create_object_from_definition(&spell, player, Zone::Hand);
+        let land = crate::cards::CardDefinitionBuilder::new(crate::ids::CardId::new(), "Life source")
+            .card_types(vec![CardType::Land])
+            .with_ability(crate::Ability::mana_with_effects(
+                crate::cost::TotalCost::from_cost(crate::costs::Cost::life(1)),
+                vec![crate::effect::Effect::add_mana_of_any_color_restricted(
+                    1, vec![crate::color::Color::White, crate::color::Color::Blue],
+                )],
+            ))
+            .build();
+        game.create_object_from_definition(&land, player, Zone::Battlefield);
+        let action = LegalAction::SpecialAction(crate::special_actions::SpecialAction::Suspend { card_id: card });
+        for (bounded, deferred) in [(true, false), (false, true)] {
+            let previous = (priority_analysis_bounded(), priority_analysis_deferred());
+            set_priority_analysis_bounded(bounded);
+            set_priority_analysis_deferred(deferred);
+            let mut session = crate::decision::ManaAnalysisSession::default();
+            let (actor, complete) = session.run_for_game(&game, 1, || {
+                priority_actor_for_action(&game, &action)
+            });
+            set_priority_analysis_bounded(previous.0);
+            set_priority_analysis_deferred(previous.1);
+            assert!(complete, "actor admission restarted payment search");
+            assert_eq!(actor.unwrap(), Some(player));
+            assert_eq!(session.last_slice_nodes(), 0);
+            assert!(session.failure().is_none());
+        }
+        game.turn.priority_player = Some(PlayerId::from_index(1));
+        assert_eq!(priority_actor_for_action(&game, &action).unwrap(), None);
+        assert_eq!(game.object(card).unwrap().zone, Zone::Hand);
+        assert_eq!(game.player(player).unwrap().life, 20);
     }
 }
