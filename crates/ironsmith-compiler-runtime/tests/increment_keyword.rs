@@ -501,7 +501,7 @@ fn topiary_mana_activation_reads_current_incremented_power() {
         game.add_counters(source, CounterType::PlusOnePlusOne, 2)
             .unwrap();
         game.remove_summoning_sickness(source);
-        let power = game.current_power(source).unwrap() as u32;
+        let power = game.current_power(source).unwrap() as u64;
         let action = ironsmith::decision::compute_legal_actions(&game, A)
             .unwrap()
             .into_iter()

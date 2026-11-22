@@ -111,6 +111,16 @@ fn max_matching(pips: &[u8], units: &[u8]) -> usize {
         seen: &mut [bool],
         owner: &mut [Option<usize>],
     ) -> bool {
+        // A free compatible unit ends the path at once; only otherwise search
+        // for an augmenting path. This keeps large interchangeable pools
+        // linear per pip instead of re-walking every owned unit.
+        if let Some(unit) = (0..units.len())
+            .find(|&unit| owner[unit].is_none() && !seen[unit] && pips[pip] & units[unit] != 0)
+        {
+            seen[unit] = true;
+            owner[unit] = Some(pip);
+            return true;
+        }
         for unit in 0..units.len() {
             if seen[unit] || pips[pip] & units[unit] == 0 {
                 continue;

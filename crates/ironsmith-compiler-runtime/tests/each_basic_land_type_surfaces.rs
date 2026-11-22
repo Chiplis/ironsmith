@@ -66,11 +66,13 @@ fn actual_planar_overlay_keeps_all_five_slots_for_every_player_and_returns_to_ow
    let land=ironsmith_compiler_runtime::compile_to_runtime_definition("Typeless basic","Type: Basic Land",false).unwrap();let id=game.create_object_from_definition(&land,a,Zone::Battlefield);if controller!=a{game.set_current_controller(id,controller).unwrap();}typeless.push(id);
   }
   let source=game.create_object_from_definition(&definition,a,Zone::Stack);let mut dm=PerTypeChoices{own_only:true,..Default::default()};
-  let result=ironsmith::effects::execute_effect(&mut game,&ironsmith::Effect::new(ironsmith::effects::SequenceEffect::new(definition.spell_effect.as_ref().unwrap().all_effects_owned())),&mut ironsmith::effects::EffectContext::new_default(source,a).with_decision_maker(&mut dm)).unwrap();
+  ironsmith::effects::execute_effect(&mut game,&ironsmith::Effect::new(ironsmith::effects::SequenceEffect::new(definition.spell_effect.as_ref().unwrap().all_effects_owned())),&mut ironsmith::effects::EffectContext::new_default(source,a).with_decision_maker(&mut dm)).unwrap();
   let expected=if one_multityped_land{3}else{15};assert_eq!(game.player(a).unwrap().hand.len(),expected);assert_eq!(game.player(players[1]).unwrap().hand.len(),0);assert_eq!(game.player(players[2]).unwrap().hand.len(),0);
   if !one_multityped_land{for player in players{assert_eq!(dm.prompts.iter().filter(|actor|**actor==player).count(),5,"all three players independently choose all five types");}}
   for id in typeless{assert_eq!(game.object(id).unwrap().zone,Zone::Battlefield,"basic supertype alone isn't a basic land type");}
-  let moved=result.events.iter().filter_map(|event|event.downcast::<ironsmith::events::ZoneChangeEvent>()).filter(|event|event.to==Zone::Hand).map(|event|event.objects.len()).sum::<usize>();assert_eq!(moved,expected,"a multityped land can fill several slots but moves only once");
+  // The simultaneous return is one recorded zone-change event (CR 603.2);
+  // it is kept in the turn history, not returned in the aggregate outcome.
+  let moved=game.turn_store.turn_history.event_records.iter().filter_map(|record|record.event.downcast::<ironsmith::events::ZoneChangeEvent>()).filter(|event|event.to==Zone::Hand).map(|event|event.objects.len()).sum::<usize>();assert_eq!(moved,expected,"a multityped land can fill several slots but moves only once");
  }}
 }
 #[test]

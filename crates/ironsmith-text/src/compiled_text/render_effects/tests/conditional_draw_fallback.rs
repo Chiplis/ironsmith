@@ -75,11 +75,11 @@ fn conditional_draw_fallback_uses_actual_draw_result() {
                     crate::effects::execute_effect(&mut game, effect, &mut ctx).unwrap();
                 }
                 let eligible = matches!(counter_location, 1 | 4);
-                // A "draw two instead" replacement still puts the card into
-                // the hand, but those draws aren't the replaced instruction's
-                // own draw (CR 121.6c), so the fallback still applies.
+                // Cards a replacement has the same player draw instead are
+                // drawn this way (CR 614.11, Ancient Excavation ruling), so a
+                // "draw two instead" replacement also skips the fallback.
                 let in_hand = eligible && available && matches!(replacement_kind, 0 | 3);
-                let drew_this_way = eligible && available && replacement_kind == 0;
+                let drew_this_way = in_hand;
                 assert_eq!(game.player(alice).unwrap().hand.len(), usize::from(in_hand));
                 assert_eq!(
                     game.counter_count(source, CounterType::PlusOnePlusOne),

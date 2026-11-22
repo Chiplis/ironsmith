@@ -628,7 +628,7 @@ fn arithmetic_does_not_narrow_wide_results_or_confuse_negative_addition_and_subt
     }
 }
 #[test]
-fn arithmetic_resource_failure_rolls_back_the_whole_program_and_prior_instruction_receipts() {
+fn arithmetic_beyond_the_event_range_saturates_and_completes_the_whole_program() {
     use ironsmith::effect::{Effect, EffectId, EffectOutcome, Value};
     use ironsmith::effects::{SequenceEffect, execute_effect};
     let mut game = game();
@@ -640,15 +640,18 @@ fn arithmetic_resource_failure_rolls_back_the_whole_program_and_prior_instructio
     let before = game.irreversible_random_count();
     let mut context = EffectContext::new_default(source, A);
     context.effect_outcomes.insert(EffectId(9), EffectOutcome::count(11));
-    let error = execute_effect(&mut game, &sequence, &mut context).unwrap_err();
-    assert!(matches!(error, ExecutionError::ResourceLimitExceeded { resource: "modified die result", .. }));
-    assert_eq!(game.player(A).unwrap().life, 30);
+    // CR 107.1b: a negative result is zero; a modified die result is a game
+    // quantity and saturates at the unsigned event range instead of failing.
+    // The whole program completes once, consuming only the forced roll.
+    let outcome = execute_effect(&mut game, &sequence, &mut context).unwrap();
+    assert_eq!(outcome.as_count(), Some(i64::from(u32::MAX)));
+    assert_eq!(game.player(A).unwrap().life, 34);
     assert_eq!(game.irreversible_random_count(), before);
-    assert_eq!(game.turn_store.turn_history.completed_die_roll_count(A), 0);
-    assert_eq!(context.effect_outcomes.len(), 1);
+    assert_eq!(game.turn_store.turn_history.completed_die_roll_count(A), 1);
+    assert_eq!(game.turn_store.turn_history.die_rolls_this_turn[&A], [u32::MAX]);
     assert_eq!(context.effect_outcomes[&EffectId(9)].as_count(), Some(11));
-    assert_eq!(game.take_forced_die_roll(), Some(20));
-    assert!(game.take_pending_trigger_events().is_empty());
+    assert_eq!(context.effect_outcomes[&EffectId(7)].as_count(), Some(i64::from(u32::MAX)));
+    assert_eq!(game.take_forced_die_roll(), None);
 }
 struct PauseModifierOrder { pause: bool, pending: bool }
 impl DecisionMaker for PauseModifierOrder {

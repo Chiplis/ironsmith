@@ -178,15 +178,20 @@ fn describe_matching_object_count_for_each_basis(value: &Value) -> Option<(i32, 
     // (Jean-Luc, Mon Capitaine): the authored "already" stays on the counted
     // set's controller clause.
     if value.has_surface_hint(ValueSurfaceHint::AlreadyControlled) {
-        let mut bare = value.unhinted().clone();
+        let bare = value.unhinted();
         if let Value::CreatureTypesAmong(filter)
         | Value::CardTypesAmong(filter)
-        | Value::Count(filter) = &mut bare
+        | Value::Count(filter) = bare
             && filter.controller == Some(PlayerFilter::You)
         {
-            filter.controller = None;
-            let (multiplier, basis) = describe_matching_object_count_for_each_basis(&bare)?;
-            return Some((multiplier, format!("{basis} you already control")));
+            // Render the controlled set as usual, then mark its controller
+            // clause. Clearing the controller instead would describe an
+            // uncontrolled battlefield set ("creatures on the battlefield").
+            let (multiplier, basis) = describe_matching_object_count_for_each_basis(bare)?;
+            if let Some(set) = basis.strip_suffix(" you control") {
+                return Some((multiplier, format!("{set} you already control")));
+            }
+            return Some((multiplier, basis));
         }
     }
     match value.unhinted() {

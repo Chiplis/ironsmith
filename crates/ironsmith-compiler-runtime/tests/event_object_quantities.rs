@@ -694,8 +694,18 @@ fn a_distinct_event_source_is_not_substituted_for_a_missing_event_object() {
         &mut ctx,
     )
     .unwrap();
+    // CR 608.2h / 113.7a: a departed event object is still named by its own
+    // last-known information (the engine falls back to that LKI since the
+    // Magma Pummeler fix). The distinct event source must never stand in.
+    let tagged = ctx.get_tagged_all("missing").cloned().unwrap_or_default();
     assert!(
-        ctx.get_tagged_all("missing")
-            .is_none_or(|objects| objects.is_empty())
+        tagged.iter().all(|snapshot| snapshot.object_id == named),
+        "only the event object's own last-known information may be tagged: {tagged:?}"
+    );
+    assert!(
+        tagged
+            .iter()
+            .all(|snapshot| snapshot.object_id != source && snapshot.power != Some(8)),
+        "the distinct event source was substituted: {tagged:?}"
     );
 }

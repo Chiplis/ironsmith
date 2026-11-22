@@ -192,9 +192,10 @@ pub(super) fn exile_play_event_followups_lower_as_reflexive_or_delayed_triggers(
         .expect("play-this-way followup should parse");
     let delayed_debug = format!("{:#?}", delayed.abilities);
     assert!(
+        // One trigger covers both a land played and a spell cast through
+        // the preceding permission.
         delayed_debug.contains("ScheduleDelayedTriggerEffect")
-            && delayed_debug.contains("SpellCast")
-            && delayed_debug.contains("PlayerPlaysLand"),
+            && delayed_debug.contains("PlayedOrCastThroughPreviousPermission"),
         "{delayed_debug}"
     );
 }

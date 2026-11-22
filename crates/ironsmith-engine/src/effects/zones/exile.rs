@@ -362,6 +362,11 @@ impl ZoneMovementInstruction for ExileEffect {
                 }
                 None => false,
             }
+        } else if !self.spec.is_target() && !count.dynamic_x && !count.up_to_x {
+            // "You may exile a creature card from among them. If you do"
+            // (Shadow Kin): with no such card the exile is impossible and
+            // did not happen (CR 101.3), even if the offer was accepted.
+            objects.len() < count.min
         } else {
             false
         };

@@ -225,6 +225,30 @@ fn maximum_affordable_bounded_x(
     // the same cost with a smaller X, so affordability is monotonic.
     let mut lower = 0;
     let mut upper = semantic_maximum;
+    // A pool can hold far more mana than one payment can be planned for. Probe
+    // the host bound first: if even it is unaffordable the true maximum lies
+    // below it; otherwise the maximum is beyond what can be planned, which is a
+    // typed resource limit rather than a silently truncated choice.
+    let limit = u64::from(crate::mana_payment::PAYMENT_UNIT_LIMIT);
+    let fixed_units = crate::mana_payment::payment_unit_count(&adjusted_cost, 0);
+    let units_per_x =
+        crate::mana_payment::payment_unit_count(&adjusted_cost, 1).saturating_sub(fixed_units);
+    let plannable_x = if units_per_x == 0 {
+        u32::MAX
+    } else {
+        u32::try_from(limit.saturating_sub(fixed_units) / units_per_x).unwrap_or(u32::MAX)
+    };
+    if upper > plannable_x {
+        if can_pay(plannable_x)? {
+            return Err(ExecutionError::ResourceLimitExceeded {
+                resource: "mana payment units",
+                requested: u128::from(fixed_units)
+                    + u128::from(semantic_maximum) * u128::from(units_per_x),
+                maximum: u128::from(limit),
+            });
+        }
+        upper = plannable_x.saturating_sub(1);
+    }
     while lower < upper {
         let distance = upper - lower;
         let middle = lower + distance / 2 + distance % 2;

@@ -13,6 +13,8 @@ use sha2::{Digest, Sha256};
 // extensions. Earlier format versions require recompilation.
 pub const FORMAT_VERSION: u32 = 20;
 pub const ENGINE_SCHEMA_HASH: &str =
+    "b2106a1954e93b06f6f1ba97e0b8988ad13fbfb0d88cfac953cf641ee9a505f7";
+const ADDED_COMBAT_TRIGGER_SCHEMA_HASH: &str =
     "d536747fd4fcfeda46494123d477581407f035a35cae62f4ad51d9c0926401ff";
 const NEXT_TURN_COMBAT_DURATION_SCHEMA_HASH: &str =
     "648805fb75a15ed9ab5834c9efdf72b7906128900d6d0b8d995672327ab8b225";
@@ -399,6 +401,7 @@ impl CompiledCardArtifact {
             });
         }
         if self.engine_schema_hash != ENGINE_SCHEMA_HASH
+            && self.engine_schema_hash != ADDED_COMBAT_TRIGGER_SCHEMA_HASH
             && self.engine_schema_hash != NEXT_TURN_COMBAT_DURATION_SCHEMA_HASH
             && self.engine_schema_hash != COHERENT_V20_SCHEMA_HASH
         {
@@ -526,7 +529,7 @@ mod tests {
 
     #[test]
     fn current_golden_matches_the_integrated_source() {
-        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("fixtures/v20-added-combat-trigger.json");
+        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("fixtures/v20-card-scoring-surfaces.json");
         let actual = String::from_utf8(fixture().to_json().unwrap()).unwrap();
         if std::env::var_os("IRONSMITH_UPDATE_ARTIFACT_GOLDEN").is_some() {
             std::fs::write(&path, &actual).unwrap();
@@ -616,12 +619,16 @@ mod tests {
 
     #[test]
     fn current_descriptor_matches_the_declared_schema_fingerprint() {
-        let bytes = include_bytes!("../../../architecture/added-combat-trigger-schema.descriptor");
+        let bytes = include_bytes!("../../../architecture/card-scoring-surfaces-schema.descriptor");
         assert!(!bytes.ends_with(b"\n"));
         assert_eq!(sha256_hex(bytes), ENGINE_SCHEMA_HASH);
         let descriptor: Value = serde_json::from_slice(bytes).unwrap();
         assert_eq!(descriptor["artifact_format"], FORMAT_VERSION);
-        assert_eq!(descriptor["parent_schema_hash"], NEXT_TURN_COMBAT_DURATION_SCHEMA_HASH);
+        assert_eq!(descriptor["parent_schema_hash"], ADDED_COMBAT_TRIGGER_SCHEMA_HASH);
+        assert_eq!(
+            sha256_hex(include_bytes!("../../../architecture/added-combat-trigger-schema.descriptor")),
+            ADDED_COMBAT_TRIGGER_SCHEMA_HASH
+        );
         assert_eq!(
             descriptor["core_schema_tree"]["files"]["crates/ironsmith-core/src/effect.rs"],
             sha256_hex(include_bytes!("../../ironsmith-core/src/effect.rs"))
@@ -641,6 +648,14 @@ mod tests {
         let bytes = include_bytes!("../fixtures/v20-custom-mechanics-coherent.json");
         let old = CompiledCardArtifact::from_json(bytes).unwrap();
         assert_eq!(old.engine_schema_hash, COHERENT_V20_SCHEMA_HASH);
+        assert_eq!(old.payload, fixture().payload);
+    }
+
+    #[test]
+    fn card_scoring_surfaces_preserve_previous_v20_admission() {
+        let bytes = include_bytes!("../fixtures/v20-added-combat-trigger.json");
+        let old = CompiledCardArtifact::from_json(bytes).unwrap();
+        assert_eq!(old.engine_schema_hash, ADDED_COMBAT_TRIGGER_SCHEMA_HASH);
         assert_eq!(old.payload, fixture().payload);
     }
 

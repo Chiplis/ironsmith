@@ -233,9 +233,12 @@ fn search_pending_and_token_resource_failure_roll_back_payment_body_and_object_i
         let (mut game, source) = game();
         let next_id = game.next_object_id_counter();
         let mut choices = Choices { amounts: [1, 2, 0], pause_search: (name == "Collective Voyage").then_some(C), ..Default::default() };
-        if name == "Alliance of Arms" { game.set_token_creation_limits(ironsmith::effects::tokens::TokenCreationLimits { max_created_tokens: 4, ..Default::default() }); }
+        // Token counts past the creation budget are now truncated rather than
+        // refused, so the typed resource failure comes from the instruction
+        // budget: the third player's creation instruction exceeds it.
+        if name == "Alliance of Arms" { game.set_token_creation_limits(ironsmith::effects::tokens::TokenCreationLimits { max_instructions: 2, ..Default::default() }); }
         let result = execute(&program, &mut game, source, &mut choices);
-        if name == "Alliance of Arms" { assert!(matches!(result, Err(ExecutionError::ResourceLimitExceeded { .. }))); } else { assert!(result.unwrap().events.is_empty()); assert!(choices.pending); }
+        if name == "Alliance of Arms" { assert!(matches!(result, Err(ExecutionError::ResourceLimitExceeded { resource: "token instruction work", .. })), "{result:?}"); } else { assert!(result.unwrap().events.is_empty()); assert!(choices.pending); }
         assert_body(name, &game, 0);
         assert_eq!(game.next_object_id_counter(), next_id);
         for player in [A, B, C] { assert_eq!(game.player(player).unwrap().mana_pool.total(), 5); assert_eq!(game.player(player).unwrap().library.len(), 8); }
@@ -306,15 +309,17 @@ fn unrepresentable_contribution_bound_is_a_typed_error_and_restores_earlier_paym
     for program in programs("Shared Trauma") {
         let (mut game, source) = game();
         let player = game.player_mut(B).unwrap();
-        player.mana_pool.white = u32::MAX;
-        player.mana_pool.blue = u32::MAX;
+        player.mana_pool.white = u64::from(u32::MAX);
+        player.mana_pool.blue = u64::from(u32::MAX);
         let mut choices = Choices { amounts: [1, 0, 0], ..Default::default() };
+        // Pools are u64-wide now, so the contribution bound no longer fails as an
+        // unrepresentable scalar. Bob can afford more mana than one payment can be
+        // planned for (CR 107.3: X may be any amount the payer chooses), so the
+        // bound is a typed host resource limit and never an unbounded search.
         let error = execute(&program, &mut game, source, &mut choices).unwrap_err();
-        assert!(matches!(error, ExecutionError::ContinuousDiscovery(
-            ironsmith::static_ability_processor::StaticEffectDiscoveryError::ScalarRange {
-                resource: "unspent mana", ..
-            }
-        )), "{error:?}");
+        assert!(matches!(error, ExecutionError::ResourceLimitExceeded {
+            resource: "mana payment units", ..
+        }), "{error:?}");
         assert_eq!(game.player(A).unwrap().mana_pool.total(), 5);
         assert_eq!(game.player(B).unwrap().mana_pool.total_wide(), 2 * u64::from(u32::MAX) + 5);
         assert_body("Shared Trauma", &game, 0);

@@ -2125,6 +2125,14 @@ impl StaticAbilityKind for CostReduction {
     fn is_active(&self, game: &crate::game_state::GameState, source: crate::ids::ObjectId) -> bool {
         cost_modifier_condition_is_active(&self.condition, game, source)
     }
+
+    // The condition reads the game beyond this object ("if you control a
+    // legendary creature"), so an effect-free characteristics entry for its
+    // source cannot be reused (and re-validating one would re-enter the very
+    // calculation that asked for it).
+    fn has_own_activity_condition(&self) -> bool {
+        self.condition.is_some()
+    }
 }
 
 /// Activated-ability cost reduction:
@@ -2860,6 +2868,14 @@ impl StaticAbilityKind for ActivatedAbilityCostReduction {
         cost_modifier_condition_is_active(&self.static_condition, game, source)
     }
 
+    // The condition reads the game beyond this object ("if you control a
+    // legendary creature"), so an effect-free characteristics entry for its
+    // source cannot be reused (and re-validating one would re-enter the very
+    // calculation that asked for it).
+    fn has_own_activity_condition(&self) -> bool {
+        self.static_condition.is_some()
+    }
+
     fn activated_ability_cost_reduction(&self) -> Option<&ActivatedAbilityCostReduction> {
         Some(self)
     }
@@ -3023,6 +3039,14 @@ impl StaticAbilityKind for ActivatedAbilityCostIncrease {
 
     fn is_active(&self, game: &crate::game_state::GameState, source: crate::ids::ObjectId) -> bool {
         cost_modifier_condition_is_active(&self.condition, game, source)
+    }
+
+    // The condition reads the game beyond this object ("if you control a
+    // legendary creature"), so an effect-free characteristics entry for its
+    // source cannot be reused (and re-validating one would re-enter the very
+    // calculation that asked for it).
+    fn has_own_activity_condition(&self) -> bool {
+        self.condition.is_some()
     }
 
     fn modifies_costs(&self) -> bool {
@@ -4134,6 +4158,14 @@ impl StaticAbilityKind for CostIncrease {
     fn is_active(&self, game: &crate::game_state::GameState, source: crate::ids::ObjectId) -> bool {
         cost_modifier_condition_is_active(&self.condition, game, source)
     }
+
+    // The condition reads the game beyond this object ("if you control a
+    // legendary creature"), so an effect-free characteristics entry for its
+    // source cannot be reused (and re-validating one would re-enter the very
+    // calculation that asked for it).
+    fn has_own_activity_condition(&self) -> bool {
+        self.condition.is_some()
+    }
 }
 
 /// Mana-symbol cost reduction: "Spells cost {B} less to cast"
@@ -4288,6 +4320,14 @@ impl StaticAbilityKind for CostReductionManaCost {
     fn is_active(&self, game: &crate::game_state::GameState, source: crate::ids::ObjectId) -> bool {
         cost_modifier_condition_is_active(&self.condition, game, source)
     }
+
+    // The condition reads the game beyond this object ("if you control a
+    // legendary creature"), so an effect-free characteristics entry for its
+    // source cannot be reused (and re-validating one would re-enter the very
+    // calculation that asked for it).
+    fn has_own_activity_condition(&self) -> bool {
+        self.condition.is_some()
+    }
 }
 
 fn mana_cost_contains_colored_symbol(cost: &ManaCost) -> bool {
@@ -4385,6 +4425,14 @@ impl StaticAbilityKind for CostIncreaseManaCost {
 
     fn is_active(&self, game: &crate::game_state::GameState, source: crate::ids::ObjectId) -> bool {
         cost_modifier_condition_is_active(&self.condition, game, source)
+    }
+
+    // The condition reads the game beyond this object ("if you control a
+    // legendary creature"), so an effect-free characteristics entry for its
+    // source cannot be reused (and re-validating one would re-enter the very
+    // calculation that asked for it).
+    fn has_own_activity_condition(&self) -> bool {
+        self.condition.is_some()
     }
 }
 

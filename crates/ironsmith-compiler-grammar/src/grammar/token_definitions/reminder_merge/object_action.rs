@@ -4,7 +4,18 @@ pub fn merge_token_reminder_definition(
     definition: &mut TokenDefinitionSpec,
     reminder: &TokenReminderFacts,
 ) -> bool {
-    merge_token_definition_facts(definition, reminder, false)
+    merge_token_definition_facts(definition, reminder, false, false)
+}
+
+/// An explicit follow-up ability sentence ("It has \"...\"") is printed
+/// text of the card, so the abilities it adds are authored words for text
+/// changes (CR 612.2). Unlike an outer description, it does not promote a
+/// predefined token template into a modified one.
+pub fn merge_followup_token_definition_facts(
+    definition: &mut TokenDefinitionSpec,
+    reminder: &TokenReminderFacts,
+) -> bool {
+    merge_token_definition_facts(definition, reminder, true, false)
 }
 
 /// The caller owns an explicit outer description or quoted ability, rather
@@ -13,16 +24,17 @@ pub fn merge_authored_token_definition_facts(
     definition: &mut TokenDefinitionSpec,
     facts: &TokenReminderFacts,
 ) -> bool {
-    merge_token_definition_facts(definition, facts, true)
+    merge_token_definition_facts(definition, facts, true, true)
 }
 
 fn merge_token_definition_facts(
     definition: &mut TokenDefinitionSpec,
     reminder: &TokenReminderFacts,
     authored: bool,
+    promote_builtin: bool,
 ) -> bool {
     let before = definition.clone();
-    if authored && !reminder.definition.keywords.is_empty()
+    if promote_builtin && !reminder.definition.keywords.is_empty()
         && let TokenDefinitionSpec::Builtin(template) = definition
     {
         *definition = TokenDefinitionSpec::ModifiedBuiltin(ModifiedBuiltinTokenShape::new(*template));

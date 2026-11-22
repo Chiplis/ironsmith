@@ -13423,7 +13423,7 @@ fn cr_605_3a_and_605_4a_payment_during_resolution_activates_mana_and_immediate_m
         background: ObjectId,
         offers: usize,
         payments: usize,
-        red_before_confirmation: Option<u32>,
+        red_before_confirmation: Option<u64>,
         resumed_plan_payable: Option<bool>,
     }
     impl DecisionMaker for PayInsideResolution {
@@ -13864,7 +13864,7 @@ fn cr_605_1b_and_605_5a_triggered_mana_classification_controls_stack_and_counter
                         );
                         assert_eq!(
                             game.player(alice).unwrap().mana_pool.red,
-                            u32::from(produces && !counter)
+                            u64::from(produces && !counter)
                         );
                         assert_eq!(
                             game.player(alice).unwrap().life,
@@ -13873,7 +13873,7 @@ fn cr_605_1b_and_605_5a_triggered_mana_classification_controls_stack_and_counter
                     }
                     assert_eq!(
                         game.player(alice).unwrap().mana_pool.green,
-                        u32::from(from_mana_event)
+                        u64::from(from_mana_event)
                     );
                     assert_eq!(game.player(bob).unwrap().life, 20);
                     checked += 1;
@@ -14018,7 +14018,7 @@ fn cr_605_3a_mana_ability_can_be_activated_during_payment_already_funded_from_po
     use ironsmith::{Ability, CardId, CardType, Effect, ManaSymbol, ObjectId, StackEntry, Zone};
     struct FloatExtraMana {
         source: ObjectId,
-        initial_green: u32,
+        initial_green: u64,
         calls: usize,
     }
     impl DecisionMaker for FloatExtraMana {
@@ -14389,7 +14389,7 @@ fn cr_605_1b_mana_added_by_spell_triggers_mana_ability_without_using_stack() {
         ironsmith::game_loop::resolve_stack_entry(&mut game).unwrap();
         assert_eq!(
             game.player(alice).unwrap().mana_pool.green,
-            green_amount as u32
+            green_amount as u64
         );
         assert_eq!(game.player(alice).unwrap().life, 20);
         assert_eq!(game.stack.len(), 1);
@@ -14408,7 +14408,7 @@ fn cr_605_1b_mana_added_by_spell_triggers_mana_ability_without_using_stack() {
         assert!(queue.is_empty());
         assert_eq!(
             game.player(bob).unwrap().mana_pool.red,
-            u32::from(green_amount > 0),
+            u64::from(green_amount > 0),
             "CR 605.1b: triggering from mana addition does not require the producer to be an activated mana ability"
         );
         assert_eq!(game.stack.len(), 1 + usize::from(green_amount > 0));
@@ -14717,7 +14717,7 @@ fn cr_106_5_commander_identity_without_colors_produces_no_mana() {
             pool.green,
             pool.colorless,
         ));
-        expected.push((0, u32::from(identity == Some(ColorSet::BLUE)), 0, 0, 0, 0));
+        expected.push((0, u64::from(identity == Some(ColorSet::BLUE)), 0, 0, 0, 0));
         assert!(game.stack.is_empty());
     }
     assert_eq!(
@@ -15431,7 +15431,7 @@ fn cr_106_6a_mana_increased_by_replacement_keeps_restrictions_on_every_unit() {
             &mut ironsmith::decision::SelectFirstDecisionMaker,
         )
         .unwrap();
-        assert_eq!(game.player(alice).unwrap().mana_pool.red, multiplier as u32);
+        assert_eq!(game.player(alice).unwrap().mana_pool.red, multiplier as u64);
         assert_eq!(
             game.player(alice).unwrap().restricted_mana.len(),
             multiplier as usize
@@ -15931,7 +15931,7 @@ fn cr_107_1b_negative_power_is_kept_for_calculations_but_zero_for_a_pump_amount(
         .unwrap();
         assert_eq!(
             game.player(alice).unwrap().mana_pool.green,
-            usable as u32,
+            usable as u64,
             "Negative power remains a game value, but cannot produce negative mana"
         );
         game.stack.push(StackEntry::ability(
@@ -16644,7 +16644,7 @@ fn cr_107_3h_pay_referenced_x_mana_cost_uses_stack_x_or_zero_elsewhere() {
         assert_eq!(game.player(alice).unwrap().mana_pool.green, 0);
         assert_eq!(
             game.player(alice).unwrap().mana_pool.colorless,
-            if zone == Zone::Stack { 10 - 2 * x } else { 10 },
+            if zone == Zone::Stack { 10 - 2 * u64::from(x) } else { 10 },
             "CR 107.3h: referenced zone={zone:?}, referenced historical X={x}"
         );
         assert_eq!(game.player(alice).unwrap().life, 20);
@@ -16820,7 +16820,7 @@ fn cr_118_11_stun_replacement_still_pays_an_untap_activation_cost() {
                 stuns.saturating_sub(attempt + 1)
             );
             assert_eq!(game.is_tapped(source), attempt < stuns);
-            assert_eq!(game.player(alice).unwrap().mana_pool.green, attempt + 1);
+            assert_eq!(game.player(alice).unwrap().mana_pool.green, u64::from(attempt + 1));
             assert!(game.stack.is_empty());
         }
         assert!(
@@ -16834,7 +16834,7 @@ fn cr_118_11_stun_replacement_still_pays_an_untap_activation_cost() {
             .is_err(),
             "An already untapped source cannot pay an untap cost again"
         );
-        assert_eq!(game.player(alice).unwrap().mana_pool.green, stuns + 1);
+        assert_eq!(game.player(alice).unwrap().mana_pool.green, u64::from(stuns + 1));
     }
 }
 
@@ -18035,7 +18035,7 @@ fn cr_118_6a_8d_9c_9d_alternative_and_additional_prices_preserve_printed_mana_co
                     let spell =
                         game.create_object_from_definition(&builder.build(), alice, Zone::Hand);
                     game.player_mut(alice).unwrap().mana_pool.colorless = 20;
-                    game.player_mut(alice).unwrap().mana_pool.green = u32::from(additional);
+                    game.player_mut(alice).unwrap().mana_pool.green = u64::from(additional);
                     let method = if alternative.is_some() {
                         CastingMethod::Alternative(0)
                     } else {
@@ -18073,7 +18073,7 @@ fn cr_118_6a_8d_9c_9d_alternative_and_additional_prices_preserve_printed_mana_co
                     let generic = (alternative.or(printed).unwrap() as i32
                         + i32::from(additional)
                         + adjustment)
-                        .max(0) as u32;
+                        .max(0) as u64;
                     actual.push((
                         game.player(alice).unwrap().mana_pool.colorless,
                         game.player(alice).unwrap().mana_pool.green,
@@ -18211,7 +18211,7 @@ fn cr_118_8a_8b_multiple_optional_additional_costs_are_independently_announced_a
                 let generic = ((if alternative { 0 } else { 5 })
                     + if mask & 1 != 0 { 3 } else { 0 }
                     - reduction)
-                    .max(0) as u32;
+                    .max(0) as u64;
                 assert_eq!(
                     game.player(alice).unwrap().mana_pool.colorless,
                     20 - generic,
@@ -18259,7 +18259,7 @@ fn cr_118_13b_resolution_phyrexian_cost_allows_each_pip_to_use_mana_or_life() {
             );
             assert_eq!(
                 game.player(ctx.player).unwrap().mana_pool.green,
-                self.pips,
+                u64::from(self.pips),
                 "Replanning must not spend a prefix payment"
             );
             let desired = (0..self.pips)
@@ -18290,7 +18290,7 @@ fn cr_118_13b_resolution_phyrexian_cost_allows_each_pip_to_use_mana_or_life() {
                         .build();
                 let source =
                     game.create_object_from_definition(&definition, alice, Zone::Battlefield);
-                game.player_mut(alice).unwrap().mana_pool.green = pips;
+                game.player_mut(alice).unwrap().mana_pool.green = u64::from(pips);
                 let cost = ManaCost::from_pips(vec![
                     vec![ManaSymbol::Green, ManaSymbol::Life(2)];
                     pips as usize
@@ -18334,7 +18334,7 @@ fn cr_118_13b_resolution_phyrexian_cost_allows_each_pip_to_use_mana_or_life() {
                 );
                 assert_eq!(
                     game.player(alice).unwrap().mana_pool.green,
-                    if accept { life_pips } else { pips }
+                    if accept { u64::from(life_pips) } else { u64::from(pips) }
                 );
                 assert!(game.stack.is_empty());
             }
@@ -18439,11 +18439,11 @@ fn cr_118_14_and_609_4b_any_type_changes_payment_but_not_actual_mana_or_snow() {
                         assert_eq!(object.mana_spent_to_cast.total(), 1);
                         assert_eq!(
                             object.mana_spent_to_cast.green,
-                            u32::from(actual_symbol == ManaSymbol::Green)
+                            u64::from(actual_symbol == ManaSymbol::Green)
                         );
                         assert_eq!(
                             object.mana_spent_to_cast.colorless,
-                            u32::from(actual_symbol == ManaSymbol::Colorless)
+                            u64::from(actual_symbol == ManaSymbol::Colorless)
                         );
                         assert_eq!(
                             object.snow_mana_spent_to_cast.total(),
@@ -18650,7 +18650,7 @@ fn cr_118_13a_cast_hybrid_and_phyrexian_halves_are_announced_before_spending() {
     struct Announce {
         mask: usize,
         seen: usize,
-        pips: u32,
+        pips: u64,
         pool_before: ironsmith::player::ManaPool,
     }
     impl DecisionMaker for Announce {
@@ -18718,7 +18718,7 @@ fn cr_118_13a_cast_hybrid_and_phyrexian_halves_are_announced_before_spending() {
                 };
                 let stack = audit_finish_cost_rule_cast_with(&mut game, action, &mut dm);
                 assert_eq!(dm.seen, pips as usize);
-                let second = mask.count_ones();
+                let second = u64::from(mask.count_ones());
                 assert_eq!(game.player(alice).unwrap().mana_pool.green, second);
                 assert_eq!(
                     game.player(alice).unwrap().mana_pool.red,
@@ -18823,7 +18823,7 @@ fn cr_118_13a_mana_ability_phyrexian_choice_precedes_any_tap_cost_payment() {
             assert_eq!(game.player(alice).unwrap().mana_pool.red, 1);
             assert_eq!(
                 game.player(alice).unwrap().mana_pool.green,
-                u32::from(pay_life)
+                u64::from(pay_life)
             );
             assert_eq!(
                 game.player(alice).unwrap().life,
@@ -18866,7 +18866,7 @@ fn cr_118_13c_turn_face_up_phyrexian_cost_is_chosen_before_payment_and_reveal() 
                 "Pay the special-action cost before revealing the permanent"
             );
             assert_eq!(game.player(ctx.player).unwrap().life, 20);
-            assert_eq!(game.player(ctx.player).unwrap().mana_pool.green, self.pips);
+            assert_eq!(game.player(ctx.player).unwrap().mana_pool.green, u64::from(self.pips));
             let desired = (0..self.pips)
                 .filter(|index| self.mask & (1 << index) != 0)
                 .map(ManaPipId)
@@ -18906,7 +18906,7 @@ fn cr_118_13c_turn_face_up_phyrexian_cost_is_chosen_before_payment_and_reveal() 
                     .build();
             let source = game.create_object_from_definition(&definition, alice, Zone::Battlefield);
             game.set_face_down(source);
-            game.player_mut(alice).unwrap().mana_pool.green = pips;
+            game.player_mut(alice).unwrap().mana_pool.green = u64::from(pips);
             let mut dm = Choose {
                 mask,
                 pips,
@@ -18934,7 +18934,7 @@ fn cr_118_13c_turn_face_up_phyrexian_cost_is_chosen_before_payment_and_reveal() 
             );
             assert_eq!(
                 game.player(alice).unwrap().mana_pool.green,
-                mask.count_ones()
+                u64::from(mask.count_ones())
             );
             assert!(game.stack.is_empty());
         }
@@ -27904,7 +27904,7 @@ fn cr_509_1f_unpayable_combined_blocking_costs_restore_resources_roles_and_trigg
                 game.turn.active_player = alice;
                 game.turn.phase = Phase::Combat;
                 game.turn.step = Some(Step::DeclareAttackers);
-                game.player_mut(bob).unwrap().mana_pool.colorless = u32::from(mana_state == 2);
+                game.player_mut(bob).unwrap().mana_pool.colorless = u64::from(mana_state == 2);
                 let attacker = CardDefinitionBuilder::new(
                     CardId::new(),
                     "Attacker facing an all-or-nothing block payment",
@@ -28023,7 +28023,7 @@ fn cr_509_1f_unpayable_combined_blocking_costs_restore_resources_roles_and_trigg
                 );
                 assert_eq!(
                     game.player(bob).unwrap().mana_pool.colorless,
-                    u32::from(mana_state == 2 && !paid)
+                    u64::from(mana_state == 2 && !paid)
                 );
                 for id in &resource_ids {
                     assert_eq!(game.object(*id).is_some(), !paid);
@@ -30784,7 +30784,7 @@ fn cr_118_3_return_cost_factory_and_untargeted_primitive_pay_the_same_native_act
             if result.is_ok() != expected_paid
                 || moved != usize::from(expected_paid)
                 || hand != usize::from(expected_paid)
-                || mana != u32::from(expected_paid)
+                || mana != u64::from(expected_paid)
                 || tapped != expected_paid
             {
                 mismatches.push(format!("convenience_factory={convenience_factory}, resources={resources}: result={result:?}, moved={moved}, hand={hand}, mana={mana}, tapped={tapped}, expected_paid={expected_paid}"));
@@ -31499,8 +31499,8 @@ fn cr_709_3a_b_split_half_casting_uses_only_chosen_timing_cost_and_characteristi
                                 .mana_pool
                                 .add(ManaSymbol::Blue, 2);
                         }
-                        let expected_red = u32::from(funding & 1 != 0);
-                        let expected_blue = 2 * u32::from(funding & 2 != 0);
+                        let expected_red = u64::from(funding & 1 != 0);
+                        let expected_blue = 2 * u64::from(funding & 2 != 0);
                         let absent = if right_half {
                             cost_mode == 2
                         } else {
@@ -31673,8 +31673,8 @@ fn cr_709_3a_b_split_half_casting_uses_only_chosen_timing_cost_and_characteristi
                                 } else {
                                     1
                                 }
-                            || red != expected_red - u32::from(!right_half && !zero)
-                            || blue != expected_blue - 2 * u32::from(right_half && !zero)
+                            || red != expected_red - u64::from(!right_half && !zero)
+                            || blue != expected_blue - 2 * u64::from(right_half && !zero)
                         {
                             mismatches.push(format!("stack cost_mode={cost_mode}, split={split}, right_half={right_half}, window={window}, funding={funding}: name={}, alternate={:?}, types={:?}, subtypes={:?}, colors={:?}, snow={}, flash={flash}, mana_value={value}, remaining_red={red}, remaining_blue={blue}", chars.name, chars.alternate_name, chars.card_types, chars.subtypes, chars.colors, chars.supertypes.contains(&Supertype::Snow)));
                         }
@@ -32389,8 +32389,8 @@ fn cr_702_102_fuse_uses_both_costs_and_resolves_left_before_right() {
                                 assert_eq!(chars.colors, expected_colors);
                                 assert_eq!(game.player(alice).unwrap().life, 20);
                                 let spent = (
-                                    red - game.player(alice).unwrap().mana_pool.red,
-                                    blue - game.player(alice).unwrap().mana_pool.blue,
+                                    u64::from(red) - game.player(alice).unwrap().mana_pool.red,
+                                    u64::from(blue) - game.player(alice).unwrap().mana_pool.blue,
                                 );
                                 ironsmith::game_loop::resolve_stack_entry(&mut game).unwrap();
                                 assert_eq!(
@@ -33314,7 +33314,11 @@ fn cr_709_5b_d_copied_room_spells_and_permanents_keep_both_halves_but_not_unlock
                             ObjectKind::Token
                         }
                     );
-                    let expected_neither = path != 0;
+                    // A resolving copy of a Room spell copies which half was
+                    // being cast and enters with that door unlocked (Duskmourn
+                    // release notes); only token copies of a Room permanent
+                    // enter with neither door unlocked (CR 709.5d).
+                    let expected_neither = path >= 2;
                     let pool_before_unlocks = (
                         game.player(actor).unwrap().mana_pool.red,
                         game.player(actor).unwrap().mana_pool.blue,
@@ -39444,7 +39448,7 @@ fn cr_715_3_4_native_adventure_casting_resolution_and_countering_use_the_correct
                     } else {
                         mana.green < 2
                     };
-                    if spent != mv || !colored_pip_paid {
+                    if spent != u64::from(mv) || !colored_pip_paid {
                         mismatches.push(format!("Adventure native paid cost actor={actor:?}, instant={instant}, as_adventure={as_adventure}, countered={countered}: spent={spent}, correctcoloredpip={colored_pip_paid}, required{mv}"));
                     }
                     let old = game.player(actor).unwrap().life;
@@ -43443,8 +43447,8 @@ fn cr_723_3_5a_8_controlling_a_player_spends_only_their_mana_and_casts_only_thei
                 assert_eq!(game.controlling_player_for(target), controller);
                 assert_eq!(game.controlling_player_for(controller), controller);
                 assert_eq!(game.turn.active_player, target);
-                game.player_mut(target).unwrap().mana_pool.red = u32::from(target_funded);
-                game.player_mut(controller).unwrap().mana_pool.red = u32::from(controller_funded);
+                game.player_mut(target).unwrap().mana_pool.red = u64::from(target_funded);
+                game.player_mut(controller).unwrap().mana_pool.red = u64::from(controller_funded);
                 let actions = ironsmith::compute_legal_actions(&game, target).unwrap();
                 assert!(!actions.iter().any(|a|matches!(a,LegalAction::CastSpell {spell_id,..} if *spell_id==controllers_spell)));
                 let action = LegalAction::CastSpell {
@@ -49912,7 +49916,7 @@ fn cr_732_6_unpaid_unless_branches_are_mandatory_for_loop_draws_including_unpaya
                 game.turn.active_player = actor;
                 game.turn.phase = Phase::FirstMain;
                 game.turn.priority_player = Some(actor);
-                game.player_mut(actor).unwrap().mana_pool.colorless = u32::from(funded);
+                game.player_mut(actor).unwrap().mana_pool.colorless = u64::from(funded);
                 let effect = if unless {
                     Effect::new(UnlessPaysEffect::new(
                         vec![Effect::gain_life(1)],
@@ -49958,7 +49962,7 @@ fn cr_732_6_unpaid_unless_branches_are_mandatory_for_loop_draws_including_unpaya
                 }
                 assert_eq!(
                     game.player(actor).unwrap().mana_pool.colorless,
-                    u32::from(funded),
+                    u64::from(funded),
                     "noB payment ischosen orperformed"
                 );
                 if !matches!(terminal, Some(GameResult::Draw)) {
@@ -55122,9 +55126,9 @@ fn cr_audit_cast_with_pool_and_life(
             .pips()
             .iter()
             .filter(|pip| pip.as_slice() == [*symbol])
-            .count() as u32;
+            .count() as u64;
         assert!(
-            pool[index] - unspent[index] >= mandatory,
+            u64::from(pool[index]) - unspent[index] >= mandatory,
             "each mandatory colored/colorless requirement must consume the matching mana"
         );
     }
@@ -71353,7 +71357,7 @@ fn cr_117_4_completed_mana_activations_break_the_run_of_priority_passes() {
                             assert!(game.is_tapped(source));
                             assert_eq!(
                                 game.player(actor).unwrap().mana_pool.green,
-                                u32::from(mana)
+                                u64::from(mana)
                             );
                             assert_eq!(game.player(actor).unwrap().life, 20 + i32::from(mana));
                             assert_eq!(
@@ -72952,8 +72956,8 @@ fn cr_116_2b_native_morph_family_face_up_actions_use_controller_cost_and_any_pri
                                 occupied,
                                 &mut dm,
                             );
-                            game.player_mut(actor).unwrap().mana_pool.red = u32::from(funds == 1);
-                            game.player_mut(actor).unwrap().mana_pool.blue = u32::from(funds == 2);
+                            game.player_mut(actor).unwrap().mana_pool.red = u64::from(funds == 1);
+                            game.player_mut(actor).unwrap().mana_pool.blue = u64::from(funds == 2);
                             let mut state = PriorityLoopState::new(2);
                             let mut queue = TriggerQueue::new();
                             if window != 4 {
@@ -73151,7 +73155,7 @@ fn cr_116_2m_room_unlock_actions_pay_the_locked_half_cost_and_require_sorcery_ti
                             let red = if funds == 3 {
                                 1
                             } else {
-                                u32::from(
+                                u64::from(
                                     (funds == 1 && door == RoomDoor::Current)
                                         || (funds == 2 && door == RoomDoor::Linked),
                                 )
@@ -73159,13 +73163,13 @@ fn cr_116_2m_room_unlock_actions_pay_the_locked_half_cost_and_require_sorcery_ti
                             let blue = if funds == 3 {
                                 1
                             } else {
-                                u32::from(
+                                u64::from(
                                     (funds == 1 && door == RoomDoor::Linked)
                                         || (funds == 2 && door == RoomDoor::Current),
                                 )
                             };
-                            game.player_mut(actor).unwrap().mana_pool.red = red;
-                            game.player_mut(actor).unwrap().mana_pool.blue = blue;
+                            game.player_mut(actor).unwrap().mana_pool.red = u64::from(red);
+                            game.player_mut(actor).unwrap().mana_pool.blue = u64::from(blue);
                             let mut state = PriorityLoopState::new(2);
                             let mut queue = TriggerQueue::new();
                             if window != 5 {
@@ -73228,9 +73232,9 @@ fn cr_116_2m_room_unlock_actions_pay_the_locked_half_cost_and_require_sorcery_ti
                                         right_name
                                     })
                                 || game.player(actor).unwrap().mana_pool.red
-                                    != red - u32::from(door == RoomDoor::Current)
+                                    != red - u64::from(door == RoomDoor::Current)
                                 || game.player(actor).unwrap().mana_pool.blue
-                                    != blue - u32::from(door == RoomDoor::Linked)
+                                    != blue - u64::from(door == RoomDoor::Linked)
                             {
                                 discrepancies.push(format!("{label}: chosen door/designation/identity/controller/payment incorrect"));
                             }
@@ -73745,7 +73749,7 @@ fn cr_116_2i_planar_roll_special_actions_count_only_paid_actions_and_obey_timing
                         assert!(!state.has_pending_action());
                         remaining -= cost;
                         if game.player(actor).unwrap().mana_pool.colorless != remaining
-                            || game.planar_die_roll_cost(actor) != Some(cost + 1)
+                            || game.planar_die_roll_cost(actor).map(u64::from) != Some(cost + 1)
                         {
                             discrepancies.push(format!("{label}: roll cost{cost} leftmana{},nextquote{:?},requiredmana{remaining}",
                                 game.player(actor).unwrap().mana_pool.colorless,game.planar_die_roll_cost(actor)));
@@ -76050,21 +76054,21 @@ fn cr_119_3_repeated_current_life_gains_cross_the_signed_storage_boundary() {
                     cr_audit_announce_target_domain_effect(&mut game, caster, origin, effect, &mut dm);
                     attempts += 1;
                     required *= 2;
-                    // Life is stored as i32: a gain whose result exceeds that range is
-                    // refused and leaves the life total unchanged.
-                    let limit_before = i64::from(game.player(recipient).unwrap().life);
+                    // Life is stored as i32: a gain whose result exceeds that range saturates
+                    // at the storage limit.
+                    // Stored characteristics saturate at their storage limit.
+                    let limit_before = i64::from(if required > 0 { i32::MAX } else { i32::MIN });
                     let fits = i32::try_from(required).is_ok();
                     let resolved = ironsmith::game_loop::resolve_stack_entry_with(&mut game, &mut dm);
                     if let Err(error) = &resolved {
                         errors.insert(format!("{error:?}"));
-                        if fits { discrepancies.push(format!("{label}: resolution rejected a legal current-life gain")); }
+                        discrepancies.push(format!("{label}: resolution rejected a legal current-life gain"));
                     } else {
                         completed += 1;
                         game.validate_zone_consistency().unwrap();
                     }
                     let actual = i64::from(game.player(recipient).unwrap().life);
                     let expected = if fits { required } else { limit_before };
-                    if !fits && resolved.is_ok() { discrepancies.push(format!("{label}: a life total beyond i32 storage must be refused")); }
                     if actual != expected {
                         discrepancies.push(format!("{label}: life={actual}, required={required}"));
                     }
@@ -76078,7 +76082,7 @@ fn cr_119_3_repeated_current_life_gains_cross_the_signed_storage_boundary() {
     assert_eq!(cases, 8);
     assert!(discrepancies.is_empty(),
         "CR119.3: each legal current-life gain increases the total by that amount; completed {completed}/{attempts} resolutions: {}\nObserved errors: {errors:?}", discrepancies.join("\n"));
-    assert_eq!((attempts, completed), (216, 208), "each case refuses exactly its first result beyond i32 storage");
+    assert_eq!((attempts, completed), (216, 216), "each case saturates its first result beyond i32 storage");
 }
 
 #[test]
@@ -76115,12 +76119,11 @@ fn cr_119_2_119_3_loss_and_normal_damage_can_take_life_below_signed_storage() {
                 };
                 cr_audit_announce_target_domain_effect(&mut game, caster, origin, effect, &mut dm);
                 let resolved = ironsmith::game_loop::resolve_stack_entry_with(&mut game, &mut dm);
-                // Life is stored as i32: a reduction below i32::MIN is refused and
-                // leaves the life total at the storage limit.
+                // Life is stored as i32: a reduction below i32::MIN resolves and
+                // saturates the life total at the storage limit.
                 if let Err(error) = &resolved {
                     errors.insert(format!("{error:?}"));
-                } else {
-                    discrepancies.push(format!("{label}: a life total below i32 storage must be refused"));
+                    discrepancies.push(format!("{label}: resolution rejected a life reduction"));
                 }
                 game.validate_zone_consistency().unwrap();
                 let required = i64::from(i32::MIN);
@@ -76890,15 +76893,15 @@ fn cr_701_10e_repeated_counter_doubling_must_not_stop_at_the_unsigned_storage_bo
                         Effect::double_counters(Some(kind), target.clone()), &mut dm);
                     required *= 2;
                     // Counter counts are stored as u32: a doubling past that range is
-                    // refused and leaves the count unchanged.
-                    let limit_before = u64::from(before);
+                    // saturates the count at u32::MAX.
+                    // Stored characteristics saturate at their storage limit.
+                    let limit_before = u64::from(u32::MAX);
                     let fits = u32::try_from(required).is_ok();
                     let resolved = ironsmith::game_loop::resolve_stack_entry_with(&mut game, &mut dm);
                     let label = format!("counter-boundary seat={seat} origin={origin} player={player_target} iteration={iteration}");
-                    if let Err(error) = &resolved { errors.insert(format!("{error:?}")); if fits { discrepancies.push(format!("{label}: resolution rejected a legal doubling")); } }
+                    if let Err(error) = &resolved { errors.insert(format!("{error:?}")); discrepancies.push(format!("{label}: resolution rejected a legal doubling")); }
                     let actual = if player_target { game.player(recipient).unwrap().counter_count(kind) } else { game.counter_count(object, kind) };
                     let expected = if fits { required } else { limit_before };
-                    if !fits && resolved.is_ok() { discrepancies.push(format!("{label}: a count beyond u32 storage must be refused")); }
                     if u64::from(actual) != expected { discrepancies.push(format!("{label}: count={actual}, required={required}")); }
                     if !fits || resolved.is_err() || u64::from(actual) != expected { break; }
                     game.validate_zone_consistency().unwrap();
@@ -76931,8 +76934,8 @@ fn cr_701_10f_native_mana_doubling_adds_the_current_amount_of_all_six_types() {
                     game.turn.phase = Phase::FirstMain;
                     game.turn.step = None;
                     let mut dm = ironsmith::decision::SelectFirstDecisionMaker;
-                    let mut before = [0u32; 6];
-                    for index in 0..6 { before[index] = if profile == 7 { index as u32 + 1 } else if profile > 0 && index + 1 == profile { 3 } else { 0 }; }
+                    let mut before = [0u64; 6];
+                    for index in 0..6 { before[index] = if profile == 7 { index as u64 + 1 } else if profile > 0 && index + 1 == profile { 3 } else { 0 }; }
                     let mana = symbols.iter().zip(before).flat_map(|(symbol, n)| std::iter::repeat_n(*symbol, n as usize)).collect();
                     cr_audit_announce_target_domain_effect(&mut game, caster, 0, Effect::add_mana_player(mana, PlayerFilter::Specific(recipient)), &mut dm);
                     ironsmith::game_loop::resolve_stack_entry_with(&mut game, &mut dm).unwrap();
@@ -77000,19 +77003,19 @@ fn cr_701_10d_compiled_life_doubling_must_cross_the_signed_storage_boundary() {
                     if targeted { assert_eq!(game.stack.last().unwrap().targets, vec![Target::Player(recipient)]); }
                     attempts += 1;
                     required *= 2;
-                    // Life is stored as i32: a gain whose result exceeds that range is
-                    // refused and leaves the life total unchanged.
-                    let limit_before = i64::from(game.player(recipient).unwrap().life);
+                    // Life is stored as i32: a gain whose result exceeds that range saturates
+                    // at the storage limit.
+                    // Stored characteristics saturate at their storage limit.
+                    let limit_before = i64::from(if required > 0 { i32::MAX } else { i32::MIN });
                     let fits = i32::try_from(required).is_ok();
                     let resolved = ironsmith::game_loop::resolve_stack_entry_with(&mut game, &mut dm);
                     let label = format!("compiled-life-boundary origin={origin} targeted={targeted} caster={seat} iteration={iteration}");
                     if let Err(error) = &resolved {
                         errors.insert(format!("{error:?}"));
-                        if fits { discrepancies.push(format!("{label}: resolution rejected a legal double-life instruction")); }
+                        discrepancies.push(format!("{label}: resolution rejected a legal double-life instruction"));
                     } else { completed += 1; game.validate_zone_consistency().unwrap(); }
                     let actual = i64::from(game.player(recipient).unwrap().life);
                     let expected = if fits { required } else { limit_before };
-                    if !fits && resolved.is_ok() { discrepancies.push(format!("{label}: a life total beyond i32 storage must be refused")); }
                     if actual != expected { discrepancies.push(format!("{label}: life={actual}, required={required}")); }
                     assert_eq!(game.player(other).unwrap().life, 20);
                     if !fits || resolved.is_err() || actual != expected { break; }
@@ -77023,7 +77026,7 @@ fn cr_701_10d_compiled_life_doubling_must_cross_the_signed_storage_boundary() {
     }
     assert_eq!(cases, 8);
     assert!(discrepancies.is_empty(), "CR701.10d: compiled doubling must gain or lose the difference without a signed-life storage cutoff; completed {completed}/{attempts}: {}\nObserved errors: {errors:?}", discrepancies.join("\n"));
-    assert_eq!((attempts, completed), (216, 208), "each case refuses exactly its first result beyond i32 storage");
+    assert_eq!((attempts, completed), (216, 216), "each case saturates its first result beyond i32 storage");
 }
 
 fn cr_audit_announce_compiled_pt_instruction(
@@ -77200,18 +77203,18 @@ fn cr_701_10b_repeated_compiled_pt_doubling_must_cross_the_signed_characteristic
                     assert_eq!(game.stack.last().unwrap().targets, vec![Target::Object(creature)]);
                     required *= 2;
                     // The characteristic is stored as i32: a result outside that range is
-                    // refused and leaves the characteristic unchanged.
-                    let limit_before = if toughness { game.current_toughness(creature) } else { game.current_power(creature) };
+                    // saturates the characteristic at the i32 limit.
+                    // Stored characteristics saturate at their storage limit.
+                    let limit_before = Some(if required > 0 { i32::MAX } else { i32::MIN });
                     let fits = i32::try_from(required).is_ok();
                     let resolved = ironsmith::game_loop::resolve_stack_entry_with(&mut game, &mut dm);
                     let label = format!("pt-boundary origin={origin} toughness={toughness} owner={owner_seat} iteration={iteration}");
                     if let Err(error) = &resolved {
                         errors.insert(format!("{error:?}"));
-                        if fits { discrepancies.push(format!("{label}: resolution rejected a legal characteristic doubling")); }
+                        discrepancies.push(format!("{label}: resolution rejected a legal characteristic doubling"));
                     }
                     let actual = if toughness { game.current_toughness(creature) } else { game.current_power(creature) };
                     let expected = if fits { Some(required) } else { limit_before.map(i64::from) };
-                    if !fits && resolved.is_ok() { discrepancies.push(format!("{label}: a result beyond i32 storage must be refused")); }
                     if actual.map(i64::from) != expected { discrepancies.push(format!("{label}: value={actual:?}, required={required}")); }
                     let other = if toughness { game.current_power(creature) } else { game.current_toughness(creature) };
                     assert_eq!(other, Some(1));
@@ -77341,18 +77344,18 @@ fn cr_701_10c_negative_characteristic_doubling_must_not_stop_at_signed_storage_b
                     cr_audit_announce_compiled_pt_instruction(&mut game, caster, origin, &definition, creature);
                     required *= 2;
                     // The characteristic is stored as i32: a result outside that range is
-                    // refused and leaves the characteristic unchanged.
-                    let limit_before = if toughness { game.current_toughness(creature) } else { game.current_power(creature) };
+                    // saturates the characteristic at the i32 limit.
+                    // Stored characteristics saturate at their storage limit.
+                    let limit_before = Some(if required > 0 { i32::MAX } else { i32::MIN });
                     let fits = i32::try_from(required).is_ok();
                     let resolved = ironsmith::game_loop::resolve_stack_entry_with(&mut game, &mut dm);
                     let label = format!("negative-pt-boundary origin={origin} toughness={toughness} owner={owner_seat} iteration={iteration}");
                     if let Err(error) = &resolved {
                         errors.insert(format!("{error:?}"));
-                        if fits { discrepancies.push(format!("{label}: resolution rejected a legal negative characteristic doubling")); }
+                        discrepancies.push(format!("{label}: resolution rejected a legal negative characteristic doubling"));
                     }
                     let actual = if toughness { game.current_toughness(creature) } else { game.current_power(creature) };
                     let expected = if fits { Some(required) } else { limit_before.map(i64::from) };
-                    if !fits && resolved.is_ok() { discrepancies.push(format!("{label}: a result beyond i32 storage must be refused")); }
                     if actual.map(i64::from) != expected { discrepancies.push(format!("{label}: value={actual:?}, required={required}")); }
                     assert_eq!(if toughness { game.current_power(creature) } else { game.current_toughness(creature) }, Some(if toughness { 4 } else { 1 }));
                     if !fits || resolved.is_err() || actual.map(i64::from) != expected { break; }
@@ -77524,18 +77527,18 @@ fn cr_701_11b_compiled_tripling_must_preserve_large_modifier_and_characteristic_
                         cr_audit_announce_compiled_pt_instruction(&mut game, caster, origin, &definition, creature);
                         required *= 3;
                         // The characteristic is stored as i32: a result outside that range is
-                    // refused and leaves the characteristic unchanged.
-                    let limit_before = if toughness { game.current_toughness(creature) } else { game.current_power(creature) };
+                    // saturates the characteristic at the i32 limit.
+                    // Stored characteristics saturate at their storage limit.
+                    let limit_before = Some(if required > 0 { i32::MAX } else { i32::MIN });
                     let fits = i32::try_from(required).is_ok();
                     let resolved = ironsmith::game_loop::resolve_stack_entry_with(&mut game, &mut dm);
                         let label = format!("triple-boundary origin={origin} toughness={toughness} owner={owner_seat} mode={mode} iteration={iteration}");
                         if let Err(error) = &resolved {
                             errors.insert(format!("{error:?}"));
-                            if fits { discrepancies.push(format!("{label}: resolution rejected a legal positive tripling")); }
+                            discrepancies.push(format!("{label}: resolution rejected a legal positive tripling"));
                         }
                         let actual = if toughness { game.current_toughness(creature) } else { game.current_power(creature) };
                         let expected = if fits { Some(required) } else { limit_before.map(i64::from) };
-                    if !fits && resolved.is_ok() { discrepancies.push(format!("{label}: a result beyond i32 storage must be refused")); }
                     if actual.map(i64::from) != expected { discrepancies.push(format!("{label}: value={actual:?}, required={required}")); }
                         assert_eq!(if toughness { game.current_power(creature) } else { game.current_toughness(creature) }, Some(1));
                         if !fits || resolved.is_err() || actual.map(i64::from) != expected { break; }
@@ -77583,18 +77586,18 @@ fn cr_701_11c_compiled_negative_tripling_must_preserve_full_signed_results() {
                     cr_audit_announce_compiled_pt_instruction(&mut game, caster, origin, &definition, creature);
                     required *= 3;
                     // The characteristic is stored as i32: a result outside that range is
-                    // refused and leaves the characteristic unchanged.
-                    let limit_before = if toughness { game.current_toughness(creature) } else { game.current_power(creature) };
+                    // saturates the characteristic at the i32 limit.
+                    // Stored characteristics saturate at their storage limit.
+                    let limit_before = Some(if required > 0 { i32::MAX } else { i32::MIN });
                     let fits = i32::try_from(required).is_ok();
                     let resolved = ironsmith::game_loop::resolve_stack_entry_with(&mut game, &mut dm);
                     let label = format!("negative-triple-boundary origin={origin} toughness={toughness} owner={owner_seat} iteration={iteration}");
                     if let Err(error) = &resolved {
                         errors.insert(format!("{error:?}"));
-                        if fits { discrepancies.push(format!("{label}: resolution rejected a legal negative tripling")); }
+                        discrepancies.push(format!("{label}: resolution rejected a legal negative tripling"));
                     }
                     let actual = if toughness { game.current_toughness(creature) } else { game.current_power(creature) };
                     let expected = if fits { Some(required) } else { limit_before.map(i64::from) };
-                    if !fits && resolved.is_ok() { discrepancies.push(format!("{label}: a result beyond i32 storage must be refused")); }
                     if actual.map(i64::from) != expected { discrepancies.push(format!("{label}: value={actual:?}, required={required}")); }
                     assert_eq!(if toughness { game.current_power(creature) } else { game.current_toughness(creature) }, Some(if toughness { 4 } else { 1 }));
                     if !fits || resolved.is_err() || actual.map(i64::from) != expected { break; }
@@ -78774,7 +78777,7 @@ fn cr_702_65_aura_swap_pays_cost_before_optional_exchange_and_handles_both_movem
     let mut discrepancies = Vec::new();
     for seat in 0..2u8 {
         for cost in 0..2usize {
-            for available in 0..2u32 {
+            for available in 0..2u64 {
                 for decline in [false, true] {
                     for incoming_side in [false, true] {
                         for mode in 0..5u8 {
@@ -78821,7 +78824,7 @@ fn cr_702_65_aura_swap_pays_cost_before_optional_exchange_and_handles_both_movem
                                 let index = game.current_abilities(outgoing).unwrap().iter().position(|a| matches!(a.kind, AbilityKind::Activated(_))).unwrap();
                                 let action = LegalAction::ActivateAbility { source: outgoing, ability_index: index };
                                 let offered = ironsmith::compute_legal_actions(&game, actor).unwrap().contains(&action);
-                                let can_pay = available >= cost as u32;
+                                let can_pay = available >= cost as u64;
                                 let label = format!("aura-replacement-cost actor={seat} cost={cost} available={available} decline={decline} incoming_side={incoming_side} mode={mode} other_replacement_controller={other_replacement_controller}");
                                 if offered != can_pay { discrepancies.push(format!("{label}: activation offered={offered}, required={can_pay}")); }
                                 let mut queue = TriggerQueue::new();
@@ -78848,7 +78851,7 @@ fn cr_702_65_aura_swap_pays_cost_before_optional_exchange_and_handles_both_movem
                                 assert_eq!(out.attached_to, if !swapped { Some(AttachmentTarget::Object(host)) } else { None });
                                 assert_eq!(inc.attached_to, if swapped && incoming_zone == Zone::Battlefield { Some(AttachmentTarget::Object(host)) } else { None });
                                 assert_eq!((current_out != outgoing, current_in != incoming), (swapped, swapped));
-                                let expected_mana = if can_pay { available - cost as u32 } else { available };
+                                let expected_mana = if can_pay { available - cost as u64 } else { available };
                                 let actual_mana = game.player(actor).unwrap().mana_pool.colorless;
                                 if actual_mana != expected_mana { discrepancies.push(format!("{label}: remaining mana={actual_mana}, required={expected_mana}")); }
                                 let expected_objects = usize::from(can_pay);
@@ -83335,7 +83338,7 @@ fn cr_612_2_basic_land_word_changes_preserve_card_names_and_change_real_mana_act
         }else{instruction(&mut game,actor,if mode==0{Effect::gain_life(0)}else{Effect::new(ChangeTextEffect::new(ChooseSpec::SpecificObject(land),ironsmith_core::TextChangeSelection::BasicLand,Until::Forever))},&mut queue,&mut dm);}
         let required=if mode==0{from}else{to};if game.current_name(land).as_deref()!=Some(from.to_string().as_str())||game.current_subtypes(land)!=Some(vec![required]){errors.push(format!("basic-land-rewrite {label}: name{:?},types{:?}; required name{from},type{required}",game.current_name(land),game.current_subtypes(land)));}
         assert_eq!(game.current_colors(land),Some(ColorSet::new()));let actions=ironsmith::compute_legal_actions(&game,actor).unwrap().into_iter().filter(|a|matches!(a,LegalAction::ActivateManaAbility{source,..}if *source==land)).collect::<Vec<_>>();assert_eq!(actions.len(),1,"exactly one actual basic-land mana activation {label}");cr_audit_complete_priority_action_with_dm(&mut game,actor,actions[0].clone(),&mut dm,&mut queue).unwrap();settle(&mut game,&mut queue,&mut dm);activations+=1;
-        let pool=&game.player(actor).unwrap().mana_pool;let expected_blue=u32::from(required==Subtype::Island);let expected_green=u32::from(required==Subtype::Forest);if pool.blue!=expected_blue||pool.green!=expected_green||pool.total()!=1{errors.push(format!("basic-land-mana {label}: blue{},green{},total{}; required blue{expected_blue},green{expected_green},total1",pool.blue,pool.green,pool.total()));}
+        let pool=&game.player(actor).unwrap().mana_pool;let expected_blue=u64::from(required==Subtype::Island);let expected_green=u64::from(required==Subtype::Forest);if pool.blue!=expected_blue||pool.green!=expected_green||pool.total()!=1{errors.push(format!("basic-land-mana {label}: blue{},green{},total{}; required blue{expected_blue},green{expected_green},total1",pool.blue,pool.green,pool.total()));}
         assert!(game.is_tapped(land));assert_eq!(game.current_controller(land),Some(actor));assert_eq!(game.object(land).unwrap().owner,actor);assert_eq!(game.player(actor).unwrap().life,20);assert_eq!(game.player(other).unwrap().life,20);assert!(game.stack.is_empty());game.validate_zone_consistency().unwrap();words+=dm.words;games+=1;
     }}}
     assert_eq!(games,12);eprintln!("basic-land-rewrite-observed games={games} word_choices={words} activations={activations}");
@@ -92644,7 +92647,7 @@ fn cr_102_3_mana_added_and_tapped_source_triggers_exclude_teammates() {
         let mut ws=vec![];for seat in 0u8..seats {let p=PlayerId::from_index(seat);for event in 0u8..3 {for kind in 0u8..4 {let filter=match kind {0=>PlayerFilter::You,1=>PlayerFilter::Opponent,2=>PlayerFilter::Any,_=>PlayerFilter::Specific(actor)};let trigger=match event {0=>Trigger::mana_added(filter),1=>Trigger::player_taps_for_mana(filter,ObjectFilter::land()),_=>Trigger::player_adds_mana_from_source(filter,ObjectFilter::permanent())};let def=CardDefinitionBuilder::new(CardId::new(),format!("Mana consumer {event} relation {kind} observer")).card_types(vec![CardType::Artifact]).with_ability(Ability::triggered(trigger,vec![Effect::put_counters_on_source(CounterType::Charge,1)])).build();let id=g.create_object_from_definition(&def,p,Zone::Battlefield);ws.push(Witness{id,seat:p,kind,event});}}}
         let mut a=Ability::activated(ironsmith::cost::TotalCost::free(),vec![]);if let AbilityKind::Activated(a)=&mut a.kind {a.mana_output=Some(vec![ManaSymbol::Colorless]);}let def=CardDefinitionBuilder::new(CardId::new(),"Actual untapped mana production source").card_types(vec![CardType::Artifact]).with_ability(a).build();let untapped=g.create_object_from_definition(&def,actor,Zone::Battlefield);let land=g.create_object_from_definition(&forest,actor,Zone::Battlefield);let identities=[(untapped,g.object(untapped).unwrap().stable_id),(land,g.object(land).unwrap().stable_id)];assert!(!g.is_tapped(land));assert!(!g.is_tapped(untapped));assert_eq!(g.current_subtypes(land),Some(vec![ironsmith::Subtype::Forest]));assert_eq!(g.player(actor).unwrap().mana_pool.total(),0);
         let mut q=TriggerQueue::new();let mut d=Choices{wanted:vec![],targets:0};let mut wrong_events=0usize;let mut wrong_counters=0usize;let mut before=errors.len();counter_checks+=check(&g,&ws,actor,0,&label,&mut errors);wrong_counters+=errors.len()-before;
-        for stage in 1u32..=2 {let source=if stage==1 {untapped}else{land};priority(&mut g,&mut q,&mut d,actor);let actions=ironsmith::compute_legal_actions(&g,actor).unwrap().into_iter().filter(|a|matches!(a,LegalAction::ActivateManaAbility{source:s,..}if *s==source)).collect::<Vec<_>>();assert_eq!(actions.len(),1,"one actual mana ability for the selected source");cr_audit_complete_priority_action_with_dm(&mut g,actor,actions[0].clone(),&mut d,&mut q).unwrap();activations+=1;if stage==1 {untapped_activations+=1;}else{land_taps+=1;}assert!(!g.is_tapped(untapped));assert_eq!(g.is_tapped(land),stage==2);let pool=&g.player(actor).unwrap().mana_pool;assert_eq!(pool.total(),stage);assert_eq!(pool.colorless,1);assert_eq!(pool.green,u32::from(stage==2));
+        for stage in 1u32..=2 {let source=if stage==1 {untapped}else{land};priority(&mut g,&mut q,&mut d,actor);let actions=ironsmith::compute_legal_actions(&g,actor).unwrap().into_iter().filter(|a|matches!(a,LegalAction::ActivateManaAbility{source:s,..}if *s==source)).collect::<Vec<_>>();assert_eq!(actions.len(),1,"one actual mana ability for the selected source");cr_audit_complete_priority_action_with_dm(&mut g,actor,actions[0].clone(),&mut d,&mut q).unwrap();activations+=1;if stage==1 {untapped_activations+=1;}else{land_taps+=1;}assert!(!g.is_tapped(untapped));assert_eq!(g.is_tapped(land),stage==2);let pool=&g.player(actor).unwrap().mana_pool;assert_eq!(pool.total(),stage);assert_eq!(pool.colorless,1);assert_eq!(pool.green,u64::from(stage==2));
             ironsmith::game_loop::advance_priority_with_dm(&mut g,&mut q,&mut d).unwrap();for w in &ws {let want=usize::from(eligible(&g,w,actor)&&(w.event!=1||stage==2));let got=g.stack.iter().filter(|e|e.is_ability&&e.object_id==w.id).count();if got!=want {wrong_events+=1;errors.push(format!("mana-team-events {label} stage={stage} seat={} kind={} event={} got={got} expected={want}",w.seat.0,w.kind,w.event));}event_checks+=1;}
             settle(&mut g,&mut q,&mut d);before=errors.len();counter_checks+=check(&g,&ws,actor,stage,&label,&mut errors);wrong_counters+=errors.len()-before;assert_eq!(g.player(actor).unwrap().mana_pool.total(),stage);
         }
@@ -111640,7 +111643,7 @@ fn cr_107_3c_spoils_of_war_text_defines_x_instead_of_offering_a_choice() {
                     .unwrap();
                 assert!(g.is_tapped(payer));
                 assert_eq!(g.player(actor).unwrap().mana_pool.black, 1);
-                assert_eq!(g.player(actor).unwrap().mana_pool.colorless, n + 2);
+                assert_eq!(g.player(actor).unwrap().mana_pool.colorless, u64::from(n + 2));
                 assert!(g.stack.is_empty());
                 let action = ironsmith::compute_legal_actions(&g, actor)
                     .unwrap()
@@ -112107,7 +112110,7 @@ fn cr_107_3c_spoils_of_war_cannot_offer_x_between_two_opponents_graveyard_counts
                         .unwrap();
                     assert!(g.is_tapped(payer));
                     assert_eq!(g.player(actor).unwrap().mana_pool.black, 1);
-                    assert_eq!(g.player(actor).unwrap().mana_pool.colorless, n + 2);
+                    assert_eq!(g.player(actor).unwrap().mana_pool.colorless, u64::from(n + 2));
                     assert!(g.stack.is_empty());
                     let action = ironsmith::compute_legal_actions(&g, actor)
                         .unwrap()
@@ -112996,7 +112999,7 @@ fn cr_702_85a_608_2d_cascade_may_offer_only_a_legal_resulting_spell_with_defined
                     cr_audit_complete_priority_action_with_dm(&mut g, actor, a, &mut d, &mut q)
                         .unwrap();
                     assert!(g.is_tapped(payer));
-                    assert_eq!(g.player(actor).unwrap().mana_pool.colorless, source_mv);
+                    assert_eq!(g.player(actor).unwrap().mana_pool.colorless, u64::from(source_mv));
                     let a = ironsmith::compute_legal_actions(&g, actor)
                         .unwrap()
                         .into_iter()

@@ -805,10 +805,21 @@ pub(super) fn parser_audits_point_at_canonical_compiler_source() {
         &root,
         "crates/ironsmith-tools/src/bin/audit_manual_parser_sections.rs",
     );
-    let size_audit = read_repo_file(
+    let size_audit_entry = read_repo_file(
         &root,
         "crates/ironsmith-tools/src/bin/audit_parser_module_sizes.rs",
     );
+    // The size audit selects its files through the shared parser-module
+    // selection (4c6c0af39), so the scanned tree is declared there.
+    assert!(
+        size_audit_entry.contains("parser_audit_modules::tracked_production_modules"),
+        "the module-size audit must select files through the shared parser-module selection"
+    );
+    let size_audit = size_audit_entry
+        + &read_repo_file(
+            &root,
+            "crates/ironsmith-tools/src/bin/parser_audit_modules.rs",
+        );
     let architecture_audit = read_repo_file(
         &root,
         "crates/ironsmith-tools/src/bin/audit_parser_architecture.rs",
@@ -1582,7 +1593,8 @@ pub(super) fn activated_display_text_uses_typed_presentation_kind_not_raw_scan()
     let presentation_helper = function_source(
         &content,
         "fn activated_presentation_display",
-        "fn infer_rewrite_activated_functional_zones",
+        // The raw-text zone inference that followed it was removed (4c6c0af39).
+        "fn parse_activated_line_impl",
     );
 
     assert!(

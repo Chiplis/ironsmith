@@ -1927,6 +1927,17 @@ impl<'a> ExecutionContext<'a> {
                 .collect::<Vec<_>>()
         };
         let mut tagged_objects = self.tagged_objects.clone();
+        // The entering permanent's reference is captured when the trigger is
+        // put on the stack; at resolution "that permanent" reads its current
+        // information, or its last known information once it has left or
+        // phased out (CR 608.2h, 702.26b).
+        if let Some(event) = self.triggering_event.as_ref()
+            && let Some(current) = singular_entry_reference_at_resolution(game, event)
+            && let Some(triggering) = tagged_objects.get_mut(&TagKey::from("triggering"))
+            && triggering.len() == 1
+        {
+            triggering[0] = current;
+        }
         let mut tagged_players = self.tagged_players.clone();
         // Present-tense "attacking that player" is a live relation. The
         // attacked player's identity stays bound to the declaration, while
@@ -2030,10 +2041,12 @@ impl<'a> ExecutionContext<'a> {
                 .downcast::<crate::events::DamageEvent>()
                 .is_none()
             && let Some(object_id) = triggering_event.object_id()
-            && let Some(snapshot) = triggering_event.snapshot().cloned().or_else(|| {
-                game.object(object_id)
-                    .map(|obj| ObjectSnapshot::from_object(obj, game))
-            })
+            && let Some(snapshot) = singular_entry_reference_at_resolution(game, triggering_event)
+                .or_else(|| triggering_event.snapshot().cloned())
+                .or_else(|| {
+                    game.object(object_id)
+                        .map(|obj| ObjectSnapshot::from_object(obj, game))
+                })
         {
             // A resolution prelude can bind a more specific participant
             // (for attachment events, the recipient instead of the attachment).
@@ -2557,4 +2570,24 @@ mod captured_cast_reference_shadow_tests {
         assert!(ctx.exact_object_reference_tags.contains(&tag));
         ctx.set_tagged_objects(tag.clone(),Vec::new());assert!(!ctx.exact_object_reference_tags.contains(&tag));
     }
+}
+
+/// The permanent a single battlefield entry names, as it is now (CR 608.2h):
+/// its current information while it remains on the battlefield, else its
+/// last known information. `None` for any other event or missing evidence.
+fn singular_entry_reference_at_resolution(
+    game: &GameState,
+    event: &crate::triggers::TriggerEvent,
+) -> Option<ObjectSnapshot> {
+    let singular_entry = event.downcast::<crate::events::EnterBattlefieldEvent>().is_some()
+        || event
+            .downcast::<crate::events::ZoneChangeEvent>()
+            .is_some_and(|change| {
+                change.to == crate::zone::Zone::Battlefield
+                    && change.destination_objects().len() == 1
+            });
+    if !singular_entry {
+        return None;
+    }
+    crate::condition_eval::capture_triggering_object_at_resolution(game, event).ok()
 }

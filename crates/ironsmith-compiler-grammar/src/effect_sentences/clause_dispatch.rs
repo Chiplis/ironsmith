@@ -1009,7 +1009,16 @@ fn pump_recipient(
             let words = crate::lexer::parser_token_word_refs(filter_tokens);
             if words.as_slice() == ["the", "creature"] {
                 crate::word_claims::claim_tokens(filter_tokens);
-                tagged(crate::tag::CompilerReferenceTag::It)
+                // A definite noun is an anaphor that keeps its head noun, as
+                // "that creature" does, so reference resolution can skip a
+                // newer antecedent the noun cannot name ("return a land ...
+                // the creature gets +2/+2").
+                let mut filter = ObjectFilter::tagged(crate::tag::CompilerReferenceTag::It.bind());
+                filter.set_explicit_card_type_noun(Some(crate::types::CardType::Creature));
+                filter.source_surface = Some(crate::target::SourceReferenceSurface::ThisPermanentType(
+                    "the creature".to_string(),
+                ));
+                PumpRecipient::Single(TargetAst::Object(filter, None, span_from_tokens(filter_tokens)))
             } else if words.as_slice() == ["the", "blocking", "creature"] {
                 crate::word_claims::claim_tokens(filter_tokens);
                 PumpRecipient::Single(parse_target_phrase(filter_tokens)?)

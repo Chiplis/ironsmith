@@ -1054,7 +1054,7 @@ fn native_assist_pays_ordinary_generic_then_the_caster_completes_waterbend() {
         assert_eq!(waterbend_receipts(&board.game), vec![(ALICE, spell, 3)], "Assist is not an additional Waterbend action");
         let spell_object = board.game.object(spell).unwrap();
         assert_eq!(spell_object.mana_spent_to_cast.blue, 1);
-        assert_eq!(spell_object.mana_spent_to_cast.colorless, contribution);
+        assert_eq!(spell_object.mana_spent_to_cast.colorless, u64::from(contribution));
         assert_eq!(spell_object.caster_mana_spent_to_cast, Some(1));
         board.finish();
         assert_eq!(board.game.player(ALICE).unwrap().hand.len(), 1);

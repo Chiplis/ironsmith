@@ -78,7 +78,7 @@ fn action(game: &mut GameState, action: LegalAction) {
 fn level(game: &mut GameState, class: ObjectId, level: u32) {
     main(game, A); let index = level_index(game, class, level);
     game.player_mut(A).unwrap().mana_pool.blue = 1; game.player_mut(A).unwrap().mana_pool.black = 1;
-    game.player_mut(A).unwrap().mana_pool.colorless = level - 1;
+    game.player_mut(A).unwrap().mana_pool.colorless = u64::from(level - 1);
     let expected = LegalAction::ActivateAbility { source: class, ability_index: index };
     assert!(actions(game, A).contains(&expected)); action(game, expected); resolve(game);
     assert_eq!(game.class_level(class), level); assert_eq!(game.player(A).unwrap().mana_pool.total(), 0);
@@ -115,7 +115,7 @@ fn level_announcements_recheck_previous_level_sorcery_timing_and_colored_price_w
         let mut game = game(); let class = game.create_object_from_definition(&definition, A, Zone::Battlefield);
         let requested = if failure == 0 { 3 } else { 2 }; let index = level_index(&game, class, requested);
         game.player_mut(A).unwrap().mana_pool.blue = if failure == 1 { 3 } else { 1 };
-        game.player_mut(A).unwrap().mana_pool.black = u32::from(failure != 1);
+        game.player_mut(A).unwrap().mana_pool.black = u64::from(failure != 1);
         game.player_mut(A).unwrap().mana_pool.colorless = 2;
         if failure == 2 { game.turn.phase = Phase::Combat; game.turn.step = Some(Step::BeginCombat); }
         if failure == 3 { main(&mut game, B); }

@@ -609,8 +609,28 @@ fn graveyard_flashback_grants_filter_the_adventure_card_before_selecting_its_spe
         "the Adventure's sorcery face does not make its graveyard card a sorcery"
     );
 
+    // CR 601.3e / 715.3a: once the Adventure face is proposed, only its
+    // (sorcery) characteristics decide legality, so a grant to creature cards
+    // no longer applies to it, and flashback cannot cast the creature face
+    // (CR 702.34a). The grant must match both the card and the face.
     game.effect_store.grant_registry.grant_to_filter(
         ObjectFilter::default().with_type(CardType::Creature),
+        Zone::Graveyard,
+        A,
+        Grantable::flashback_from_cards_mana_cost(),
+        grant_source.clone(),
+    );
+    assert!(
+        !compute_legal_actions(&game, A).expect("fixture has complete replacement state")
+            .iter()
+            .any(|action| matches!(
+                action, LegalAction::CastSpell { spell_id, .. } if *spell_id == card
+            )),
+        "a creature-card grant does not survive proposing the Adventure's sorcery face"
+    );
+
+    game.effect_store.grant_registry.grant_to_filter(
+        ObjectFilter::default(),
         Zone::Graveyard,
         A,
         Grantable::flashback_from_cards_mana_cost(),
@@ -624,7 +644,7 @@ fn graveyard_flashback_grants_filter_the_adventure_card_before_selecting_its_spe
                     spell_id, casting_method: CastingMethod::SplitOtherHalfPlayFrom { .. }, ..
                 } if *spell_id == card
             )),
-        "a grant matching the creature card permits casting its Adventure face"
+        "a grant matching both the card and its Adventure face permits casting that face"
     );
 }
 

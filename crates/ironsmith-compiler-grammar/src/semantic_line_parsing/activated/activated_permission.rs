@@ -169,18 +169,23 @@ pub fn parse_activated_line(
     parse_activated_line_impl(line)
 }
 
-fn parse_activated_line_impl(line: RewriteActivatedLine) -> Result<ParsedActivatedLine, CardTextError> {
-    let original_effect_parse_tokens = line.effect_parse_tokens.as_slice();
-    let mut body_without_cost_modifier = Vec::new();
-    let mut reduce_by_source_mana_cost_on_entry_turn = false;
-    let presentation_display = line
-        .presentation
+/// The activation's presentation label: the authored label's display prefix,
+/// else the typed presentation kind's display name.
+fn activated_presentation_display(line: &RewriteActivatedLine) -> Option<String> {
+    line.presentation
         .as_ref()
         .and_then(PresentationLabel::display_prefix)
         .or_else(|| {
             line.presentation_kind
                 .map(|kind| kind.display().to_string())
-        });
+        })
+}
+
+fn parse_activated_line_impl(line: RewriteActivatedLine) -> Result<ParsedActivatedLine, CardTextError> {
+    let original_effect_parse_tokens = line.effect_parse_tokens.as_slice();
+    let mut body_without_cost_modifier = Vec::new();
+    let mut reduce_by_source_mana_cost_on_entry_turn = false;
+    let presentation_display = activated_presentation_display(&line);
     let mut program = ironsmith_core::ResolutionProgram::default();
     program.activation_designations = presentation_display
         .iter()

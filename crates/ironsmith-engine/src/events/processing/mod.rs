@@ -591,6 +591,21 @@ fn build_enter_as_copy_effects_for_spec(
             // exist on the battlefield, including the copy's own
             // characteristic-changing abilities (Spark Double copying Gideon
             // Blackblade on your turn is a creature).
+            //
+            // Control and ownership are not copiable values (CR 707.2), so a
+            // "that creature" control/ownership condition ("if you control
+            // that creature", Undercover Operative) is about the chosen
+            // creature itself and is never satisfied by the entering copy.
+            let mut characteristic_filter = filter.clone();
+            let mut control_filter = crate::target::ObjectFilter::default();
+            control_filter.controller = characteristic_filter.controller.take();
+            control_filter.owner = characteristic_filter.owner.take();
+            if (control_filter.controller.is_some() || control_filter.owner.is_some())
+                && !control_filter.matches_non_recursive(&object, &ctx, game)
+            {
+                return false;
+            }
+            let filter = &characteristic_filter;
             let Some(from) = game.object(entering_object).map(|entering| entering.zone) else {
                 return false;
             };
@@ -12732,7 +12747,7 @@ mod tests {
                     .push(crate::object::TemporaryStaticAbilityGrant {
                         ability: ability.id(),
                         ability_payload: Some(ability),
-                        expires_end_of_turn: Some(4),
+                        expires_end_of_turn: Some(4), functions_on_stack: false
                     });
             }
             let store = &game.object(source).unwrap().temporary_static_ability_grants;
@@ -12864,7 +12879,7 @@ mod tests {
                             .push(crate::object::TemporaryStaticAbilityGrant {
                                 ability: ability.id(),
                                 ability_payload: Some(ability),
-                                expires_end_of_turn: Some(4),
+                                expires_end_of_turn: Some(4), functions_on_stack: false
                             });
                     }
                 }
@@ -12914,7 +12929,7 @@ mod tests {
                     .push(crate::object::TemporaryStaticAbilityGrant {
                         ability: ability.id(),
                         ability_payload: Some(ability),
-                        expires_end_of_turn: Some(expires_end_of_turn),
+                        expires_end_of_turn: Some(expires_end_of_turn), functions_on_stack: false
                     });
                 if warm {
                     assert_eq!(

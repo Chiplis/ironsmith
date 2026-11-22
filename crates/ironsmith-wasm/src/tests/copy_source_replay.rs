@@ -39,6 +39,10 @@ fn cast_copy_source_choice_uses_actual_replay_and_preserves_preproposal_atomicit
  assert!(matches!(result,ReplayOutcome::Complete(GameProgress::NeedsDecisionCtx(_))),"normal payment announcement follows selection: {result:?}");
  let copy=wasm.priority_state.pending_cast.as_ref().expect("normal cast owner").spell_id;
  assert_ne!(copy,original);let proposed=wasm.game.object(copy).unwrap();assert!(matches!(proposed.name.as_str(),"First identity"|"Second identity"));assert_eq!(proposed.kind,ironsmith::object::ObjectKind::SpellCopy);
- assert_eq!(wasm.game.cast_origin_snapshot(copy).unwrap().object_id,original);assert_eq!(wasm.game.object(original).unwrap().zone,Zone::Graveyard);assert_eq!(wasm.game.player(A).unwrap().mana_pool.total(),2);
+ // CR 601.2h: the total cost is paid in any order; exiling the original is
+ // part of this price and is paid before the mana prompt. Mana is unspent
+ // and the whole proposal still rolls back atomically below.
+ assert_eq!(wasm.game.cast_origin_snapshot(copy).unwrap().object_id,original);assert!(wasm.game.object(original).is_none());
+ let exiled=wasm.game.find_object_by_stable_id(stable).unwrap();assert_eq!(wasm.game.object(exiled).unwrap().zone,Zone::Exile);assert_eq!(wasm.game.player(A).unwrap().mana_pool.total(),2);
  assert!(wasm.priority_state.rollback_action(&mut wasm.game));assert_eq!(wasm.game.find_object_by_stable_id(stable),Some(original));assert_eq!(wasm.game.object(original).unwrap().zone,Zone::Graveyard);assert_eq!(wasm.game.player(A).unwrap().mana_pool.total(),2);
 }

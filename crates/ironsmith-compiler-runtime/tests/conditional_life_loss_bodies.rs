@@ -262,7 +262,9 @@ fn chosen_loss_external_replacement_pending_and_failure_restore_native_resolutio
         let shield = game.effect_store.replacement_effects.add_one_shot_effect(ReplacementEffect::with_matcher(source, A,
             ironsmith::events::life::matchers::WouldLoseLifeMatcher::any_player(),
             ReplacementAction::Instead(vec![Effect::gain_life(1), addition])));
-        if resource_failure { game.set_token_creation_limits(ironsmith::effects::tokens::TokenCreationLimits { max_created_tokens: 0, ..Default::default() }); }
+        // Creation past max_created_tokens now creates what fits; the token
+        // instruction-work budget remains a typed incomplete-execution limit.
+        if resource_failure { game.set_token_creation_limits(ironsmith::effects::tokens::TokenCreationLimits { max_instructions: 0, ..Default::default() }); }
         dm.pause = !resource_failure;
         let ids = game.next_object_id_counter();
         let result = resolve_stack_entry_with(&mut game, &mut dm);

@@ -805,7 +805,8 @@ impl crate::effects::ActionProgramCursor for SelectedModalCursor {
             self.mode_source = child.label.as_ref().map(|_| ctx.source);
         }
         if self.use_target_scopes {
-            let assignments = active_target_assignments_for_inner_effect(
+            let assignment_start = self.assignment_cursor;
+            let mut assignments = active_target_assignments_for_inner_effect(
                 game,
                 &child.effect,
                 ctx,
@@ -813,6 +814,20 @@ impl crate::effects::ActionProgramCursor for SelectedModalCursor {
                 &self.available_assignments,
                 &mut self.assignment_cursor,
             );
+            // "Target creature you control deals damage ... to target
+            // creature" as a mode (Compel Brutality): the acting source keeps
+            // its announced target contract, so the mode's earlier source
+            // declaration stays in scope, exactly as for a nonmodal
+            // instruction at stack resolution (CR 115.1, 608.2b).
+            if crate::game_loop::effect_references_prior_object_targets(&child.effect) {
+                let mut scoped = crate::game_loop::previous_object_target_assignments(
+                    &ctx.targets,
+                    &self.available_assignments,
+                    assignment_start,
+                );
+                scoped.extend(assignments);
+                assignments = scoped;
+            }
             if !assignments.is_empty() {
                 self.active_scope = Some(rebase_target_scope(&ctx.targets, &assignments));
             }

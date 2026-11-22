@@ -646,6 +646,14 @@ fn target_context_for_damage_part(part: &CompoundDamagePart) -> Option<PlayerFil
         } => {
             if span.is_some() {
                 Some(PlayerFilter::Target(Box::new(filter.clone())))
+            } else if *filter == PlayerFilter::target_player() {
+                // "deals 3 damage to that player and 1 damage to each
+                // creature they control" (The Fall of Kroog): an unannounced
+                // `Target(Any)` recipient is the "that player" back-reference
+                // (see reference resolution's `track_target_player`), so a
+                // later "they control" is the same antecedent marker, never
+                // a fresh target-player slot (CR 115.1, CR 608.2c).
+                Some(PlayerFilter::IteratedPlayer)
             } else {
                 Some(filter.clone())
             }

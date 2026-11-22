@@ -779,57 +779,65 @@ mod tests {
 
     #[test]
     fn counter_spell_honors_registered_stack_to_graveyard_replacement() {
-        let mut game = setup_game();
-        let alice = PlayerId::from_index(0);
-        let bob = PlayerId::from_index(1);
+        // "If that spell would be put into a graveyard, exile it instead"
+        // (any origin) applies when it is countered. The same replacement
+        // scoped to the stack names the spell's own finishing move as it
+        // resolves (CR 608.2n), which a countered spell never makes
+        // (CR 701.6a).
+        for (from_zone, expected) in [(None, Zone::Exile), (Some(Zone::Stack), Zone::Graveyard)] {
+            let mut game = setup_game();
+            let alice = PlayerId::from_index(0);
+            let bob = PlayerId::from_index(1);
 
-        let target_spell = create_instant(&mut game, bob, Zone::Stack, "Target Spell");
-        let stable_id = game
-            .object(target_spell)
-            .expect("target spell should exist")
-            .stable_id;
-        game.stack.push(StackEntry::new(target_spell, bob));
+            let target_spell = create_instant(&mut game, bob, Zone::Stack, "Target Spell");
+            let stable_id = game
+                .object(target_spell)
+                .expect("target spell should exist")
+                .stable_id;
+            game.stack.push(StackEntry::new(target_spell, bob));
 
-        let counter_source = create_instant(&mut game, alice, Zone::Stack, "Counter Source");
-        let register = Effect::new(crate::effects::RegisterZoneReplacementEffect::new(
-            ChooseSpec::SpecificObject(target_spell),
-            Some(Zone::Stack),
-            Some(Zone::Graveyard),
-            Zone::Exile,
-            crate::effects::ReplacementApplyMode::OneShot,
-        ));
-        let mut dm = SelectFirstDecisionMaker;
-        let mut ctx = ExecutionContext::new(counter_source, alice, &mut dm);
-        execute_effect(&mut game, &register, &mut ctx)
-            .expect("replacement registration should succeed");
+            let counter_source = create_instant(&mut game, alice, Zone::Stack, "Counter Source");
+            let register = Effect::new(crate::effects::RegisterZoneReplacementEffect::new(
+                ChooseSpec::SpecificObject(target_spell),
+                from_zone,
+                Some(Zone::Graveyard),
+                Zone::Exile,
+                crate::effects::ReplacementApplyMode::OneShot,
+            ));
+            let mut dm = SelectFirstDecisionMaker;
+            let mut ctx = ExecutionContext::new(counter_source, alice, &mut dm);
+            execute_effect(&mut game, &register, &mut ctx)
+                .expect("replacement registration should succeed");
 
-        let outcome = execute_effect(
-            &mut game,
-            &Effect::new(CounterEffect::new(ChooseSpec::SpecificObject(target_spell))),
-            &mut ctx,
-        )
-        .expect("counter should resolve");
-        assert!(
-            outcome.status.is_success(),
-            "counter should resolve successfully"
-        );
-        assert!(
-            !game
-                .stack
-                .iter()
-                .any(|entry| entry.object_id == target_spell),
-            "countered spell should be removed from the stack"
-        );
+            let outcome = execute_effect(
+                &mut game,
+                &Effect::new(CounterEffect::new(ChooseSpec::SpecificObject(target_spell))),
+                &mut ctx,
+            )
+            .expect("counter should resolve");
+            assert!(
+                outcome.status.is_success(),
+                "counter should resolve successfully"
+            );
+            assert!(
+                !game
+                    .stack
+                    .iter()
+                    .any(|entry| entry.object_id == target_spell),
+                "countered spell should be removed from the stack"
+            );
 
-        let moved_id = game
-            .find_object_by_stable_id(stable_id)
-            .expect("countered spell should still be findable after the zone change");
-        assert_eq!(
-            game.object(moved_id)
-                .expect("countered spell should still exist after being moved")
-                .zone,
-            Zone::Exile
-        );
+            let moved_id = game
+                .find_object_by_stable_id(stable_id)
+                .expect("countered spell should still be findable after the zone change");
+            assert_eq!(
+                game.object(moved_id)
+                    .expect("countered spell should still exist after being moved")
+                    .zone,
+                expected,
+                "from_zone={from_zone:?}"
+            );
+        }
     }
 
     #[test]

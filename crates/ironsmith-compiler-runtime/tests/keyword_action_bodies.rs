@@ -358,7 +358,10 @@ fn targeted_repeated_investigate_pending_and_resource_error_restore_whole_instru
                 source, B, ironsmith::events::zones::matchers::WouldEnterBattlefieldMatcher::any(),
                 ReplacementAction::InteractivePayLifeOrEnterTapped { life_cost: 2 },
             ));
-            if !pending { game.set_token_creation_limits(ironsmith::effects::tokens::TokenCreationLimits { max_created_tokens: 1, ..Default::default() }); }
+            // Token counts past the creation budget are truncated rather than
+            // refused; the instruction budget is what still fails typed (the
+            // repeated Investigate exceeds it), so the whole instruction rolls back.
+            if !pending { game.set_token_creation_limits(ironsmith::effects::tokens::TokenCreationLimits { max_instructions: 1, ..Default::default() }); }
             let mut dm = Choices { pause_at: pending.then_some(2), ..Default::default() };
             let effect = ironsmith::effects::InvestigateEffect::new(2, PlayerFilter::Specific(B));
             let next = game.next_object_id_counter();
@@ -366,7 +369,7 @@ fn targeted_repeated_investigate_pending_and_resource_error_restore_whole_instru
             let outcome = if dispatched { execute_effect(&mut game, &Effect::new(effect.clone()), &mut ctx) }
                 else { effect.execute(&mut game, &mut ctx) };
             if pending { assert!(outcome.unwrap().events.is_empty()); assert!(ctx.decision_maker.awaiting_choice()); }
-            else { assert!(matches!(outcome, Err(ExecutionError::ResourceLimitExceeded { .. }))); }
+            else { assert!(matches!(outcome, Err(ExecutionError::ResourceLimitExceeded { resource: "repeated token instructions", .. })), "{outcome:?}"); }
             assert_eq!(game.player(A).unwrap().life, 20);
             assert_eq!(game.player(B).unwrap().life, 20);
             assert!(tokens(&game, B, Subtype::Clue).is_empty());

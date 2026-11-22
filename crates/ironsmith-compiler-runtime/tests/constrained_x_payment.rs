@@ -922,7 +922,7 @@ mod exact_cards {
         }
     }
     #[test]
-    fn damage_added_non_mana_toughness_overflow_is_typed_incomplete_and_rolls_back_resolution() {
+    fn damage_added_non_mana_toughness_overflow_saturates_and_completes_resolution() {
         use ironsmith::effect::{Effect, Until};
         use ironsmith::replacement::{ReplacementAction, ReplacementEffect};
         use ironsmith::target::{ChooseSpec, ObjectFilter};
@@ -970,20 +970,14 @@ mod exact_cards {
             let cast = action(&game, spell, false);
             announce(&mut game, cast, &mut choices).unwrap();
             let stack = game.stack.last().unwrap().object_id;
-            let error = resolve_stack_entry_with(&mut game, &mut choices).unwrap_err();
-            assert!(
-                matches!(
-                    error,
-                    ironsmith::game_loop::GameLoopError::ExecutionFailed(
-                        ironsmith::effects::ExecutionError::ContinuousDiscovery(_)
-                    )
-                ),
-                "{error:?}"
-            );
-            assert_eq!(game.stack.last().unwrap().object_id, stack);
-            assert_eq!(game.damage_on(target), 0);
-            assert_eq!(game.current_toughness(target), Some(6));
-            assert_eq!(game.player(A).unwrap().life, 20);
+            // Toughness is a game quantity that saturates at its storage
+            // bound (CR 107.1 sets no cap), so the damage-added +0/+i32::MAX
+            // is no longer a discovery failure: resolution completes once.
+            resolve_stack_entry_with(&mut game, &mut choices).unwrap();
+            assert!(game.stack.iter().all(|entry| entry.object_id != stack));
+            assert_eq!(game.damage_on(target), 3);
+            assert_eq!(game.current_toughness(target), Some(i32::MAX));
+            assert_eq!(game.player(A).unwrap().life, 23);
             assert_eq!(
                 game.player(A).unwrap().mana_pool.total(),
                 0,
@@ -1240,10 +1234,13 @@ fn capped_damage_does_not_invent_toughness_for_a_known_creature_with_missing_evi
         Ok(snapshot) => format!("{:#?}", snapshot.try_current_characteristics(object)),
         Err(error) => format!("continuous query error: {error:#?}"),
     };
+    // CR 208.5: a creature with no value for its toughness has toughness 0.
+    // The current frame therefore carries real (zero) toughness evidence, and
+    // the cap is that value -- never the 2 damage dealt nor an invented stat.
     assert!(matches!(
         &resolved,
-        Err(ironsmith::effects::ExecutionError::UnresolvableValue(_))
-    ), "missing-evidence contract unchanged: result={resolved:?}; raw base power={:?}; raw base toughness={:?}; checked frame={checked_frame}; exact outcome={:#?}",
+        Ok(0)
+    ), "CR 208.5 zero-toughness cap: result={resolved:?}; raw base power={:?}; raw base toughness={:?}; checked frame={checked_frame}; exact outcome={:#?}",
         game.object(object).and_then(|object|object.base_power.as_ref()),
         game.object(object).and_then(|object|object.base_toughness.as_ref()),
         context.get_outcome(EffectId(1)));

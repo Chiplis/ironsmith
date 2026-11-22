@@ -62,6 +62,40 @@ thread_local! {
         };
 }
 
+/// Most mana units one payment may require. The planner reasons about a
+/// payment pip by pip (CR 601.2g-h: each unit of a cost is paid individually),
+/// so a cost whose X expands past this bound cannot be planned within the host
+/// profile. A larger X is a typed resource limit, never an unbounded search.
+pub(crate) const PAYMENT_UNIT_LIMIT: u32 = crate::events::mana::MATERIALIZED_MANA_LIMIT as u32;
+
+/// Mana units the expanded payment of `cost` with `x_value` requires, computed
+/// without materializing its pips.
+pub(crate) fn payment_unit_count(cost: &crate::mana::ManaCost, x_value: u32) -> u64 {
+    let x_value = u64::from(cost.payment_x_value(x_value));
+    cost.pips()
+        .iter()
+        .map(|pip| match pip.as_slice() {
+            [ManaSymbol::Generic(amount)] => u64::from(*amount),
+            [ManaSymbol::X] => x_value,
+            _ => 1,
+        })
+        .fold(0, u64::saturating_add)
+}
+
+pub(crate) fn validate_payment_unit_scope(
+    request: &ManaPaymentRequest,
+) -> Result<(), crate::effects::ExecutionError> {
+    let requested = payment_unit_count(&request.cost, request.x_value);
+    if requested > u64::from(PAYMENT_UNIT_LIMIT) {
+        return Err(crate::effects::ExecutionError::ResourceLimitExceeded {
+            resource: "mana payment units",
+            requested: u128::from(requested),
+            maximum: u128::from(PAYMENT_UNIT_LIMIT),
+        });
+    }
+    Ok(())
+}
+
 pub fn last_mana_payment_perf() -> ManaPaymentPerfMetrics {
     LAST_MANA_PAYMENT_PERF.with(|slot| *slot.borrow())
 }
@@ -1711,7 +1745,9 @@ impl ManaPaymentPlanner {
         let meter = scope.meter();
         let mut staged = game.clone();
         staged.bind_token_query_meter(meter.clone());
-        let mut result = match super::validate_waterbend_scope(request) {
+        let mut result = match super::validate_waterbend_scope(request)
+            .and_then(|()| validate_payment_unit_scope(request))
+        {
             Ok(()) => self.plan_internal_with_resources(&staged, request, stop_after_first),
             Err(error) => {
                 staged.record_token_resource_failure(&error);

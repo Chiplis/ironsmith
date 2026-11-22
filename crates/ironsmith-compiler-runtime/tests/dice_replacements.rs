@@ -532,20 +532,18 @@ fn replacement_count_overflow_is_a_typed_atomic_resource_error_before_randomness
     let source = g.create_object_from_definition(&d, A, Zone::Battlefield);
     force(&mut g, &[6]);
     let before = g.irreversible_random_count();
-    let error = RollDieEffect::new(PlayerFilter::You, 6)
+    // Extra dice share a physical budget of 4,096 dice per batch: a replacement
+    // past it adds, and then ignores, only the dice the budget still allows,
+    // instead of failing. The count never wraps and the batch stays one roll
+    // (CR 706.6: ignored dice are not rolled for any other purpose).
+    RollDieEffect::new(PlayerFilter::You, 6)
         .execute(&mut g, &mut ExecutionContext::new_default(source, A))
-        .unwrap_err();
-    assert!(matches!(
-        error,
-        ironsmith::effects::ExecutionError::ResourceLimitExceeded {
-            resource: "physical replacement dice",
-            ..
-        }
-    ));
-    assert!(error.is_incomplete_execution());
-    assert_eq!(g.turn_store.turn_history.completed_die_roll_count(A), 0);
-    assert_eq!(g.irreversible_random_count(), before);
-    assert_eq!(g.take_forced_die_roll(), Some(6));
+        .unwrap();
+    assert_eq!(g.turn_store.turn_history.completed_die_roll_count(A), 1);
+    assert_eq!(g.turn_store.turn_history.die_rolls_this_turn[&A], [6], "only the highest die is kept");
+    assert_eq!(g.take_forced_die_roll(), None, "the forced face is the first physical die");
+    let physical = g.irreversible_random_count() - before;
+    assert!((1..=4_096).contains(&physical), "physical dice stay within the budget: {physical}");
 }
 #[test]
 fn real_attraction_rolls_use_the_retained_die_and_planar_rolls_ignore_numeric_replacements() {

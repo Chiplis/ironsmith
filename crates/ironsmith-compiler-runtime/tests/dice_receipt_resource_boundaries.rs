@@ -2,7 +2,7 @@
 //! Authored only; execution is deferred by the campaign workflow.
 use ironsmith::cards::builders::CardDefinitionBuilder;
 use ironsmith::decision::SelectFirstDecisionMaker;
-use ironsmith::effects::{EffectExecutor, EffectContext as ExecutionContext, ExecutionError, OpenAttractionEffect};
+use ironsmith::effects::{EffectExecutor, EffectContext as ExecutionContext, OpenAttractionEffect};
 use ironsmith::triggers::TriggerQueue;
 use ironsmith::{
      CardId, CardType, Effect, GameState, PlanarCardKind, PlayerId,
@@ -42,54 +42,36 @@ fn planar_capacity_failure_is_atomic_typed_and_never_invalid_timing() {
         .insert(A, i32::MAX as u32);
     g.force_next_die_roll(6);
     let random = g.irreversible_random_count();
-    let cost = g.planar_die_roll_cost(A);
-    assert!(matches!(
-        g.roll_planar_die(A, true),
-        Err(ExecutionError::ResourceLimitExceeded { .. })
-    ));
-    assert_eq!(g.irreversible_random_count(), random);
-    assert_eq!(g.planar_die_roll_cost(A), cost);
-    let error = ironsmith::decision::compute_legal_actions(&g, A).unwrap_err();
-    assert!(matches!(
-        error,
-        ExecutionError::ResourceLimitExceeded { .. }
-    ));
+    assert_eq!(g.planar_die_roll_cost(A), Some(0));
+    // Completed die-roll ordinals saturate at the i32 domain the value
+    // interpreter reads (game quantities clamp at their storage bounds), so a
+    // saturated ordinal is no longer a capacity failure. The roll stays a legal
+    // special action at its ordinary timing and completes exactly once.
+    ironsmith::decision::compute_legal_actions(&g, A).unwrap();
     let mut dm = SelectFirstDecisionMaker;
-    for result in [
-        ironsmith::special_actions::can_perform(
-            &ironsmith::special_actions::SpecialAction::RollPlanarDie,
-            &g,
-            A,
-            &mut dm,
-        ),
-        ironsmith::special_actions::perform(
-            ironsmith::special_actions::SpecialAction::RollPlanarDie,
-            &mut g,
-            A,
-            &mut dm,
-        ),
-    ] {
-        assert!(matches!(
-            result,
-            Err(ironsmith::special_actions::ActionError::ExecutionFailure {
-                error: ExecutionError::ResourceLimitExceeded { .. },
-                ..
-            })
-        ));
-    }
-    assert_eq!(g.irreversible_random_count(), random);
-    assert_eq!(g.planar_die_roll_cost(A), cost);
-    g.turn_store
-        .turn_history
-        .completed_die_rolls_this_turn
-        .insert(A, 0);
-    assert_eq!(
-        g.roll_planar_die(A, true).unwrap(),
-        ironsmith::PlanarDieFace::Blank,
-        "preflight did not consume the forced result"
-    );
+    assert!(ironsmith::special_actions::can_perform(
+        &ironsmith::special_actions::SpecialAction::RollPlanarDie,
+        &g,
+        A,
+        &mut dm,
+    )
+    .is_ok());
+    assert_eq!(g.irreversible_random_count(), random, "a legality query never rolls");
+    ironsmith::special_actions::perform(
+        ironsmith::special_actions::SpecialAction::RollPlanarDie,
+        &mut g,
+        A,
+        &mut dm,
+    )
+    .unwrap();
+    assert_eq!(g.take_forced_die_roll(), None, "the forced face was the roll");
     assert_eq!(g.planar_die_roll_cost(A), Some(1));
     assert_eq!(g.irreversible_random_count(), random + 1);
+    assert_eq!(
+        g.turn_store.turn_history.completed_die_roll_count(A),
+        i32::MAX as u32,
+        "the ordinal saturates instead of wrapping"
+    );
 }
 #[test]
 fn attraction_capacity_failure_preserves_typed_error_queue_and_random_attempt() {
@@ -117,24 +99,8 @@ fn attraction_capacity_failure_preserves_typed_error_queue_and_random_attempt() 
     g.force_next_die_roll(6);
     let random = g.irreversible_random_count();
     let mut queue = TriggerQueue::new();
-    let error = ironsmith::game_loop::roll_to_visit_attractions_with_dm(
-        &mut g,
-        &mut queue,
-        &mut SelectFirstDecisionMaker,
-    )
-    .unwrap_err();
-    assert!(matches!(
-        error,
-        ironsmith::game_loop::GameLoopError::ExecutionFailed(
-            ExecutionError::ResourceLimitExceeded { .. }
-        )
-    ));
-    assert_eq!(g.irreversible_random_count(), random);
-    assert!(queue.is_empty());
-    g.turn_store
-        .turn_history
-        .completed_die_rolls_this_turn
-        .insert(A, 0);
+    // Completed die-roll ordinals saturate at the i32 domain instead of
+    // failing, so the visit roll completes once and never wraps the ordinal.
     assert_eq!(
         ironsmith::game_loop::roll_to_visit_attractions_with_dm(
             &mut g,
@@ -144,5 +110,10 @@ fn attraction_capacity_failure_preserves_typed_error_queue_and_random_attempt() 
         .unwrap(),
         Some(6)
     );
-    assert_eq!(g.turn_store.turn_history.completed_die_roll_count(A), 1);
+    assert_eq!(g.irreversible_random_count(), random, "the forced face is not a fresh random draw");
+    assert_eq!(g.take_forced_die_roll(), None, "the forced face was the visit roll");
+    assert_eq!(
+        g.turn_store.turn_history.completed_die_roll_count(A),
+        i32::MAX as u32
+    );
 }

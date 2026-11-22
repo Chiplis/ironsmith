@@ -3727,6 +3727,35 @@ fn import_named_action_object_roles(imports: &mut ReferenceImports, trigger: &Tr
     }
 }
 
+/// Record the attacking creature of a single-attacker trigger as a typed
+/// antecedent, so a definite description in the body ("the creature",
+/// "that creature") can still name it after a newer antecedent its noun
+/// excludes ("return a land you control ... the creature gets +2/+2"). Only
+/// creatures attack (CR 506.3), whatever the trigger's own filter says.
+fn import_triggering_attacker_kind(imports: &mut ReferenceImports, trigger: &TriggerSpec) {
+    let filter = match trigger {
+        TriggerSpec::WithIntro { trigger, .. } | TriggerSpec::ConditionQualified { trigger, .. } => {
+            return import_triggering_attacker_kind(imports, trigger);
+        }
+        TriggerSpec::Attacks(filter)
+        | TriggerSpec::AttacksAndIsntBlocked(filter)
+        | TriggerSpec::AttacksWhileSaddled(filter)
+        | TriggerSpec::AttacksAlone(filter)
+        | TriggerSpec::AttacksPlayerAlone(filter)
+        | TriggerSpec::AttacksYouOrPlaneswalkerYouControl(filter) => filter,
+        _ => return,
+    };
+    let Some(tag) = ironsmith_compiler_semantic::trigger_references::default_trigger_last_object_tag(trigger) else {
+        return;
+    };
+    let mut kind = ObjectFilter::creature();
+    kind.zone = filter.zone.or(Some(crate::zone::Zone::Battlefield));
+    let bindings = std::sync::Arc::make_mut(&mut imports.recent_object_target_bindings);
+    if !bindings.iter().any(|binding| binding.tag == tag) {
+        bindings.push(crate::model::reference_state::ObjectTargetBinding::new(tag, &kind));
+    }
+}
+
 pub fn stage_effects_with_trigger_context_for_lowering(
     trigger: Option<&TriggerSpec>,
     effects: &[EffectAst],
@@ -3737,6 +3766,7 @@ pub fn stage_effects_with_trigger_context_for_lowering(
     if let Some(trigger) = trigger {
         import_triggering_stack_targets(&mut imports, trigger);
         import_named_action_object_roles(&mut imports, trigger);
+        import_triggering_attacker_kind(&mut imports, trigger);
     }
     let mut normalized = normalize_effects_ast(effects);
     if let Some(trigger) = trigger {

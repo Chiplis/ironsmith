@@ -371,7 +371,7 @@ fn incomplete_continuous_discovery_cannot_turn_dynamic_protection_into_legal_dam
         let protected = if name == "Earnest Fellowship" { creature(&mut game, A, ColorSet::WHITE) } else { owner };
         assert!(matching(&game, protected, source));
         let life = game.player(B).unwrap().life;
-        game.player_mut(A).unwrap().mana_pool.green = i32::MAX as u32 + 1;
+        let incomplete = make_discovery_incomplete(&mut game, protected);
         assert!(game.try_current_characteristics(protected).is_err());
         assert!(ironsmith::decision::compute_legal_actions(&game, A).is_err());
         let sequence = Effect::new(SequenceEffect::new(vec![Effect::gain_life(3),
@@ -380,7 +380,7 @@ fn incomplete_continuous_discovery_cannot_turn_dynamic_protection_into_legal_dam
         assert!(matches!(result, Err(ExecutionError::ContinuousDiscovery(_)) | Err(ExecutionError::ResourceLimitExceeded { .. })));
         assert_eq!(game.damage_on(protected), 0);
         assert_eq!(game.player(B).unwrap().life, life);
-        game.player_mut(A).unwrap().mana_pool.green = 0;
+        game.effect_store.continuous_effects.remove_effect(incomplete);
         game.refresh_continuous_state().unwrap();
         assert!(matching(&game, protected, source));
     } }
@@ -549,4 +549,19 @@ fn quoted_population_rule_belongs_to_its_recipient_after_resolution() {
         game.refresh_continuous_state().unwrap();
         assert!(matching(&game, protected, red));
     } }
+}
+
+/// Leave continuous discovery incomplete for `object`. Pools are u64-wide and
+/// mana-derived scalars now saturate, so a huge pool no longer fails discovery;
+/// a characteristic-setting value whose player does not exist still does
+/// (missing numeric evidence). Returns the effect so the caller can recover.
+fn make_discovery_incomplete(game: &mut ironsmith::GameState, object: ironsmith::ObjectId)
+    -> ironsmith::continuous::ContinuousEffectId {
+    let controller = game.controller_of(game.object(object).unwrap());
+    game.effect_store.continuous_effects.add_effect(ironsmith::continuous::ContinuousEffect::new(
+        object, controller, ironsmith::continuous::EffectTarget::Specific(object),
+        ironsmith::continuous::Modification::SetPower {
+            value: ironsmith::effect::Value::LifeTotal(ironsmith::target::PlayerFilter::Specific(ironsmith::PlayerId(99))),
+            sublayer: ironsmith::continuous::PtSublayer::Setting,
+        }))
 }

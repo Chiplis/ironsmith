@@ -530,7 +530,8 @@ mod tests {
             false,
         );
         let result = effect.execute(&mut game, &mut ctx);
-        assert_eq!(result, Err(ExecutionError::InvalidTarget));
+        // An unavailable object is an invalid-target outcome, not an error.
+        assert_eq!(result, Ok(crate::effect::EffectOutcome::target_invalid()));
     }
 
     #[test]

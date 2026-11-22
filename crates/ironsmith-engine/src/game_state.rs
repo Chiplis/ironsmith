@@ -7091,6 +7091,8 @@ impl GameState {
                 ability_effects: Vec::new(),
                 power_toughness: None,
             });
+        // A sticker can change what characteristic-defining counts see.
+        self.mark_continuous_state_dirty();
     }
 
     pub fn add_accessible_art_sticker(&mut self, owner: PlayerId) -> u64 {
@@ -8422,6 +8424,16 @@ impl GameState {
     /// invalidate history-reading conditions, selectors, and numeric modifiers
     /// at publication as well. Fixed bonuses can still depend on turn history.
     fn invalidate_continuous_history_modifiers(&self) {
+        // Results computed while the state was already dirty (an
+        // instruction's own mid-mutation queries) are cached under the
+        // current context revision. A newly published history record must
+        // retire them too, or a "cards you've drawn this turn" value keeps
+        // the pre-publication count (CR 613.1: continuous effects are
+        // reevaluated against the current game state).
+        if self.runtime_cache.continuous_state_dirty.get() {
+            self.mark_continuous_state_dirty();
+            return;
+        }
         if !self.runtime_cache.continuous_state_dirty.get()
             && (self
                 .cached_continuous_effects_snapshot_arc()
@@ -9887,6 +9899,31 @@ impl GameState {
         );
     }
 
+    /// Install a cast-this-way rider on the spell just cast this way. Unlike
+    /// an ordinary granted ability it describes the spell as cast, so it
+    /// functions on the stack (CR 601.2a); it lasts until end of turn.
+    pub(crate) fn grant_cast_this_way_rider_until_end_of_turn(
+        &mut self,
+        spell_id: ObjectId,
+        ability: crate::static_abilities::StaticAbility,
+    ) {
+        if self.object(spell_id).is_none() {
+            return;
+        }
+        let expires_end_of_turn = self.turn.turn_number;
+        let acquired_at = self.effect_store.continuous_effects.next_timestamp();
+        let object = self.object_mut(spell_id).expect("grant recipient exists");
+        object.temporary_static_ability_grants.push_at_timestamp(
+            crate::object::TemporaryStaticAbilityGrant {
+                ability: ability.id(),
+                ability_payload: Some(ability),
+                expires_end_of_turn: Some(expires_end_of_turn),
+                functions_on_stack: true,
+            },
+            acquired_at,
+        );
+    }
+
     fn grant_temporary_static_ability_payload_to_object_through_turn(
         &mut self,
         object_id: ObjectId,
@@ -9906,7 +9943,7 @@ impl GameState {
             crate::object::TemporaryStaticAbilityGrant {
                 ability,
                 ability_payload,
-                expires_end_of_turn: Some(expires_end_of_turn),
+                expires_end_of_turn: Some(expires_end_of_turn), functions_on_stack: false
             },
             acquired_at,
         );
@@ -9928,7 +9965,7 @@ impl GameState {
             crate::object::TemporaryStaticAbilityGrant {
                 ability: ability.id(),
                 ability_payload: Some(ability),
-                expires_end_of_turn: None,
+                expires_end_of_turn: None, functions_on_stack: false
             },
             acquired_at,
         );

@@ -1244,15 +1244,13 @@ fn hallow_invalid_target_and_failed_deferred_gain_do_not_commit_a_partial_result
         )),
         &mut EffectContext::new(source, B, &mut first),
     );
-    assert!(
-        matches!(
-            result,
-            Err(ironsmith::effects::ExecutionError::ResourceLimitExceeded { .. })
-        ),
-        "{result:?}"
-    );
-    assert_eq!(game.player(A).unwrap().life, i32::MAX - 1);
-    assert_eq!(
+    // Life saturates at its storage bound instead of failing (CR 107.1 sets
+    // no cap): all 3 damage is prevented and the deferred gain of 3 completes,
+    // saturating at i32::MAX rather than committing a partial result.
+    let outcome = result.unwrap();
+    assert!(outcome.events_of_type::<ironsmith::events::DamageEvent>().next().is_none());
+    assert_eq!(game.player(A).unwrap().life, i32::MAX);
+    assert_ne!(
         format!("{:?}", game.turn_store.turn_history),
         history_before
     );
@@ -1449,7 +1447,7 @@ fn gideon_first_loyalty_prevents_outgoing_damage_without_protecting_the_target_f
 }
 
 #[test]
-fn hallow_rejects_a_fully_prevented_damage_amount_above_the_scalar_range_transactionally() {
+fn hallow_fully_prevents_a_damage_amount_above_the_scalar_range_and_saturates_the_gain() {
     for definition in definitions("Hallow") {
         for amount in [i32::MAX as u32 + 1, u32::MAX] {
             let mut game = game();
@@ -1491,13 +1489,13 @@ fn hallow_rejects_a_fully_prevented_damage_amount_above_the_scalar_range_transac
                 )),
                 &mut EffectContext::new(source, B, &mut first),
             );
-            let error = result.unwrap_err();
-            assert!(error.is_incomplete_execution());
-            assert!(
-                matches!(error,ironsmith::effects::ExecutionError::ResourceLimitExceeded{requested,maximum,..} if requested==u128::from(amount)&&maximum==i32::MAX as u128)
-            );
-            assert_eq!(game.player(A).unwrap().life, 20);
-            assert_eq!(
+            // The prevented amount exceeds the signed life range; the gain of
+            // that amount saturates at i32::MAX instead of failing (CR 107.1
+            // sets no cap). No damage survives the prevention.
+            let outcome = result.unwrap();
+            assert!(outcome.events_of_type::<ironsmith::events::DamageEvent>().next().is_none());
+            assert_eq!(game.player(A).unwrap().life, i32::MAX);
+            assert_ne!(
                 format!("{:?}", game.turn_store.turn_history),
                 history_before
             );
@@ -1505,8 +1503,8 @@ fn hallow_rejects_a_fully_prevented_damage_amount_above_the_scalar_range_transac
                 game.effect_store
                     .replacement_effects
                     .get_effect(replacement)
-                    .is_some(),
-                "rollback restores the consumed replacement"
+                    .is_none(),
+                "the applied one-shot replacement is consumed"
             );
             assert_eq!(game.effect_store.prevention_effects.shields().len(), 1);
         }

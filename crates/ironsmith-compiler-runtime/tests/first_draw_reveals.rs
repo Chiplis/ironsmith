@@ -385,7 +385,9 @@ fn token_failure_restores_eisenhorn_trigger_and_retries_without_repeating_the_dr
         let mut answers = Answers::default();
         let outcome = draw(&mut game, source, A, 1, &mut answers);
         queue(&mut game, outcome, &mut answers);
-        game.set_token_creation_limits(ironsmith::effects::tokens::TokenCreationLimits { max_created_tokens: 0, ..Default::default() });
+        // Creation past max_created_tokens now creates what fits; the token
+        // instruction-work budget remains a typed incomplete-execution limit.
+        game.set_token_creation_limits(ironsmith::effects::tokens::TokenCreationLimits { max_instructions: 0, ..Default::default() });
         assert!(resolve_stack_entry_with(&mut game, &mut answers).is_err());
         assert_eq!(game.stack.len(), 1);
         assert_eq!(game.player(A).unwrap().hand.len(), 1);

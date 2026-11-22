@@ -440,8 +440,7 @@ fn a_counter_body_already_on_the_stack_survives_its_source_leaving_exile() {
 }
 
 #[test]
-fn fungal_two_creature_counter_total_reports_a_checked_scalar_limit_and_recovers() {
-    use ironsmith::static_ability_processor::StaticEffectDiscoveryError;
+fn fungal_two_creature_counter_total_saturates_at_the_scalar_bound_and_recovers() {
     for definition in definitions("Fungal Behemoth") {
         let mut game = game();
         let source = game.create_object_from_definition(&definition, A, Zone::Exile);
@@ -450,14 +449,13 @@ fn fungal_two_creature_counter_total_reports_a_checked_scalar_limit_and_recovers
         game.add_counters(first, CounterType::PlusOnePlusOne, 1_500_000_000);
         game.add_counters(second, CounterType::PlusOnePlusOne, 1_000_000_000);
         // Each witness's own 2+counter P/T is representable; only the CDA's
-        // cross-object sum exceeds i32. That must not wrap or panic first.
-        assert!(matches!(game.refresh_continuous_state(), Err(StaticEffectDiscoveryError::ScalarRange {
-            resource: "characteristic-defining scalar", value: 2_500_000_000,
-        })));
-        assert!(matches!(game.try_current_characteristics(source), Err(StaticEffectDiscoveryError::ScalarRange {
-            resource: "characteristic-defining scalar", value: 2_500_000_000,
-        })));
-        assert!(ironsmith::decision::compute_legal_actions(&game, A).is_err());
+        // cross-object sum exceeds i32. P/T are game quantities that saturate at
+        // their storage bound (CR 107.1 sets no cap) instead of wrapping,
+        // panicking, or failing discovery.
+        game.refresh_continuous_state().unwrap();
+        let saturated = game.try_current_characteristics(source).unwrap().unwrap();
+        assert_eq!((saturated.power, saturated.toughness), (Some(i32::MAX), Some(i32::MAX)));
+        ironsmith::decision::compute_legal_actions(&game, A).unwrap();
         game.object_mut(second).unwrap().counters.insert(CounterType::PlusOnePlusOne, 1);
         game.refresh_continuous_state().unwrap();
         let complete = game.try_current_characteristics(source).unwrap().unwrap();

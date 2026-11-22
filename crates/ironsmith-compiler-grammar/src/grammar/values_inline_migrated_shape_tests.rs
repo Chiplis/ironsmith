@@ -153,10 +153,16 @@ fn parses_add_mana_equal_amount_tail_with_typed_shape() {
     let parsed =
         parse_add_mana_equal_amount_value_lexed(&lex("add mana equal to that creature power"))
             .unwrap();
+    // The reference keeps its authored "that creature" surface.
+    let Value::PowerOf(spec) = &parsed else {
+        panic!("{parsed:?}");
+    };
+    let ChooseSpec::SurfaceHinted { spec, .. } = spec.as_ref() else {
+        panic!("{parsed:?}");
+    };
     assert_eq!(
-        parsed,
-        Value::PowerOf(Box::new(ChooseSpec::Tagged(
-            crate::tag::CompilerReferenceTag::It.key()
-        )))
+        spec.as_ref(),
+        &ChooseSpec::Tagged(crate::tag::CompilerReferenceTag::It.key())
     );
+    assert!(format!("{parsed:?}").contains("ThisPermanentType(\"that creature\")"), "{parsed:?}");
 }

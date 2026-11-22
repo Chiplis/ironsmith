@@ -2997,6 +2997,16 @@ impl GameState {
             owners: &mut [Option<usize>],
             seen: &mut [bool],
         ) -> bool {
+            // A free pip ends the path at once; only otherwise search for an
+            // augmenting path, so large interchangeable pools stay linear.
+            if let Some(&pip) = edges[unit]
+                .iter()
+                .find(|&&pip| owners[pip].is_none() && !seen[pip])
+            {
+                seen[pip] = true;
+                owners[pip] = Some(unit);
+                return true;
+            }
             for &pip in &edges[unit] {
                 if seen[pip] {
                     continue;
@@ -4379,7 +4389,7 @@ impl GameState {
                                 crate::object::TemporaryStaticAbilityGrant {
                                     ability,
                                     ability_payload: None,
-                                    expires_end_of_turn: None,
+                                    expires_end_of_turn: None, functions_on_stack: false
                                 },
                                 acquired_at,
                             );

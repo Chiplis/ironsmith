@@ -388,7 +388,7 @@ fn mana_actions(g: &GameState, source: ObjectId) -> Vec<LegalAction> {
         .filter(|a| matches!(a,LegalAction::ActivateManaAbility{source:s,..}if *s==source))
         .collect()
 }
-fn pool(g: &GameState) -> Vec<u32> {
+fn pool(g: &GameState) -> Vec<u64> {
     let p = &g.player(alice()).unwrap().mana_pool;
     vec![p.white, p.blue, p.black, p.red, p.green, p.colorless]
 }

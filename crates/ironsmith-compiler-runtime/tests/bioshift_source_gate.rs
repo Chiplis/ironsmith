@@ -213,10 +213,13 @@ fn frozen_bioshift_empty_donor_and_zero_choice_leave_replacement_unused() {
 }
 #[test]
 fn frozen_bioshift_failed_placement_restores_removal_stack_and_replacement() {
+    // Counter totals saturate at their u32 storage bound (dccb98373,
+    // ironsmith_core::quantity): an oversized placement is an effectively
+    // infinite amount, not a failure. So a destination already at u32::MAX
+    // no longer makes placement fail after removal; the move is an ordinary
+    // bounded success (CR 122.5: both halves are possible, so it happens).
     for definition in definitions() {
         let (mut game, from, to, spell) = setup(&definition, A);
-        // Keep the initial effective characteristics representable so the
-        // failure belongs to counter placement, after casting and removal.
         game.object_mut(to).unwrap().base_power = Some(ironsmith::card::PtValue::Fixed(i32::MIN));
         game.object_mut(to).unwrap().base_toughness = Some(ironsmith::card::PtValue::Fixed(i32::MIN));
         game.object_mut(to).unwrap().counters.insert(KIND, u32::MAX);
@@ -225,19 +228,13 @@ fn frozen_bioshift_failed_placement_restores_removal_stack_and_replacement() {
             ironsmith::events::counters::matchers::WouldPutCountersMatcher::any(),
             ReplacementAction::Modify(EventModification::Multiply(2))));
         let mut dm = Amount { chosen: 1, ..Default::default() };
-        assert!(resolve_stack_entry_with(&mut game, &mut dm).is_err());
-        assert!(!dm.pending); assert_eq!(game.stack.len(), 1);
-        assert_eq!(game.stack[0].targets, vec![Target::Object(from), Target::Object(to)]);
-        assert_eq!(game.stack[0].target_assignments.len(), 2);
-        assert_eq!(game.counter_count(from, KIND), 4); assert_eq!(game.counter_count(to, KIND), u32::MAX);
-        assert!(game.effect_store.replacement_effects.get_effect(shield).is_some());
+        resolve_stack_entry_with(&mut game, &mut dm).unwrap();
+        assert!(!dm.pending); assert!(game.stack.is_empty());
+        assert_eq!(game.counter_count(from, KIND), 3);
+        assert_eq!(game.counter_count(to, KIND), u32::MAX, "the doubled placement saturates");
+        assert!(game.effect_store.replacement_effects.get_effect(shield).is_none(), "the one-shot replacement applied");
         assert_eq!(game.player(A).unwrap().mana_pool.total(), 0);
         untouched_other_counters(&game, from, to);
-        // A native retry with zero is legal and must not replay the failed removal.
-        resolve_stack_entry_with(&mut game, &mut Amount::default()).unwrap();
-        assert!(game.stack.is_empty()); assert_eq!(game.counter_count(from, KIND), 4);
-        assert_eq!(game.counter_count(to, KIND), u32::MAX);
-        assert!(game.effect_store.replacement_effects.get_effect(shield).is_some());
     }
 }
 #[test]

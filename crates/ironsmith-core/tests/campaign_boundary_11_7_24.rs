@@ -214,7 +214,7 @@ fn combat_conditions_append_after_the_published_activation_history_condition() {
     );
     assert_case(
         Condition::ThisAbilityActivatedThisTurnAtLeast(2),
-        ("Condition", 211, "ThisAbilityActivatedThisTurnAtLeast"),
+        ("Condition", 212, "ThisAbilityActivatedThisTurnAtLeast"),
         json!({"ThisAbilityActivatedThisTurnAtLeast": 2}),
     );
     for (condition, name) in [
@@ -229,7 +229,7 @@ fn combat_conditions_append_after_the_published_activation_history_condition() {
     ] {
         assert_case(
             Condition::CombatParticipant(condition),
-            ("Condition", 212, "CombatParticipant"),
+            ("Condition", 213, "CombatParticipant"),
             json!({"CombatParticipant": name}),
         );
     }

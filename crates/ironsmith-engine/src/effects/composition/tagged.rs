@@ -195,7 +195,21 @@ impl super::OriginalOutcomeAdapter for TagOriginalOutcome {
         if !ctx.decision_maker.awaiting_choice() {
             apply_outcome_tags(&self.effect, game, ctx, &outcome, self.runtime);
             if let Some(previous) = self.accumulated_declarations {
-                let mut merged = previous;
+                // CR 608.2b: an announced target that became illegal is not
+                // part of any declaration's set. The stack entry retains each
+                // declaration's announced objects under its tag; a target
+                // lost before resolution must not be merged back in, where a
+                // stable-identity reference would follow its new incarnation.
+                let mut merged = previous
+                    .into_iter()
+                    .filter(|snapshot| {
+                        !ctx.announced_target_slots.iter().any(|(target, legal)| {
+                            !legal
+                                && matches!(target, crate::effects::ResolvedTarget::Object(id)
+                                    if *id == snapshot.object_id)
+                        })
+                    })
+                    .collect::<Vec<_>>();
                 for snapshot in ctx
                     .get_tagged_all(self.effect.tag.as_str())
                     .cloned()

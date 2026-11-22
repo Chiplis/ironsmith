@@ -4993,6 +4993,9 @@ mod stack_characteristic_invalidation_tests {
         let mut filter = crate::target::ObjectFilter::creature();
         filter.zone = Some(Zone::Stack);
         filter.stack_kind = Some(StackObjectKind::Spell);
+        // CR 601.2a makes a live stack object a spell before its entry is
+        // pushed; a target requirement keeps the match tied to the entry.
+        filter.targets_player = Some(crate::target::PlayerFilter::Opponent);
         game.object_mut(source).unwrap().abilities =
             std::sync::Arc::new(vec![Ability::static_ability(
                 StaticAbility::add_all_subtypes_of_family(filter, SubtypeFamily::Creature),
@@ -5003,7 +5006,7 @@ mod stack_characteristic_invalidation_tests {
         let id = game.create_object_from_card(&spell, alice, Zone::Stack);
         game.refresh_continuous_state().expect("test continuous state refresh succeeds");
         assert!(!game.current_subtypes(id).unwrap().contains(&Subtype::Elf));
-        game.push_to_stack(StackEntry::new(id, alice));
+        game.push_to_stack(StackEntry::new(id, alice).with_targets(vec![crate::game_state::Target::Player(game.players[1].id)]));
         assert!(game.current_subtypes(id).unwrap().contains(&Subtype::Elf));
         let checkpoint = game.clone();
         assert!(
@@ -5033,6 +5036,9 @@ mod stack_characteristic_invalidation_tests {
         let mut filter = crate::target::ObjectFilter::creature();
         filter.zone = Some(Zone::Stack);
         filter.stack_kind = Some(StackObjectKind::Spell);
+        // CR 601.2a makes a live stack object a spell before its entry is
+        // pushed; a target requirement keeps the match tied to the entry.
+        filter.targets_player = Some(crate::target::PlayerFilter::Opponent);
         filter.controller = Some(crate::target::PlayerFilter::You);
         game.object_mut(source).unwrap().abilities =
             std::sync::Arc::new(vec![Ability::static_ability(
@@ -5044,7 +5050,7 @@ mod stack_characteristic_invalidation_tests {
         let id = game.create_object_from_card(&spell, alice, Zone::Stack);
         game.refresh_continuous_state().expect("test continuous state refresh succeeds");
         assert!(!game.current_subtypes(id).unwrap().contains(&Subtype::Elf));
-        game.stack.push(StackEntry::new(id, alice));
+        game.stack.push(StackEntry::new(id, alice).with_targets(vec![crate::game_state::Target::Player(game.players[1].id)]));
         assert!(game.current_subtypes(id).unwrap().contains(&Subtype::Elf));
         let checkpoint = game.clone();
         assert!(

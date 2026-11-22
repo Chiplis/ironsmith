@@ -274,7 +274,17 @@ fn hellcarver_chooses_none_or_several_original_exiles_and_casts_each_selected_sp
             }
             let unrelated=game.create_object_from_definition(&filler,A,Zone::Exile);
             let mut dm=SelectOriginalExiles {take_two,offered:Default::default()};
-            resolve_ability(&mut game,source,body,vec![],&mut dm);
+            // The trigger resolves with its actual combat-damage event: the
+            // compiled body binds the triggering source as a resolution
+            // prelude (CR 603.2, CR 603.7c), so a bare event-less ability
+            // entry is not a faithful stand-in for the triggered ability.
+            assert!(extract_target_requirements_from_program_with_modes(&game,&body,A,Some(source),None).is_empty());
+            let damage=ironsmith::triggers::TriggerEvent::new_with_provenance(
+                ironsmith::events::DamageEvent::with_cause(source,ironsmith::events::DamageTarget::Player(B),6,true,ironsmith::events::EventCause::combat_damage(source)),
+                Default::default(),
+            );
+            game.push_to_stack(StackEntry::ability(source,A,body).with_triggering_event(damage));
+            resolve_stack_entry_with(&mut game,&mut dm).unwrap();
             assert_eq!(dm.offered,spell_names,"only the five original nonland exiles are offered, not an unrelated exile");
             assert_eq!(game.stack.len(),if take_two{2}else{0},"the original optional any-number choice controls the number of actual casts");
             let cast_names:std::collections::HashSet<_>=game.stack.iter().map(|entry|game.object(entry.object_id).unwrap().name.to_string()).collect();

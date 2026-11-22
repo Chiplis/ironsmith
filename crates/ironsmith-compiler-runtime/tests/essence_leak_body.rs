@@ -185,11 +185,16 @@ fn typed_payment_failure_and_missing_or_mismatched_lki_never_become_decline() {
         attach(&mut game, &definition, recipient); let mut dm = Choices::default(); assert_eq!(upkeep(&mut game, B, &mut dm), 1);
         let stack_target = game.stack[0].target_id();
         if kind == 0 {
+            // CR 107.1: mana amounts have no maximum. The pool is u64 and
+            // saturates (dccb98373), so a u32::MAX pool no longer overflows
+            // payment discovery: it is an ordinary, bounded successful payment
+            // of exactly the {R} cost, never a decline.
             fund(&mut game, B, &[(ManaSymbol::Red, u32::MAX)]);
-            let error = resolve_stack_entry_with(&mut game, &mut dm).unwrap_err();
-            assert!(matches!(&error, ironsmith::game_loop::GameLoopError::ExecutionFailed(
-                ironsmith::effects::ExecutionError::ContinuousDiscovery(_))), "{error:?}");
-            assert_eq!(game.player(B).unwrap().mana_pool.amount(ManaSymbol::Red), u32::MAX);
+            resolve_stack_entry_with(&mut game, &mut dm).unwrap();
+            assert_eq!(game.player(B).unwrap().mana_pool.amount_wide(ManaSymbol::Red), u64::from(u32::MAX) - 1);
+            assert!(game.stack_is_empty()); assert!(game.battlefield.contains(&recipient));
+            assert_eq!(dm.offers, vec![(B, Some(recipient))]);
+            continue;
         } else {
             game.phase_out(recipient); fund(&mut game, B, &[(ManaSymbol::Red, 1), (ManaSymbol::Green, 1)]);
             if kind == 1 {
@@ -217,12 +222,6 @@ fn typed_payment_failure_and_missing_or_mismatched_lki_never_become_decline() {
         // payment acknowledgement, and neither may turn the error into decline.
         assert!(dm.offers.len() <= 1 && dm.offers.iter().all(|offer| *offer == (B, Some(recipient))));
         assert_eq!(dm.payment_requests, 0, "incomplete evidence cannot present a payment plan");
-        if kind == 0 {
-            fund(&mut game, B, &[(ManaSymbol::Red, 1)]);
-            resolve_stack_entry_with(&mut game, &mut dm).unwrap();
-            assert!(game.stack_is_empty()); assert!(game.battlefield.contains(&recipient));
-            assert_eq!(game.player(B).unwrap().mana_pool.total(), 0);
-        }
     }}
 }
 #[test]

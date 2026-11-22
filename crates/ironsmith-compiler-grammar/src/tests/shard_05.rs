@@ -275,7 +275,7 @@ pub(super) fn rewrite_lexed_effect_sentence_supports_equal_to_damage_to_controll
     let debug = format!("{parsed:?}");
 
     assert!(
-        debug.contains("PowerOf(Tagged(TagKey(\"__it__\")))"),
+        debug.contains("PowerOf(SurfaceHinted { spec: Tagged(TagKey(\"__it__\"))"),
         "{debug}"
     );
     assert!(

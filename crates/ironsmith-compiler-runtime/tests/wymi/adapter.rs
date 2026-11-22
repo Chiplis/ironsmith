@@ -1023,10 +1023,14 @@ fn layer_characteristics_assertion(a: &J) -> R<()> {
                 chars.card_types, retained.power, retained.toughness, retained.card_types,
                 retained.other_copy_face.as_ref().map(|face| (&face.name, face.power, face.toughness, &face.card_types)));
         }
-        return compare_values(
-            &CopiableValues::from_calculated(&chars),
-            &definition(&face(&expected, true))?,
-        );
+        // The expectation is the flipped face's copiable values (CR 707.2).
+        // Current P/T is cleared for a noncreature permanent such as an
+        // uncrewed Vehicle copy (CR 208.3, 301.7a), but its copiable printed
+        // P/T is still the layer-7 base, so compare that base.
+        let mut flipped = CopiableValues::from_calculated(&chars);
+        flipped.power = chars.base_power;
+        flipped.toughness = chars.base_toughness;
+        return compare_values(&flipped, &definition(&face(&expected, true))?);
     }
     let actual = if a["target"]["field"] == "Layer0_Base" && !flag(&physical["FaceDown"]) {
         CopiableValues::from_object(g.object(id).unwrap())

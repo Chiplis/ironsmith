@@ -49,7 +49,9 @@ mod resource_payment_view_tests {
     fn inventory_failure_is_explicit_and_does_not_change_preferences_or_game() {
         let _ids = crate::test_id_counter_guard();
         let (mut game, _, source, mut request) = resource_payment_test_fixture();
-        game.set_token_creation_limits(ironsmith::effects::tokens::TokenCreationLimits { max_created_tokens: 1, ..Default::default() });
+        // Creation past max_created_tokens now creates what fits; the token
+        // instruction-work budget remains a typed incomplete-execution limit.
+        game.set_token_creation_limits(ironsmith::effects::tokens::TokenCreationLimits { max_instructions: 0, ..Default::default() });
         request.preferences.preserve_sources.push(source);
         let before = request.clone();
         let ids = snapshot_id_counters();
@@ -71,7 +73,9 @@ mod resource_payment_view_tests {
         let mut wasm = WasmGame::new(); wasm.game = game;
         wasm.pending_decision = Some(context.clone());
         wasm.defer_mana_options = false;
-        wasm.game.set_token_creation_limits(ironsmith::effects::tokens::TokenCreationLimits { max_created_tokens: 1, ..Default::default() });
+        // Creation past max_created_tokens now creates what fits; the token
+        // instruction-work budget remains a typed incomplete-execution limit.
+        wasm.game.set_token_creation_limits(ironsmith::effects::tokens::TokenCreationLimits { max_instructions: 0, ..Default::default() });
         assert!(matches!(wasm.current_mana_payment_view_checked(), Err(ironsmith::effects::ExecutionError::ResourceLimitExceeded { .. })));
         assert!(wasm.mana_activation_inventory_cache.borrow().is_none());
         assert!(wasm.snapshot_json_for_host().is_err());

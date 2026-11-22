@@ -36,7 +36,7 @@ pub use planner::{
 pub use planner::payment_may_be_possible;
 pub(crate) use planner::proposal_is_current;
 pub(crate) use planner::{
-     counter_payment_source_can_pay,
+     PAYMENT_UNIT_LIMIT, counter_payment_source_can_pay, payment_unit_count,
      execute_mana_payment_plan_in_context_with_outputs,
 };
 

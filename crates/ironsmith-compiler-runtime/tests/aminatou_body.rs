@@ -871,7 +871,7 @@ fn actual_aminatou_miracle_binds_normalized_hybrid_and_phyrexian_choices_without
         let mut answers=Answers{generic,pips:0};let outcome=perform_draw(&mut game,source,A,1,&mut answers);stack_draw(&mut game,outcome,&mut answers);
         assert_eq!(game.stack.len(),1);resolve_stack_entry_with(&mut game,&mut answers).unwrap();assert_eq!(answers.pips,2);
         let spell=game.object(game.stack.last().unwrap().object_id).unwrap();assert_eq!(spell.stable_id,stable);
-        assert_eq!(spell.mana_spent_to_cast.white,u32::from(!generic),"the announced white half cannot be replaced by the generic half after indices move");
+        assert_eq!(spell.mana_spent_to_cast.white,u64::from(!generic),"the announced white half cannot be replaced by the generic half after indices move");
         assert_eq!(game.player(A).unwrap().life,18,"the announced Phyrexian life half is paid exactly once");
         assert_eq!(game.player(A).unwrap().mana_pool.total(),1,"the alternative-only discount must not consume mandatory extra mana");
     }}

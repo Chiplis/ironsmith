@@ -375,14 +375,15 @@ fn all_three_resolution_failures_roll_back_and_recover_the_same_stacked_receipt(
             card(&mut game, A, Zone::Library, "Recovery top", vec![CardType::Artifact]); game
         };
         if name.starts_with("Cemetery") { play_land(&mut game, A); } else { amareth_entry(&mut game); }
+        let witness = card(&mut game, B, Zone::Battlefield, "Discovery witness", vec![CardType::Creature]);
+        let incomplete = make_discovery_incomplete(&mut game, witness);
         let stack: Vec<_> = game.stack.iter().map(|entry| entry.object_id).collect();
         let battlefield = game.battlefield.clone(); let library = game.player(A).unwrap().library.clone();
-        let pool = game.player(B).unwrap().mana_pool.clone(); game.player_mut(B).unwrap().mana_pool.blue = u32::MAX;
         let mut dm = Choices::default(); assert!(resolve_stack_entry_with(&mut game, &mut dm).is_err());
         assert_eq!(game.stack.iter().map(|entry| entry.object_id).collect::<Vec<_>>(), stack);
         assert_eq!(game.battlefield, battlefield); assert_eq!(game.player(A).unwrap().library, library);
         assert_eq!(game.player(A).unwrap().life, 20); assert!(dm.views.is_empty());
-        game.player_mut(B).unwrap().mana_pool = pool; settle(&mut game, &mut dm);
+        game.effect_store.continuous_effects.remove_effect(incomplete); settle(&mut game, &mut dm);
         if name.starts_with("Cemetery") { reward(&game, name, 1); } else { assert_eq!(game.player(A).unwrap().hand.len(), 1); }
     }}
 }
@@ -392,4 +393,19 @@ fn remaining_frozen_bodies_must_retain_relations_without_parse_loss() {
     for name in ["Creeping Dread", "Holistic Wisdom", "Reality Scramble", "Wild Magic Surge"] {
         for definition in definitions(name) { assert!(definition.canonical_text.to_lowercase().contains("shares a card type")); }
     }
+}
+
+/// Leave continuous discovery incomplete for `object`. Pools are u64-wide and
+/// mana-derived scalars now saturate, so a huge pool no longer fails discovery;
+/// a characteristic-setting value whose player does not exist still does
+/// (missing numeric evidence). Returns the effect so the caller can recover.
+fn make_discovery_incomplete(game: &mut ironsmith::GameState, object: ironsmith::ObjectId)
+    -> ironsmith::continuous::ContinuousEffectId {
+    let controller = game.controller_of(game.object(object).unwrap());
+    game.effect_store.continuous_effects.add_effect(ironsmith::continuous::ContinuousEffect::new(
+        object, controller, ironsmith::continuous::EffectTarget::Specific(object),
+        ironsmith::continuous::Modification::SetPower {
+            value: ironsmith::effect::Value::LifeTotal(ironsmith::target::PlayerFilter::Specific(ironsmith::PlayerId(99))),
+            sublayer: ironsmith::continuous::PtSublayer::Setting,
+        }))
 }

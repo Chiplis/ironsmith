@@ -3958,9 +3958,9 @@ pub fn parse_subject_is_pt_creature_with_keywords_still_land_line(
     let [first, second] = sentences.as_slice() else {
         return Ok(None);
     };
-    let second_words = parser_token_word_refs(trim_edge_punctuation_tokens(second));
+    let second_view = crate::lexer::TokenWordView::new(trim_edge_punctuation_tokens(second));
     if !matches!(
-        second_words.as_slice(),
+        second_view.word_refs().as_slice(),
         ["it's" | "it’s" | "its", "still", "a", "land"]
             | ["it", "is" | "s", "still", "a", "land"]
             | ["it", "'s", "still", "a", "land"]

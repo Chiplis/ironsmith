@@ -149,13 +149,15 @@ fn copy_subtype_family_replacement_is_an_explicit_fact_not_inferred_from_names()
     for (suffix,preserve) in [
         (vec!["instead","of","its","other","creature","types"],true),
         (vec!["instead","of","its","other","types"],false),
-        (vec![],false),
+        // CR 205.1a: a creature-type-only replacement keeps noncreature
+        // subtypes (Grist, a copied Dryad Arbor stays a Forest).
+        (vec![],true),
     ] {
         let mut words=vec!["except","it's","a","1/1","illusion"];
         words.extend(suffix);
         let spec=parse_copy_modifier_words(&words).unwrap();
         assert_eq!(spec.set_subtypes,Some(vec![Subtype::Illusion]));
-        assert_eq!(spec.preserve_noncreature_subtypes,preserve);
+        assert_eq!(spec.preserve_noncreature_subtypes,preserve,"{words:?}");
         assert!(spec.set_card_types.is_none(),"the suffix family noun is not a replacement card type");
     }
 }

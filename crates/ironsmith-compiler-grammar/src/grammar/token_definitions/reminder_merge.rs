@@ -99,7 +99,10 @@ fn merge_token_equipment_facts(
 
 #[path = "reminder_merge/object_action.rs"]
 mod object_action_programs;
-pub use object_action_programs::{merge_authored_token_definition_facts, merge_token_reminder_definition};
+pub use object_action_programs::{
+    merge_authored_token_definition_facts, merge_followup_token_definition_facts,
+    merge_token_reminder_definition,
+};
 #[path = "reminder_merge/core.rs"]
 mod core_programs;
 use core_programs::merge_creature_rules;

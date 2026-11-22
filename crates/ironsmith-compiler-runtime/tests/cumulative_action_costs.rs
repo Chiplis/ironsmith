@@ -245,7 +245,9 @@ fn action_cost_resource_exhaustion_remains_incomplete_and_restores_every_owner()
         let source = game.create_object_from_definition(&definition, A, Zone::Battlefield);
         game.add_counters(source, CounterType::Age, 2);
         for _ in 0..4 { card(&mut game, A, Zone::Graveyard, "Available cost"); card(&mut game, A, Zone::Library, "Available draw"); }
-        game.set_token_creation_limits(ironsmith::effects::tokens::TokenCreationLimits { max_created_tokens: 1, ..Default::default() });
+        // Creation past max_created_tokens now creates what fits; the token
+        // instruction-work budget remains a typed incomplete-execution limit.
+        game.set_token_creation_limits(ironsmith::effects::tokens::TokenCreationLimits { max_instructions: 0, ..Default::default() });
         let shield = game.effect_store.replacement_effects.add_one_shot_effect(replacement(name, source, ReplacementAction::Additionally(vec![
             Effect::gain_life(3), Effect::new(ironsmith::effects::CreateTokenEffect::you(ironsmith::cards::tokens::treasure_token_definition(), 2)),
         ])));

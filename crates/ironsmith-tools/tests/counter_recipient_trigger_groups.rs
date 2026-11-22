@@ -7,8 +7,8 @@ use ironsmith::decision::DecisionMaker;
 use ironsmith::decisions::context::{ProliferateContext, TargetsContext};
 use ironsmith::decisions::specs::ProliferateResponse;
 use ironsmith::effect::{EventValueSpec, Value};
-use ironsmith::effects::{DoubleCountersEffect, EffectExecutor, EffectContext as ExecutionContext, ExecutionError, ProliferateEffect};
-use ironsmith::game_loop::{GameLoopError, try_drain_pending_trigger_events, put_triggers_on_stack_with_dm, resolve_stack_entry_with};
+use ironsmith::effects::{DoubleCountersEffect, EffectExecutor, EffectContext as ExecutionContext, ProliferateEffect};
+use ironsmith::game_loop::{try_drain_pending_trigger_events, put_triggers_on_stack_with_dm, resolve_stack_entry_with};
 use ironsmith::game_state::Target;
 use ironsmith::target::ChooseSpec;
 use ironsmith::triggers::{TriggerQueue, TriggeredAbilityEntry};
@@ -285,7 +285,7 @@ fn plural_objects_each_counter_and_kind_filtered_watchers_keep_their_contracts()
 }
 
 #[test]
-fn double_counters_keeps_wide_group_amount_and_rejects_damage_narrowing_without_mutation() {
+fn double_counters_keeps_wide_group_amount_and_saturates_the_damage_narrowing() {
     for artifact in [false, true] {
         for kind_count in [2, 3] {
             let (mut game, _, producer) = setup(artifact);
@@ -305,10 +305,12 @@ fn double_counters_keeps_wide_group_amount_and_rejects_damage_narrowing_without_
             if kind_count == 3 {
                 let mut picks = Picks::default();
                 put_triggers_on_stack_with_dm(&mut game, &mut queue, &mut picks).unwrap();
-                assert!(matches!(resolve_stack_entry_with(&mut game, &mut picks),
-                    Err(GameLoopError::ExecutionFailed(ExecutionError::UnresolvableValue(_)))));
-                assert_eq!(game.player(B).unwrap().life, 20);
-                assert_eq!(game.stack.len(), 1, "failed damage resolution retains the queued amount for recovery");
+                // The wide group amount exceeds the damage carrier; damage is a
+                // game quantity and saturates at its storage bound (CR 107.1
+                // sets no cap) instead of failing resolution.
+                resolve_stack_entry_with(&mut game, &mut picks).unwrap();
+                assert_eq!(game.player(B).unwrap().life, i32::MIN);
+                assert!(game.stack.is_empty());
                 assert_eq!(picks.target_prompts, 1);
             }
         }

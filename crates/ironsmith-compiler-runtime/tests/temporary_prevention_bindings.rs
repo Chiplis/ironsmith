@@ -410,7 +410,7 @@ fn native_attacked_recipient_protects_the_player_or_object_without_adding_its_co
 }
 
 #[test]
-fn finite_combat_shield_restores_budget_and_replacement_when_a_deferred_quantity_fails() {
+fn finite_combat_shield_spends_its_budget_and_saturates_a_deferred_gain() {
     let native = Effect::new(ironsmith::effects::PreventDamageEffect::to_you(4, Until::EndOfTurn)
         .with_filter(DamageFilter::combat())
         .with_follow_up_effects(vec![Effect::gain_life(i32::MAX)]));
@@ -425,14 +425,22 @@ fn finite_combat_shield_restores_budget_and_replacement_when_a_deferred_quantity
                 ironsmith::replacement::ReplacementAction::Double,
             ).with_priority_override(ironsmith::events::ReplacementPriority::SelfReplacement));
         let history = format!("{:?}", game.turn_store.turn_history);
-        let error = execute_effect(&mut game,
+        // Life is a game quantity that saturates at its storage bound rather
+        // than failing (CR 107.1 sets no cap), so the deferred i32::MAX gain is
+        // no longer a resource failure: the doubled 6 damage is reduced by the
+        // 4-point shield, the 2 left is dealt, and the gain saturates.
+        let outcome = execute_effect(&mut game,
             &Effect::new(DealDamageEffect::new(3, ChooseSpec::SpecificPlayer(A)).with_combat(true)),
-            &mut EffectContext::new_default(source, B)).unwrap_err();
-        assert!(matches!(error, ExecutionError::ResourceLimitExceeded { .. }));
-        assert_eq!(game.player(A).unwrap().life, 40);
-        assert_eq!(format!("{:?}", game.turn_store.turn_history), history);
-        assert!(game.effect_store.replacement_effects.get_effect(replacement).is_some());
-        assert_eq!(game.effect_store.prevention_effects.shields()[0].amount_remaining, Some(4));
+            &mut EffectContext::new_default(source, B)).unwrap();
+        let dealt: u32 = outcome.events.iter()
+            .filter_map(|event| event.downcast::<ironsmith::events::DamageEvent>())
+            .map(|event| event.amount).sum();
+        assert_eq!(dealt, 2);
+        assert_eq!(game.player(A).unwrap().life, i32::MAX);
+        assert_ne!(format!("{:?}", game.turn_store.turn_history), history);
+        assert!(game.effect_store.replacement_effects.get_effect(replacement).is_none());
+        assert!(game.effect_store.prevention_effects.shields().iter()
+            .all(|shield| shield.amount_remaining.is_none_or(|amount| amount == 0)));
     }
 }
 
@@ -581,9 +589,17 @@ fn incomplete_current_source_query_cannot_fall_back_to_a_qualifying_snapshot() {
         cast(&mut game, &definition, &mut choices); settle(&mut game, &mut choices);
         let shields = game.effect_store.prevention_effects.shields().to_vec();
         let history = format!("{:?}", game.turn_store.turn_history);
-        // The existing checked continuous-query owner rejects this host scalar
-        // overflow before any matcher can substitute a stale or default frame.
-        game.player_mut(B).unwrap().mana_pool.add(ManaSymbol::Blue, u32::MAX);
+        // The checked continuous-query owner rejects an undeterminable current
+        // source frame before any matcher can substitute a stale or default one.
+        // (Mana pools are u64 now, so a u32::MAX pool no longer overflows; use
+        // a layer-7 value whose referenced player does not exist instead.)
+        game.effect_store.continuous_effects.add_effect(ironsmith::continuous::ContinuousEffect::new(
+            source, B, ironsmith::continuous::EffectTarget::Specific(source),
+            ironsmith::continuous::Modification::SetPower {
+                value: ironsmith::effect::Value::LifeTotal(ironsmith::target::PlayerFilter::Specific(PlayerId(99))),
+                sublayer: ironsmith::continuous::PtSublayer::Setting,
+            }));
+        assert!(game.try_current_characteristics(source).is_err());
         let error = retained_source_damage(&mut game, source, Target::Object(recipient), &stale).unwrap_err();
         assert!(matches!(error, ExecutionError::ContinuousDiscovery(_)));
         assert_eq!(game.effect_store.prevention_effects.shields(), shields.as_slice());

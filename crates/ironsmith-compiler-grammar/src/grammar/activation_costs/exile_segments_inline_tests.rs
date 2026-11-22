@@ -102,9 +102,10 @@ fn exile_segments_preserve_zone_top_and_named_shapes() {
                 && choice_count == crate::effect::ChoiceCount::exactly(4)
                 && filter.other
                 && filter.controller == Some(PlayerFilter::You)
+                // "artifact creatures" requires both types at once.
                 && filter.any_of.iter().any(|arm|
-                    arm.card_types.contains(&crate::types::CardType::Artifact)
-                        && arm.card_types.contains(&crate::types::CardType::Creature)
+                    arm.all_card_types.contains(&crate::types::CardType::Artifact)
+                        && arm.all_card_types.contains(&crate::types::CardType::Creature)
                 )
                 && filter.any_of.iter().any(|arm|
                     arm.subtypes.contains(&crate::types::Subtype::Vehicle)

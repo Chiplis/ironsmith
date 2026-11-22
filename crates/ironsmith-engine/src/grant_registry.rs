@@ -2372,13 +2372,16 @@ impl GrantRegistry {
             let Some(chars) = game.calculated_characteristics_arc(id) else {
                 return true;
             };
+            // An exiler-scoped look permission ("Each player may look at
+            // cards they exiled with this enchantment", Shared Fate) entitles
+            // its beneficiaries as well as a paired inspection does.
+            let entitles = |s: &crate::static_abilities::StaticAbility| {
+                s.source_exiled_inspection_pair().is_some()
+                    || s.grant_spec().is_some_and(|spec| spec.may_look_at_linked_exile)
+            };
             chars.abilities.iter().any(|ability| {
-                matches!(&ability.kind, crate::ability::AbilityKind::Static(s)
-                    if s.source_exiled_inspection_pair().is_some())
-            }) || chars
-                .static_abilities
-                .iter()
-                .any(|s| s.source_exiled_inspection_pair().is_some())
+                matches!(&ability.kind, crate::ability::AbilityKind::Static(s) if entitles(s))
+            }) || chars.static_abilities.iter().any(entitles)
         });
         if !may_entitle {
             return Vec::new();

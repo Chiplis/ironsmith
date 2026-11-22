@@ -265,15 +265,19 @@ fn u063_precombat_turn_action_sets_scheme_in_motion_before_priority() {
         TurnAction::RunPriority
     ));
     assert_eq!(game.face_up_schemes(), &[top]);
+    assert!(!game.scheme_deck(alice).unwrap().contains(&top));
+    // CR 117.5: the set-in-motion event is matched against trigger
+    // conditions before the active player receives priority, so it no
+    // longer waits in the pending-event set once priority runs.
     assert!(
-        game.effect_store
+        !game
+            .effect_store
             .pending_trigger_events
             .iter()
-            .any(|event| {
-                event.downcast::<KeywordActionEvent>().is_some_and(|event| {
-                    event.action == KeywordActionKind::SetSchemeInMotion && event.source == top
-                })
-            })
+            .any(|event| event.downcast::<KeywordActionEvent>().is_some_and(|event| {
+                event.action == KeywordActionKind::SetSchemeInMotion && event.source == top
+            })),
+        "the set-in-motion event was matched before priority"
     );
 }
 

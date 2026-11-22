@@ -242,7 +242,7 @@ fn source_color_mana_preserves_checked_discovery_failure_without_crediting_mana(
         let human = creature(&mut game, A, Subtype::Human, ColorSet::RED);
         let effect = mana_effect(&game, human).unwrap();
         let life = game.player(A).unwrap().life;
-        game.player_mut(B).unwrap().mana_pool.green = i32::MAX as u32 + 1;
+        make_discovery_incomplete(&mut game, human);
         assert!(game.try_current_characteristics(human).is_err());
         let sequence = Effect::new(SequenceEffect::new(vec![Effect::gain_life(3), Effect::new(effect)]));
         let result = execute_effect(&mut game, &sequence,
@@ -252,4 +252,19 @@ fn source_color_mana_preserves_checked_discovery_failure_without_crediting_mana(
         assert_eq!(game.player(A).unwrap().mana_pool.total(), 0);
         assert_eq!(game.player(A).unwrap().life, life);
     }
+}
+
+/// Leave continuous discovery incomplete for `object`. Pools are u64-wide and
+/// mana-derived scalars now saturate, so a huge pool no longer fails discovery;
+/// a characteristic-setting value whose player does not exist still does
+/// (missing numeric evidence). Returns the effect so the caller can recover.
+fn make_discovery_incomplete(game: &mut ironsmith::GameState, object: ironsmith::ObjectId)
+    -> ironsmith::continuous::ContinuousEffectId {
+    let controller = game.controller_of(game.object(object).unwrap());
+    game.effect_store.continuous_effects.add_effect(ironsmith::continuous::ContinuousEffect::new(
+        object, controller, ironsmith::continuous::EffectTarget::Specific(object),
+        ironsmith::continuous::Modification::SetPower {
+            value: ironsmith::effect::Value::LifeTotal(ironsmith::target::PlayerFilter::Specific(ironsmith::PlayerId(99))),
+            sublayer: ironsmith::continuous::PtSublayer::Setting,
+        }))
 }

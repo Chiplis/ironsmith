@@ -51,8 +51,11 @@ pub(super) fn parse(tokens: &[OwnedLexToken]) -> Result<Option<Vec<EffectAst>>, 
     if pieces.len()<2{return Ok(None);}
     let inherited_each=pieces[0].first().is_some_and(|token|token.is_word("each"));
     let mut recipients=Vec::new();let mut object_groups=Vec::new();let mut player_groups=Vec::new();
-    for piece in pieces {
+    let piece_count=pieces.len();
+    let mut last_piece_inherits_each=false;
+    for (piece_index,piece) in pieces.into_iter().enumerate() {
         let explicit_each=piece.first().is_some_and(|token|token.is_word("each"));
+        if piece_index+1==piece_count{last_piece_inherits_each=!explicit_each;}
         let operand=if explicit_each{&piece[1..]}else{piece};
         let words=crate::lexer::parser_token_word_refs(operand);
         match words.as_slice(){
@@ -86,6 +89,21 @@ pub(super) fn parse(tokens: &[OwnedLexToken]) -> Result<Option<Vec<EffectAst>>, 
                 object_groups.push(filter);
             }
             _=>return Ok(None),
+        }
+    }
+    // "each creature and planeswalker that player controls" (Incinerator of
+    // the Guilty): one quantifier over a list of bare object nouns shares the
+    // list's trailing controller/owner qualifier, so every noun is
+    // restricted, not only the one the qualifier is written beside.
+    if last_piece_inherits_each && recipients.is_empty() && player_groups.is_empty()
+        && let Some((last,earlier))=object_groups.split_last_mut()
+    {
+        let (controller,owner)=(last.controller.clone(),last.owner.clone());
+        for filter in earlier {
+            if filter.controller.is_none() && filter.owner.is_none() {
+                filter.controller=controller.clone();
+                filter.owner=owner.clone();
+            }
         }
     }
     crate::word_claims::claim_tokens(&tokens);

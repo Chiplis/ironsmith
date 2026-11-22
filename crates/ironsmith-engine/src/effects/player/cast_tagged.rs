@@ -184,6 +184,18 @@ impl EffectExecutor for CastTaggedEffect {
                 }).or_else(|| {
                     (self.as_copy && self.tag.as_str() == ironsmith_core::tag::SOURCE_OBJECT_TAG)
                         .then(|| source_card_copy_snapshot(game, ctx)).flatten()
+                }).or_else(|| {
+                    // CR 607.2a: with no exile earlier in this resolution,
+                    // "the exiled card" of a linked ability (Hideaway, CR
+                    // 702.75a) is the card its linked ability exiled. An
+                    // attempted exile here that moved nothing binds an empty
+                    // set and never falls back.
+                    (self.tag.as_str() == crate::tag::PRIOR_EXILED_CARD_TAG
+                        && ctx.get_tagged_all(self.tag.as_str()).is_none())
+                    .then(|| game.get_exiled_with_source_links(ctx.source).first().copied())
+                    .flatten()
+                    .and_then(|id| game.object(id))
+                    .map(|object| crate::snapshot::ObjectSnapshot::from_object(object, game))
                 }) else {
                     return Ok(EffectOutcome::target_invalid());
                 };

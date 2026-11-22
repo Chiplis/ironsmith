@@ -2154,6 +2154,12 @@ fn advance_reference_frame_for_effect(
                 let mut exiled_members: Vec<TagKey> = Vec::new();
                 for member in &coordination.members {
                     let before = frame.last_object_tag.clone();
+                    let exiled_aliases_before: Vec<TagKey> = frame
+                        .snapshot_bindings
+                        .aliases()
+                        .filter(|(alias, _)| alias == &exiled_alias)
+                        .map(|(_, exiled)| exiled.clone())
+                        .collect();
                     // A member that is itself a distributed object list ("the
                     // top card of their library, a card at random from their
                     // graveyard") exiles several groups; each is its own
@@ -2206,6 +2212,24 @@ fn advance_reference_frame_for_effect(
                         && !exiled_members.contains(exiled)
                     {
                         exiled_members.push(exiled.clone());
+                    }
+                    // A member that is itself a nested coordinated object list
+                    // ("the top card of their library, a card at random from
+                    // their graveyard", Crabomination) leaves one "exiled this
+                    // way" alias per exile it performed: each is a producer of
+                    // this one instruction, not only its last exile.
+                    let nested_exiles: Vec<TagKey> = frame
+                        .snapshot_bindings
+                        .aliases()
+                        .filter(|(alias, exiled)| {
+                            alias == &exiled_alias && !exiled_aliases_before.contains(exiled)
+                        })
+                        .map(|(_, exiled)| exiled.clone())
+                        .collect();
+                    for exiled in nested_exiles {
+                        if !exiled_members.contains(&exiled) {
+                            exiled_members.push(exiled);
+                        }
                     }
                     let creates_tokens = !member.effects.is_empty()
                         && member.effects.iter().all(|effect| {
@@ -2740,6 +2764,24 @@ fn advance_reference_frame_for_effect(
                 SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::ReturnToHand { target, .. }) => {
                     let previous_object_tag = frame.last_object_tag.clone();
                     maybe_tag_target(target, frame, id_gen, "returned")?;
+                    // "return a land you control to its owner's hand": the
+                    // chosen object's kind lets a later definite noun that
+                    // cannot name it ("the creature") skip past it.
+                    fn chosen_object_filter(target: &TargetAst) -> Option<&ObjectFilter> {
+                        match target {
+                            TargetAst::WithCount(inner, _) | TargetAst::WithCountValue(inner, ..) => {
+                                chosen_object_filter(inner)
+                            }
+                            TargetAst::Object(filter, None, _) => Some(filter),
+                            _ => None,
+                        }
+                    }
+                    if frame.last_object_tag != previous_object_tag
+                        && let Some(returned) = frame.last_object_tag.clone()
+                        && let Some(filter) = chosen_object_filter(target)
+                    {
+                        remember_object_kind_binding(frame, &returned, filter);
+                    }
                     let refs = lowering_reference_frame(frame);
                     let (spec, _) = resolve_target_spec_with_choices(target, &refs)?;
                     let alias = TagKey::from(crate::tag::RETURNED_THIS_WAY_QUANTITY_TAG);
@@ -3354,7 +3396,12 @@ fn advance_reference_frame_for_effect(
                 }
                 SubjectVerbActionAst::TagMatchingObjects { filter, tag, .. } => {
                     track_player_from_object_filter(filter, frame);
-                    frame.last_object_tag = Some(tag.clone().into());
+                    // A precomputed "the rest" complement (Global Ruin) is
+                    // named only by "the rest"; "those lands" after a per-type
+                    // choice (Planar Overlay) still names the chosen objects.
+                    if tag.as_str() != crate::tag::CompilerReferenceTag::Rest.as_str() {
+                        frame.last_object_tag = Some(tag.clone().into());
+                    }
                 }
                 SubjectVerbActionAst::StatChanges(StatChangeActionAst::Pump { target, .. })
                 | SubjectVerbActionAst::StatChanges(StatChangeActionAst::PumpForEach { target, .. }) => {

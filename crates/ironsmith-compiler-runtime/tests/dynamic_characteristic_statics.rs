@@ -319,10 +319,12 @@ fn roiling_horror_live_cda_uses_opponent_maximum_in_every_zone_and_checked_signe
             game.player_mut(B).unwrap().life = i32::MIN;
             assert_eq!(pt(&game, source), (0, 0), "the negated operand may exceed i32 before subtraction");
             game.player_mut(A).unwrap().life = i32::MAX;
-            assert!(game.try_current_characteristics(source).is_err(), "unrepresentable difference cannot wrap");
-            assert!(game.refresh_continuous_state().is_err());
+            // i32::MAX - i32::MIN is unrepresentable: the CDA saturates at the i32
+            // storage bound (game quantities clamp) rather than wrapping negative.
+            assert_eq!(pt(&game, source), (i32::MAX, i32::MAX), "unrepresentable difference cannot wrap");
+            game.refresh_continuous_state().unwrap();
             game.player_mut(B).unwrap().life = i32::MAX - 2;
-            assert_eq!(pt(&game, source), (2, 2), "failed publication cannot poison later checked reads");
+            assert_eq!(pt(&game, source), (2, 2), "a saturated publication cannot poison later checked reads");
         }
     }
 }

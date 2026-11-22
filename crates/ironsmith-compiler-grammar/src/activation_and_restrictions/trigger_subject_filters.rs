@@ -1707,7 +1707,13 @@ pub fn strip_embedded_token_rules_text(tokens: &[OwnedLexToken]) -> Vec<OwnedLex
             let declaration = crate::grammar::effects::parse_attachment_clause_tokens(keyword_tail)
                 .map(|shape| shape.prefix_tokens).unwrap_or(keyword_tail);
             if !stripped.iter().any(|token| token.is_word("with"))
-                && crate::word_claims::probe_only(|| crate::clause_support::parse_ability_line_lexed(declaration)).is_some()
+                && (crate::word_claims::probe_only(|| crate::clause_support::parse_ability_line_lexed(declaration)).is_some()
+                    // Equip is an activated keyword ability (CR 702.6a), not
+                    // a keyword action; its typed line reader owns it.
+                    || crate::word_claims::probe_only(|| {
+                        crate::grammar::keyword_activated_lines::parse_equip_line_spec_tokens(declaration)
+                    })
+                    .is_some_and(|spec| !matches!(spec, crate::grammar::keyword_activated_lines::EquipLineSpec::MissingCost)))
             {
                 // `with "rule" and equip {N}` has one blueprint modifier
                 // list. The quoted member is attached later; retain the
@@ -2095,10 +2101,17 @@ pub fn append_token_reminder_to_effect(
                     return true;
                 }
                 let combine_separate_sentence = !definition.has_intrinsic_abilities();
-                let merged_definition =
+                // A granted-ability sentence is authored card text; only
+                // other reminder shapes import inferred, unproven words.
+                let merged_definition = if ability_presentation.is_some() {
+                    crate::grammar::token_definitions::merge_followup_token_definition_facts(
+                        definition, reminder,
+                    )
+                } else {
                     crate::grammar::token_definitions::merge_token_reminder_definition(
                         definition, reminder,
-                    );
+                    )
+                };
                 if merged_definition {
                     if let Some(presentation) = ability_presentation {
                         *create_ability_presentation = Some(if combine_separate_sentence {

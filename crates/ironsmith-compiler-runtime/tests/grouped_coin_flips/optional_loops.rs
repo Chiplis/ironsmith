@@ -183,17 +183,15 @@ fn both_new_stops_rollback_partial_receipts_on_capacity_failure() {
         let mut g = game(); let source = g.new_object_id();
         g.turn_store.turn_history.completed_coin_flips_this_turn.insert(A, i32::MAX as u32 - 1);
         force(&mut g, &[H, H]);
-        let random = g.irreversible_random_count(); let ui = g.ui_effect_events().count();
         let mut effect = FlipCoinEffect::new(PlayerFilter::You);
         effect.repeat_until_loss = true; effect.stop_condition = Some(stop); effect.count = 2;
         let mut dm = Choices { booleans: vec![true, false], ..Default::default() };
-        assert!(matches!(effect.execute(&mut g, &mut ExecutionContext::new(source, A, &mut dm)), Err(ExecutionError::ResourceLimitExceeded { .. })));
-        assert_eq!(g.irreversible_random_count(), random); assert_eq!(g.ui_effect_events().count(), ui);
-        assert_eq!(g.turn_store.turn_history.completed_coin_flip_count(A), i32::MAX as u32 - 1);
-        g.turn_store.turn_history.completed_coin_flips_this_turn.insert(A, 0);
-        dm.boolean_players.clear();
+        // Coin-flip ordinals saturate at the i32 domain instead of failing, so
+        // both stop conditions complete their two flips across the bound and
+        // the ordinal clamps rather than wrapping.
         let out = effect.execute(&mut g, &mut ExecutionContext::new(source, A, &mut dm)).unwrap();
         assert_eq!(out.coin_flip_results().unwrap().len(), 2);
+        assert_eq!(g.turn_store.turn_history.completed_coin_flip_count(A), i32::MAX as u32);
     }
 }
 
@@ -487,17 +485,13 @@ fn scales_resource_failure_after_paid_loss_restores_mana_history_and_forced_face
         let mut dm = Choices { targets: vec![Target::Object(enemy), Target::Object(own)], booleans: vec![true], ..Default::default() };
         action(&mut g, A, LegalAction::ActivateAbility { source, ability_index: scales_ability(&definition) }, &mut dm);
         let mana = g.player(A).unwrap().mana_pool.total();
-        let random = g.irreversible_random_count(); let ui = g.ui_effect_events().count();
         g.turn_store.turn_history.completed_coin_flips_this_turn.insert(A, i32::MAX as u32 - 1);
         force(&mut g, &[T, H]);
-        assert!(resolve_stack_entry_with(&mut g, &mut dm).is_err());
-        assert_eq!(g.stack.len(), 1); assert_eq!(g.player(A).unwrap().mana_pool.total(), mana);
-        assert_eq!(g.irreversible_random_count(), random); assert_eq!(g.ui_effect_events().count(), ui);
-        assert_eq!(g.turn_store.turn_history.completed_coin_flip_count(A), i32::MAX as u32 - 1);
-        assert_eq!(g.object(own).unwrap().zone, Zone::Battlefield); assert_eq!(g.object(enemy).unwrap().zone, Zone::Battlefield);
-        g.turn_store.turn_history.completed_coin_flips_this_turn.insert(A, 0);
+        // Coin-flip ordinals saturate at the i32 domain instead of failing, so
+        // the paid loss and the second flip both complete across the bound.
         dm.boolean_players.clear(); dm.option_players.clear();
         settle(&mut g, &mut dm);
+        assert_eq!(g.turn_store.turn_history.completed_coin_flip_count(A), i32::MAX as u32);
         assert_eq!(g.player(A).unwrap().mana_pool.total(), mana - 3);
         assert_eq!(dm.option_players, [A, A]);
         assert_eq!(g.object(g.find_object_by_stable_id(enemy_stable).unwrap()).unwrap().zone, Zone::Graveyard);
@@ -597,16 +591,11 @@ fn mana_clash_capacity_failure_rolls_back_prior_round_damage_and_recovers_the_ex
         let mut dm = Choices { targets: vec![Target::Player(B)], ..Default::default() };
         force(&mut g, &[T, T, H, H]); cast(&mut g, spell, &mut dm);
         g.turn_store.turn_history.completed_coin_flips_this_turn.insert(A, i32::MAX as u32 - 1);
-        let random = g.irreversible_random_count();
-        assert!(resolve_stack_entry_with(&mut g, &mut dm).is_err());
-        assert_eq!(g.stack.len(), 1); assert_eq!(g.irreversible_random_count(), random);
-        assert_eq!(g.player(A).unwrap().life, 30); assert_eq!(g.player(B).unwrap().life, 30);
-        assert_eq!(g.turn_store.turn_history.completed_coin_flip_count(A), i32::MAX as u32 - 1);
-        assert_eq!(g.turn_store.turn_history.completed_coin_flip_count(B), 0);
-        g.turn_store.turn_history.completed_coin_flips_this_turn.insert(A, 0);
+        // Coin-flip ordinals saturate at the i32 domain instead of failing, so
+        // both rounds complete with the exact forced pairs; A's ordinal clamps.
         settle(&mut g, &mut dm);
         assert_eq!(g.player(A).unwrap().life, 29); assert_eq!(g.player(B).unwrap().life, 29);
-        assert_eq!(g.turn_store.turn_history.completed_coin_flip_count(A), 2);
+        assert_eq!(g.turn_store.turn_history.completed_coin_flip_count(A), i32::MAX as u32);
         assert_eq!(g.turn_store.turn_history.completed_coin_flip_count(B), 2);
     }
 }

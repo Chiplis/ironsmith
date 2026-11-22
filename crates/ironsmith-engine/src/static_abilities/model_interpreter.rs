@@ -3893,6 +3893,25 @@ impl StaticAbilityKind for StaticAbilityModelInterpreter {
     }
 
     fn has_own_activity_condition(&self) -> bool {
+        // Mirror `is_active`: a typed cost modifier is asked before the leaf.
+        if let Some(reduction) = &self.activated_ability_cost_reduction {
+            return reduction.has_own_activity_condition();
+        }
+        if let Some(increase) = &self.activated_ability_cost_increase {
+            return increase.has_own_activity_condition();
+        }
+        if let Some(reduction) = &self.cost_reduction {
+            return reduction.has_own_activity_condition();
+        }
+        if let Some(reduction) = &self.cost_reduction_mana_cost {
+            return reduction.has_own_activity_condition();
+        }
+        if let Some(increase) = &self.cost_increase {
+            return increase.has_own_activity_condition();
+        }
+        if let Some(increase) = &self.cost_increase_mana_cost {
+            return increase.has_own_activity_condition();
+        }
         self.leaf_static_ability()
             .is_some_and(|ability| ability.has_own_activity_condition())
     }

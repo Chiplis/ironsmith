@@ -43,7 +43,12 @@ fn resolve_graveyard_return_targets(
         let Some(object) = game.object(object_id) else {
             return Err(ExecutionError::InvalidTarget);
         };
-        if object.stable_id != snapshot.stable_id || object.zone != Zone::Graveyard {
+        // A retained last-known record of an earlier incarnation is not the
+        // card now in the graveyard (CR 400.7).
+        if object.stable_id != snapshot.stable_id
+            || object.zone != Zone::Graveyard
+            || game.find_object_by_stable_id(snapshot.stable_id) != Some(object_id)
+        {
             return Err(ExecutionError::InvalidTarget);
         }
         ids.push(object_id);
@@ -692,6 +697,11 @@ mod tests {
         assert_ne!(second_graveyard_id, first_graveyard_id);
 
         let mut ctx = ExecutionContext::new_default(source, alice);
+        // A resolving instruction may find only objects it moved itself
+        // (CR 400.7j), as stack resolution sets up.
+        ctx.resolution_object_id_floor = Some(crate::ids::ObjectId::from_raw(
+            game.next_object_id_counter(),
+        ));
         ctx.tag_object("reanimate_target", snapshot);
 
         let effect = ReturnFromGraveyardToBattlefieldEffect::new(
@@ -699,7 +709,10 @@ mod tests {
             false,
         );
         let result = effect.execute(&mut game, &mut ctx);
-        assert!(result.is_err());
+        // The stale incarnation is gone, and the newer graveyard card is a
+        // different object that stays where it is.
+        assert!(result.is_err(), "{result:?}");
+        assert_eq!(game.object(second_graveyard_id).unwrap().zone, Zone::Graveyard);
     }
 
     #[test]

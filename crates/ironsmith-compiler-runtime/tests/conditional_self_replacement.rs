@@ -163,7 +163,9 @@ fn epicenter_late_replacement_suspension_or_resource_error_restores_the_whole_ba
             ironsmith::events::zones::matchers::WouldChangeZoneMatcher::new(ironsmith::target::ObjectFilter::specific(lands[2]), Some(Zone::Battlefield), Some(Zone::Graveyard)),
             ReplacementAction::Instead(vec![Effect::gain_life(1), addition])));
         let mut dm = Choices { pause_payment: !resource_failure, ..Default::default() };
-        if resource_failure { game.set_token_creation_limits(ironsmith::effects::tokens::TokenCreationLimits { max_created_tokens: 0, ..Default::default() }); }
+        // Creation past max_created_tokens now creates what fits; the token
+        // instruction-work budget remains a typed incomplete-execution limit.
+        if resource_failure { game.set_token_creation_limits(ironsmith::effects::tokens::TokenCreationLimits { max_instructions: 0, ..Default::default() }); }
         let ids = game.next_object_id_counter();
         let result = resolve_stack_entry_with(&mut game, &mut dm);
         assert_eq!(result.is_err(), resource_failure);
@@ -277,7 +279,9 @@ fn bring_the_ending_pending_payment_and_resource_error_restore_spell_target_and_
             game.effect_store.replacement_effects.add_one_shot_effect(ReplacementEffect::with_matcher(spell, A,
                 ironsmith::events::zones::matchers::WouldChangeZoneMatcher::new(ironsmith::target::ObjectFilter::specific(target), Some(Zone::Stack), Some(Zone::Graveyard)),
                 ReplacementAction::Additionally(vec![Effect::gain_life(1), Effect::new(ironsmith::effects::CreateTokenEffect::you(ironsmith::cards::tokens::treasure_token_definition(), 1))])));
-            game.set_token_creation_limits(ironsmith::effects::tokens::TokenCreationLimits { max_created_tokens: 0, ..Default::default() });
+            // Creation past max_created_tokens now creates what fits; the token
+            // instruction-work budget remains a typed incomplete-execution limit.
+            game.set_token_creation_limits(ironsmith::effects::tokens::TokenCreationLimits { max_instructions: 0, ..Default::default() });
         }
         let mut dm = Choices { pause_payment: !resource_failure, pay: true, ..Default::default() };
         let result = resolve_stack_entry_with(&mut game, &mut dm);

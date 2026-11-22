@@ -658,9 +658,11 @@ fn cast_mana_value_uses_wide_scalar_math_and_checked_narrowing() {
     assert_eq!(ironsmith::effects::helpers::resolve_value_wide(
         &game, &quantity(CastEventQuantity::ManaValue), &ctx,
     ).unwrap(), 2 * i64::from(u32::MAX) + 1);
-    assert!(ironsmith::effects::helpers::resolve_value(
+    // Narrow game quantities saturate at the signed characteristic range
+    // (CR 107.1 places no cap on numbers); the wide value above is exact.
+    assert_eq!(ironsmith::effects::helpers::resolve_value(
         &game, &quantity(CastEventQuantity::ManaValue), &ctx,
-    ).is_err());
+    ).unwrap(), i32::MAX);
 }
 
 #[test]

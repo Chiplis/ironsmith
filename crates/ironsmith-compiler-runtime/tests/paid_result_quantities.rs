@@ -268,10 +268,12 @@ fn linked_power_reference_never_consumes_an_unrelated_prior_draw() {
     let mut dm = Choices { target: Some(Target::Object(recipient)), ..Default::default() };
     let event = TriggerEvent::new_with_provenance(ironsmith::events::combat::CreatureAttackedEvent::new(source, AttackEventTarget::Player(B)), Default::default());
     assert_eq!(queue_event(&mut game, event, &mut dm), 1);
-    assert!(matches!(resolve_stack_entry_with(&mut game, &mut dm),
-        Err(ironsmith::game_loop::GameLoopError::ExecutionFailed(ironsmith::effects::ExecutionError::IncompleteEvidence(_)))));
-    assert_eq!(game.player(A).unwrap().hand.len(), 0, "unknown pairing rolls back the whole resolution");
-    assert_eq!(game.current_power(recipient), Some(2));
+    // CR 607.2a: an unpaired "the exiled card" reader reads only the cards
+    // exiled with this source (none here), which is a known zero. The seven
+    // drawn 1/1 creature cards are never consumed as "the exiled card".
+    resolve_stack_entry_with(&mut game, &mut dm).unwrap();
+    assert_eq!(game.player(A).unwrap().hand.len(), 7, "the draw resolves independently");
+    assert_eq!(game.current_power(recipient), Some(2), "X reads no drawn card");
 }
 
 #[test]

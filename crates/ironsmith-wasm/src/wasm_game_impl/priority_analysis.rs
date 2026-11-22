@@ -816,7 +816,9 @@ mod priority_analysis_tests {
                 .card_types(vec![ironsmith::types::CardType::Creature])
                 .mana_cost(ironsmith::mana::ManaCost::from_symbols(vec![ManaSymbol::Green])).build();
             game.create_object_from_card(&spell, player, Zone::Hand);
-            game.set_token_creation_limits(ironsmith::effects::tokens::TokenCreationLimits { max_created_tokens: 1, ..Default::default() });
+            // Creation past max_created_tokens now creates what fits; the token
+            // instruction-work budget remains a typed incomplete-execution limit.
+            game.set_token_creation_limits(ironsmith::effects::tokens::TokenCreationLimits { max_instructions: 0, ..Default::default() });
             let mut context = ironsmith::decisions::context::PriorityContext::new(&game, player, vec![LegalAction::PassPriority]).unwrap();
             context.analysis_complete = false;
             let reference = priority_action_ref(&LegalAction::PassPriority);
@@ -836,7 +838,9 @@ mod priority_analysis_tests {
                 .card_types(vec![ironsmith::CardType::Creature])
                 .mana_cost(ironsmith::mana::ManaCost::from_symbols(vec![ManaSymbol::Green])).build();
             let spell = game.create_object_from_card(&spell, player, Zone::Hand);
-            game.set_token_creation_limits(ironsmith::effects::tokens::TokenCreationLimits { max_created_tokens: 1, ..Default::default() });
+            // Creation past max_created_tokens now creates what fits; the token
+            // instruction-work budget remains a typed incomplete-execution limit.
+            game.set_token_creation_limits(ironsmith::effects::tokens::TokenCreationLimits { max_instructions: 0, ..Default::default() });
             wasm.game = game;
             let mut context = ironsmith::decisions::context::PriorityContext::new(&wasm.game, player, vec![LegalAction::PassPriority]).unwrap();
             context.analysis_complete = false;

@@ -852,8 +852,10 @@ fn linked_scalar_unknown_native_and_source_only_import_require_recovery() {
     game.add_exiled_with_source_link(source, linked);
     let number = Value::PowerOf(Box::new(ChooseSpec::Tagged(crate::tag::SOURCE_EXILED_TAG.into())));
     let mut ctx = ExecutionContext::new_default(source, alice);
-    assert!(matches!(resolve_wide(&number, &EvaluationContext::execution_context(&game, &ctx)),
-        Err(ExecutionError::IncompleteEvidence(_))), "native metadata is required even when source-wide links exist");
+    // An unpaired reader (Soul Foundry) reads the source's exiled-with links
+    // (CR 607.2a); only a stamped pair demands native pair evidence.
+    assert_eq!(resolve_wide(&number, &EvaluationContext::execution_context(&game, &ctx)).unwrap(), 9,
+        "an unpaired program reads the source-wide links");
     ctx.linked_exile_owner = Some(linked_owner(source));
     assert_eq!(resolve_wide(&number, &EvaluationContext::execution_context(&game, &ctx)).unwrap(), 0,
         "a proven pair with no members is known zero");

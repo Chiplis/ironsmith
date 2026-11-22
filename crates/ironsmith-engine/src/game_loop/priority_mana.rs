@@ -4764,11 +4764,7 @@ fn propose_spell_cast_with_origin_and_dm(
 
     if let Some(route) = price_route {
         for ability in route.price_riders {
-            game.grant_temporary_static_ability_payload_to_object_until_end_of_turn(
-                new_id,
-                ability.id(),
-                Some(ability),
-            );
+            game.grant_cast_this_way_rider_until_end_of_turn(new_id, ability);
         }
     }
 
@@ -4857,11 +4853,7 @@ fn apply_play_from_cast_this_way_grants(
         return;
     }
     for ability in riders {
-        game.grant_temporary_static_ability_payload_to_object_until_end_of_turn(
-            stack_id,
-            ability.id(),
-            Some(ability),
-        );
+        game.grant_cast_this_way_rider_until_end_of_turn(stack_id, ability);
     }
 }
 

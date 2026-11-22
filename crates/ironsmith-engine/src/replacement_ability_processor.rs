@@ -874,7 +874,7 @@ mod independent_occurrence_gameplay_tests {
                             .push(crate::object::TemporaryStaticAbilityGrant {
                                 ability: ability.id(),
                                 ability_payload: Some(ability),
-                                expires_end_of_turn: Some(expiry),
+                                expires_end_of_turn: Some(expiry), functions_on_stack: false
                             });
                     }
                 } else {

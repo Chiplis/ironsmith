@@ -150,8 +150,13 @@ pub(crate) fn read_seek(tokens:&[OwnedLexToken])->Result<Option<EffectAst>,CardT
  if words.first()!=Some(&"seek")||words.len()<3{return Ok(None);}
  if !matches!(words.last(),Some(&"card"|&"cards")){return Ok(None);}
  let Some(span)=view.token_span_for_words(1,words.len())else{return Ok(None);};
- let descriptor=crate::lexer::render_token_slice(&tokens[span]);
- let rewritten=crate::lexer::lex_line(&format!("put {descriptor} at random from your library into your hand"),0)?;
+ // Splice the descriptor's own tokens into the equivalent move phrase
+ // instead of rendering them back to text and lexing again.
+ let synthetic=|word:&str|OwnedLexToken::word(word,crate::cards::builders::TextSpan::synthetic());
+ let mut rewritten=Vec::with_capacity(span.len()+9);
+ rewritten.push(synthetic("put"));
+ rewritten.extend_from_slice(&tokens[span]);
+ rewritten.extend(["at","random","from","your","library","into","your","hand"].into_iter().map(synthetic));
  let effect=crate::effect_sentences::parse_effect_clause_lexed(&rewritten)?;
  crate::word_claims::claim_tokens(tokens);
  Ok(Some(effect))

@@ -34,11 +34,16 @@ fn mana_spend_bonus_shapes_preserve_haste_and_counter_facts() {
         "If this mana is spent to cast a creature spell, it gains haste.",
     ))
     .unwrap();
+    let haste_debug = format!("{haste:?}");
+    // An undated "it gains haste" lasts for that object's incarnation.
     assert!(matches!(
         haste,
-        ManaUsageRestriction::CastSpell { granted_abilities, .. }
-            if granted_abilities == [StaticAbilityId::Haste]
-    ));
+        ManaUsageRestriction::CastSpellWithManaBonus { granted_abilities, .. }
+            if granted_abilities == [(
+                StaticAbilityId::Haste,
+                ironsmith_core::ManaSpendAbilityGrantDuration::Indefinitely,
+            )]
+    ), "{haste_debug}");
 
     let counter = parse_mana_spend_bonus_sentence_lexed(&lex(
         "If this mana is spent to cast a creature spell, that creature enters with an additional +1/+1 counter on it.",

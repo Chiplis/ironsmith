@@ -93,7 +93,7 @@ fn setup(definition: &CardDefinition, mana: u32, matches: usize) -> (GameState, 
     game.turn.active_player = A;
     game.turn.phase = ironsmith::Phase::FirstMain;
     game.turn.step = None;
-    game.player_mut(A).unwrap().mana_pool.colorless = mana;
+    game.player_mut(A).unwrap().mana_pool.colorless = u64::from(mana);
     let source = game.create_object_from_definition(definition, A, Zone::Battlefield);
     let chosen = land(&mut game, Zone::Battlefield, "Chosen land", false);
     // Keep the battlefield choice nontrivial so the scripted choice is actually requested.
@@ -317,8 +317,10 @@ fn sacrifice_execution_failure_is_typed_atomic_and_retryable() {
             ),
         )]);
         queue_combat_trigger(&mut game, source, &mut choices);
+        // A zero creation budget now truncates the Treasure to nothing instead
+        // of failing; a zero instruction budget is still a typed failure.
         game.set_token_creation_limits(ironsmith::effects::tokens::TokenCreationLimits {
-            max_created_tokens: 0, ..Default::default()
+            max_instructions: 0, ..Default::default()
         });
         let stack_id = game.stack.last().unwrap().object_id;
         let objects = game.objects_in_deterministic_order().len();

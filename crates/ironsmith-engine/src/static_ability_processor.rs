@@ -420,6 +420,7 @@ fn source_abilities(
         // addition to its other types", Tarrian's Journal) describes the spell
         // as cast, so it functions on the stack too (CR 601.2a, 113.6).
         let is_stack_type_rider = object.zone == Zone::Stack
+            && grant.functions_on_stack
             && ability.id() == crate::static_abilities::StaticAbilityId::AddSubtypes;
         let ability = crate::ability::Ability::static_ability(ability);
         let ability = if is_stack_type_rider {

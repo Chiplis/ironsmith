@@ -196,7 +196,12 @@ fn aura_grant_keeps_the_named_granting_source_through_artifact_compilation() {
         let body = format!("{activated:?}");
         assert!(body.contains("SacrificeTarget"), "{body}");
         assert!(body.contains("SourceReference"), "{body}");
-        assert!(body.contains("sacrificed_0") && body.contains("ControllerOf"), "{body}");
+        // The drawing player is the named granting Aura's controller. Lowering
+        // now binds it to the granting source itself rather than to the
+        // sacrificed-object tag; both name the same player (the sacrificer is
+        // that controller), and the runtime test below exercises it.
+        assert!(body.contains("ControllerOf(Tagged(TagKey(\"__granting_source__\")))")
+            || (body.contains("sacrificed_0") && body.contains("ControllerOf")), "{body}");
         assert!(body.contains("SorcerySpeed"), "{body}");
         let rendered = support::rendered(&definition).to_ascii_lowercase();
         assert!(rendered.contains("enchanted creature can't attack or block"), "{rendered}");

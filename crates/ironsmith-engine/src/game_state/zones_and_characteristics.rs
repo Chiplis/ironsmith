@@ -1884,7 +1884,7 @@ impl GameState {
                         crate::object::TemporaryStaticAbilityGrant {
                             ability: ability.id(),
                             ability_payload: Some(ability),
-                            expires_end_of_turn: None,
+                            expires_end_of_turn: None, functions_on_stack: false
                         },
                     );
                 }

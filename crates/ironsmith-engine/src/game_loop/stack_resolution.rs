@@ -335,7 +335,7 @@ fn previous_player_target_assignments(
         .collect()
 }
 
-fn previous_object_target_assignments(
+pub(crate) fn previous_object_target_assignments(
     targets: &[crate::effects::ResolvedTarget],
     assignments: &[crate::game_state::TargetAssignment],
     before: usize,
@@ -344,9 +344,14 @@ fn previous_object_target_assignments(
         .iter()
         .take(before)
         .filter(|assignment| {
-            targets[assignment.range.clone()]
-                .iter()
-                .any(|target| matches!(target, crate::effects::ResolvedTarget::Object(_)))
+            // CR 608.2b: an emptied assignment is an announced target that
+            // became illegal. Keep it in scope so a reference to it ("target
+            // creature ... deals damage") resolves to nothing instead of
+            // borrowing another surviving target that also fits its filter.
+            assignment.range.is_empty()
+                || targets[assignment.range.clone()]
+                    .iter()
+                    .any(|target| matches!(target, crate::effects::ResolvedTarget::Object(_)))
         })
         .cloned()
         .collect()
@@ -369,13 +374,23 @@ fn effect_references_prior_declared_targets(effect: &Effect) -> bool {
         })
 }
 
-fn effect_references_prior_object_targets(effect: &Effect) -> bool {
+pub(crate) fn effect_references_prior_object_targets(effect: &Effect) -> bool {
     // "Target creature you control deals damage ... to target creature you
     // don't control" (Ram Through): the acting source keeps its announced
     // target contract, so the source's earlier declaration stays in scope.
-    let unwrapped = effect
-        .downcast_ref::<crate::effects::TaggedEffect>()
-        .map_or(effect, |tagged| tagged.effect.as_ref());
+    // Result-recording and tagging wrappers are transparent here: "...
+    // Create a token for each excess damage dealt this way" (Windswift
+    // Slice) records the damage under an effect id around the tagged action.
+    let mut unwrapped = effect;
+    loop {
+        if let Some(tagged) = unwrapped.downcast_ref::<crate::effects::TaggedEffect>() {
+            unwrapped = tagged.effect.as_ref();
+        } else if let Some(with_id) = unwrapped.downcast_ref::<crate::effects::WithIdEffect>() {
+            unwrapped = with_id.effect.as_ref();
+        } else {
+            break;
+        }
+    }
     if unwrapped
         .downcast_ref::<crate::effects::ExecuteWithSourceEffect>()
         .is_some_and(|with_source| with_source.source.is_target())

@@ -890,7 +890,7 @@ fn checked_cast_time_board_count_does_not_erase_incomplete_characteristics() {
         .unwrap()
     );
     game.phase_in(human);
-    game.player_mut(A).unwrap().mana_pool.colorless = u32::MAX;
+    make_discovery_incomplete(&mut game, human);
     assert!(matches!(
         ironsmith::condition_eval::evaluate_condition_cast_time_checked(
             &game, &condition, A, source
@@ -957,4 +957,19 @@ fn conditional_flash_counts_current_subtypes_and_control_instead_of_printed_obje
             }
         }
     }
+}
+
+/// Leave continuous discovery incomplete for `object`. Pools are u64-wide and
+/// mana-derived scalars now saturate, so a huge pool no longer fails discovery;
+/// a characteristic-setting value whose player does not exist still does
+/// (missing numeric evidence). Returns the effect so the caller can recover.
+fn make_discovery_incomplete(game: &mut ironsmith::GameState, object: ironsmith::ObjectId)
+    -> ironsmith::continuous::ContinuousEffectId {
+    let controller = game.controller_of(game.object(object).unwrap());
+    game.effect_store.continuous_effects.add_effect(ironsmith::continuous::ContinuousEffect::new(
+        object, controller, ironsmith::continuous::EffectTarget::Specific(object),
+        ironsmith::continuous::Modification::SetPower {
+            value: ironsmith::effect::Value::LifeTotal(ironsmith::target::PlayerFilter::Specific(ironsmith::PlayerId(99))),
+            sublayer: ironsmith::continuous::PtSublayer::Setting,
+        }))
 }

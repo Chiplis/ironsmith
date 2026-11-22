@@ -127,7 +127,7 @@ fn mixed_fixed_and_source_color_mana_keeps_granted_recipient_colors_and_exactly_
         let mut first=ironsmith::decision::SelectFirstDecisionMaker;let mut last=LastChoice;let dm:&mut dyn ironsmith::decision::DecisionMaker=if fixed{&mut first}else{&mut last};
         let mut ctx=ironsmith::effects::EffectContext::new(host,A,dm);for effect in ability.effects.all_effects(){ironsmith::effects::execute_effect(&mut g,effect,&mut ctx).unwrap();}
         assert_eq!(g.player(A).unwrap().mana_pool.total(),1);assert_eq!(g.player(A).unwrap().mana_pool.green,0);
-        assert_eq!(g.player(A).unwrap().mana_pool.red,u32::from(!fixed));assert_eq!(g.player(A).unwrap().mana_pool.colorless,u32::from(fixed));
+        assert_eq!(g.player(A).unwrap().mana_pool.red,u64::from(!fixed));assert_eq!(g.player(A).unwrap().mana_pool.colorless,u64::from(fixed));
     }}
 }
 #[test]
@@ -168,7 +168,7 @@ fn unrestricted_mixed_mana_keeps_fixed_output_and_one_color_output_through_both_
         let mut ctx=ironsmith::effects::EffectContext::new(host,A,dm);
         for effect in ability.effects.all_effects(){ironsmith::effects::execute_effect(&mut game,effect,&mut ctx).unwrap();}
         assert_eq!(game.player(A).unwrap().mana_pool.total(),1);
-        assert_eq!(game.player(A).unwrap().mana_pool.colorless,u32::from(fixed));
+        assert_eq!(game.player(A).unwrap().mana_pool.colorless,u64::from(fixed));
     }}
 }
 

@@ -87,7 +87,10 @@ fn status_db_entry_counter_audit_keeps_distinct_type_count_and_exclusion() {
     on_big_stack(|| {
         let def = compile("Jean-Luc, Mon Capitaine");
         let audit = ironsmith::compiled_text::semantic_audit_lines(&def).join("\n");
-        assert!(audit.contains("for each creature type among non-Borg creatures you control"), "{audit}");
+        // The printed text says "you already control" (9d96a318d keeps that
+        // authored word as a presentation hint); the count is still of
+        // distinct types among the controller's non-Borg creatures.
+        assert!(audit.contains("for each creature type among non-Borg creatures you already control"), "{audit}");
     });
 }
 
@@ -993,7 +996,10 @@ fn corpus_discovered_static_prose_is_structural_or_explicitly_unverified() {
             ("Titania's Song", false),
             ("Cogwork Tracker", false),
             ("Plague Nurse", false),
-            ("Lore Seeker", true),
+            // The added booster pack is a typed draft action since
+            // 9d96a318d (`DraftAction::AddBoosterPack`, CR 905), so the
+            // rule now reads back structurally instead of as unverified.
+            ("Lore Seeker", false),
             ("Elemental Time Flamingo", false),
         ] {
             let def = compile(name);

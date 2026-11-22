@@ -41189,14 +41189,15 @@ mod pact_and_keyword_pt_ladder_tests {
         let AbilityKind::Triggered(triggered) = &mut wrong_draw_count.kind else {
             panic!("expected Pact trigger");
         };
-        let sequence = triggered.effects.segments[0].default_effects[1]
+        // The draw-and-reveal sequence is the first segment's only effect.
+        let sequence = triggered.effects.segments[0].default_effects[0]
             .downcast_ref::<crate::effects::SequenceEffect>()
             .expect("draw sequence")
             .clone();
         let mut altered = sequence;
         altered.effects[0] = crate::effect::Effect::new(crate::effects::DrawCardsEffect::you(2))
             .tag("__drawn_revealed_card__");
-        triggered.effects.segments[0].default_effects[1] = crate::effect::Effect::new(altered);
+        triggered.effects.segments[0].default_effects[0] = crate::effect::Effect::new(altered);
         assert_eq!(
             describe_structural_equipped_draw_reveal_mana_value_pump(&wrong_draw_count),
             None,
@@ -41301,8 +41302,24 @@ mod matching_keyword_grant_ladder_tests {
             // Each segment is one keyword grant under its own condition. An
             // "it" subject (Thunderous Orator) tags the grant for the
             // triggering attacker, so look through that one tag.
+            // A variant keyword (hexproof) copies whichever variants the
+            // matching card has, so its condition lives in that copy.
+            let variant_copy = |effect: &Effect| {
+                effect
+                    .downcast_ref::<crate::effects::ApplyContinuousEffect>()
+                    .is_some_and(|apply| {
+                        apply.condition.is_none()
+                            && matches!(
+                                apply.modification.as_ref(),
+                                Some(crate::continuous::Modification::AddAbility(ability))
+                                    if ability.id()
+                                        == crate::static_abilities::StaticAbilityId::CopyStaticAbilityVariants
+                            )
+                    })
+            };
             let keyword_condition = |effect: &Effect| {
                 conditioned_combat_keyword_application(effect).is_some()
+                    || variant_copy(effect)
                     || effect
                         .downcast_ref::<crate::effects::ConditionalEffect>()
                         .is_some_and(|conditional| {

@@ -3236,14 +3236,18 @@ pub(super) fn rewrite_triggered_keeps_linked_exile_permission_tax_in_resolution(
         }
     };
     let debug = format!("{effects:#?}");
-    assert_eq!(effects.len(), 4, "{debug}");
+    // The {2} tax rides on the play permission itself, so the program is
+    // look, optional exile, and one taxed permission.
+    assert_eq!(effects.len(), 3, "{debug}");
     assert!(debug.contains("LookAtHand"), "{debug}");
     assert!(
         debug.contains("GrantPlayTaggedForAsLongAsExiled"),
         "{debug}"
     );
-    assert!(debug.contains("GrantToTarget"), "{debug}");
-    assert!(debug.contains("CostIncreaseManaCost"), "{debug}");
+    assert!(
+        format!("{effects:?}").contains("spell_cost_increase: Some(ManaCost { pips: [[Generic(2)]]"),
+        "{debug}"
+    );
 
     Ok(())
 }

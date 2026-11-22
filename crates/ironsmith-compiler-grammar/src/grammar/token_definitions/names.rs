@@ -501,3 +501,13 @@ mod named_token_sentence_boundary_regressions {
         }
     }
 }
+
+#[cfg(test)]
+mod quoted_rule_and_equip_tail_name_tests {
+    #[test]
+    fn equip_member_of_a_quoted_rule_list_is_not_read_into_the_token_name(){
+        let full=crate::util::tokenize_line("Create a legendary white Equipment artifact token named Icingdeath, Frost Tongue with \"Equipped creature gets +2/+0.\" and equip {2}.",0);
+        let stripped=crate::activation_and_restrictions::strip_embedded_token_rules_text(&full);
+        assert_eq!(crate::lexer::render_token_slice(&stripped),"create a legendary white equipment artifact token named icingdeath, frost tongue with equip {2}.");
+    }
+}

@@ -1243,6 +1243,11 @@ pub struct TemporaryStaticAbilityGrant {
     pub ability_payload: Option<StaticAbility>,
     /// None lasts for this incarnation, including Stack -> Battlefield.
     pub expires_end_of_turn: Option<u32>,
+    /// A cast-this-way rider that describes the spell as cast ("it's a
+    /// Vampire in addition to its other types", The Tomb of Aclazotz)
+    /// functions while the spell is on the stack (CR 601.2a). An ordinary
+    /// granted ability of a permanent spell does not (CR 113.6, 604.3a).
+    pub functions_on_stack: bool,
 }
 
 impl TemporaryStaticAbilityGrant {
@@ -4232,7 +4237,7 @@ mod temporary_ability_registration_tests {
                 grants.push(TemporaryStaticAbilityGrant {
                     ability,
                     ability_payload: None,
-                    expires_end_of_turn: Some(2),
+                    expires_end_of_turn: Some(2), functions_on_stack: false
                 });
             }
             assert_ne!(
@@ -4282,7 +4287,7 @@ mod temporary_ability_registration_tests {
         let grant = |expiry| TemporaryStaticAbilityGrant {
             ability: ability.id(),
             ability_payload: Some(ability.clone()),
-            expires_end_of_turn: Some(expiry),
+            expires_end_of_turn: Some(expiry), functions_on_stack: false
         };
         let mut grants = TemporaryStaticAbilityGrants::new(source);
         grants.push(grant(1));
@@ -4369,7 +4374,7 @@ mod native_temporary_registration_tests {
             grants.push(TemporaryStaticAbilityGrant {
                 ability: shared.id(),
                 ability_payload: Some(shared.clone()),
-                expires_end_of_turn: Some(expiry),
+                expires_end_of_turn: Some(expiry), functions_on_stack: false
             });
         }
         grants.retain(|grant| grant.expires_end_of_turn.is_none_or(|end| end > 1));
@@ -4377,7 +4382,7 @@ mod native_temporary_registration_tests {
         component.push(TemporaryStaticAbilityGrant {
             ability: shared.id(),
             ability_payload: Some(shared),
-            expires_end_of_turn: Some(4),
+            expires_end_of_turn: Some(4), functions_on_stack: false
         });
         grants.extend_existing(&component);
         grants
@@ -4389,7 +4394,7 @@ mod native_temporary_registration_tests {
         for (expiry, timestamp) in [(1, 11), (2, 17)] {
             grants.push_at_timestamp(TemporaryStaticAbilityGrant {
                 ability: shared.id(), ability_payload: Some(shared.clone()),
-                expires_end_of_turn: Some(expiry),
+                expires_end_of_turn: Some(expiry), functions_on_stack: false
             }, timestamp);
         }
         let kept = grants.origin(1).unwrap().clone();
@@ -4469,7 +4474,7 @@ mod native_temporary_registration_tests {
         restored.push(TemporaryStaticAbilityGrant {
             ability: StaticAbilityId::Flying,
             ability_payload: None,
-            expires_end_of_turn: Some(9),
+            expires_end_of_turn: Some(9), functions_on_stack: false
         });
         assert_eq!(
             restored.origin(0).unwrap().serial,
@@ -4713,7 +4718,7 @@ mod permanent_permission_registration_tests {
         grants.push(TemporaryStaticAbilityGrant {
             ability: StaticAbilityId::Flying,
             ability_payload: Some(StaticAbility::flying()),
-            expires_end_of_turn: None,
+            expires_end_of_turn: None, functions_on_stack: false
         });
         assert!(!grants[0].is_expired(u32::MAX));
         let restored = grants.clone();

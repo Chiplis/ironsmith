@@ -133,6 +133,9 @@ pub fn parse_copy_modifier_words(tail_words: &[&str]) -> Result<CopyModifierSpec
     }
     // This bounded suffix specifies the replacement subtype family; it is
     // independent of the identity descriptor before it.
+    // "instead of its other types" replaces every subtype, overriding the
+    // CR 205.1a same-set default applied below.
+    let mut replaces_all_other_types = false;
     if let Some(index) = kept_words.word_windows(6).position(|words| words == ["instead", "of", "its", "other", "creature", "types"]) {
         let end=index+6;
         crate::word_claims::claim_words(&kept_words[index..end]);
@@ -141,6 +144,7 @@ pub fn parse_copy_modifier_words(tail_words: &[&str]) -> Result<CopyModifierSpec
     } else if let Some(index)=kept_words.word_windows(5).position(|words|words==["instead","of","its","other","types"]) {
         crate::word_claims::claim_words(&kept_words[index..index+5]);
         kept_words.drain(index..index+5);
+        replaces_all_other_types = true;
     }
     let modifier_words: &[&str] = &kept_words;
     let surface = CreationWords::new(modifier_words);
@@ -450,6 +454,7 @@ pub fn parse_copy_modifier_words(tail_words: &[&str]) -> Result<CopyModifierSpec
         // the same set. "Except it's a 1/1 black and green Insect" (Grist)
         // replaces creature types; a copied Dryad Arbor stays a Forest.
         if card_types.is_empty()
+            && !replaces_all_other_types
             && !subtypes.is_empty()
             && subtypes.iter().all(|subtype| subtype.is_creature_type())
         {

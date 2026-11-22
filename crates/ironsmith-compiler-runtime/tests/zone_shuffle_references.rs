@@ -484,7 +484,11 @@ fn stream_replicate_pays_twice_and_resolves_each_complete_body_with_its_own_choi
         assert!(shuffles(&game).is_empty());
 
         // The top copy keeps B and shuffles four controller-owned cards.
+        // CR 608.2n/704.5e: a resolved copy is put into the graveyard and
+        // ceases to exist when state-based actions are next checked, which
+        // happens before anyone would receive priority (CR 117.5).
         resolve_one(&mut game, &mut dm);
+        ironsmith::game_loop::check_and_apply_sbas_with(&mut game, &mut TriggerQueue::new(), &mut dm).unwrap();
         assert_eq!(game.stack.len(), 2);
         assert_eq!(game.player(B).unwrap().library.len(), 8);
         assert_eq!(game.player(B).unwrap().graveyard.len(), 5);
@@ -496,6 +500,7 @@ fn stream_replicate_pays_twice_and_resolves_each_complete_body_with_its_own_choi
 
         // The retargeted copy mills C, and choosing zero still shuffles A.
         resolve_one(&mut game, &mut dm);
+        ironsmith::game_loop::check_and_apply_sbas_with(&mut game, &mut TriggerQueue::new(), &mut dm).unwrap();
         assert_eq!(game.stack.len(), 1);
         assert_eq!(game.player(C).unwrap().library.len(), 8);
         assert_eq!(game.player(C).unwrap().graveyard.len(), 4);

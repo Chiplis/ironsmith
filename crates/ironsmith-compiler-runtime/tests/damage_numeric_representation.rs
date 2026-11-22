@@ -1,4 +1,4 @@
-//! Explicit representation failures roll back damage, never cap gameplay.
+//! Damage beyond its storage carrier saturates at that bound; it never fails.
 //! Source-authored regressions; no execution in the implementation campaign.
 use ironsmith::effects::{
     DealDamageEffect, EffectContext as ExecutionContext, EffectExecutor, ExecutionError,
@@ -39,42 +39,39 @@ fn damage(
     DealDamageEffect::new(amount, target)
         .execute(game, &mut ExecutionContext::new_default(source, A))
 }
-fn incomplete(error: ExecutionError) {
-    assert!(error.is_incomplete_execution(), "{error:?}");
-    assert!(matches!(
-        error,
-        ExecutionError::ResourceLimitExceeded { .. }
-    ));
+// Damage and its scalar consequences (life, poison, marked damage) are game
+// quantities: CR 107.1 sets no cap, so the engine saturates them at their
+// storage bounds instead of failing or capping below the carrier.
+fn dealt(outcome: &ironsmith::effect::EffectOutcome) -> u64 {
+    outcome
+        .events
+        .iter()
+        .filter_map(|event| event.downcast::<ironsmith::events::DamageEvent>())
+        .map(|event| u64::from(event.amount))
+        .sum()
 }
 #[test]
-fn multiply_and_double_overflow_restore_consumed_replacements_and_history() {
+fn multiply_and_double_beyond_the_damage_carrier_saturate_and_consume_the_replacement() {
     for action in [
         ReplacementAction::Double,
         ReplacementAction::Modify(EventModification::Multiply(3)),
     ] {
         let (mut game, source) = setup("");
         add(&mut game, source, action.clone());
-        incomplete(damage(&mut game, source, i32::MAX, ChooseSpec::SpecificPlayer(B)).unwrap_err());
-        assert_eq!(game.player(B).unwrap().life, 30);
+        let expected = if matches!(action, ReplacementAction::Double) {
+            2 * u64::from(i32::MAX as u32)
+        } else {
+            u64::from(u32::MAX)
+        };
+        let outcome = damage(&mut game, source, i32::MAX, ChooseSpec::SpecificPlayer(B)).unwrap();
+        assert_eq!(dealt(&outcome), expected);
+        assert_eq!(outcome.as_count(), Some(expected as i64));
+        assert_eq!(game.player(B).unwrap().life, i32::MIN);
         assert_eq!(
             game.trigger_event_kind_count_this_turn(ironsmith::events::EventKind::Damage),
-            0
+            1
         );
-        assert_eq!(
-            game.trigger_event_kind_count_this_turn(ironsmith::events::EventKind::LifeLoss),
-            0
-        );
-        let factor = if matches!(action, ReplacementAction::Double) {
-            2
-        } else {
-            3
-        };
-        assert_eq!(
-            damage(&mut game, source, 1, ChooseSpec::SpecificPlayer(B))
-                .unwrap()
-                .as_count(),
-            Some(factor)
-        );
+        // The one-shot replacement was consumed by the completed event.
         assert_eq!(
             damage(&mut game, source, 1, ChooseSpec::SpecificPlayer(B))
                 .unwrap()
@@ -84,7 +81,7 @@ fn multiply_and_double_overflow_restore_consumed_replacements_and_history() {
     }
 }
 #[test]
-fn additive_u32_overflow_is_not_a_successful_smaller_event() {
+fn additive_result_beyond_the_damage_carrier_saturates_instead_of_failing() {
     let (mut game, source) = setup("");
     add(
         &mut game,
@@ -96,12 +93,13 @@ fn additive_u32_overflow_is_not_a_successful_smaller_event() {
         source,
         ReplacementAction::Modify(EventModification::Add(1)),
     );
-    incomplete(damage(&mut game, source, 1, ChooseSpec::SpecificPlayer(B)).unwrap_err());
-    assert_eq!(game.player(B).unwrap().life, 30);
+    let outcome = damage(&mut game, source, 1, ChooseSpec::SpecificPlayer(B)).unwrap();
+    assert_eq!(dealt(&outcome), u64::from(u32::MAX));
+    assert_eq!(game.player(B).unwrap().life, i32::MIN);
     assert!(game.stack.is_empty());
     assert_eq!(
         game.trigger_event_kind_count_this_turn(ironsmith::events::EventKind::Damage),
-        0
+        1
     );
 }
 #[test]
@@ -125,7 +123,7 @@ fn exact_supported_damage_boundary_and_one_larger_result() {
     assert_eq!(i64::from(game.player(B).unwrap().life), 30 - (1_i64 << 31));
 
     // Damage events and marked damage use unsigned 32-bit values; outcomes
-    // remain wide. Exceeding that actual boundary must still roll back.
+    // remain wide. A result one larger than that boundary saturates at it.
     let (mut game, source) = setup("");
     add(
         &mut game,
@@ -150,20 +148,21 @@ fn exact_supported_damage_boundary_and_one_larger_result() {
         source,
         ReplacementAction::Modify(EventModification::Add(1)),
     );
-    incomplete(damage(&mut game, source, 1, ChooseSpec::SpecificObject(source)).unwrap_err());
-    assert_eq!(game.damage_on(source), 0);
+    let outcome = damage(&mut game, source, 1, ChooseSpec::SpecificObject(source)).unwrap();
+    assert_eq!(dealt(&outcome), u64::from(u32::MAX));
+    assert_eq!(game.damage_on(source), u32::MAX);
 }
 #[test]
-fn signed_life_lifelink_counter_and_marked_damage_state_bounds_roll_back() {
+fn signed_life_lifelink_counter_and_marked_damage_state_bounds_saturate() {
     let (mut game, source) = setup("");
     game.player_mut(B).unwrap().life = i32::MIN + 1;
-    incomplete(damage(&mut game, source, 2, ChooseSpec::SpecificPlayer(B)).unwrap_err());
-    assert_eq!(game.player(B).unwrap().life, i32::MIN + 1);
+    damage(&mut game, source, 2, ChooseSpec::SpecificPlayer(B)).unwrap();
+    assert_eq!(game.player(B).unwrap().life, i32::MIN);
     let (mut game, source) = setup("Lifelink");
     game.player_mut(A).unwrap().life = i32::MAX;
-    incomplete(damage(&mut game, source, 1, ChooseSpec::SpecificPlayer(B)).unwrap_err());
+    damage(&mut game, source, 1, ChooseSpec::SpecificPlayer(B)).unwrap();
     assert_eq!(game.player(A).unwrap().life, i32::MAX);
-    assert_eq!(game.player(B).unwrap().life, 30);
+    assert_eq!(game.player(B).unwrap().life, 29);
     let (mut game, source) = setup("Infect");
     game.add_player_counters_with_source(
         B,
@@ -173,20 +172,21 @@ fn signed_life_lifelink_counter_and_marked_damage_state_bounds_roll_back() {
         None,
     )
     .unwrap();
-    incomplete(damage(&mut game, source, 2, ChooseSpec::SpecificPlayer(B)).unwrap_err());
+    damage(&mut game, source, 2, ChooseSpec::SpecificPlayer(B)).unwrap();
     assert_eq!(
         game.player(B)
             .unwrap()
             .counter_count(ironsmith::CounterType::Poison),
-        u32::MAX - 1
+        u32::MAX
     );
+    assert_eq!(game.player(B).unwrap().life, 30);
     let (mut game, source) = setup("");
     game.set_damage_marked(source, u32::MAX - 1);
-    incomplete(damage(&mut game, source, 2, ChooseSpec::SpecificObject(source)).unwrap_err());
-    assert_eq!(game.damage_on(source), u32::MAX - 1);
+    damage(&mut game, source, 2, ChooseSpec::SpecificObject(source)).unwrap();
+    assert_eq!(game.damage_on(source), u32::MAX);
 }
 #[test]
-fn combat_representation_error_restores_whole_step_and_replacement() {
+fn combat_damage_beyond_the_carrier_saturates_and_completes_the_step() {
     let (mut game, source) = setup("");
     add(
         &mut game,
@@ -200,35 +200,18 @@ fn combat_representation_error_restores_whole_step_and_replacement() {
         }],
         ..Default::default()
     };
-    let error = ironsmith::game_loop::try_execute_combat_damage_step_with_dm(
+    ironsmith::game_loop::try_execute_combat_damage_step_with_dm(
         &mut game,
         &combat,
         false,
         &mut ironsmith::decision::SelectFirstDecisionMaker,
     )
-    .unwrap_err();
-    let ironsmith::game_loop::CombatDamageAssignmentErrorKind::Execution(error) = error.kind else {
-        panic!("expected execution failure");
-    };
-    incomplete(error);
-    assert_eq!(game.player(B).unwrap().life, 30);
+    .unwrap();
+    assert_eq!(game.player(B).unwrap().life, i32::MIN);
     assert_eq!(
         game.trigger_event_kind_count_this_turn(ironsmith::events::EventKind::Damage),
-        0
+        1
     );
-    let repeated = ironsmith::game_loop::try_execute_combat_damage_step_with_dm(
-        &mut game,
-        &combat,
-        false,
-        &mut ironsmith::decision::SelectFirstDecisionMaker,
-    )
-    .unwrap_err();
-    assert!(matches!(
-        repeated.kind,
-        ironsmith::game_loop::CombatDamageAssignmentErrorKind::Execution(
-            ExecutionError::ResourceLimitExceeded { .. }
-        )
-    ));
 }
 
 #[test]

@@ -251,19 +251,24 @@ fn cleanup_expires_turn_retention_before_loss_and_keeps_mana_until_the_step_ends
 
 #[test]
 fn large_unspent_scalars_are_explicit_errors_in_queries_and_execution() {
-    use ironsmith::effects::ExecutionError;
-    use ironsmith::static_ability_processor::StaticEffectDiscoveryError;
     for name in ["Ozai, the Phoenix King", "Omnath, Locus of Mana", "Omnath, Locus of the Void"] {
         for definition in definitions(name) {
             let mut game = game(); let source = game.create_object_from_definition(&definition, A, Zone::Battlefield);
             game.refresh_continuous_state().unwrap();
-            game.player_mut(A).unwrap().mana_pool.green = i32::MAX as u32 + 1;
-            assert!(matches!(game.refresh_continuous_state(), Err(StaticEffectDiscoveryError::ScalarRange { .. })));
-            assert!(matches!(game.try_current_characteristics(source), Err(StaticEffectDiscoveryError::ScalarRange { .. })));
-            assert!(ironsmith::decision::compute_legal_actions(&game, A).is_err(), "unknown is not a completed action list");
+            game.player_mut(A).unwrap().mana_pool.green = i32::MAX as u64 + 1;
+            // Pools are u64-wide and unspent-mana selectors saturate at the signed
+            // scalar domain (game quantities clamp at their storage bounds), so a
+            // large pool is a complete, explicit maximum rather than a failure or
+            // a wrapped (negative/small) value.
+            game.refresh_continuous_state().unwrap();
+            assert!(game.try_current_characteristics(source).unwrap().is_some());
+            ironsmith::decision::compute_legal_actions(&game, A).unwrap();
             let ctx = EffectContext::new_default(source, A);
-            assert!(matches!(ironsmith::effects::helpers::resolve_value(&game,
-                &ironsmith::effect::Value::UnspentMana(PlayerFilter::You), &ctx), Err(ExecutionError::ResourceLimitExceeded { .. })));
+            assert_eq!(ironsmith::effects::helpers::resolve_value(&game,
+                &ironsmith::effect::Value::UnspentMana(PlayerFilter::You), &ctx).unwrap(), i32::MAX);
+            assert_eq!(ironsmith::effects::helpers::resolve_value_wide(&game,
+                &ironsmith::effect::Value::UnspentMana(PlayerFilter::You), &ctx).unwrap(), i64::from(i32::MAX) + 1);
+            if name.starts_with("Omnath") { assert_eq!(pt(&game, source), (i32::MAX, i32::MAX), "mana-derived P/T saturates"); }
             game.player_mut(A).unwrap().mana_pool.green = 501;
             game.refresh_continuous_state().unwrap();
             assert!(game.try_current_characteristics(source).unwrap().is_some(), "a prior error does not poison a later complete query");
@@ -272,43 +277,51 @@ fn large_unspent_scalars_are_explicit_errors_in_queries_and_execution() {
 }
 #[test]
 fn representable_mana_count_cannot_wrap_base_power_or_publish_a_successful_credit() {
-    use ironsmith::effects::ExecutionError;
-    use ironsmith::static_ability_processor::StaticEffectDiscoveryError;
     for (name, base) in [("Omnath, Locus of Mana", 1i32), ("Omnath, Locus of the Void", 6i32)] {
         for definition in definitions(name) {
             let mut game = game(); let source = game.create_object_from_definition(&definition, A, Zone::Battlefield);
             let safe = (i32::MAX - base) as u32;
-            game.player_mut(A).unwrap().mana_pool.green = safe;
+            game.player_mut(A).unwrap().mana_pool.green = u64::from(safe);
             game.refresh_continuous_state().unwrap(); assert_eq!(pt(&game, source), (i32::MAX, i32::MAX));
-            let result = AddManaEffect::you(vec![ManaSymbol::Green])
-                .execute(&mut game, &mut EffectContext::new_default(source, A));
-            assert!(matches!(result, Err(ExecutionError::ContinuousDiscovery(StaticEffectDiscoveryError::ScalarRange { .. }))));
-            assert_eq!(game.player(A).unwrap().mana_pool.green, safe, "invalid production is rolled back");
-            assert_eq!(pt(&game, source), (i32::MAX, i32::MAX));
+            // Producing past the P/T boundary is a real credit: the pool is u64-wide
+            // and the mana-derived P/T saturates at i32::MAX instead of wrapping
+            // or failing discovery.
+            AddManaEffect::you(vec![ManaSymbol::Green])
+                .execute(&mut game, &mut EffectContext::new_default(source, A)).unwrap();
+            assert_eq!(game.player(A).unwrap().mana_pool.green, u64::from(safe) + 1, "the produced mana is credited");
+            game.refresh_continuous_state().unwrap();
+            assert_eq!(pt(&game, source), (i32::MAX, i32::MAX), "base power cannot wrap negative");
             game.object_mut(source).unwrap().add_counters(ironsmith::CounterType::PlusOnePlusOne, 1);
-            assert!(matches!(game.refresh_continuous_state(), Err(StaticEffectDiscoveryError::ScalarRange { .. })),
+            game.refresh_continuous_state().unwrap();
+            assert_eq!(pt(&game, source), (i32::MAX, i32::MAX),
                 "counter addition cannot wrap a mana-derived P/T result");
         }
     }
 }
 #[test]
 fn wide_pool_totals_reject_cross_color_and_cross_player_overflow() {
-    use ironsmith::static_ability_processor::StaticEffectDiscoveryError;
     let mut game = game();
-    game.player_mut(A).unwrap().mana_pool.white = u32::MAX;
-    game.player_mut(A).unwrap().mana_pool.blue = u32::MAX;
+    game.player_mut(A).unwrap().mana_pool.white = u64::from(u32::MAX);
+    game.player_mut(A).unwrap().mana_pool.blue = u64::from(u32::MAX);
     assert_eq!(game.player(A).unwrap().mana_pool.total_wide(), u64::from(u32::MAX) * 2);
-    assert!(matches!(game.refresh_continuous_state(), Err(StaticEffectDiscoveryError::ScalarRange { .. })));
+    // Wide totals are exact (no cross-color wrap) and selectors saturate at the
+    // signed scalar domain, so discovery stays complete.
+    game.refresh_continuous_state().unwrap();
+    let source = card(&mut game, A, "Type: Artifact", Zone::Battlefield);
+    let ctx = EffectContext::new_default(source, A);
+    let unspent = |game: &GameState, player| ironsmith::effects::helpers::resolve_value_wide(game,
+        &ironsmith::effect::Value::UnspentMana(player), &ctx).unwrap();
+    assert_eq!(unspent(&game, PlayerFilter::You), i64::from(u32::MAX) * 2, "colors sum without wrapping");
     game.player_mut(A).unwrap().mana_pool = Default::default();
-    game.player_mut(A).unwrap().mana_pool.green = i32::MAX as u32;
+    game.player_mut(A).unwrap().mana_pool.green = i32::MAX as u64;
     game.player_mut(B).unwrap().mana_pool.colorless = 1;
-    assert!(matches!(game.refresh_continuous_state(), Err(StaticEffectDiscoveryError::ScalarRange { .. })));
+    game.refresh_continuous_state().unwrap();
+    assert_eq!(unspent(&game, PlayerFilter::Any), i64::from(i32::MAX) + 1, "players sum without wrapping");
 }
 
 #[test]
 fn ordinary_pt_range_markers_cannot_escape_a_successful_checked_frame_without_a_mana_anthem() {
-    use ironsmith::effects::{ExecutionError, execute_effect};
-    use ironsmith::static_ability_processor::StaticEffectDiscoveryError;
+    use ironsmith::effects::execute_effect;
     for counters in [false, true] {
         let mut game = game();
         let source = card(&mut game, A, &format!("Type: Creature\nPower/Toughness: {0}/{0}", i32::MAX), Zone::Battlefield);
@@ -319,13 +332,16 @@ fn ordinary_pt_range_markers_cannot_escape_a_successful_checked_frame_without_a_
                 source, A, ironsmith::continuous::EffectTarget::Specific(source),
                 ironsmith::continuous::Modification::ModifyPowerToughness { power: 1, toughness: 1 }));
         }
-        assert!(matches!(game.refresh_continuous_state(), Err(StaticEffectDiscoveryError::ScalarRange { .. })));
-        assert!(game.continuous_query_snapshot().is_err());
+        // Out-of-range P/T saturates at i32::MAX (game quantities clamp at their
+        // storage bounds), so the checked frame is a successful, non-wrapped view
+        // and the fight uses the saturated power rather than a negative one.
+        game.refresh_continuous_state().unwrap();
+        assert!(game.continuous_query_snapshot().is_ok());
+        assert_eq!(pt(&game, source), (i32::MAX, i32::MAX));
         let fight = ironsmith::effect::Effect::fight(ironsmith::target::ChooseSpec::SpecificObject(source),
             ironsmith::target::ChooseSpec::SpecificObject(other));
-        assert!(matches!(execute_effect(&mut game, &fight, &mut EffectContext::new_default(source, A)),
-            Err(ExecutionError::ContinuousDiscovery(StaticEffectDiscoveryError::ScalarRange { .. }))));
-        assert_eq!(game.damage_on(source), 0);
-        assert_eq!(game.damage_on(other), 0);
+        execute_effect(&mut game, &fight, &mut EffectContext::new_default(source, A)).unwrap();
+        assert_eq!(game.damage_on(source), 1);
+        assert!(game.damage_on(other) > 0, "a saturated power still deals damage, never wraps to zero or negative");
     }
 }

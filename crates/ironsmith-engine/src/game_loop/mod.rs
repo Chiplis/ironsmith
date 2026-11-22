@@ -91,6 +91,9 @@ pub(crate) use targeting::{
 };
 mod sba_triggers;
 mod stack_resolution;
+pub(crate) use self::stack_resolution::{
+    effect_references_prior_object_targets, previous_object_target_assignments,
+};
 pub(crate) use targeting::{
     AssignmentLegalTargets, capture_completed_spell_cast,
     capture_completed_spell_cast_with_outputs, current_stack_entry_target_assignments,

@@ -536,6 +536,7 @@ fn incomplete_group_rolls_back_all_coins_and_replays_same_faces_after_native_res
             assert_eq!(receipt.iter().map(|coin| coin.turn_ordinal).collect::<Vec<_>>(), [1, 2, 3]);
             assert_eq!(completed.as_count(), Some(2));
             let batches: std::collections::HashSet<_> = completed.events.iter()
+                .filter(|event| event.kind() == ironsmith::events::EventKind::CoinFlipped)
                 .map(|event| event.simultaneous_batch().unwrap()).collect();
             assert_eq!(batches.len(), if repeat { 3 } else { 1 },
                 "repeated one-coin instructions remain separate simultaneous batches");
@@ -548,26 +549,21 @@ fn incomplete_group_rolls_back_all_coins_and_replays_same_faces_after_native_res
 
 #[test]
 fn typed_ordinal_failure_rolls_back_a_partial_repeat_and_keeps_forced_faces_for_retry() {
-    use ironsmith::effects::ExecutionError;
     let mut g = game();
     let source = object(&mut g, A, Zone::Battlefield, "Capacity producer", "Type: Artifact");
     g.turn_store.turn_history.completed_coin_flips_this_turn.insert(A, i32::MAX as u32 - 1);
     force(&mut g, &[H, T]);
-    let random = g.irreversible_random_count();
-    let ui_events = g.ui_effect_events().count();
     let mut effect = FlipCoinEffect::new(PlayerFilter::You);
     effect.repeat_until_loss = true;
     let mut dm = Choices::default();
-    let result = effect.execute(&mut g, &mut ExecutionContext::new(source, A, &mut dm));
-    assert!(matches!(result, Err(ExecutionError::ResourceLimitExceeded { .. })));
-    assert_eq!(g.turn_store.turn_history.completed_coin_flip_count(A), i32::MAX as u32 - 1);
-    assert_eq!(g.irreversible_random_count(), random);
-    assert_eq!(g.ui_effect_events().count(), ui_events);
-    assert!(g.take_pending_trigger_events().is_empty());
-    g.turn_store.turn_history.completed_coin_flips_this_turn.insert(A, 0);
+    // Completed coin-flip ordinals saturate at the i32 domain the value
+    // interpreter reads (game quantities clamp at their storage bounds), so a
+    // repeat crossing the bound is no longer a typed capacity failure: it
+    // completes with the forced faces and the ordinal clamps instead of wrapping.
     let completed = effect.execute(&mut g, &mut ExecutionContext::new(source, A, &mut dm)).unwrap();
     assert_eq!(completed.coin_flip_results().unwrap().iter().map(|coin| coin.face).collect::<Vec<_>>(), [H, T]);
     assert_eq!(completed.as_count(), Some(1));
+    assert_eq!(g.turn_store.turn_history.completed_coin_flip_count(A), i32::MAX as u32);
 }
 
 #[test]
@@ -587,7 +583,7 @@ fn thumb_ignored_coins_do_not_enter_receipts_history_or_native_win_triggers() {
         let mut dm = Choices::default();
         let out = flip(&mut g, producer, A, 2, false, false, &mut dm);
         assert_eq!(out.coin_flip_results().unwrap().iter().map(|coin| coin.face).collect::<Vec<_>>(), [H, T]);
-        assert_eq!(out.events.len(), 2);
+        assert_eq!(coin_events(&out), 2);
         assert_eq!(out.as_count(), Some(1));
         assert_eq!(g.turn_store.turn_history.completed_coin_flip_count(A), 2);
         assert_eq!(stack(&mut g, out.events, &mut dm), 1);
@@ -623,7 +619,7 @@ fn thumb_choice_after_physical_coins_suspends_without_publishing_ignored_or_kept
         let out = flip(&mut g, source, A, 1, false, false, &mut dm);
         assert_eq!(out.coin_flip_results().unwrap()[0].face, H);
         assert_eq!(out.coin_flip_results().unwrap()[0].turn_ordinal, 1);
-        assert_eq!(out.events.len(), 1);
+        assert_eq!(coin_events(&out), 1);
     }
 }
 
@@ -769,7 +765,7 @@ fn duplicate_thumb_occurrences_multiply_and_phasing_and_control_change_the_affec
         assert_eq!(g.irreversible_random_count(), before + 4);
         assert_eq!(out.coin_flip_results().unwrap().len(), 1);
         assert_eq!(out.coin_flip_results().unwrap()[0].face, H);
-        assert_eq!(out.events.len(), 1);
+        assert_eq!(coin_events(&out), 1);
         assert_eq!(dm.option_players, [A, A, A], "two nested keep choices and one outer keep choice");
 
         g.phase_out(source);
@@ -1118,7 +1114,7 @@ fn both_frozen_thumb_entries_are_paid_artifacts_whose_ignored_coins_never_comple
             let out = flip(&mut g, source, A, 2, false, false, &mut dm);
             assert_eq!(out.coin_flip_results().unwrap().iter().map(|result| result.face).collect::<Vec<_>>(), [H, T]);
             assert_eq!(out.as_count(), Some(1));
-            assert_eq!(out.events.len(), 2);
+            assert_eq!(coin_events(&out), 2);
             assert_eq!(g.turn_store.turn_history.completed_coin_flip_count(A), 2);
             g.move_object_by_effect(source, Zone::Graveyard).unwrap();
             let before = g.irreversible_random_count();
@@ -1301,6 +1297,13 @@ fn required_player_iteration_shares_one_token_resource_transaction_across_partic
         assert_eq!(g.battlefield.iter().filter(|id| g.object(**id).is_some_and(|object|
             object.kind == ironsmith::object::ObjectKind::Token && game_controller(&g, object.id) == recipient)).count(), 1);
     }
+}
+
+/// Coin results only. Each completed flip instruction also reports one
+/// "flip one or more coins" keyword action (observed by "Whenever you flip one
+/// or more coins", e.g. Chira, All In), which is not itself a coin.
+fn coin_events(out: &EffectOutcome) -> usize {
+    out.events.iter().filter(|event| event.kind() == ironsmith::events::EventKind::CoinFlipped).count()
 }
 
 fn game_controller(g: &GameState, id: ObjectId) -> PlayerId {

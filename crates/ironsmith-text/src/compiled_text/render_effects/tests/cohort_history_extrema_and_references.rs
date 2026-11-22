@@ -23,10 +23,11 @@ fn cohort_labeled_celebration_affects_only_source_and_counts_entry_history() {
     let opponent =
         game.create_object_from_definition(&creature("Opponent", 2), bob, Zone::Battlefield);
     game.turn_store.turn_history.clear_for_new_turn();
-    let check = |game: &GameState, enabled| {
+    let check = |game: &GameState, enabled, step: u32| {
         assert_eq!(
             game.current_characteristics(source).unwrap().power,
-            Some(if enabled { 3 } else { 2 })
+            Some(if enabled { 3 } else { 2 }),
+            "check at line {step}"
         );
         assert_eq!(
             game.current_has_static_ability_id(
@@ -43,7 +44,7 @@ fn cohort_labeled_celebration_affects_only_source_and_counts_entry_history() {
             ));
         }
     };
-    check(&game, false);
+    check(&game, false, line!());
     let land = crate::CardDefinitionBuilder::new(CardId::new(), "Land")
         .card_types(vec![CardType::Land])
         .build();
@@ -51,24 +52,27 @@ fn cohort_labeled_celebration_affects_only_source_and_counts_entry_history() {
     game.move_object_by_effect(id, Zone::Battlefield).unwrap();
     let id = game.create_object_from_definition(&creature("Opponent entrant", 1), bob, Zone::Hand);
     game.move_object_by_effect(id, Zone::Battlefield).unwrap();
-    check(&game, false);
+    check(&game, false, line!());
     let first =
         game.create_object_from_definition(&creature("First entrant", 1), alice, Zone::Hand);
     let first = game
         .move_object_by_effect(first, Zone::Battlefield)
         .unwrap();
-    check(&game, false);
+    check(&game, false, line!());
     game.move_object_by_effect(first, Zone::Graveyard).unwrap();
     let second =
         game.create_object_from_definition(&creature("Second entrant", 1), alice, Zone::Hand);
     let second = game
         .move_object_by_effect(second, Zone::Battlefield)
         .unwrap();
-    check(&game, true);
+    check(&game, true, line!());
     game.move_object_by_effect(second, Zone::Graveyard).unwrap();
-    check(&game, true);
+    check(&game, true, line!());
     game.turn_store.turn_history.clear_for_new_turn();
-    check(&game, false);
+    // Writing the history field directly bypasses the engine's mutation
+    // observers, so the cached characteristics must be dropped explicitly.
+    game.invalidate_continuous_state_public();
+    check(&game, false, line!());
 }
 
 #[test]

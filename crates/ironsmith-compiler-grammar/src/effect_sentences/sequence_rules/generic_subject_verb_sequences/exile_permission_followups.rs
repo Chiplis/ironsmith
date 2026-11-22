@@ -144,15 +144,16 @@ mod tests {
         let delayed = parse(
             "Exile the top card of your library. You may play that card this turn. When you play a card this way, this enchantment deals 2 damage to each player.",
         );
+        // "a card this way" binds the play/cast to the preceding permission.
         assert!(matches!(
             delayed.last(),
             Some(EffectAst::Delayed(
                 DelayedEffectAst::DelayedTriggerThisTurn {
-                    trigger: TriggerSpec::Either(_, _),
+                    trigger: TriggerSpec::PlayedOrCastThroughPreviousPermission(inner),
                     ..
                 }
-            ))
-        ));
+            )) if matches!(inner.as_ref(), TriggerSpec::Either(_, _))
+        ), "{delayed:#?}");
     }
 
     #[test]
