@@ -9,7 +9,7 @@ This is the lean Ironsmith build: engine code is included, but the global card r
 Pin an exact version while the public API is pre-1.0:
 
 ```sh
-npm install --save-exact ironsmith-wasm@0.9.2
+npm install --save-exact ironsmith-wasm@0.9.5
 ```
 
 ## Initialize
