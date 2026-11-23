@@ -350,3 +350,148 @@ fn replacement_added_tokens_are_matched_apart_from_the_grouped_copies() {
         ],
     );
 }
+
+/// A random table as the Random Game sheet builds one (defaults: two
+/// players; battlefield 3 random permanents + 3 basics, hand 7, library 30,
+/// graveyard 3; Omniscience), plus `SUNBORNS` Exalted Sunborns and Followed
+/// Footsteps on Alice's side. Times the upkeep batch for each seed in
+/// `SEEDS` (e.g. "1-20"). Cards come from the real catalog.
+#[test]
+#[ignore = "timing probe; run with --ignored --nocapture"]
+fn random_board_sunborn_probe() {
+    use ironsmith::types::CardType;
+    let _guard = crate::test_id_counter_guard();
+    let seeds = std::env::var("SEEDS").unwrap_or_else(|_| "1-8".into());
+    let (from, to) = seeds.split_once('-').map_or_else(
+        || (seeds.parse().unwrap(), seeds.parse().unwrap()),
+        |(a, b)| (a.parse::<u64>().unwrap(), b.parse::<u64>().unwrap()),
+    );
+    let sunborns: usize = std::env::var("SUNBORNS").ok().and_then(|v| v.parse().ok()).unwrap_or(9);
+    let index: serde_json::Value = serde_json::from_str(
+        &std::fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/../../web/ui/public/cards/index.json")).unwrap(),
+    )
+    .unwrap();
+    let names: Vec<String> = index["cards"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|card| card["score"].as_f64().is_some_and(|score| score >= 1.0))
+        .filter_map(|card| card["name"].as_str().map(str::to_string))
+        .collect();
+    let catalog = ironsmith_tools::default_cards_path();
+    for seed in from..=to {
+        let mut state = seed.wrapping_mul(0x9E37_79B9_7F4A_7C15) | 1;
+        let mut next = move || {
+            state ^= state << 13;
+            state ^= state >> 7;
+            state ^= state << 17;
+            state
+        };
+        let picked: Vec<String> = (0..260).map(|_| names[(next() % names.len() as u64) as usize].clone()).collect();
+        let payloads = ironsmith_tools::load_card_payloads_by_names(catalog.to_str().unwrap(), &picked).unwrap();
+        let mut permanents = Vec::new();
+        let mut any = Vec::new();
+        for name in &picked {
+            let Some(payload) = payloads.values().flatten().find(|payload| payload.name == *name) else { continue };
+            if payload.linked_face_layout.is_some() {
+                continue;
+            }
+            let Ok(definition) = ironsmith_tools::compile_runtime_definition_from_payload(payload) else { continue };
+            if ironsmith::cards::unsupported_generated_definition_error(&definition).is_some() {
+                continue;
+            }
+            let card = &definition.card;
+            if card.mana_cost.as_ref().is_some_and(|cost| cost.mana_value() > 7) {
+                continue;
+            }
+            let permanent = !card.card_types.iter().any(|t| matches!(t, CardType::Instant | CardType::Sorcery))
+                && card.card_types.iter().any(|t| matches!(t, CardType::Creature | CardType::Artifact | CardType::Enchantment | CardType::Planeswalker | CardType::Land));
+            if permanent && !card.supertypes.contains(&ironsmith::types::Supertype::Legendary) {
+                permanents.push(definition.clone());
+            }
+            any.push(definition);
+        }
+        let basic = |name: &str, kind: &str, mana: &str| card(name, &format!("Type: Basic Land — {kind}\n({{T}}: Add {{{mana}}}.)"));
+        let basics = [basic("Plains", "Plains", "W"), basic("Island", "Island", "U"), basic("Swamp", "Swamp", "B"), basic("Mountain", "Mountain", "R"), basic("Forest", "Forest", "G")];
+        let mut wasm = WasmGame::new();
+        let alice = PlayerId::from_index(0);
+        let mut board = Vec::new();
+        let mut take = |pool: &Vec<ironsmith::CardDefinition>, n: usize, next: &mut dyn FnMut() -> u64| -> Vec<ironsmith::CardDefinition> {
+            (0..n).filter(|_| !pool.is_empty()).map(|_| pool[(next() % pool.len() as u64) as usize].clone()).collect()
+        };
+        for player in [PlayerId::from_index(0), PlayerId::from_index(1)] {
+            for definition in take(&permanents, 3, &mut next) {
+                board.push(definition.name().to_string());
+                wasm.game.create_object_from_definition(&definition, player, Zone::Battlefield);
+            }
+            for i in 0..3 {
+                wasm.game.create_object_from_definition(&basics[(next() as usize + i) % 5], player, Zone::Battlefield);
+            }
+            for definition in take(&any, 6, &mut next) {
+                wasm.game.create_object_from_definition(&definition, player, Zone::Hand);
+            }
+            for definition in take(&any, 18, &mut next) {
+                wasm.game.create_object_from_definition(&definition, player, Zone::Library);
+            }
+            for i in 0..12 {
+                wasm.game.create_object_from_definition(&basics[i % 5], player, Zone::Library);
+            }
+            for definition in take(&any, 3, &mut next) {
+                wasm.game.create_object_from_definition(&definition, player, Zone::Graveyard);
+            }
+        }
+        let omniscience = card("Omniscience", "Mana cost: {7}{U}{U}{U}\nType: Enchantment\nYou may cast spells from your hand without paying their mana costs.");
+        wasm.game.create_object_from_definition(&omniscience, alice, Zone::Battlefield);
+        let sunborn = card(
+            "Exalted Sunborn",
+            "Mana cost: {3}{W}{W}\nType: Creature — Angel Wizard\nPower/Toughness: 4/5\nFlying, lifelink\nIf one or more tokens would be created under your control, twice that many of those tokens are created instead.",
+        );
+        let footsteps = card(
+            "Followed Footsteps",
+            "Mana cost: {3}{U}{U}\nType: Enchantment — Aura\nEnchant creature\nAt the beginning of your upkeep, create a token that's a copy of enchanted creature.",
+        );
+        let first = wasm.game.create_object_from_definition(&sunborn, alice, Zone::Battlefield);
+        for _ in 1..sunborns {
+            wasm.game.create_object_from_definition(&sunborn, alice, Zone::Battlefield);
+        }
+        let aura = wasm.game.create_object_from_definition(&footsteps, alice, Zone::Battlefield);
+        assert!(wasm.game.attach_object_to_target(aura, ironsmith::object::AttachmentTarget::Object(first)));
+        wasm.game.turn.active_player = alice;
+        wasm.game.turn.priority_player = Some(alice);
+        wasm.game.turn.phase = Phase::Beginning;
+        wasm.game.turn.step = Some(Step::Upkeep);
+        if wasm.game.refresh_continuous_state().is_err() {
+            eprintln!("seed {seed}: refresh failed; board {board:?}");
+            continue;
+        }
+        wasm.set_deferred_priority_analysis(true);
+        wasm.runner = Some(TurnRunner::from_state_for_sync(TurnState::Upkeep));
+        let t = std::time::Instant::now();
+        if wasm.advance_until_decision().is_err() {
+            eprintln!("seed {seed}: advance failed");
+            continue;
+        }
+        let before = wasm.game.battlefield.len();
+        eprintln!("seed {seed}: resolving");
+        let mut resolve = std::time::Duration::ZERO;
+        let mut ok = true;
+        for _ in 0..20 {
+            if !matches!(wasm.pending_decision.as_ref(), Some(DecisionContext::Priority(_))) {
+                ok = false;
+                break;
+            }
+            let t = std::time::Instant::now();
+            pass(&mut wasm);
+            resolve += t.elapsed();
+            if wasm.game.battlefield.len() > before + 100 || wasm.game.stack.is_empty() {
+                break;
+            }
+        }
+        eprintln!(
+            "seed {seed}: advance {:?} resolve {resolve:?} created {} effects {} ok={ok} board {board:?}",
+            t.elapsed() - resolve,
+            wasm.game.battlefield.len() - before,
+            wasm.game.all_continuous_effects().len(),
+        );
+    }
+}

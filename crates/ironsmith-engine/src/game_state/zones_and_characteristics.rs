@@ -7979,7 +7979,10 @@ retain_original_types: false, retain_original_name: false,
                         return Vec::new();
                     }
                     let zone = object.zone;
-                    let controller = self.controller_of(object);
+                    // Most objects have no restriction static; their
+                    // controller (a layered read) is never needed.
+                    let controller_cell = std::cell::OnceCell::new();
+                    let controller = || *controller_cell.get_or_init(|| self.controller_of(object));
                     let mut abilities = object
                         .abilities
                         .iter()
@@ -7995,7 +7998,7 @@ retain_original_types: false, retain_original_name: false,
                                 Some((
                                     static_ability.clone(),
                                     object_id,
-                                    controller,
+                                    controller(),
                                     Some(crate::continuous::AbilityOrigin::Printed(slot)),
                                 ))
                             }
@@ -8012,7 +8015,7 @@ retain_original_types: false, retain_original_name: false,
                                         && static_ability.is_active(self, object_id)
                                 })
                                 .map(|static_ability| {
-                                    (static_ability, object_id, controller, None)
+                                    (static_ability, object_id, controller(), None)
                                 }),
                         );
                         abilities.extend(
@@ -8026,7 +8029,7 @@ retain_original_types: false, retain_original_name: false,
                                         && static_ability.is_active(self, object_id)
                                 })
                                 .map(|static_ability| {
-                                    (static_ability, object_id, controller, None)
+                                    (static_ability, object_id, controller(), None)
                                 }),
                         );
                     }
@@ -8071,7 +8074,8 @@ retain_original_types: false, retain_original_name: false,
                         return Vec::new();
                     }
                     let zone = object.zone;
-                    let controller = self.controller_of(object);
+                    let controller_cell = std::cell::OnceCell::new();
+                    let controller = || *controller_cell.get_or_init(|| self.controller_of(object));
                     match zone {
                         Zone::Battlefield => match dirty_batch.as_mut() {
                             None => self.calculated_characteristics_arc(object_id),
@@ -8092,7 +8096,7 @@ retain_original_types: false, retain_original_name: false,
                                         (
                                             static_ability.clone(),
                                             object_id,
-                                            controller,
+                                            controller(),
                                             chars.abilities.origin(slot).cloned(),
                                         )
                                     })
@@ -8112,7 +8116,7 @@ retain_original_types: false, retain_original_name: false,
                                         Some((
                                             static_ability.clone(),
                                             object_id,
-                                            controller,
+                                            controller(),
                                             Some(crate::continuous::AbilityOrigin::Printed(slot)),
                                         ))
                                     } else {
@@ -8376,8 +8380,33 @@ retain_original_types: false, retain_original_name: false,
                 || self.merged_permanent(object.stable_id).is_some()
                 || unmodified.iter().chain(object.counters.occurrence_abilities()).any(|ability| matches!(&ability.kind,
                     AbilityKind::Static(static_ability) if Self::static_grants_permission(static_ability))),
+            hand_reveal_cast_grantor: unmodified.iter().chain(object.counters.occurrence_abilities()).any(|ability| matches!(&ability.kind,
+                    AbilityKind::Static(static_ability) if Self::static_grants_hand_reveal_cast(static_ability)))
+                || live_grants.iter().any(Self::static_grants_hand_reveal_cast),
             trigger_kinds,
         }
+    }
+
+    /// A static granting an alternative cast that reveals from hand when an
+    /// event happens: the only static grants a hand-reveal window reads.
+    pub(crate) fn static_grants_hand_reveal_cast(ability: &StaticAbility) -> bool {
+        ability.grant_spec().is_some_and(|spec| Self::grantable_is_hand_reveal_cast(&spec.grantable))
+    }
+
+    pub(crate) fn grantable_is_hand_reveal_cast(grantable: &crate::grant::Grantable) -> bool {
+        matches!(grantable, crate::grant::Grantable::AlternativeCast(method)
+            if method.battlefield_instructions().hand_reveal_event.is_some())
+    }
+
+    /// Whether any hand card can be offered a granted hand-reveal cast: a
+    /// stored grant, a static on some object, or an effect that could give
+    /// some object such a static (fail-safe for copy and text changes).
+    pub(crate) fn hand_reveal_cast_grants_may_exist(&self) -> bool {
+        self.effect_store.grant_registry.grants.iter().any(|grant| Self::grantable_is_hand_reveal_cast(&grant.grantable))
+            || self.board_static_summary().hand_reveal_cast_grantor
+            || self.try_all_continuous_effects_arc().map_or(true, |effects| effects.iter().any(|effect| {
+                Self::modification_may_grant_static_ability(&effect.modification, &Self::static_grants_hand_reveal_cast)
+            }))
     }
 
     /// A static that `GrantRegistry::collect_static_grants` reads: a grant

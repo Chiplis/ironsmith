@@ -8148,24 +8148,45 @@ fn prepared_object_etb_replacement_effects(
     }
     // Entry replacements can be granted by another permanent. Inspect the
     // prospective characteristics, not only the entering card's printed text.
-    let Some(prospective) = etb
-        .try_prospective_game_state(game)
-        .map_err(crate::effects::ExecutionError::ContinuousDiscovery)?
-    else {
-        return Ok(None);
+    // A grouped member's identical plain entry has what its group's first
+    // member was derived to have (CR 614.12: the same pre-event battlefield),
+    // unless an enters-as-copy choice needs the prospective world itself.
+    let shape = etb.plain_entry_shape();
+    let grouped = shape
+        .as_ref()
+        .and_then(|shape| game.grouped_prospective_entry(etb.object, shape));
+    let mut prospective_world = None;
+    let (chars, controller, prospective_card) = match grouped {
+        Some(grouped) => grouped,
+        None => {
+            let Some(prospective) = etb
+                .try_prospective_game_state(game)
+                .map_err(crate::effects::ExecutionError::ContinuousDiscovery)?
+            else {
+                return Ok(None);
+            };
+            // This disposable world is queried for one entrant. Warming the entire
+            // battlefield cache here repeats a full batch for every token in a group.
+            let effects = prospective.try_all_continuous_effects_arc()
+                .map_err(crate::effects::ExecutionError::ContinuousDiscovery)?;
+            let chars = std::sync::Arc::new(prospective
+                .calculated_characteristics_with_effects(etb.object, &effects)
+                .ok_or(crate::effects::ExecutionError::ObjectNotFound(etb.object))?);
+            // CR 614.12 also includes already-existing ability grants. They need
+            // the prospective battlefield view even when no as-enters program ran.
+            let controller = prospective
+                .current_controller(etb.object)
+                .ok_or(crate::effects::ExecutionError::ObjectNotFound(etb.object))?;
+            let card = prospective.object(etb.object).and_then(|object| object.card);
+            let copies = chars.abilities.iter().any(|ability| matches!(&ability.kind,
+                crate::ability::AbilityKind::Static(ability) if ability.enter_as_copy_as_enters().is_some()));
+            if !copies && let Some(shape) = shape {
+                game.record_grouped_prospective_entry(etb.object, shape, chars.clone(), controller, card);
+            }
+            prospective_world = Some(prospective);
+            (chars, controller, card)
+        }
     };
-    // This disposable world is queried for one entrant. Warming the entire
-    // battlefield cache here repeats a full batch for every token in a group.
-    let effects = prospective.try_all_continuous_effects_arc()
-        .map_err(crate::effects::ExecutionError::ContinuousDiscovery)?;
-    let chars = prospective
-        .calculated_characteristics_with_effects(etb.object, &effects)
-        .ok_or(crate::effects::ExecutionError::ObjectNotFound(etb.object))?;
-    // CR 614.12 also includes already-existing ability grants. They need
-    // the prospective battlefield view even when no as-enters program ran.
-    let controller = prospective
-        .current_controller(etb.object)
-        .ok_or(crate::effects::ExecutionError::ObjectNotFound(etb.object))?;
     let mut effects = Vec::new();
     for (index, ability) in chars.abilities.iter().enumerate() {
         let crate::ability::AbilityKind::Static(ability) = &ability.kind else {
@@ -8184,11 +8205,7 @@ fn prepared_object_etb_replacement_effects(
                 etb.enters_as_copy_of
                     .and_then(|source| game.object(source))
                     .and_then(|source| source.card)
-                    .or_else(|| {
-                        prospective
-                            .object(etb.object)
-                            .and_then(|object| object.card)
-                    })
+                    .or(prospective_card)
             })
             .flatten();
         let parent = crate::replacement::ReplacementAbilityOrigin {
@@ -8237,8 +8254,12 @@ fn prepared_object_etb_replacement_effects(
                 continue;
             }
             let mut copies = Vec::new();
+            // Never reached for a cached entry: it had no copy choice.
+            let Some(prospective) = prospective_world.as_ref() else {
+                continue;
+            };
             push_enter_as_copy_effects_for_spec(
-                &prospective,
+                prospective,
                 etb.object,
                 etb.object,
                 controller,
@@ -11260,17 +11281,32 @@ fn prepare_etb_replacements_inner(
                             interactive_replacement: None,
                         };
                         if etb.prepared_choices.is_none() {
-                            let prospective = etb
-                                .try_prospective_game_state(game)
-                                .map_err(crate::effects::ExecutionError::ContinuousDiscovery)?
-                                .ok_or(crate::effects::ExecutionError::ObjectNotFound(object))?;
-                            let abilities = prospective
-                                .calculated_characteristics(object)
-                                .ok_or(crate::effects::ExecutionError::ObjectNotFound(object))?
-                                .abilities
-                                .iter()
-                                .cloned()
-                                .collect();
+                            // A grouped member's identical plain entry has the
+                            // abilities its first member was derived to have.
+                            let shape = etb.plain_entry_shape();
+                            let grouped = shape
+                                .as_ref()
+                                .and_then(|shape| game.grouped_prospective_abilities(object, shape));
+                            let abilities: Vec<_> = match grouped {
+                                Some(abilities) => abilities,
+                                None => {
+                                    let prospective = etb
+                                        .try_prospective_game_state(game)
+                                        .map_err(crate::effects::ExecutionError::ContinuousDiscovery)?
+                                        .ok_or(crate::effects::ExecutionError::ObjectNotFound(object))?;
+                                    let abilities: Vec<_> = prospective
+                                        .calculated_characteristics(object)
+                                        .ok_or(crate::effects::ExecutionError::ObjectNotFound(object))?
+                                        .abilities
+                                        .iter()
+                                        .cloned()
+                                        .collect();
+                                    if let Some(shape) = shape {
+                                        game.record_grouped_prospective_abilities(object, shape, &abilities);
+                                    }
+                                    abilities
+                                }
+                            };
                             let Some(prepared) = game.prepare_etb_entry_after_programs(
                                 object,
                                 event_result,

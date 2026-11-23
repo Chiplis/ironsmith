@@ -33,10 +33,19 @@ struct Opportunity {
 }
 fn opportunities(game:&GameState,hands:&[(PlayerId,Vec<crate::ids::ObjectId>)])->Result<Vec<Opportunity>,ExecutionError> {
     let mut result=Vec::new();
+    // Every hand card asks for its potential grants (a whole-board static
+    // scan); only a granted hand-reveal cast is read from them.
+    let grants_possible=game.hand_reveal_cast_grants_may_exist();
     for (player,cards) in hands {for &card_id in cards {
         let Some(object)=game.object(card_id).filter(|object|object.zone==Zone::Hand && object.owner==*player) else{continue};
         let mut methods=object.alternative_casts.iter().cloned().enumerate().map(|(index,method)|(method,Some(index),None,None)).collect::<Vec<_>>();
-        for grant in game.effect_store.grant_registry.potential_hand_reveal_grants(game,card_id,Zone::Hand,*player) {
+        let grants=if grants_possible {game.effect_store.grant_registry.potential_hand_reveal_grants(game,card_id,Zone::Hand,*player)} else {Vec::new()};
+        #[cfg(debug_assertions)]
+        if !grants_possible && std::env::var_os("IRONSMITH_EFFECT_FREE_SHADOW").is_some() {
+            assert!(!game.effect_store.grant_registry.potential_hand_reveal_grants(game,card_id,Zone::Hand,*player).iter()
+                .any(|grant|GameState::grantable_is_hand_reveal_cast(&grant.grantable)), "a hand-reveal cast grant was hidden by the gate");
+        }
+        for grant in grants {
             if let Grantable::AlternativeCast(method)=&grant.grantable {
                 let source=grant.source.source_id();
                 let context=crate::grant_registry::grant_filter_context(&game.filter_context_for(*player,None),&grant,game).with_source_snapshot(ObjectSnapshot::from_object_id(game,source));
@@ -68,8 +77,25 @@ fn expand_occurrences(game:&GameState,event:&TriggerEvent,offers:Vec<Opportunity
 /// Freeze before a battlefield departure is proposed. The packet is published
 /// only if a real departure subsequently completes; a prevented proposal never
 /// reveals a card. Grants lost in this same departure remain in this packet.
-pub(crate) fn freeze_hand_reveal_frame(game:&GameState,_event:&TriggerEvent)->Result<HandRevealFrame,ExecutionError> {
+pub(crate) fn freeze_hand_reveal_frame(game:&GameState,event:&TriggerEvent)->Result<HandRevealFrame,ExecutionError> {
     let hand_ids=game.players.iter().map(|player|(player.id,player.hand.iter().copied().filter(|id|game.object(*id).is_some()).collect::<Vec<_>>())).collect::<Vec<_>>();
+    // Events of one frozen simultaneous entry share its pre-event frame
+    // while the hands are the ones it read.
+    let hold=game.runtime_cache_frozen_hold();
+    if let Some(hold)=&hold
+        && let Some((held,hands,frame))=game.runtime_cache_frozen_hand_reveal_frame().as_ref()
+        && std::sync::Weak::ptr_eq(held,hold) && *hands==hand_ids
+    {
+        return Ok(frame.clone());
+    }
+    let frame=freeze_hand_reveal_frame_uncached(game,event,&hand_ids)?;
+    if let Some(hold)=hold {
+        *game.runtime_cache_frozen_hand_reveal_frame()=Some((hold,hand_ids,frame.clone()));
+    }
+    Ok(frame)
+}
+fn freeze_hand_reveal_frame_uncached(game:&GameState,_event:&TriggerEvent,hand_ids:&[(PlayerId,Vec<crate::ids::ObjectId>)])->Result<HandRevealFrame,ExecutionError> {
+    let hand_ids=hand_ids.to_vec();
     let opportunities=opportunities(game,&hand_ids)?;
     // A frame without opportunities is used only for a private hidden
     // identity, and only tracked hidden cards have one: skip the hand

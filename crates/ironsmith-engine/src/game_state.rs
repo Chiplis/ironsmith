@@ -1772,6 +1772,12 @@ struct RuntimeCacheState {
     /// The identical-object entry group in progress (see
     /// `GameState::with_grouped_entry`), shared by clones taken inside it.
     pub(crate) grouped_entry: RefCell<Option<GroupedEntry>>,
+    /// The hand-reveal frame frozen for the first event of a frozen entry,
+    /// with the hands it read: later events of that same simultaneous entry
+    /// see the same pre-event grants and hands.
+    pub(crate) frozen_hand_reveal_frame: RefCell<
+        Option<(std::sync::Weak<()>, Vec<(PlayerId, Vec<ObjectId>)>, crate::effects::HandRevealFrame)>,
+    >,
     /// While a batch of simultaneous untaps runs, `untap` records that the
     /// can't-effect tracker is stale here instead of rebuilding it once per
     /// permanent. `None` outside a batch; `Some(pending)` inside one.
@@ -1861,6 +1867,7 @@ impl Clone for RuntimeCacheState {
             deterministic_object_ids: RefCell::new(self.deterministic_object_ids.borrow().clone()),
             static_replacements_frozen: RefCell::new(self.static_replacements_frozen.borrow().clone()),
             grouped_entry: RefCell::new(self.grouped_entry.borrow().clone()),
+            frozen_hand_reveal_frame: RefCell::new(self.frozen_hand_reveal_frame.borrow().clone()),
             cant_update_deferral: Cell::new(self.cant_update_deferral.get()),
             // A clone taken inside a derivation is not itself inside one.
             derived_tap_read_depth: Cell::new(0),
@@ -1931,6 +1938,7 @@ impl RuntimeCacheState {
             deterministic_object_ids: RefCell::new(None),
             static_replacements_frozen: RefCell::new(std::sync::Weak::new()),
             grouped_entry: RefCell::new(None),
+            frozen_hand_reveal_frame: RefCell::new(None),
             cant_update_deferral: Cell::new(None),
             derived_tap_read_depth: Cell::new(0),
             derived_state_read_tapped: Cell::new(false),
@@ -2072,16 +2080,20 @@ pub(crate) struct ObjectStaticSummary {
     /// inspection (`GameState::static_grants_permission`), or text this
     /// summary cannot see (a merged permanent, a split card's other half).
     pub(crate) permission_grantor: bool,
+    /// A static (printed or counter-borne) granting an alternative cast with
+    /// a hand-reveal event (`GameState::static_grants_hand_reveal_cast`).
+    pub(crate) hand_reveal_cast_grantor: bool,
     /// Bit `kind as u8` for each event kind a functioning triggered ability
     /// subscribes to (`may_have_triggered_abilities_for_event_kind`).
     pub(crate) trigger_kinds: u128,
 }
 
 impl ObjectStaticSummary {
-    fn flags(self) -> [bool; 11] {
+    fn flags(self) -> [bool; 12] {
         [self.may_emit, self.level_grants_emitter, self.pt_counters, self.requires_cant_update,
             self.history_designation, self.enter_as_copy, self.goad, self.grant_holder,
-            self.class_event_choice, self.triggers_on_any_kind, self.permission_grantor]
+            self.class_event_choice, self.triggers_on_any_kind, self.permission_grantor,
+            self.hand_reveal_cast_grantor]
     }
 
     pub(crate) fn or(self, other: Self) -> Self {
@@ -2097,6 +2109,7 @@ impl ObjectStaticSummary {
             class_event_choice: self.class_event_choice || other.class_event_choice,
             triggers_on_any_kind: self.triggers_on_any_kind || other.triggers_on_any_kind,
             permission_grantor: self.permission_grantor || other.permission_grantor,
+            hand_reveal_cast_grantor: self.hand_reveal_cast_grantor || other.hand_reveal_cast_grantor,
             trigger_kinds: self.trigger_kinds | other.trigger_kinds,
         }
     }
@@ -2106,13 +2119,13 @@ impl ObjectStaticSummary {
 /// combined summary follows object changes without re-inspecting the rest.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct SummaryCounts {
-    flags: [u32; 11],
+    flags: [u32; 12],
     kinds: [u32; 128],
 }
 
 impl Default for SummaryCounts {
     fn default() -> Self {
-        Self { flags: [0; 11], kinds: [0; 128] }
+        Self { flags: [0; 12], kinds: [0; 128] }
     }
 }
 
@@ -2142,14 +2155,14 @@ impl SummaryCounts {
     pub(crate) fn combined(&self) -> ObjectStaticSummary {
         let [may_emit, level_grants_emitter, pt_counters, requires_cant_update, history_designation,
             enter_as_copy, goad, grant_holder, class_event_choice, triggers_on_any_kind,
-            permission_grantor] = self.flags.map(|count| count != 0);
+            permission_grantor, hand_reveal_cast_grantor] = self.flags.map(|count| count != 0);
         let trigger_kinds = self.kinds.iter().enumerate()
             .filter(|(_, count)| **count != 0)
             .fold(0u128, |mask, (bit, _)| mask | (1 << bit));
         ObjectStaticSummary {
             may_emit, level_grants_emitter, pt_counters, requires_cant_update,
             history_designation, enter_as_copy, goad, grant_holder, class_event_choice,
-            triggers_on_any_kind, permission_grantor, trigger_kinds,
+            triggers_on_any_kind, permission_grantor, hand_reveal_cast_grantor, trigger_kinds,
         }
     }
 }
@@ -2195,6 +2208,19 @@ pub(crate) struct GroupedEntry {
     /// The group member whose entry is being prepared.
     pub(crate) entrant: Option<ObjectId>,
     pub(crate) template: GroupedEntryTemplate,
+    /// The abilities the group's first plain entry of each shape has as it
+    /// would exist on the battlefield. Every member is the same object
+    /// entering against the same pre-event battlefield (CR 614.12), so
+    /// later members have them too.
+    pub(crate) prospective_abilities: Vec<(crate::events::zones::PlainEntryShape, Vec<crate::ability::Ability>)>,
+    /// Likewise its prospective characteristics, controller and card, as read
+    /// for the entrant's own entry replacements.
+    pub(crate) prospective_entries: Vec<(
+        crate::events::zones::PlainEntryShape,
+        Arc<crate::continuous::CalculatedCharacteristics>,
+        PlayerId,
+        Option<crate::ids::CardId>,
+    )>,
 }
 
 /// What the group's first plain entry of one shape found when its

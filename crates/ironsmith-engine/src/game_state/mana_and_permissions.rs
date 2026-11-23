@@ -298,13 +298,36 @@ impl GameState {
             .map_err(crate::effects::ExecutionError::ContinuousDiscovery)?;
         let hold = std::sync::Arc::new(());
         *self.runtime_cache.static_replacements_frozen.borrow_mut() = std::sync::Arc::downgrade(&hold);
+        // "Can't move" rules are read from the same pre-event state for
+        // every entrant, as an open simultaneous action reads them.
+        let admitted = self.auxiliary_tracking.zone_movement_admission.is_none();
+        if admitted {
+            let admission = self.capture_zone_movement_admission();
+            self.auxiliary_tracking_mut().zone_movement_admission = Some(admission);
+        }
         let result = run(self);
+        if admitted {
+            self.auxiliary_tracking_mut().zone_movement_admission = None;
+        }
         drop(hold);
         *self.runtime_cache.static_replacements_frozen.borrow_mut() = std::sync::Weak::new();
+        *self.runtime_cache.frozen_hand_reveal_frame.borrow_mut() = None;
         let thawed = self.update_replacement_effects();
         let value = result?;
         thawed.map_err(crate::effects::ExecutionError::ContinuousDiscovery)?;
         Ok(value)
+    }
+
+    /// The live hold of the frozen simultaneous entry in progress, if any.
+    pub(crate) fn runtime_cache_frozen_hold(&self) -> Option<std::sync::Weak<()>> {
+        let hold = self.runtime_cache.static_replacements_frozen.borrow();
+        (hold.strong_count() > 0).then(|| hold.clone())
+    }
+
+    pub(crate) fn runtime_cache_frozen_hand_reveal_frame(
+        &self,
+    ) -> std::cell::RefMut<'_, Option<(std::sync::Weak<()>, Vec<(PlayerId, Vec<ObjectId>)>, crate::effects::HandRevealFrame)>> {
+        self.runtime_cache.frozen_hand_reveal_frame.borrow_mut()
     }
 
     /// Run the entries of a group of identical objects (the copies one token
@@ -325,6 +348,8 @@ impl GameState {
             hold: Arc::downgrade(&hold),
             entrant: None,
             template: Vec::new(),
+            prospective_abilities: Vec::new(),
+            prospective_entries: Vec::new(),
         });
         let result = run(self);
         drop(hold);
@@ -362,6 +387,64 @@ impl GameState {
                     *found_none && held == shape && Arc::ptr_eq(matched, candidates)
                 })
         })
+    }
+
+    /// The current member's prospective abilities for an entry of `shape`,
+    /// when an earlier member of the group derived them.
+    pub(crate) fn grouped_prospective_abilities(
+        &self,
+        entrant: ObjectId,
+        shape: &crate::events::zones::PlainEntryShape,
+    ) -> Option<Vec<crate::ability::Ability>> {
+        let entry = self.active_grouped_entry()?;
+        if entry.entrant != Some(entrant) {
+            return None;
+        }
+        entry.prospective_abilities.iter().find(|(held, _)| held == shape).map(|(_, abilities)| abilities.clone())
+    }
+
+    pub(crate) fn record_grouped_prospective_abilities(
+        &self,
+        entrant: ObjectId,
+        shape: crate::events::zones::PlainEntryShape,
+        abilities: &[crate::ability::Ability],
+    ) {
+        if let Some(mut entry) = self.active_grouped_entry()
+            && entry.entrant == Some(entrant)
+            && !entry.prospective_abilities.iter().any(|(held, _)| *held == shape)
+        {
+            entry.prospective_abilities.push((shape, abilities.to_vec()));
+        }
+    }
+
+    #[allow(clippy::type_complexity)]
+    pub(crate) fn grouped_prospective_entry(
+        &self,
+        entrant: ObjectId,
+        shape: &crate::events::zones::PlainEntryShape,
+    ) -> Option<(Arc<crate::continuous::CalculatedCharacteristics>, PlayerId, Option<crate::ids::CardId>)> {
+        let entry = self.active_grouped_entry()?;
+        if entry.entrant != Some(entrant) {
+            return None;
+        }
+        entry.prospective_entries.iter().find(|(held, ..)| held == shape)
+            .map(|(_, chars, controller, card)| (chars.clone(), *controller, *card))
+    }
+
+    pub(crate) fn record_grouped_prospective_entry(
+        &self,
+        entrant: ObjectId,
+        shape: crate::events::zones::PlainEntryShape,
+        chars: Arc<crate::continuous::CalculatedCharacteristics>,
+        controller: PlayerId,
+        card: Option<crate::ids::CardId>,
+    ) {
+        if let Some(mut entry) = self.active_grouped_entry()
+            && entry.entrant == Some(entrant)
+            && !entry.prospective_entries.iter().any(|(held, ..)| *held == shape)
+        {
+            entry.prospective_entries.push((shape, chars, controller, card));
+        }
     }
 
     /// Record what the group's first plain entry of this shape found.
