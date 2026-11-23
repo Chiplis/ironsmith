@@ -479,6 +479,8 @@ pub(super) fn read_you_control_or_player_controls(
         // zero or one, never a target, snapshot, or new blink incarnation.
         let mut source_filter = filter.clone();
         source_filter.source = true;
+        // The clause is exactly this shape.
+        crate::word_claims::claim_tokens(team_clause.tokens());
         return Ok(Some(PredicateAst::ValueComparison {
             left: Value::Count(filter),
             operator: crate::effect::ValueComparisonOperator::GreaterThan,
@@ -654,6 +656,8 @@ pub(super) fn read_source_linked_exiled_card_predicate(
     {
         return Ok(None);
     }
+    // The complete predicate, the source's own noun included.
+    crate::word_claims::claim_tokens(predicate_tokens);
     let exiled_with_source =
         ObjectFilter::tagged(crate::tag::CompilerReferenceTag::SourceExiled.bind())
             .in_zone(Zone::Exile);

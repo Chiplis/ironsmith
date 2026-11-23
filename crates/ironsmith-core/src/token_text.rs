@@ -60,7 +60,7 @@ pub fn token_subtype_rules_word(subtype: Subtype) -> Option<std::borrow::Cow<'st
     }
     vocabulary! {
         Officer=>"Officer", Klingon=>"Klingon", Tribble=>"Tribble",
-        Borg=>"Borg", Vulcan=>"Vulcan", ElAurian=>"El-Aurian", Q=>"Q", Ferengi=>"Ferengi", Romulan=>"Romulan", Dauthi=>"Dauthi",
+        Borg=>"Borg", Vulcan=>"Vulcan", ElAurian=>"El-Aurian", Q=>"Q", Ferengi=>"Ferengi", Romulan=>"Romulan", MindlessOne=>"Mindless-One", Dauthi=>"Dauthi",
         Aetherborn=>"Aetherborn", Advisor=>"Advisor", Ally=>"Ally", Alien=>"Alien", Angel=>"Angel",
         Antelope=>"Antelope", Ape=>"Ape", Aurochs=>"Aurochs", Army=>"Army", Archer=>"Archer",
         Archon=>"Archon", Artificer=>"Artificer", Assassin=>"Assassin", Astartes=>"Astartes", Atog=>"Atog",

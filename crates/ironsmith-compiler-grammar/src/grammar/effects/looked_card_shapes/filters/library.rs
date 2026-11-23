@@ -20,14 +20,18 @@ fn parse_looked_card_reveal_filter_shape_inner(tokens: &[OwnedLexToken]) -> Opti
     let (filter_tokens, same_name) = split_same_name_suffix(tokens);
     let all_words = parser_token_word_refs(filter_tokens);
     let words = non_article_word_refs(&all_words);
+    // The exact readings below compare every (non-article) word, so a match
+    // reads the whole filter; the same-name suffix is claimed by its strip.
 
     if CHOSEN_CARD_PHRASES
         .iter()
         .any(|expected| permission_shapes::exact_words(&words, expected))
     {
+        crate::word_claims::claim_tokens(filter_tokens);
         return Some(apply_same_name(ObjectFilter::default(), true));
     }
     if words.len() == 1 && is_card_word(words[0]) {
+        crate::word_claims::claim_tokens(filter_tokens);
         return Some(apply_same_name(ObjectFilter::default(), same_name));
     }
     if words.len() == 4
@@ -37,11 +41,13 @@ fn parse_looked_card_reveal_filter_shape_inner(tokens: &[OwnedLexToken]) -> Opti
     {
         let mut filter = ObjectFilter::default();
         filter.chosen_creature_type = true;
+        crate::word_claims::claim_tokens(filter_tokens);
         return Some(apply_same_name(filter, same_name));
     }
     if permission_shapes::exact_words(&words, &["permanent", "card"])
         || permission_shapes::exact_words(&words, &["permanent", "cards"])
     {
+        crate::word_claims::claim_tokens(filter_tokens);
         return Some(apply_same_name(ObjectFilter::permanent_card(), same_name));
     }
     if permission_shapes::exact_words(&words, &["historic", "card"])
@@ -49,6 +55,7 @@ fn parse_looked_card_reveal_filter_shape_inner(tokens: &[OwnedLexToken]) -> Opti
     {
         let mut filter = ObjectFilter::default();
         filter.historic = true;
+        crate::word_claims::claim_tokens(filter_tokens);
         return Some(apply_same_name(filter, same_name));
     }
     if permission_shapes::exact_words(&words, &["nonland", "permanent", "card"])
@@ -56,6 +63,7 @@ fn parse_looked_card_reveal_filter_shape_inner(tokens: &[OwnedLexToken]) -> Opti
     {
         let mut filter = ObjectFilter::permanent_card();
         filter.excluded_card_types.push(CardType::Land);
+        crate::word_claims::claim_tokens(filter_tokens);
         return Some(apply_same_name(filter, same_name));
     }
     let input = looked_card_filter_readings::LookedCardFilter {

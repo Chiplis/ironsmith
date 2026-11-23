@@ -312,8 +312,10 @@ pub(super) fn read(input: &BindingClause<'_>) -> ParseOutcome<RuleMatch<Value>> 
     // Equal readings from two rules are one reading.
     let mut distinct: Vec<RegistryCandidate<Value>> = Vec::new();
     for candidate in candidates {
-        if !distinct.iter().any(|kept| kept.value == candidate.value) {
-            distinct.push(candidate);
+        match distinct.iter_mut().find(|kept| kept.value == candidate.value) {
+            // Both rules read the same meaning; either one's words are read.
+            Some(kept) => kept.claims.extend(&candidate.claims),
+            None => distinct.push(candidate),
         }
     }
     if distinct.len() > 1 {
@@ -414,12 +416,16 @@ fn read_where_x_known_value(input: &BindingClause<'_>) -> Option<Value> {
                 ObjectFilter::tagged(crate::tag::CompilerReferenceTag::PublicRevealed.bind()),
             ),
             WhereXKnownValue::DraftNotedHighestNumber { card_name_tokens } => {
+                // The card name the value is keyed on.
+                crate::word_claims::claim_tokens(card_name_tokens);
                 Value::DraftNotedHighestNumber {
                     card_name: parser_token_word_refs(card_name_tokens).join(" "),
                 }
                 .with_surface_hint(ValueSurfaceHint::WhereXIs)
             }
             WhereXKnownValue::DraftRemovedCardCount { card_name_tokens } => {
+                // The card name the value is keyed on.
+                crate::word_claims::claim_tokens(card_name_tokens);
                 Value::DraftRemovedCardCount {
                     card_name: parser_token_word_refs(card_name_tokens).join(" "),
                 }
@@ -496,6 +502,15 @@ fn read_all_players_hand_count(input: &BindingClause<'_>) -> Option<Value> {
     let tokens = input.tokens;
     // where X is the total number of cards in all players' hands
     if etb_grammar::etb_tokens_have_all_players_hand_count_value(tokens) {
+        // The complete binding is read only when it is exactly this phrase;
+        // the presence test above is looser than the reading.
+        if input.words.starts_with(&["where", "x", "is"]) && matches!(
+            input.words.get(3..).unwrap_or_default(),
+            ["the", "total", "number", "of", "cards", "in", "all", "players" | "players'", "hands"]
+                | ["the", "number", "of", "cards", "in", "all", "players" | "players'", "hands"]
+        ) {
+            crate::word_claims::claim_words(input.words);
+        }
         let mut filter = ObjectFilter::default();
         filter.zone = Some(Zone::Hand);
         return Some(Value::Count(filter));
@@ -680,6 +695,7 @@ fn read_where_x_generic_mana_in_mana_cost(input: &BindingClause<'_>) -> Option<V
     let tail = tail.strip_prefix(&["amount", "of", "generic", "mana", "in"][..])?;
     let reference = tail.strip_suffix(&["mana", "cost"][..])?;
     let spec = where_x_object_reference(reference)?;
+    crate::word_claims::claim_words(input.words);
     Some(Value::GenericManaInManaCostOf(Box::new(spec)))
 }
 /// "where X is the number of supertypes, card types, and subtypes <object>
@@ -695,6 +711,8 @@ fn read_where_x_type_line_type_count(input: &BindingClause<'_>) -> Option<Value>
         .strip_suffix(&["has"][..])
         .or_else(|| tail.strip_suffix(&["have"][..]))?;
     let spec = where_x_object_reference(reference)?;
+    // The binding matched word for word around its object reference.
+    crate::word_claims::claim_words(input.words);
     Some(Value::TypeCountOf(Box::new(spec)))
 }
 fn read_attractions_visited_this_turn(input: &BindingClause<'_>) -> Option<Value> {

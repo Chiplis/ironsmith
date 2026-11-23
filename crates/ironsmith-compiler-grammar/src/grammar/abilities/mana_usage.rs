@@ -83,12 +83,16 @@ struct FilterCastShape<'a> {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct ManaSpendBonusShape<'a> {
     spec_tokens: &'a [OwnedLexToken],
+    /// The "spell"/"spells" noun ending the paid-spell description.
+    spell_noun: &'a [OwnedLexToken],
     bonus_tokens: &'a [OwnedLexToken],
     condition: ManaSpendBonusCondition,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct ManaSpendCounterShape<'a> {
+    /// "<subject> enters with": read by the shape reader.
+    head_tokens: &'a [OwnedLexToken],
     counter_tail_tokens: &'a [OwnedLexToken],
 }
 
@@ -110,6 +114,7 @@ pub fn parse_mana_usage_restriction_sentence_lexed(
     if words.starts_with(&["spend", "this", "mana", "only", "to", "cast", "the", "last", "card", "exiled", "with"])
         && crate::util::is_source_reference_words(&words[11..])
     {
+        crate::word_claims::claim_words(&words);
         return Some(ManaUsageRestriction::CastSpellMatching {
             filter: ObjectFilter::tagged(crate::tag::declared_key(ironsmith_core::tag::LAST_SOURCE_EXILED_AT_PRODUCTION_TAG)),
             restrict_to_matching_spell: true, grant_uncounterable: false,
@@ -197,9 +202,10 @@ fn parse_cast_or_activate_any_ability(tokens: &[OwnedLexToken]) -> Option<ManaUs
         return None;
     }
     let spell_tokens = token_slice_for_words(tokens, &view, prefix_end, separator_start)?;
-    Some(cast_or_any_ability_restriction(
-        parse_mana_usage_spell_filter(spell_tokens)?,
-    ))
+    let restriction = cast_or_any_ability_restriction(parse_mana_usage_spell_filter(spell_tokens)?);
+    // The "or [to] activate an ability" alternative after the spell filter.
+    crate::word_claims::claim_words(&words[separator_start..]);
+    Some(restriction)
 }
 
 fn parse_activate_any_ability_or_cast(tokens: &[OwnedLexToken]) -> Option<ManaUsageRestriction> {
@@ -330,10 +336,27 @@ pub fn parse_mana_spend_bonus_sentence_lexed(
             .copied()
             .map(|ability| (ability, granted_abilities_duration)),
     );
-    let enters_with_counters = parse_mana_spend_counter_shape(counter_bonus_tokens)
+    let counter_shape = parse_mana_spend_counter_shape(counter_bonus_tokens);
+    let enters_with_counters = counter_shape
         .and_then(parse_mana_spend_counter_tail)
         .into_iter()
         .collect::<Vec<_>>();
+    // The words a successful reading below has matched: the paid spell's
+    // noun, an exactly matched bonus, the counter bonus head, and the
+    // hexproof duration suffix.
+    let exact_bonus = grant_uncounterable || !granted_abilities.is_empty() || !granted_keywords.is_empty();
+    let claim_read = || {
+        crate::word_claims::claim_tokens(parsed.spell_noun);
+        if exact_bonus {
+            crate::word_claims::claim_tokens(bonus_tokens);
+        }
+        if !enters_with_counters.is_empty()
+            && let Some(shape) = counter_shape
+        {
+            crate::word_claims::claim_tokens(shape.head_tokens);
+            crate::word_claims::claim_tokens(&bonus_tokens[counter_bonus_tokens.len()..]);
+        }
+    };
 
     if simple_card_type.is_none()
         || matches!(
@@ -355,6 +378,7 @@ pub fn parse_mana_spend_bonus_sentence_lexed(
         let filter = simple_card_type
             .map(|card_type| ObjectFilter::default().with_type(card_type))
             .or_else(|| parse_nondefault_spell_filter(spec_tokens))?;
+        claim_read();
         return Some(ManaUsageRestriction::CastSpellWithManaBonus {
             filter,
             condition: parsed.condition,
@@ -368,6 +392,7 @@ pub fn parse_mana_spend_bonus_sentence_lexed(
 
     if grant_uncounterable || !granted_abilities.is_empty() {
         if let Some(card_type) = simple_card_type {
+            claim_read();
             return Some(ManaUsageRestriction::CastSpell {
                 card_types: vec![card_type],
                 subtype_requirement: None,
@@ -378,6 +403,7 @@ pub fn parse_mana_spend_bonus_sentence_lexed(
             });
         }
         let filter = parse_nondefault_spell_filter(spec_tokens)?;
+        claim_read();
         return Some(ManaUsageRestriction::CastSpellMatching {
             filter,
             restrict_to_matching_spell: false,
@@ -388,6 +414,10 @@ pub fn parse_mana_spend_bonus_sentence_lexed(
     }
 
     let card_type = simple_card_type?;
+    if enters_with_counters.is_empty() {
+        return None;
+    }
+    claim_read();
     let (counter_type, count) = enters_with_counters.into_iter().next()?;
     Some(ManaUsageRestriction::CastSpell {
         card_types: vec![card_type],
@@ -426,6 +456,8 @@ fn parse_commander_cast_count_counter_bonus(
     let mut kind_words = counter_words.to_vec();
     kind_words.push("counter");
     let counter_type = crate::grammar::filters::parse_counter_type_words(&kind_words)?;
+    // Every word of the sentence was matched above.
+    crate::word_claims::claim_words(&words);
     Some(ManaUsageRestriction::CastSpellWithManaBonus {
         filter: ObjectFilter::default()
             .commander()
@@ -510,6 +542,12 @@ fn parse_generic_mana_transaction(tokens: &[OwnedLexToken]) -> Option<ManaUsageR
         return None;
     }
 
+    // The located phrases below are this reading's words once it matches.
+    let claim_occurrence = |phrase: &[&str]| {
+        if let Some(at) = words.windows(phrase.len()).position(|window| window == phrase) {
+            crate::word_claims::claim_words(&words[at..at + phrase.len()]);
+        }
+    };
     // "When you spend this mana to cast a spell or activate an ability, copy
     // that spell or ability" (Sunken Palace): any spell, or any ability.
     let mut purpose = ManaPaymentPredicate::Purpose(ManaPaymentPurpose::CastSpell);
@@ -521,6 +559,7 @@ fn parse_generic_mana_transaction(tokens: &[OwnedLexToken]) -> Option<ManaUsageR
             ManaPaymentPredicate::Purpose(ManaPaymentPurpose::CastSpell),
             ManaPaymentPredicate::Purpose(ManaPaymentPurpose::ActivateAbility),
         ]);
+        claim_occurrence(&["to", "cast", "a", "spell", "or", "activate", "an", "ability"]);
         (ObjectFilter::default(), None)
     } else if crate::word_primitives::sequence_occurs(&words, &["to", "cast", "a", "spell", ","])
         || crate::word_primitives::sequence_occurs(&words, &["to", "cast", "a", "spell", "copy"])
@@ -535,11 +574,20 @@ fn parse_generic_mana_transaction(tokens: &[OwnedLexToken]) -> Option<ManaUsageR
         &words,
         &["your", "commander"],
     ) {
+        // The exact spell phrase this predicate models (Path of Ancestry).
+        crate::word_primitives::parse_sequence_start(
+            &words,
+            &[
+                "creature", "spell", "that", "shares", "a", "creature", "type", "with", "your",
+                "commander",
+            ],
+        );
         (
             ObjectFilter::default().with_type(CardType::Creature),
             Some(ManaPaymentPredicate::SharesCreatureTypeWithPayersCommander),
         )
     } else if crate::word_primitives::sequence_occurs(&words, &["your", "commander", "scry", "x"]) {
+        claim_occurrence(&["your", "commander", "scry", "x"]);
         (
             ObjectFilter::default()
                 .commander()
@@ -560,6 +608,12 @@ fn parse_generic_mana_transaction(tokens: &[OwnedLexToken]) -> Option<ManaUsageR
     {
         // "an instant or sorcery spell with mana value 3 or less" (Forger's
         // Foundry).
+        if let Some(at) = words.windows(10).position(|window| {
+            window[..7] == ["instant", "or", "sorcery", "spell", "with", "mana", "value"]
+                && window[8..] == ["or", "less"]
+        }) {
+            crate::word_claims::claim_words(&words[at..at + 10]);
+        }
         let mut filter =
             ObjectFilter::default().with_mana_value(crate::filter::Comparison::LessThanOrEqual(
                 limit as i32,
@@ -570,6 +624,7 @@ fn parse_generic_mana_transaction(tokens: &[OwnedLexToken]) -> Option<ManaUsageR
         &words,
         &["red", "instant", "or", "sorcery", "spell"],
     ) {
+        claim_occurrence(&["red", "instant", "or", "sorcery", "spell"]);
         let mut filter = ObjectFilter::default().with_colors(crate::color::ColorSet::RED);
         filter.card_types = vec![CardType::Instant, CardType::Sorcery];
         (filter, None)
@@ -587,6 +642,7 @@ fn parse_generic_mana_transaction(tokens: &[OwnedLexToken]) -> Option<ManaUsageR
     }
     predicates.extend(additional_predicate);
     let effect = if crate::word_primitives::sequence_occurs(&words, &["scry", "1"]) {
+        crate::word_primitives::parse_sequence_start(&words, &["scry", "1"]);
         EffectAst::subject_verb(
             SubjectVerbRoleAst::Actor,
             PlayerAst::You,
@@ -616,6 +672,18 @@ fn parse_generic_mana_transaction(tokens: &[OwnedLexToken]) -> Option<ManaUsageR
         // graveyard as it resolves" (Forger's Foundry): an optional one-shot
         // replacement on the paid spell's resolution move, linking the exiled
         // card to this source ("cards exiled with this artifact").
+        const HEAD: &[&str] =
+            &["you", "may", "exile", "that", "spell", "instead", "of", "putting", "it", "into"];
+        if let Some(at) = words.windows(HEAD.len()).position(|window| window == HEAD)
+            && let Some(end) = words[at..].iter().position(|word| *word == "resolves")
+            && matches!(
+                &words[at + HEAD.len()..at + end],
+                ["its", "owners" | "owner's", "graveyard", "as", "it"]
+                    | ["your" | "a", "graveyard", "as", "it"]
+            )
+        {
+            crate::word_claims::claim_words(&words[at..=at + end]);
+        }
         EffectAst::Permissions(crate::cards::builders::PermissionEffectAst::MayByPlayer {
             player: PlayerAst::You,
             effects: vec![EffectAst::subject_verb_register_future_zone_replacement(
@@ -634,6 +702,14 @@ fn parse_generic_mana_transaction(tokens: &[OwnedLexToken]) -> Option<ManaUsageR
     } else if crate::word_primitives::sequence_occurs(&words, &["copy", "that", "spell"]) {
         let may_choose_new_targets =
             crate::word_primitives::sequence_occurs(&words, &["choose", "new", "targets"]);
+        // "copy that spell [or ability][ and] you may choose new targets for
+        // the copy": the copied object is the paid spell (or ability).
+        claim_occurrence(&["copy", "that", "spell", "or", "ability"]);
+        claim_occurrence(&["copy", "that", "spell"]);
+        if may_choose_new_targets {
+            claim_occurrence(&["and", "you", "may", "choose", "new", "targets", "for", "the", "copy"]);
+            claim_occurrence(&["you", "may", "choose", "new", "targets", "for", "the", "copy"]);
+        }
         EffectAst::subject_verb_copy_spell(
             TargetAst::Tagged(
                 crate::tag::CompilerReferenceTag::ManaPaidObject.bind(),
@@ -755,6 +831,9 @@ fn parse_cast_and_unlock_doors(tokens: &[OwnedLexToken]) -> Option<ManaUsageRest
     }
     let spell_tokens = token_slice_for_words(tokens, &view, prefix_end, tail_start)?;
     let spell_filter = parse_mana_usage_spell_filter(spell_tokens)?;
+    // The spend prefix and the "and unlock doors" second use, read here.
+    crate::word_claims::claim_words(&words[..prefix_end]);
+    crate::word_claims::claim_words(&words[tail_start..]);
     Some(ManaUsageRestriction::CastSpellOrUnlockDoor { spell_filter })
 }
 

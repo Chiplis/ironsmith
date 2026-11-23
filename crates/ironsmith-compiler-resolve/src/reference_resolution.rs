@@ -3985,6 +3985,11 @@ fn advance_reference_frame_for_effect(
                 });
                 remember_object_kind_binding(frame, &collection, &exiled_card);
                 frame.last_object_tag = Some(collection);
+            } else if frame.last_object_tag == before
+                && let Some(collection) =
+                    crate::tag_support::player_loop_exported_search_collection(effects)
+            {
+                frame.last_object_tag = Some(collection);
             }
         }
         EffectAst::Permissions(PermissionEffectAst::AnyPlayerMay { effects, .. })
@@ -5753,7 +5758,9 @@ fn typed_result_gate_action(effect: &EffectAst) -> Option<PriorEffectAction> {
     let (predicate, _) = result_gate_surface(effect)?;
     match predicate {
         IfResultPredicate::PriorEffectResult(surface) => Some(surface.action),
-        IfResultPredicate::ExcessDamageDealt | IfResultPredicate::ExcessDamageDealtToCreature => {
+        IfResultPredicate::ExcessDamageDealt
+        | IfResultPredicate::ExcessDamageDealtToCreature
+        | IfResultPredicate::ExcessDamageDealtToObjectMatching(_) => {
             Some(PriorEffectAction::DealtDamage)
         }
         _ => None,
@@ -6776,6 +6783,7 @@ fn typed_result_branch_pinned_metric_id(
         IfResultPredicate::PriorEffectResult(_)
             | IfResultPredicate::ExcessDamageDealt
             | IfResultPredicate::ExcessDamageDealtToCreature
+            | IfResultPredicate::ExcessDamageDealtToObjectMatching(_)
     ) && effects.iter().any(effect_references_pending_effect_metric))
     .then_some(condition)
 }

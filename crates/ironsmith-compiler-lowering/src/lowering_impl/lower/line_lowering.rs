@@ -866,7 +866,7 @@ fn materialize_statement(
     attach_statement_conditional_presentation_label(&mut lowered.effects, statement_facts);
     fuse_repeatable_mana_payment_prevention_until_end_of_turn(
         &mut lowered.effects,
-        statement_facts.repeatable_instant_timing_payment_until_end_of_turn,
+        has_leading_duration_instant_speed_payment_window(&effects_ast, false),
     );
     validate_iterated_player_bindings_in_lowered_effects(&lowered, false, "spell text effects")?;
     state.latest_spell_exports = lowered.exports;
@@ -1036,6 +1036,48 @@ fn is_exact_permanent_or_player_object_filter(filter: &ObjectFilter) -> bool {
     remainder.zone = None;
     remainder.card_types.clear();
     remainder == ObjectFilter::default()
+}
+
+/// Whether the statement's AST offers a payment as an instant-speed window
+/// ("you may pay {1} any time you could cast an instant", read by the
+/// payment grammar) under an authored leading duration ("Until end of
+/// turn, ..."): the typed grammar fact that the repeatable special action
+/// below materializes.
+fn has_leading_duration_instant_speed_payment_window(
+    effects: &[crate::cards::builders::EffectAst],
+    under_leading_duration: bool,
+) -> bool {
+    use crate::cards::builders::{EffectAst, ManaActionAst, SubjectVerbActionAst};
+    effects.iter().any(|effect| {
+        if under_leading_duration
+            && let EffectAst::SubjectVerb(subject_verb) = effect
+            && matches!(
+                subject_verb.action,
+                SubjectVerbActionAst::Mana(ManaActionAst::PayMana {
+                    instant_speed_window: true,
+                    ..
+                })
+            )
+        {
+            return true;
+        }
+        // "Until end of turn, ...": a leading end-of-turn control-flow scope
+        // (or the coordinated leading-duration wrapper) over the payment.
+        let under = under_leading_duration
+            || matches!(effect, EffectAst::Coordinated { leading_duration: true, .. })
+            || matches!(effect, EffectAst::ControlFlow(control) if matches!(
+                control.node,
+                crate::model::control_flow::ControlFlowNodeAst::Duration {
+                    duration: crate::model::control_flow::CompilerDurationAst::UntilEndOfTurn,
+                    ..
+                }
+            ));
+        let mut found = false;
+        crate::model::visit::for_each_nested_effects(effect, true, |nested| {
+            found |= has_leading_duration_instant_speed_payment_window(nested, under);
+        });
+        found
+    })
 }
 
 /// Materialize the grammar-proven duration/timing surface as a persistent

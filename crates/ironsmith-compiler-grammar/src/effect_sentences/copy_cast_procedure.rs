@@ -73,6 +73,8 @@ pub(super) fn source_card_copy_cast(sentences: &[SentenceInput]) -> Option<Vec<E
     ) { return None; }
     let mut cast = parse_may_cast_it_sentence(cast.lowered())?;
     if !cast.as_copy { return None; }
+    // The copy sentence matched word for word.
+    crate::word_claims::claim_tokens(copy.lowered());
     cast.tag = CompilerReferenceTag::SourceObject.bind().key;
     Some(vec![build_may_cast_tagged_effect(&cast)])
 }
@@ -120,6 +122,7 @@ fn plural_cast_statement(sentence: &SentenceInput) -> Option<MayCastTaggedSpec> 
         ["without", "paying", "their", "mana", "costs" | "cost"] => true,
         _ => return None,
     };
+    crate::word_claims::claim_words(&words);
     Some(MayCastTaggedSpec {
         tag: CompilerReferenceTag::It.bind().key.clone(),
         alternative_cost: None,
@@ -139,15 +142,17 @@ fn plural_copy_statement(sentence: &SentenceInput) -> Option<CopyStatement> {
     let words = crate::lexer::parser_token_word_refs(sentence.lowered());
     match words.as_slice() {
         ["copy", "them"] | ["copy", "those", "cards"] | ["copy", "those", "exiled", "cards"] => {
+            crate::word_claims::claim_words(&words);
             Some(CopyStatement::Each)
         }
         ["copy", reference @ .., count, "times"] => {
             let surface = copy_times_reference_surface(reference)?;
             let count = crate::util::parse_number_word_u32(count)?;
-            (count >= 2).then_some(CopyStatement::Times(
-                surface,
-                crate::effect::Value::Fixed(count as i32),
-            ))
+            if count < 2 {
+                return None;
+            }
+            crate::word_claims::claim_words(&words);
+            Some(CopyStatement::Times(surface, crate::effect::Value::Fixed(count as i32)))
         }
         // "Copy that card X times, where X is the number of creature types
         // among non-Borg creatures you control." (Infinite Diversity): the
@@ -163,6 +168,8 @@ fn plural_copy_statement(sentence: &SentenceInput) -> Option<CopyStatement> {
             }
             let surface = copy_times_reference_surface(reference)?;
             let value = super::dispatch_entry::where_x_value_from_tokens(sentence.lowered())?;
+            // "copy <reference> X times, where X is": the value reads the rest.
+            crate::word_claims::claim_words(&words[..1 + where_at + 3]);
             Some(CopyStatement::Times(surface, value))
         }
         _ => None,
@@ -214,7 +221,12 @@ fn copy_filtered_cards_statement(sentence: &SentenceInput) -> Option<(&[OwnedLex
         .token_span_for_words(0, 2 + usize::from(sentence_starts_with_then(sentence)))?
         .end;
     let filter_tokens = crate::util::trim_edge_punctuation_tokens(&sentence.lowered()[start..]);
-    (!filter_tokens.is_empty()).then_some((filter_tokens, plural))
+    if filter_tokens.is_empty() {
+        return None;
+    }
+    // "[then] copy each" / "copy the": the statement head before the filter.
+    crate::word_claims::claim_tokens(&sentence.lowered()[..start]);
+    Some((filter_tokens, plural))
 }
 
 fn sentence_starts_with_then(sentence: &SentenceInput) -> bool {
@@ -783,6 +795,9 @@ pub(super) fn noted_name_copy_cast(sentences: &[SentenceInput]) -> Option<Vec<Ef
     { return None; }
     let cast_words = crate::lexer::parser_token_word_refs(cast.lowered());
     if cast_words != ["you", "may", "cast", "the", "copy", "without", "paying", "its", "mana", "cost"] { return None; }
+    // Both sentences matched word for word.
+    crate::word_claims::claim_tokens(copy.lowered());
+    crate::word_claims::claim_tokens(cast.lowered());
     let optional_create = copy_words.get(2) == Some(&"create");
     Some(vec![build_may_cast_tagged_effect(&MayCastTaggedSpec {
         tag: CompilerReferenceTag::NotedCardName.key(),
@@ -930,6 +945,8 @@ pub(super) fn enchanted_card_copy_cast(
         return None;
     }
     let mut cast = cast_statement(next)?;
+    // "copy the enchanted [instant] card", matched word for word.
+    crate::word_claims::claim_words(&words);
     cast.tag = CompilerReferenceTag::Enchanted.bind().key.clone();
     cast.copy_instruction_surface = Some(CopyInstructionSurface::SeparateThatCard);
     Some((build_may_cast_tagged_effect(&cast), 2))
@@ -970,6 +987,9 @@ pub(super) fn cost_exiled_cards_copy_cast(
         ["the", "copies", "without", "paying", "their", "mana", "costs" | "cost"] => true,
         _ => return None,
     };
+    // Both sentences were matched word for word.
+    crate::word_claims::claim_words(&words);
+    crate::word_claims::claim_words(&cast_words);
     let exiled = crate::tag::CompilerCostObjectTag::Exile.key(0);
     let chosen = helper_tag_for_tokens(sentence.lowered(), "copied");
     let cast = MayCastTaggedSpec {
@@ -1105,6 +1125,9 @@ pub(super) fn linked_other_card_copy_cast(
     });
     cast.tag = chosen.key.clone();
     cast.copy_instruction_surface = Some(CopyInstructionSurface::SeparateThatCard);
+    // The copy sentence and the "if you do" gate were matched word for word.
+    crate::word_claims::claim_words(&words);
+    crate::word_claims::claim_tokens(&next_tokens[..comma]);
     Some((vec![choice, build_may_cast_tagged_effect(&cast)], 2))
 }
 
@@ -1136,6 +1159,11 @@ pub(super) fn visit_linked_copy_cast(
     let mut cast = cast_statement(next)?;
     cast.tag = copy_tag;
     cast.copy_instruction_surface = Some(CopyInstructionSurface::SeparateThatCard);
+    // "For as long as that <Attraction> is on the battlefield, whenever you
+    // visit it,": the delayed trigger's frame, word for word.
+    if let Some(frame) = view.token_span_for_words(0, 14) {
+        crate::word_claims::claim_tokens(&tokens[frame]);
+    }
     let watched = ObjectFilter::default().match_tagged(
         CompilerReferenceTag::It.bind().key.clone(),
         TaggedOpbjectRelation::IsTaggedObject,
@@ -1188,6 +1216,10 @@ pub(super) fn fixed_name_copy_cast(sentences: &[SentenceInput]) -> Option<Vec<Ef
     if crate::lexer::parser_token_word_refs(copy.lowered()) != ["create", "a", "copy", "of", "the", "card", "with", "the", "chosen", "name"]
         || crate::lexer::parser_token_word_refs(cast.lowered()) != ["you", "may", "cast", "the", "copy"]
     { return None; }
+    // All three sentences were matched word for word (the names are the options).
+    for sentence in [choose_tokens, copy.lowered(), cast.lowered()] {
+        crate::word_claims::claim_tokens(sentence);
+    }
     let choice = EffectAst::subject_verb(
         crate::cards::builders::SubjectVerbRoleAst::Chooser, PlayerAst::You,
         crate::cards::builders::SubjectVerbActionAst::Choices(crate::cards::builders::ChoiceActionAst::ChooseCardName {
@@ -1221,6 +1253,9 @@ pub(super) fn per_card_type_exile_permissions(sentences: &[SentenceInput]) -> Re
         || crate::lexer::parser_token_word_refs(land.lowered()) != ["you", "may", "put", "a", "land", "card", "from", "among", "them", "onto", "the", "battlefield"]
         || crate::lexer::parser_token_word_refs(permission.lowered()) != ["until", "end", "of", "turn", "for", "each", "nonland", "card", "type", "you", "may", "cast", "a", "spell", "of", "that", "type", "from", "among", "the", "exiled", "cards", "without", "paying", "its", "mana", "cost"]
     { return Ok(None); }
+    // The exile and permission sentences were matched word for word.
+    crate::word_claims::claim_tokens(exile.lowered());
+    crate::word_claims::claim_tokens(permission.lowered());
     let count = i32::try_from(count).map_err(|_| CardTextError::ParseError("library count exceeds supported range".into()))?;
     let pool = helper_tag_for_tokens(exile.lowered(), "exiled_type_permission_pool");
     let mut effects = vec![EffectAst::subject_verb(SubjectVerbRoleAst::LibraryOwner, PlayerAst::You,
@@ -1265,6 +1300,10 @@ pub(super) fn per_player_target_shuffle_consult(sentences: &[SentenceInput]) -> 
         || words(consult) != "each player who controlled one of those permanents exiles cards from the top of their library until they exile a nonland card then puts the rest on the bottom of their library in a random order"
         || words(cast) != "each player may cast the nonland card they exiled without paying its mana cost"
     { return None; }
+    // All four sentences matched word for word.
+    for sentence in [declare, shuffle, consult, cast] {
+        crate::word_claims::claim_tokens(sentence.lowered());
+    }
     let targets = helper_tag_for_tokens(declare.lowered(), "participant_permanent_targets");
     let exposed = helper_tag_for_tokens(consult.lowered(), "consult_all");
     let matched = helper_tag_for_tokens(consult.lowered(), "consult_match");
@@ -1327,6 +1366,10 @@ pub(super) fn entry_exile_counter_choices(sentences: &[SentenceInput]) -> Result
         || words(fallback) != "if you cant put this creature into its owners graveyard instead of onto the battlefield"
         || words(counters) != "for each creature card exiled this way this creature enters with a +2/+0 +1/+1 or +0/+2 counter on it"
     { return Ok(None); }
+    // The failure redirect and the per-card counter choice, word for word;
+    // the exile sentence reads its own.
+    crate::word_claims::claim_tokens(fallback.lowered());
+    crate::word_claims::claim_tokens(counters.lowered());
     let tag = helper_tag_for_tokens(exile.lowered(), "entry_exiled_cards");
     let mut effects = vec![EffectAst::TagAffected {
         effect: Box::new(EffectAst::Sequence { effects: super::parse_effect_sentence_lexed(exile.lowered())? }),
@@ -1369,6 +1412,9 @@ pub(super) fn noted_target_face_down_program(sentences: &[SentenceInput]) -> Res
     let and = positions.get(words.len() - 8).map(|(index, _)| *index).unwrap();
     let target_start = positions[4].0;
     let target = crate::util::parse_target_phrase(&tokens[target_start..and])?;
+    // "note the name of" and the "and" joining the face-down move.
+    crate::word_claims::claim_tokens(&tokens[..target_start]);
+    crate::word_claims::claim_tokens(&tokens[and..=and]);
     let noted = CompilerReferenceTag::NotedCardName.bind();
     // The granted ability is compiled in its own reference scope. Materialize
     // its stable name reference, rather than a compiler-only snapshot alias.

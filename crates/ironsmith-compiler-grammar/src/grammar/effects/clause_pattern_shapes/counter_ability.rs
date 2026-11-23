@@ -199,6 +199,16 @@ fn source_adjective<'a>(input: &mut LexStream<'a>) -> WResult<SourceAdjective> {
 }
 
 fn parse_source_types_tail<'a>(input: &mut LexStream<'a>) -> WResult<AbilitySourceQualifiers> {
+    let (qualifiers, taken) = parse_source_types_tail_words.with_taken().parse_next(input)?;
+    // Every token of the tail was read, card-type adjectives included
+    // ("from a noncreature source").
+    crate::word_claims::claim_tokens(taken);
+    Ok(qualifiers)
+}
+
+fn parse_source_types_tail_words<'a>(
+    input: &mut LexStream<'a>,
+) -> WResult<AbilitySourceQualifiers> {
     primitives::kw("from").parse_next(input)?;
     let another = opt(primitives::kw("another")).parse_next(input)?.is_some();
     if !another {

@@ -5,8 +5,12 @@ use crate::lexer::{OwnedLexToken, TokenKind};
 
 fn source(tokens: &[OwnedLexToken]) -> bool {
     let words = crate::lexer::parser_token_word_refs(tokens);
-    tokens.len() == words.len()
-        && matches!(words.as_slice(), ["this"] | ["this", "creature"] | ["this", "permanent"] | ["this", "artifact"])
+    let matched = tokens.len() == words.len()
+        && matches!(words.as_slice(), ["this"] | ["this", "creature"] | ["this", "permanent"] | ["this", "artifact"]);
+    if matched {
+        crate::word_claims::claim_words(&words);
+    }
+    matched
 }
 
 fn limit(tokens: &[OwnedLexToken]) -> Option<(crate::object::CounterType, u32)> {

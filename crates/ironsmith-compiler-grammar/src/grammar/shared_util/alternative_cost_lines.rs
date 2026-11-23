@@ -536,6 +536,9 @@ pub fn parse_self_zone_alternative_cost(
     } else if exile_rider == ["if", "you", "cast", "this", "card", "this", "way", "and", "it", "would", "be", "put", "into", "your", "graveyard", "exile", "it", "instead"] {
         true
     } else if exile_rider.starts_with(&["if", "you", "do", "it", "enters", "with"]) {
+        // "If you do, it": the entry rider names this permission's cast; the
+        // counters are read by the entry-counter grammar.
+        crate::word_claims::claim_words(&exile_rider[..4]);
         let entry_start = view.token_start_indices()[after_cost_word + 4];
         let mut entry_tokens = crate::lexer::synthetic_word_tokens(["this", "creature"]);
         entry_tokens.extend_from_slice(&tokens[entry_start..]);
@@ -749,6 +752,9 @@ pub fn parse_flash_timing_optional_payment(
     if cost.is_free() {
         return Ok(None);
     }
+    // The connective ("by" / "if you") and the fixed suffix around the cost.
+    crate::word_claims::claim_words(&words[head.len()..cost_word_start]);
+    crate::word_claims::claim_words(&words[cost_word_end..]);
     Ok(Some(crate::model::CompilerOptionalCost::flash_timing(cost)))
 }
 
@@ -943,6 +949,9 @@ pub fn parse_if_conditional_alternative_cost(
             && words.ends_with(&suffix)
             && let Some(to_token) = view.token_start_indices().get(words.len() - suffix.len()).copied()
         {
+            // "to cast this spell" is read as the replaced mana cost the
+            // synthetic "rather than" clause states.
+            crate::word_claims::claim_tokens(&tail_tokens[to_token..]);
             let mut rewritten = tail_tokens[..to_token].to_vec();
             rewritten.extend(crate::lexer::synthetic_word_tokens([
                 "rather", "than", "pay", "this", "spell", "mana", "cost",
@@ -995,6 +1004,7 @@ pub fn parse_if_conditional_alternative_cost(
     };
 
     if free_cast_with_flash {
+        crate::word_claims::claim_tokens(tail_tokens);
         return Ok(Some(AlternativeCastingMethod::alternative_cost_with_condition(
             ironsmith_core::FREE_CAST_AS_THOUGH_FLASH_METHOD,
             None,
@@ -1003,6 +1013,9 @@ pub fn parse_if_conditional_alternative_cost(
         )));
     }
     if self_free_cast {
+        // "you may cast it without paying its mana cost" (the condition's
+        // own subject) is matched word for word above.
+        crate::word_claims::claim_tokens(tail_tokens);
         let method = AlternativeCastingMethod::alternative_cost_with_condition(
             "Parsed alternative cost",
             None,
@@ -1097,6 +1110,8 @@ fn parse_special_cost_condition(tokens: &[OwnedLexToken]) -> Option<ThisSpellCos
             ],
         ],
     ) {
+        // The exact condition reads every word.
+        crate::word_claims::claim_tokens(tokens);
         return Some(ThisSpellCostCondition::FirstSpellYouCastThisGame);
     }
     if permission_shapes::prefix_words(
@@ -1232,10 +1247,15 @@ fn trim_commas(mut tokens: &[OwnedLexToken]) -> &[OwnedLexToken] {
     tokens
 }
 
+/// A complete fixed sentence: on a match every word was read.
 fn exact_one_of(words: &[&str], alternatives: &[&[&str]]) -> bool {
-    alternatives
+    let matched = alternatives
         .iter()
-        .any(|expected| permission_shapes::exact_words(words, expected))
+        .any(|expected| permission_shapes::exact_words(words, expected));
+    if matched {
+        crate::word_claims::claim_words(words);
+    }
+    matched
 }
 
 #[cfg(test)]

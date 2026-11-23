@@ -55,22 +55,43 @@ pub fn parse_looked_remainder_shape(tokens: &[OwnedLexToken]) -> Option<LookedRe
     {
         return None;
     }
+    if explicit_rest {
+        // "the rest of the revealed cards": the same remainder, restated.
+        read_sequence_phrase(
+            tail,
+            &[
+                &["rest", "of", "the", "revealed", "cards"],
+                &["rest", "of", "the", "cards", "revealed", "this", "way"],
+                &["rest", "of", "cards", "revealed", "this", "way"],
+            ],
+        );
+    }
     if contains_sequence_word(tail, "bottom") && contains_sequence_word(tail, "library") {
         return parse_consult_remainder_order_tokens(tail).map(LookedRemainderShape::LibraryBottom);
     }
     // "Put the rest on the bottom in a random order": the looked-at library
     // is the implied owner of "the bottom".
     if contains_sequence_phrase(tail, &[&["on", "the", "bottom", "in"]]) {
-        if contains_sequence_phrase(tail, &[&["random", "order"]]) {
+        if read_sequence_phrase(tail, super::super::RANDOM_ORDER) {
+            claim_bottom_of_library(tail);
             return Some(LookedRemainderShape::LibraryBottom(LibraryBottomOrderAst::Random));
         }
-        if contains_sequence_phrase(tail, &[&["any", "order"]]) {
+        if read_sequence_phrase(tail, super::super::ANY_ORDER) {
+            claim_bottom_of_library(tail);
             return Some(LookedRemainderShape::LibraryBottom(
                 LibraryBottomOrderAst::ChooserChooses,
             ));
         }
     }
-    contains_sequence_word(tail, "graveyard").then_some(LookedRemainderShape::Graveyard)
+    let graveyard = contains_sequence_word(tail, "graveyard");
+    if graveyard {
+        // "into your graveyard": the remainder's destination.
+        read_sequence_phrase(
+            tail,
+            &[&["into", "your", "graveyard"], &["into", "their", "graveyard"], &["into", "that", "player's", "graveyard"]],
+        );
+    }
+    graveyard.then_some(LookedRemainderShape::Graveyard)
 }
 
 /// Whether the authored remainder explicitly names the revealed-card
@@ -78,16 +99,22 @@ pub fn parse_looked_remainder_shape(tokens: &[OwnedLexToken]) -> Option<LookedRe
 pub fn is_explicit_revealed_cards_not_put_onto_battlefield_complement(
     tokens: &[OwnedLexToken],
 ) -> bool {
-    contains_sequence_phrase(tokens, &[&["all", "cards", "revealed", "this", "way"]])
-        && (contains_sequence_phrase(tokens, &[&["werent", "put", "onto", "the", "battlefield"]])
-            || contains_sequence_phrase(
-                tokens,
-                &[&["weren't", "put", "onto", "the", "battlefield"]],
-            )
-            || contains_sequence_phrase(
-                tokens,
-                &[&["were", "not", "put", "onto", "the", "battlefield"]],
-            ))
+    const NOT_PUT: &[&[&str]] = &[
+        &["that", "werent", "put", "onto", "the", "battlefield"],
+        &["that", "weren't", "put", "onto", "the", "battlefield"],
+        &["that", "were", "not", "put", "onto", "the", "battlefield"],
+        &["werent", "put", "onto", "the", "battlefield"],
+        &["weren't", "put", "onto", "the", "battlefield"],
+        &["were", "not", "put", "onto", "the", "battlefield"],
+    ];
+    let matched = contains_sequence_phrase(tokens, &[&["all", "cards", "revealed", "this", "way"]])
+        && contains_sequence_phrase(tokens, NOT_PUT);
+    if matched {
+        // The complement is read as the remainder it names.
+        read_sequence_phrase(tokens, &[&["all", "cards", "revealed", "this", "way"]]);
+        read_sequence_phrase(tokens, NOT_PUT);
+    }
+    matched
 }
 
 /// Retains the authored wording for a looked/revealed-set complement while

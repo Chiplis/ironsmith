@@ -14,12 +14,17 @@ pub struct EachPlayerRevealPermanentsShape {
 
 fn puts_revealed_permanents<'a>(input: &mut LexStream<'a>) -> WResult<()> {
     primitives::phrase(&["puts", "all", "permanent", "cards"]).parse_next(input)?;
-    repeat_till::<_, _, (), _, _, _, _>(
+    let revealed = repeat_till::<_, _, (), _, _, _, _>(
         0..,
         any.void(),
         primitives::phrase(&["revealed", "this", "way"]),
     )
+    .take()
     .parse_next(input)?;
+    // "... they revealed this way": the revealing player restated.
+    if crate::lexer::token_word_refs(revealed).first() == Some(&"they") {
+        crate::word_claims::claim_tokens(&revealed[..1]);
+    }
     repeat_till::<_, _, (), _, _, _, _>(
         0..,
         any.void(),

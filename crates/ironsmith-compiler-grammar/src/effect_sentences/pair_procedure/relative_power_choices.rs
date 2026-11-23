@@ -114,6 +114,9 @@ pub(super) fn read(
         return Ok(None);
     }
     let exiled_start = second_words.len() - exiled.len();
+    // Sentence two's fixed words; the exiled noun is the filter's. The
+    // gate's noun restates the anchor choice ("a creature you control").
+    let gate_restates_anchor = first_words[2..then_idx].starts_with(&after_if[..this_way]);
 
     let Some(yours_tokens) = tokens_for_words(first_tokens, &first_view, 2, then_idx) else {
         return Ok(None);
@@ -161,6 +164,10 @@ pub(super) fn read(
             tag: theirs.clone(),
         })],
     });
+    if gate_restates_anchor {
+        crate::word_claims::claim_words(&second_words[..exiled_start]);
+        crate::word_claims::claim_words(&second_words[exiled_start + exiled_noun.len()..]);
+    }
     Ok(Some(vec![
         EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects {
             filter: yours_filter,

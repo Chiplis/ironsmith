@@ -177,6 +177,22 @@ fn parse_trailing_instead_if_predicate(
     structure::parse_trailing_instead_if_predicate_lexed(&tokens[instead_idx..])
 }
 
+/// The authored words of a this-spell cost line's reduction cap.
+fn claim_reduction_cap_words(tokens: &[OwnedLexToken]) {
+    if let Some(start) = crate::keyword_static::cost_reduction_cap_sentence_start(tokens) {
+        crate::word_claims::claim_for_line(&tokens[start..]);
+        return;
+    }
+    if let Some(but) = tokens.windows(5).position(|window| {
+        ["but", "not", "by", "more", "than"]
+            .iter()
+            .zip(window)
+            .all(|(word, token)| token.as_word() == Some(*word))
+    }) {
+        crate::word_claims::claim_for_line(&tokens[but..]);
+    }
+}
+
 fn has_repeatable_instant_timing_payment_until_end_of_turn(tokens: &[OwnedLexToken]) -> bool {
     let words = super::super::lexer::parser_token_word_refs(tokens);
     crate::word_primitives::sequence_occurs(&words, &["until", "end", "of", "turn"])
@@ -345,8 +361,15 @@ fn parse_line_semantic_facts_tokens_with_optional_context(
             ),
             references_this_ability_cost:
                 activated_lines::parse_this_ability_cost_reference_prefix_tokens(tokens).is_some(),
-            this_spell_cost: static_cost.map(|surface| ThisSpellCostFacts {
-                reduction_cap: surface.reduction_cap,
+            this_spell_cost: static_cost.map(|surface| {
+                // The cap ("This effect can't reduce the amount of mana this
+                // spell costs by more than {5}.", "but not by more than {3}")
+                // is read here as a fact the lowering applies; its words are
+                // read by this fact, not by a reader of the line.
+                if surface.reduction_cap.is_some() {
+                    claim_reduction_cap_words(tokens);
+                }
+                ThisSpellCostFacts { reduction_cap: surface.reduction_cap }
             }),
             presentation_label: None,
         },

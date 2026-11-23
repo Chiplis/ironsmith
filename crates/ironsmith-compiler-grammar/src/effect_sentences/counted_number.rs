@@ -51,5 +51,8 @@ pub(crate) fn read(
         substituted.extend_from_slice(&sentence[index + 2..]);
         effects.extend(super::parse_effect_sentence_lexed(&substituted)?);
     }
+    // "count" read as taking the count the later sentences substitute.
+    let count = crate::util::trim_edge_punctuation_tokens(count);
+    crate::word_claims::claim_tokens(&count[..1]);
     Ok(Some(effects))
 }

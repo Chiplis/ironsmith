@@ -102,6 +102,15 @@ pub(super) fn parse_prior_effect_where_lexed<'a>(
             return Ok(WhereXValueShape::PriorEffectMetric(query));
         }
     }
+    // "the card you exiled": the object the prior action affected, named by
+    // its noun and the action's participle; read whole.
+    if matches!(
+        reference_words.as_slice(),
+        ["the", "card" | "cards" | "creature" | "creatures" | "permanent" | "permanents", "you",
+            "destroyed" | "discarded" | "exiled" | "milled" | "revealed" | "sacrificed"]
+    ) {
+        crate::word_claims::claim_tokens(reference_tokens);
+    }
     Ok(WhereXValueShape::PriorEffectMetric(
         PriorEffectMetricQuery::new(source, metric),
     ))

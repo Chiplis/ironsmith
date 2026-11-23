@@ -212,20 +212,26 @@ pub fn parse_aggregate_scope_value_lexed(tokens: &[OwnedLexToken]) -> Option<Val
     let surface = value_shapes::parse_aggregate_value_surface(&words)?;
     let scope_start = words.len().checked_sub(surface.scope_words.len())?;
     let scope_token_range = word_view.token_span_for_words(scope_start, words.len())?;
-    let scope_tokens = trim_edge_punctuation_tokens(&tokens[scope_token_range]);
+    let scope_tokens = trim_edge_punctuation_tokens(&tokens[scope_token_range.clone()]);
     if surface.metric == AggregateValueMetric::Counters
         && let Some(value) =
             value_helper_shapes::counters_among_players_and_permanents_value(surface.scope_words)
     {
         return Some(value);
     }
+    // The metric head ("card types among") is read with its scope.
+    let claim_metric = || crate::word_claims::claim_tokens(&tokens[..scope_token_range.start]);
     if let Some(historical) =
         value_helper_shapes::historical_aggregate_scope_value(surface.metric, surface.scope_words)
     {
+        if historical.is_some() {
+            claim_metric();
+        }
         return historical;
     }
     let filter =
         crate::grammar::primitives::probe_shape(parse_object_filter_lexed(scope_tokens, false))?;
+    claim_metric();
 
     match surface.metric {
         AggregateValueMetric::BasicLandTypes => Some(Value::BasicLandTypesAmong(filter)),
@@ -298,7 +304,10 @@ fn pending_aggregate_metric_value(
     }
     // "among the milled cards" / "of the exiled cards": exactly the objects
     // the prior instruction affected, read whole.
-    let reference = object_words.strip_prefix(&["the"]).unwrap_or(object_words);
+    let reference = object_words
+        .strip_prefix(&["the"])
+        .or_else(|| object_words.strip_prefix(&["those"]))
+        .unwrap_or(object_words);
     if let [participle, noun] = reference
         && matches!(
             *participle,

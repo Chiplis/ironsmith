@@ -540,6 +540,10 @@ pub(super) fn post_rule_each_player_coin_face_followup(
         return Ok(None);
     }
 
+    // "each player whose coin comes up heads|tails": the face predicate.
+    if let Some(range) = crate::lexer::TokenWordView::new(sentence_tokens).token_span_for_words(0, 7) {
+        crate::word_claims::claim_tokens(&sentence_tokens[range]);
+    }
     *action = SubjectVerbActionAst::Random(RandomActionAst::FlipCoinFaceOnly);
     *sentence_effects = vec![EffectAst::ForEach(ForEachEffectAst::ForEachPlayerDid {
         effects: followup_effects.clone(),

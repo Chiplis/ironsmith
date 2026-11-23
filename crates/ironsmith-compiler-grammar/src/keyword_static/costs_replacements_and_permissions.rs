@@ -12,6 +12,14 @@ fn cost_words_contain_phrase(words: &[&str], phrase: &[&str]) -> bool {
     crate::word_primitives::sequence_occurs(words, phrase)
 }
 
+/// Claim the first occurrence of `phrase` in `words`: the reading that
+/// located it consumed it.
+fn claim_cost_phrase(words: &[&str], phrase: &[&str]) {
+    if let Some(at) = words.windows(phrase.len()).position(|window| window == phrase) {
+        crate::word_claims::claim_words(&words[at..at + phrase.len()]);
+    }
+}
+
 fn is_exact_per_target_cost_modifier(words: &[&str]) -> bool {
     words.iter().enumerate().any(|(idx, word)| {
         *word == "for"
@@ -453,6 +461,35 @@ pub fn parse_optional_life_additional_cost_reduction_line(
         return Ok(None);
     }
 
+    // The shape reader located these words by search: claim exactly them —
+    // the paid amount and its "life", "those spells", and the rider's "to
+    // cast" and "paid life this way".
+    let those_spells_idx = optional_life_shape.those_spells.word;
+    crate::word_claims::claim_words(&additional_words[pay_word_idx + 1..pay_word_idx + 2]);
+    if let Some(life) = payment_words.iter().position(|word| *word == "life") {
+        let life = pay_word_idx + 1 + life;
+        crate::word_claims::claim_words(&additional_words[life..life + 1]);
+    }
+    crate::word_claims::claim_words(&additional_words[those_spells_idx..those_spells_idx + 2]);
+    let paid_life_this_way = ["paid", "life", "this", "way"];
+    if let Some(paid) = additional_words[those_spells_idx..]
+        .windows(paid_life_this_way.len())
+        .position(|window| window == paid_life_this_way)
+    {
+        let paid = those_spells_idx + paid;
+        // "if you paid life this way": the condition's "if you" with it.
+        let start = if paid >= 2 && additional_words[paid - 2..paid] == ["if", "you"] {
+            paid - 2
+        } else {
+            paid
+        };
+        crate::word_claims::claim_words(&additional_words[start..paid + paid_life_this_way.len()]);
+    }
+    if let Some(cast) = remaining_words.iter().position(|word| *word == "cast") {
+        let start = if cast > 0 && remaining_words[cast - 1] == "to" { cast - 1 } else { cast };
+        crate::word_claims::claim_words(&remaining_words[start..=cast]);
+    }
+
     let label_end = locate_token_kind(tokens, TokenKind::Period)
         .map(|idx| idx + 1)
         .unwrap_or(costs_idx);
@@ -505,6 +542,8 @@ pub fn parse_as_additional_cost_any_amount_of_mana_entry_counters_line(
         return Ok(None);
     }
     filter.cast_by = Some(PlayerFilter::You);
+    // The fixed tail after the subject, compared word for word above.
+    crate::word_claims::claim_words(tail);
     let display = render_token_slice(tokens)
         .trim()
         .trim_end_matches('.')
@@ -821,6 +860,8 @@ pub fn parse_spells_cost_modifier_line(
             &["your", "opponents", "cast"],
             &["an", "opponent", "casts"],
             &["enchanted", "player", "casts"],
+            // "Each spell a player casts" (Damping Sphere): any caster.
+            &["a", "player", "casts"],
         ] {
             let view = TokenWordView::new(&between_for_filter);
             let actor_words = view.to_word_refs();
@@ -875,6 +916,13 @@ pub fn parse_spells_cost_modifier_line(
             merge_spell_filters(&mut filter, between_filter);
         }
         if relative_colors {
+            // "that's" introduces the relative color list read above.
+            if let Some(thats) = between_for_filter
+                .iter()
+                .find(|token| token.as_word().is_some_and(|word| matches!(word, "that's" | "thats")))
+            {
+                crate::word_claims::claim_tokens(std::slice::from_ref(thats));
+            }
             filter.union_surface = filter.union_surface.with_relative_characteristic_list(true);
         }
         match between_fact.actor {
@@ -891,6 +939,7 @@ pub fn parse_spells_cost_modifier_line(
                 &["enchanted", "player", "casts"],
             ) =>
             {
+                claim_cost_phrase(&between_words, &["enchanted", "player", "casts"]);
                 filter.cast_by = Some(PlayerFilter::TaggedPlayer("enchanted".into()));
             }
             None => {}
@@ -910,6 +959,8 @@ pub fn parse_spells_cost_modifier_line(
                     &["from", "your", "graveyard", "or", "exile"],
                 ))
             {
+                claim_cost_phrase(&between_words, &["from", "your", "graveyard", "or", "from", "exile"]);
+                claim_cost_phrase(&between_words, &["from", "your", "graveyard", "or", "exile"]);
                 filter.zone = None;
                 filter.owner = None;
                 let mut graveyard = ObjectFilter::spell().in_zone(Zone::Graveyard);
@@ -926,6 +977,8 @@ pub fn parse_spells_cost_modifier_line(
             || cost_words_contain_phrase(&between_words, &["with", "chosen", "name"]))
             && !cost_words_contain_phrase(&clause_words, &["this", "turn"])
         {
+            claim_cost_phrase(&between_words, &["with", "the", "chosen", "name"]);
+            claim_cost_phrase(&between_words, &["with", "chosen", "name"]);
             filter.name = Some("{chosen name}".to_string());
         }
         if between_fact.from_anywhere_other_than_your_hand {
@@ -936,6 +989,8 @@ pub fn parse_spells_cost_modifier_line(
         if cost_words_contain_phrase(&between_words, &["but", "don't", "own"])
             || cost_words_contain_phrase(&between_words, &["but", "dont", "own"])
         {
+            claim_cost_phrase(&between_words, &["but", "don't", "own"]);
+            claim_cost_phrase(&between_words, &["but", "dont", "own"]);
             filter.owner = Some(PlayerFilter::NotYou);
         }
         if let Some(target_tokens) = between_fact.target_tokens {
@@ -998,7 +1053,9 @@ pub fn parse_spells_cost_modifier_line(
         crate::word_primitives::sequence_occurs(&remaining_words, &["life"]);
     if is_life_cost_modifier && direction == CostModifierDirection::More {
         // "cost an additional 3 life to cast" (Terror of the Peaks): a life
-        // surcharge on matching spells, never generic mana.
+        // surcharge on matching spells, never generic mana. The "life" noun
+        // is the surcharge's unit (the matcher claims it).
+        let _ = crate::word_primitives::parse_sequence_start(&remaining_words, &["life"]);
         let Value::Fixed(life) = amount_value else {
             return Err(CardTextError::ParseError(format!(
                 "unsupported life cost increase for spells (clause: '{}')",
@@ -1164,14 +1221,16 @@ pub fn parse_spells_cost_modifier_line(
             remaining_tokens,
             &clause_words,
         )?;
-        let except_during_controller_turn = [
-            &["except", "during", "its", "controller's", "turn"][..],
-            &["except", "during", "its", "controllers", "turn"][..],
-            &["except", "during", "its", "controller", "s", "turn"][..],
-        ]
-        .iter()
-        .any(|phrase| cost_words_contain_phrase(&remaining_words, phrase));
-        if except_during_controller_turn {
+        const EXCEPT_DURING_CONTROLLER_TURN: [&[&str]; 3] = [
+            &["except", "during", "its", "controller's", "turn"],
+            &["except", "during", "its", "controllers", "turn"],
+            &["except", "during", "its", "controller", "s", "turn"],
+        ];
+        let except_during_controller_turn = EXCEPT_DURING_CONTROLLER_TURN
+            .iter()
+            .find(|phrase| cost_words_contain_phrase(&remaining_words, phrase));
+        if let Some(phrase) = except_during_controller_turn {
+            claim_cost_phrase(&remaining_words, phrase);
             let caster = filter.cast_by.take().unwrap_or(PlayerFilter::Any);
             filter.cast_by = Some(PlayerFilter::excluding(caster, PlayerFilter::Active));
             filter.set_except_during_controller_turn_surface(true);
@@ -1654,6 +1713,15 @@ pub fn parse_player_activated_ability_cost_modifier_clause(
         return Ok(None);
     }
 
+    // The subject noun, the activation verb and the cost verb this clause
+    // was split on.
+    if let Some(first) = tokens.iter().position(|token| token.as_word().is_some()) {
+        crate::word_claims::claim_tokens(&tokens[first..=first]);
+    }
+    if let Some(activate_token_idx) = activate_token_idx {
+        crate::word_claims::claim_tokens(&tokens[activate_token_idx..=activate_token_idx]);
+    }
+    crate::word_claims::claim_tokens(&tokens[cost_token_idx..=cost_token_idx]);
     let mut ability = StaticAbility::increase_activated_ability_costs_for_activator(
         activator,
         increase,
@@ -1746,6 +1814,8 @@ fn parse_trailing_candidate_ability_condition_in_cost_modifier(
     for constraint in constraints {
         crate::util::apply_filter_keyword_constraint(filter, constraint, false);
     }
+    // The condition's "if", located above.
+    crate::word_claims::claim_words(&remaining_words[if_idx..=if_idx]);
     filter.set_trailing_candidate_ability_condition_surface(true);
     Ok(())
 }
@@ -1979,6 +2049,8 @@ pub fn parse_plotting_cards_cost_modifier_line(
             "unsupported plot special-action modifier syntax".into(),
         ));
     }
+    crate::word_claims::claim_words(&words[..6]);
+    crate::word_claims::claim_tokens(tail);
     Ok(Some(StaticAbility::plot_special_action_modifier(amount as u32)))
 }
 
@@ -2018,6 +2090,8 @@ pub fn parse_morph_costs_cost_modifier_line(
             "unsupported morph cost modifier syntax".into(),
         ));
     }
+    crate::word_claims::claim_words(&words[..4]);
+    crate::word_claims::claim_tokens(tail);
     Ok(Some(StaticAbility::morph_cost_increase(amount as u32)))
 }
 
@@ -2056,6 +2130,8 @@ pub fn parse_unlock_costs_cost_modifier_line(
             "unsupported unlock cost modifier syntax".into(),
         ));
     }
+    crate::word_claims::claim_words(&words[..5]);
+    crate::word_claims::claim_tokens(tail);
     Ok(Some(StaticAbility::unlock_cost_reduction(amount as u32)))
 }
 
@@ -2093,6 +2169,7 @@ pub fn parse_once_each_turn_play_countered_exiled_card_line(
     let Some(counter_type) = crate::grammar::filters::parse_counter_type_words(&kind_words) else {
         return Ok(None);
     };
+    crate::word_claims::claim_words(&words);
     let mut filter = ObjectFilter::default().in_zone(Zone::Exile);
     filter.with_counter = Some(crate::filter::CounterConstraint::Typed(counter_type));
     filter.tagged_constraints.push(crate::target::TaggedObjectConstraint {
@@ -2151,6 +2228,7 @@ pub fn parse_foretelling_cards_cost_modifier_line(
     {
         return Err(CardTextError::ParseError("unsupported trailing or non-generic foretell special-action modifier syntax".into()));
     }
+    crate::word_claims::claim_words(&tail_words);
     Ok(Some(StaticAbility::foretell_special_action_modifier(amount as u32, true)))
 }
 
@@ -2180,6 +2258,9 @@ pub fn parse_first_foretell_each_turn_free_line(
     {
         return Ok(None);
     }
+    crate::word_claims::claim_words(&prefix_words);
+    crate::word_claims::claim_tokens(&tokens[costs_index..costs_index + 1]);
+    crate::word_claims::claim_tokens(tail);
     Ok(Some(StaticAbility::foretell_first_each_turn_free()))
 }
 
@@ -2803,6 +2884,9 @@ pub fn parse_dynamic_cost_modifier_value(
                         let Some(filter) = parse_complete_cost_count_filter(&object_tokens)? else {
                             return Ok(None);
                         };
+                        // The object is read through its synthetic copy; the
+                        // authored "[the] <object> it targets" is this reading.
+                        crate::word_claims::claim_tokens(reference.reference_tokens);
                         Value::CountersOn(
                             Box::new(ChooseSpec::target(ChooseSpec::Object(filter))),
                             counter_type,
@@ -2846,6 +2930,7 @@ pub fn parse_dynamic_cost_modifier_value(
                 // "for each time it's been cast from the command zone this
                 // game" (Myth Unbound): within a cost modifier "it" is the
                 // spell being priced, the iterated object of that context.
+                crate::word_claims::claim_tokens(filter_tokens);
                 with_for_each_surface(Value::CommanderCastCountOf(Box::new(ChooseSpec::Iterated)))
             } else if parse_commander_cast_count_player(filter_tokens).is_some()
                 && let Some(value) =
@@ -3297,6 +3382,7 @@ pub fn parse_source_has_ability_sticker_abilities_of_line(
         Some(filter) => filter,
         None => parse_object_filter_lexed(object_tokens, false)?,
     };
+    crate::word_claims::claim_words(&words[has..has + PHRASE.len()]);
     Ok(Some(StaticAbility::source_has_ability_sticker_abilities_of(
         filter,
         render_token_slice(&clean).trim().to_string(),
@@ -3347,12 +3433,16 @@ pub fn parse_subject_are_chosen_type_line(
         return Ok(None);
     }
     let mut subjects = vec![first_subject];
+    // "are the chosen [creature] type": the copular tail the setter reads.
+    let mut frames: Vec<OwnedLexToken> = first[subject_end..].to_vec();
     if let Some(second) = rest.first() {
         let second = trim_edge_punctuation(second);
         let words = parser_token_word_refs(&second);
         if !words.starts_with(&["the", "same", "is", "true", "for"]) || second.len() <= 5 {
             return Ok(None);
         }
+        // "The same is true for" extends the same setter.
+        frames.extend_from_slice(&second[..5]);
         let Some(extended) = complete_characteristic_subject(&second[5..])? else {
             return Ok(None);
         };
@@ -3372,6 +3462,7 @@ pub fn parse_subject_are_chosen_type_line(
         union.any_of = subjects;
         union
     };
+    crate::word_claims::claim_tokens(&frames);
     Ok(Some(vec![StaticAbility::set_chosen_creature_type(
         filter,
         render_token_slice(&clean).trim().to_string(),
@@ -3608,6 +3699,8 @@ pub fn parse_colorless_damage_sources_line(
     if let Some(first) = display.get_mut(0..1) {
         first.make_ascii_uppercase();
     }
+    // The color list (connectives included) and the fixed tail.
+    crate::word_claims::claim_words(&words);
     let mut filter = ObjectFilter::default();
     filter.colors = Some(colors);
     Ok(Some(StaticAbility::restriction(
@@ -4138,6 +4231,8 @@ pub fn parse_conditional_copular_creature_line(
     {
         crate::word_claims::claim_word(article);
     }
+    // The copula ("is", "are", "it's") joining subject and descriptor.
+    crate::word_claims::claim_tokens(std::slice::from_ref(&body[be.token]));
     Ok(Some(result))
 }
 
@@ -4321,6 +4416,18 @@ pub fn parse_filter_is_pt_creature_in_addition_and_has_line(
     {
         return Ok(None);
     }
+    // The copula, the descriptor's articles and creature noun, and the
+    // grant head ("[and it] has") this bundle reads.
+    crate::word_claims::claim_tokens(&tokens[be_idx..=be_idx]);
+    crate::word_claims::claim_tokens(&tokens[before_has_end..=has_idx]);
+    crate::word_claims::claim_words(&raw_before_has_words[..skipped_article_words]);
+    crate::word_claims::claim_word(before_has_words[creature_idx]);
+    for word in subtype_words.iter().filter(|word| is_article(word)) {
+        crate::word_claims::claim_word(word);
+    }
+    if tail_ends_with_and {
+        crate::word_claims::claim_words(&before_has_words[before_has_words.len() - 1..]);
+    }
 
     Ok(Some(lower_static_animation_bundle(
         StaticAnimationBundleAst {
@@ -4415,6 +4522,13 @@ pub fn parse_filter_is_pt_creature_in_addition_line(
             Err(_) => return Ok(None),
         }
     };
+    // The copula and the descriptor's articles and creature noun.
+    crate::word_claims::claim_tokens(&tokens[be_idx..=be_idx]);
+    crate::word_claims::claim_words(&raw_words[..skipped_article_words]);
+    crate::word_claims::claim_word(words[creature_idx]);
+    for word in words[1..creature_idx].iter().filter(|word| is_article(word)) {
+        crate::word_claims::claim_word(word);
+    }
 
     Ok(Some(lower_static_animation_bundle(
         StaticAnimationBundleAst {
@@ -4515,6 +4629,17 @@ pub fn parse_subject_is_subtype_with_base_pt_and_granted_abilities_line(
     else {
         return Ok(None);
     };
+    // The copula, the descriptor's article, "with", and the base-size
+    // phrase ahead of the granted abilities.
+    crate::word_claims::claim_tokens(&tokens[be_idx..=be_idx]);
+    crate::word_claims::claim_tokens(&tokens[with_idx..=with_idx]);
+    crate::word_claims::claim_tokens(&type_tokens);
+    let ability_offset = (base.ability_tokens.as_ptr() as usize)
+        .saturating_sub(after_with.as_ptr() as usize)
+        / std::mem::size_of::<OwnedLexToken>().max(1);
+    if let Some(size_phrase) = after_with.get(..ability_offset) {
+        crate::word_claims::claim_tokens(size_phrase);
+    }
 
     Ok(Some(lower_static_animation_bundle(
         StaticAnimationBundleAst {
@@ -4727,6 +4852,14 @@ pub fn parse_damage_prevention_with_owner_shuffle_line(
         return Ok(None);
     }
     let target_filter = parse_object_filter_lexed(target_tokens, false)?;
+    // "if", the damage verb phrase and the exact prevent-and-shuffle tail
+    // matched above; the source and recipient filters read their own words.
+    crate::word_claims::claim_tokens(&tokens[..1]);
+    crate::word_claims::claim_tokens(&tokens[would..would + prefix_len]);
+    crate::word_claims::claim_tokens(&tokens[comma..]);
+    if is_source_reference_words(&source_words) {
+        crate::word_claims::claim_tokens(source_tokens);
+    }
     let recipient = crate::tag::TagRef::of("__prevented_damage_recipient__");
     let shuffle = crate::cards::builders::EffectAst::subject_verb(
         SubjectVerbRoleAst::LibraryOwner,
@@ -4968,6 +5101,8 @@ pub fn parse_token_creation_templates_line(
                 .token_span_for_words(0, prefix_words)
                 .map(|span| span.end)
                 .ok_or_else(|| CardTextError::ParseError("token copy template".to_string()))?;
+            // The matched copy prefix is restated by the synthetic recipe.
+            crate::word_claims::claim_tokens(&descriptor[..start]);
             let mut recipe = crate::lexer::lex_line("create a token that's a copy of", 0)?;
             // "choose a creature other than Esix and create that many tokens
             // that are copies of that creature": the copied permanent is the
@@ -4981,6 +5116,8 @@ pub fn parse_token_creation_templates_line(
                 ) {
                     return Ok(None);
                 }
+                // The anaphor names the chosen permanent spliced in below.
+                crate::word_claims::claim_tokens(&descriptor[start..]);
                 recipe.extend_from_slice(chosen);
                 templates.extend(crate::clause_support::parse_effect_sentences_lexed(&recipe)?);
                 continue;
@@ -5107,6 +5244,8 @@ pub fn parse_double_token_creation_replacement_line(
             if kinds.len() < 2 {
                 return Ok(None);
             }
+            // Each kind (and its list separators) was read above.
+            crate::word_claims::claim_tokens(kind_tokens);
             StaticAbility::create_one_of_each_token_replacement(
                 kinds,
                 display_text_for_tokens(tokens, true),
@@ -5299,6 +5438,8 @@ pub fn parse_prevent_all_combat_damage_to_matching_permanents_line(
             && word_positions[word_positions.len() - 2].1 == "blocking"
             && word_positions[word_positions.len() - 1].1 == "it"
         {
+            // "blocking it" read into the blocking-source relation.
+            crate::word_claims::claim_tokens(&source_tokens[word_positions[word_positions.len() - 2].0..]);
             (
                 word_positions[word_positions.len() - 2].0,
                 ironsmith_core::StaticDamageSourceRelation::BlockingStaticSource,
@@ -5511,6 +5652,7 @@ pub fn parse_opponents_must_target_flagbearers_line(
     if words.as_slice() != expected {
         return Ok(None);
     }
+    crate::word_claims::claim_words(&words);
     Ok(Some(StaticAbility::opponents_must_target_flagbearers()))
 }
 
@@ -5531,6 +5673,7 @@ pub fn parse_attacking_player_chooses_blocks_line(
     ) {
         return Ok(None);
     }
+    crate::word_claims::claim_words(&words);
     Ok(Some(StaticAbility::attacking_player_chooses_blocks(
         "The attacking player chooses how each creature blocks each combat",
     )))
@@ -5564,6 +5707,8 @@ pub fn parse_search_limited_to_top_cards_line(
     if rest != ["cards", "of", "that", "library", "instead"] {
         return Ok(None);
     }
+    // An exact whole-line shape.
+    crate::word_claims::claim_tokens(tokens);
     let (searcher, subject_text) = if subject == ["if", "an", "opponent"] {
         (PlayerFilter::Opponent, "an opponent")
     } else {
@@ -5627,6 +5772,9 @@ pub fn parse_cast_target_restriction_line(
         return Ok(None);
     }
     let forbidden = parse_object_filter_lexed(filter_tokens, false)?;
+    // The "you can't choose" head and the target-announcement tail.
+    crate::word_claims::claim_tokens(&trimmed[..=choose_idx]);
+    crate::word_claims::claim_tokens(&trimmed[as_idx..]);
     Ok(Some(StaticAbility::cast_target_restriction(
         forbidden,
         crate::lexer::render_token_slice(&trimmed),
@@ -5688,6 +5836,9 @@ pub fn parse_additional_sacrifice_per_mana_symbol_line(
     let mut sacrifice = parse_object_filter_lexed(filter_tokens, false)?;
     sacrifice.zone = Some(crate::zone::Zone::Battlefield);
     sacrifice.controller = Some(PlayerFilter::You);
+    // The frame around the sacrificed filter, matched word for word.
+    crate::word_claims::claim_tokens(&word_tokens[..prefix]);
+    crate::word_claims::claim_tokens(&word_tokens[prefix + to..]);
     Ok(Some(StaticAbility::additional_sacrifice_per_mana_symbol(
         activated,
         symbol,
@@ -6213,6 +6364,9 @@ pub fn parse_play_permission_with_additional_cast_cost_line(
     if converted != 1 {
         return Ok(None);
     }
+    // "by" and the fixed suffix framing the additional cost.
+    crate::word_claims::claim_words(&words[by..by + 1]);
+    crate::word_claims::claim_words(&words[suffix_start..]);
     Ok(Some(abilities))
 }
 
@@ -6223,6 +6377,13 @@ pub fn parse_mana_value_instead_of_mana_cost_grant_line(
         return Ok(None);
     };
     let filter = parse_spell_filter_with_grammar_entrypoint_lexed(spec.subject_tokens);
+    // "... spells you cast" (Kentaro): the grant's beneficiary is you.
+    if let [.., you, cast] = spec.subject_tokens
+        && you.is_word("you")
+        && cast.is_word("cast")
+    {
+        crate::word_claims::claim_tokens(&spec.subject_tokens[spec.subject_tokens.len() - 2..]);
+    }
     Ok(Some(StaticAbility::grants(
         crate::model::CompilerGrantSpecCore::new(
             crate::model::CompilerGrantableCore::mana_value_as_generic_from_hand(),
@@ -6239,6 +6400,10 @@ pub fn parse_life_mana_value_instead_of_mana_cost_grant_line(
         return Ok(None);
     };
     let filter = parse_spell_filter_with_grammar_entrypoint_lexed(spec.subject_tokens);
+    // "a spell from your hand" (Access Maze): the grant's zone is the hand.
+    if crate::lexer::token_word_refs(spec.subject_tokens).ends_with(&["from", "your", "hand"]) {
+        crate::word_claims::claim_tokens(&spec.subject_tokens[spec.subject_tokens.len() - 3..]);
+    }
     let usage_limit = match spec.usage_limit {
         keyword_static_lines::LifeManaValueGrantUsageLimit::OnceDuringEachOfYourTurns => {
             crate::grant::GrantUsageLimit::OnceDuringEachOfYourTurns
@@ -6497,6 +6662,8 @@ pub fn parse_land_and_each_permanent_type_graveyard_permission_line(
     if parser_token_word_refs(tokens).as_slice() != SHAPE {
         return Ok(None);
     }
+    // The whole line matched word for word.
+    crate::word_claims::claim_tokens(tokens);
     let rendered = render_token_slice(tokens);
     let surface = rendered.trim().trim_end_matches('.');
     let mut chars = surface.chars();
@@ -6752,7 +6919,11 @@ fn parse_turn_player_source_exiled_play_line(
     spec.filtered_zone_surface = chars
         .next()
         .map(|first| format!("{}{}", first.to_uppercase(), chars.as_str()));
-    let _ = noun;
+    // Every word was matched exactly above; "this <noun>" names the source
+    // whose exiled cards the permission reads.
+    if crate::util::is_source_reference_words(&["this", *noun]) {
+        crate::word_claims::claim_tokens(tokens);
+    }
     Ok(Some(spec))
 }
 
@@ -6823,6 +6994,8 @@ fn parse_source_exiled_lands_or_budgeted_spells_line(
         return Ok(None);
     }
     spec.usage_limit = Some(crate::grant::GrantUsageLimit::OnceEachTurn);
+    // The budget sentence, matched word for word.
+    crate::word_claims::claim_words(budget_words);
     Ok(Some(abilities))
 }
 
@@ -7423,6 +7596,8 @@ pub fn parse_cast_this_spell_as_though_it_had_flash_line(
             _ => None,
         };
         if let Some(choice) = choice {
+            // The words above are a normalized copy; claim the authored tail.
+            crate::word_claims::claim_tokens(&tail);
             return Ok(Some(StaticAbility::flash_if_cast_choice(choice)));
         }
     }
@@ -7607,8 +7782,12 @@ pub fn parse_you_have_protection_from_opponents_line(
                 PlayerFilter::You, filter, render_token_slice(tokens),
             ));
         }
+        // "you have": the protected player (the chain read its qualities).
+        crate::word_claims::claim_words(&words[..2]);
         return Ok(Some(abilities));
     }
+    // The line is exactly this shape.
+    crate::word_claims::claim_words(&words);
     Ok(Some(vec![StaticAbility::player_protection_from(
         PlayerFilter::You,
         ObjectFilter::default().controlled_by(PlayerFilter::Opponent),
@@ -7906,6 +8085,10 @@ pub fn parse_opponent_effect_discard_to_library_replacement_line(
             "anywhere", "else",
         ]
     );
+    if matched {
+        // An exact whole-line shape.
+        crate::word_claims::claim_tokens(tokens);
+    }
     Ok(matched.then(StaticAbility::opponent_effect_discard_to_library_replacement))
 }
 
@@ -7913,6 +8096,25 @@ pub fn parse_effect_discard_to_library_replacement_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbility>, CardTextError> {
     if is_effect_discard_to_library_replacement_line_lexed(tokens) {
+        // Library of Leng's current and older wordings, read exactly.
+        let words = crate::lexer::token_word_refs(tokens);
+        if crate::word_primitives::equals_any(
+            &words,
+            &[
+                &[
+                    "if", "an", "effect", "causes", "you", "to", "discard", "a", "card", "discard",
+                    "it", "but", "you", "may", "put", "it", "on", "top", "of", "your", "library",
+                    "instead", "of", "into", "your", "graveyard",
+                ],
+                &[
+                    "if", "an", "effect", "causes", "you", "to", "discard", "a", "card", "you",
+                    "may", "discard", "it", "to", "the", "top", "of", "your", "library", "instead",
+                    "of", "into", "your", "graveyard",
+                ],
+            ],
+        ) {
+            crate::word_claims::claim_tokens(tokens);
+        }
         return Ok(Some(StaticAbility::effect_discard_to_library_replacement()));
     }
 
@@ -7962,6 +8164,8 @@ fn parse_opponent_discard_this_to_battlefield_with_counters(
         other => crate::util::parse_number_word_u32(other).or_else(|| other.parse().ok())?,
     };
     let counter_type = crate::util::parse_counter_type_word(counter)?;
+    // An exact whole-line shape around the counters.
+    crate::word_claims::claim_tokens(tokens);
     Some((counter_type, count))
 }
 
@@ -8210,6 +8414,8 @@ fn draw_replacement_drawn_card_body(body: &[OwnedLexToken]) -> Option<Vec<OwnedL
         return None;
     }
     let possessive = if subject.is_empty() || subject == ["you"] { "your" } else { "their" };
+    // The whole first sentence is read into the synthetic rewrite below.
+    crate::word_claims::claim_tokens(first);
     let mut rewritten = crate::lexer::synthetic_word_tokens(subject);
     rewritten.extend(crate::lexer::synthetic_word_tokens([words[verb], "the", "top", "card", "of", possessive, "library"]));
     rewritten.extend(follow_up.iter().cloned());
@@ -9419,8 +9625,12 @@ pub fn parse_copy_activated_and_triggered_abilities_line(
     }
     let words = &words[..words_end];
     let filter_words = &words[filter_start..];
+    // "has all activated and triggered abilities of".
+    crate::word_claims::claim_words(&words[has_idx..filter_start]);
     let filter = match filter_words {
         ["the", "last", "chosen", _] | ["the", "chosen", _] => {
+            // "the [last] chosen <noun>": this source's remembered choice.
+            crate::word_claims::claim_words(filter_words);
             let mut filter = ObjectFilter::default();
             filter.tagged_constraints.push(crate::filter::TaggedObjectConstraint {
                 tag: crate::tag::CompilerReferenceTag::ChosenObjects.bind().into(),
@@ -11202,6 +11412,8 @@ pub fn parse_play_from_top_pay_life_line(
     {
         return Ok(None);
     }
+    crate::word_claims::claim_words(&first_words);
+    crate::word_claims::claim_words(&second_words);
     let land_grant = crate::model::CompilerGrantSpecCore::new(
         crate::model::CompilerGrantableCore::play_from(),
         ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {

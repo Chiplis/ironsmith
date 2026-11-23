@@ -272,8 +272,10 @@ pub(super) fn read(input: &StaticLine<'_>) -> ParseOutcome<RuleMatch<Vec<StaticA
     // Equal readings from two rules are one reading.
     let mut distinct: Vec<RegistryCandidate<Vec<StaticAbilityAst>>> = Vec::new();
     for candidate in candidates {
-        if !distinct.iter().any(|kept| kept.value == candidate.value) {
-            distinct.push(candidate);
+        match distinct.iter_mut().find(|kept| kept.value == candidate.value) {
+            // Both rules read the same meaning; either one's words are read.
+            Some(kept) => kept.claims.extend(&candidate.claims),
+            None => distinct.push(candidate),
         }
     }
     if distinct.len() > 1 {
@@ -611,6 +613,8 @@ fn read_protection_attachment_exception(
                 display.push_str(". This effect doesn't remove Auras and Equipment you control that are already attached to it");
             }
         }
+        // The exception sentence matched one of the word sequences above.
+        crate::word_claims::claim_tokens(sentences[1]);
         return Ok(Some(abilities));
     }
     Ok(None)

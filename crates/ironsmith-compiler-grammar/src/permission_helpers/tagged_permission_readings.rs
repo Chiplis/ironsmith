@@ -98,8 +98,10 @@ pub(super) fn read(input: &TaggedPermission<'_>) -> ParseOutcome<RuleMatch<Effec
     // Equal readings from two rules are one reading.
     let mut distinct: Vec<RegistryCandidate<EffectAst>> = Vec::new();
     for candidate in candidates {
-        if !distinct.iter().any(|kept| kept.value == candidate.value) {
-            distinct.push(candidate);
+        match distinct.iter_mut().find(|kept| kept.value == candidate.value) {
+            // Both rules read the same meaning; either one's words are read.
+            Some(kept) => kept.claims.extend(&candidate.claims),
+            None => distinct.push(candidate),
         }
     }
     if distinct.len() > 1 {

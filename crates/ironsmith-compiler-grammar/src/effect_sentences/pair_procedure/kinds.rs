@@ -358,6 +358,7 @@ pub(super) fn open_copy_next_spell_retarget(
         )));
     }
     if is_copy_next_loyalty_ability_sentence(sentence) && is_copy_retarget_sentence(next) {
+        crate::word_claims::claim_tokens(sentence.lowered());
         return Ok(Some(Pair::CopyNextSpellRetarget(
             copy_next_loyalty_ability_delayed_trigger(vec![copy_triggering_spell(1)]),
         )));
@@ -529,6 +530,31 @@ pub(super) fn open_tempting_offer_copy(
             fourth.lowered(),
         )
     {
+        // The fixed procedure reads Tempt with Mayhem's four sentences; claim
+        // them when each is exactly that wording.
+        fn words(tokens: &[crate::OwnedLexToken]) -> Vec<&str> {
+            crate::lexer::token_word_refs(tokens)
+        }
+        let first_words = words(sentence.lowered());
+        let first = first_words
+            .strip_prefix(&["tempting", "offer"][..])
+            .unwrap_or(&first_words);
+        if first == ["choose", "target", "instant", "or", "sorcery", "spell"]
+            && words(next.lowered()) == [
+                "each", "opponent", "may", "copy", "that", "spell", "and", "may", "choose",
+                "new", "targets", "for", "the", "copy", "they", "control",
+            ]
+            && words(third.lowered()) == [
+                "you", "copy", "that", "spell", "once", "plus", "an", "additional", "time",
+                "for", "each", "opponent", "who", "copied", "the", "spell", "this", "way",
+            ]
+            && words(fourth.lowered())
+                == ["you", "may", "choose", "new", "targets", "for", "the", "copies", "you", "control"]
+        {
+            for tokens in [sentence.lowered(), next.lowered(), third.lowered(), fourth.lowered()] {
+                crate::word_claims::claim_tokens(tokens);
+            }
+        }
         return Ok(Some(Pair::TemptingOfferCopy(tempting_offer_copy_effects())));
     }
     Ok(None)

@@ -134,6 +134,18 @@ pub fn parse_same_name_hand_graveyard_exile_shape(
     if !has_hand || !has_graveyard {
         return None;
     }
+    // "all cards with that name from <owner's> hand and graveyard": the
+    // named collection and both zones, read above. Another zone in the
+    // list is not this reading's to claim.
+    let zone_list_only = crate::lexer::parser_token_word_refs(remainder).iter().all(|word| {
+        matches!(
+            *word,
+            "and" | "their" | "your" | "his" | "her" | "hand" | "hands" | "graveyard" | "graveyards"
+        )
+    });
+    if zone_list_only {
+        crate::word_claims::claim_tokens(tokens);
+    }
     Some(SameNameHandGraveyardExileShape {
         owner: owner.unwrap_or(SameNameExileOwnerShape::FromSubject),
     })

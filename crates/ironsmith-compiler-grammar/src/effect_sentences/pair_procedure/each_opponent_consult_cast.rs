@@ -103,6 +103,8 @@ pub(super) fn read(
         )],
         _ => return Ok(None),
     };
+    // The second sentence was matched word for word.
+    crate::word_claims::claim_words(&words);
     let mut effects = if each_player {
         super::super::consult_family::wrap_each_player_consult(parts.effects)
     } else {

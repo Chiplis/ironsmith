@@ -519,8 +519,28 @@ fn parse_destination(tokens: &[OwnedLexToken]) -> Option<ReturnDestinationShape>
     ) {
         // "under its owner's control" (`contains_word` claims "control").
         let _ = primitives::contains_word(destination_head, "control");
+        // "under the control of that card's owner" (Trove Warden,
+        // Reincarnation): the moved card's owner, named through the object
+        // the card belongs to.
+        let _ = marker_anywhere(
+            destination_head,
+            (
+                primitives::phrase(&["under", "the", "control", "of", "that"]),
+                alt((
+                    primitives::kw("card's"),
+                    primitives::kw("cards"),
+                    primitives::kw("creature's"),
+                    primitives::kw("creatures"),
+                )),
+            )
+                .void(),
+        );
         ReturnControllerShape::Owner
     } else {
+        // "to the battlefield under their control" (Jailbreak): "their" is
+        // the player whose card returns, and a returned card enters under its
+        // owner's control unless told otherwise.
+        let _ = marker_anywhere(destination_head, primitives::phrase(&["under", "their", "control"]));
         ReturnControllerShape::Preserve
     };
     let has_unparsed_timing_words = timing.is_none()

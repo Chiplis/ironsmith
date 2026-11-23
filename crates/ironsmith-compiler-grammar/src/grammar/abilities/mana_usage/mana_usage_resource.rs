@@ -24,6 +24,7 @@ pub(super) fn parse_mana_spend_bonus_shape(
     let bonus_start = head_end + skipped.len() + 1;
     Some(ManaSpendBonusShape {
         spec_tokens: token_slice_for_words(tokens, &view, spec_start, spec_start + spell_offset)?,
+        spell_noun: token_slice_for_words(tokens, &view, spec_start + spell_offset, spell_word_end)?,
         bonus_tokens: tokens.get(bonus_start..)?,
         condition,
     })

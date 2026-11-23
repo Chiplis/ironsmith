@@ -182,7 +182,18 @@ pub fn parse_choice_object_clause_tokens(
         .collect::<Vec<_>>();
     let mut count_source = strip_choice_count_suffix(&mut words);
     let mut references = ChoiceObjectReferenceFacts::default();
+    let before_exclusion = words.len();
     references.excludes_chosen_this_way = strip_chosen_this_way_exclusion_suffix(&mut words);
+    if references.excludes_chosen_this_way {
+        // "that hasn't been chosen [this way]": the running exclusion of
+        // the objects already chosen, read here.
+        let view = TokenWordView::new(body_tokens);
+        let start = view.map_word_to_token_start(words.len()).unwrap_or(body_tokens.len());
+        let end = view
+            .map_word_to_token_start(before_exclusion)
+            .unwrap_or(body_tokens.len());
+        crate::word_claims::claim_tokens(&body_tokens[start..end.max(start)]);
+    }
     while let Some(suffix) = parse_container_reference_suffix(&words) {
         let removed = match suffix {
             ContainerReferenceSuffix::FromThereIn | ContainerReferenceSuffix::FromAmongThem => 3,
@@ -245,7 +256,26 @@ pub fn parse_choice_object_clause_tokens(
         words.drain(..1);
         references.excludes_chosen_this_way = true;
     }
-    merge_from_among_pool(&mut words);
+    if merge_from_among_pool(&mut words) {
+        // "from among [the] <noun>": the restated pool noun the merge folded
+        // into the filter (the words above are copies).
+        for (index, token) in tokens.iter().enumerate() {
+            if token.as_word() == Some("from")
+                && tokens.get(index + 1).is_some_and(|next| next.as_word() == Some("among"))
+            {
+                let mut end = index + 2;
+                if tokens.get(end).is_some_and(|next| next.as_word() == Some("the")) {
+                    end += 1;
+                }
+                if tokens.get(end).is_some_and(|next| {
+                    matches!(next.as_word(), Some("permanents" | "cards" | "creatures"))
+                }) {
+                    crate::word_claims::claim_tokens(&tokens[index..=end]);
+                }
+                break;
+            }
+        }
+    }
     if parse_aura_eligibility_suffix(&words) {
         words.truncate(words.len().saturating_sub(4));
         // The relative pronoun of "a creature that this Aura could enchant"
@@ -254,6 +284,20 @@ pub fn parse_choice_object_clause_tokens(
             words.pop();
         }
         references.source_aura_can_enchant = true;
+        // "[that] this Aura can enchant": the eligibility clause read here.
+        let words_of = crate::lexer::parser_token_word_refs(body_tokens);
+        if let Some(at) = words_of.windows(4).rposition(|window| {
+            matches!(window[0], "this" | "that")
+                && matches!(window[1], "aura" | "card")
+                && matches!(window[2], "can" | "could")
+                && window[3] == "enchant"
+        }) {
+            let view = TokenWordView::new(body_tokens);
+            let start = if at > 0 && words_of[at - 1] == "that" { at - 1 } else { at };
+            let first = view.map_word_to_token_start(start).unwrap_or(body_tokens.len());
+            let end = view.map_word_to_token_start(at + 4).unwrap_or(body_tokens.len());
+            crate::word_claims::claim_tokens(&body_tokens[first..end.max(first)]);
+        }
     }
     match &count_source {
         Some(ChoiceObjectCountSource::CardsDiscardedThisWay) => {
@@ -278,14 +322,35 @@ pub fn parse_choice_object_clause_tokens(
         return Ok(Some(ChoiceObjectClauseKind::CardName));
     }
 
+    // "of them" / "of those": the tagged antecedent the choice reads from.
+    // The words above are copies, so claim the authored pair.
+    let claim_of_reference = || {
+        for pair in tokens.windows(2) {
+            if pair[0].as_word() == Some("of") && matches!(pair[1].as_word(), Some("them" | "those")) {
+                crate::word_claims::claim_tokens(pair);
+                break;
+            }
+        }
+    };
     if parse_tagged_choice_whole(&words) {
+        claim_of_reference();
         references.references_it = true;
+        // "one of them": the referenced group, read on word copies.
+        crate::word_claims::claim_copied_words(
+            &crate::lexer::parser_token_word_refs(body_tokens),
+            &words,
+        );
         words = vec!["card".to_string()];
     } else if words.len() > 2 && parse_tagged_reference_prefix(&words) {
+        claim_of_reference();
         references.references_it = true;
         if parse_tagged_cards_whole(&words) {
             references.references_container_it = true;
         }
+        crate::word_claims::claim_copied_words(
+            &crate::lexer::parser_token_word_refs(body_tokens),
+            &words[..2],
+        );
         words.drain(..2);
     }
     while let Some(span) = parse_embedded_container_reference_span(&string_word_refs(&words)) {
@@ -574,27 +639,27 @@ fn parse_container_reference_suffix(words: &[String]) -> Option<ContainerReferen
 /// relation, which then restricts the choice. The relation is moved next to
 /// the noun ("permanent your opponents control with mana value 3 or
 /// greater") so the ordinary object-filter grammar reads one filter.
-fn merge_from_among_pool(words: &mut Vec<String>) {
+fn merge_from_among_pool(words: &mut Vec<String>) -> bool {
     let refs = string_word_refs(words);
     let Some(from) = refs
         .word_windows(2)
         .position(|pair| pair[0] == "from" && pair[1] == "among")
     else {
-        return;
+        return false;
     };
     let mut pool_start = from + 2;
     if refs.get(pool_start) == Some(&"the") {
         pool_start += 1;
     }
     if !matches!(refs.get(pool_start), Some(&("permanents" | "cards" | "creatures"))) {
-        return;
+        return false;
     }
     let relation = refs[pool_start + 1..]
         .iter()
         .map(|word| word.to_string())
         .collect::<Vec<_>>();
     if relation.is_empty() {
-        return;
+        return false;
     }
     let head = refs[..from].iter().map(|word| word.to_string()).collect::<Vec<_>>();
     let insert_at = head
@@ -605,6 +670,7 @@ fn merge_from_among_pool(words: &mut Vec<String>) {
     merged.extend(relation);
     merged.extend(head[insert_at..].iter().cloned());
     *words = merged;
+    true
 }
 
 fn parse_leading_article(words: &[&str]) -> bool {

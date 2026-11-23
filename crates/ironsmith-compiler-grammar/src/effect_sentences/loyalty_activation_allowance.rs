@@ -31,7 +31,7 @@ fn parse_scope(tokens: &[OwnedLexToken]) -> Option<LoyaltyActivationScope> {
     if crate::util::is_source_reference_words(&words) || is_authored_name(tokens) {
         return Some(LoyaltyActivationScope::Source);
     }
-    match words.as_slice() {
+    let scope = match words.as_slice() {
         ["planeswalkers", "you", "control"] => {
             Some(LoyaltyActivationScope::ControlledPlaneswalkers { subtype: None })
         }
@@ -42,7 +42,12 @@ fn parse_scope(tokens: &[OwnedLexToken]) -> Option<LoyaltyActivationScope> {
             })
         }
         _ => None,
+    };
+    // Each scope above is an exact phrase.
+    if scope.is_some() {
+        crate::word_claims::claim_tokens(tokens);
     }
+    scope
 }
 
 fn effect(scope: LoyaltyActivationScope, allowance: LoyaltyActivationAllowance) -> EffectAst {
@@ -85,6 +90,8 @@ fn parse_more_times_this_turn(tokens: &[OwnedLexToken]) -> Option<EffectAst> {
     {
         return None;
     }
+    // Every word was matched above; the owner names the source.
+    crate::word_claims::claim_tokens(tokens);
     let grant = effect(
         LoyaltyActivationScope::Source,
         LoyaltyActivationAllowance::ExtraActivation,

@@ -47,6 +47,8 @@ pub(super) fn parse(words: &[&str]) -> Option<(Value, usize)> {
         return None;
     };
     used += tail.len() - rest.len();
+    // Every word up to `used` matched the exact cap phrase above.
+    crate::word_claims::claim_words(&words[..used]);
     let amount = Value::PendingPriorEffectMetric(
         ironsmith_core::PriorEffectMetricQuery::new(
             ironsmith_core::EffectMetricSource::Outcome,

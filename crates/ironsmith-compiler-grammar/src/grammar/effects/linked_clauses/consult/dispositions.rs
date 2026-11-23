@@ -111,7 +111,7 @@ pub fn parse_consult_matched_move_shape(
             &["nonland", "card"],
         ],
     ) || (starts_content_sequence(reference, &[&["those"]])
-        && !starts_content_sequence(reference, &[&["those", "other"]])
+        && !crate::word_claims::probe_only(|| starts_content_sequence(reference, &[&["those", "other"]]))
         && ends_content_sequence(reference, &[&["cards"]]))
         || ends_content_sequence(reference, &[&["revealed", "this", "way"]])
     {
@@ -329,6 +329,30 @@ fn split_terminal_remainder(
     Some((trimmed(&tokens[..remainder_at]).to_vec(), remainder))
 }
 
+/// "put all creature cards revealed this way ..." after "until you reveal
+/// that many creature cards" (Synthetic Destiny): "all" and a descriptor that
+/// restates the stop filter word for word name exactly the matched cards.
+fn claim_restated_match_reference(stop_filter: &[OwnedLexToken], moved: &[OwnedLexToken]) {
+    let view = crate::lexer::TokenWordView::new(moved);
+    let words = view.word_refs();
+    let (Some(all), Some(revealed)) = (
+        words.iter().position(|word| *word == "all"),
+        words.iter().position(|word| *word == "revealed"),
+    ) else {
+        return;
+    };
+    let stop_words = crate::lexer::token_word_refs(stop_filter);
+    if !matches!(words.get(..all), Some(["put" | "puts"] | ["then", "put" | "puts"]))
+        || all + 1 >= revealed
+        || !stop_words.ends_with(&words[all + 1..revealed])
+    {
+        return;
+    }
+    if let Some(range) = view.token_span_for_words(all, revealed) {
+        crate::word_claims::claim_tokens(&moved[range]);
+    }
+}
+
 pub fn parse_consult_disposition_sequence_shape(
     tokens: &[OwnedLexToken],
 ) -> Option<ConsultDispositionSequenceShape> {
@@ -358,6 +382,9 @@ pub fn parse_consult_disposition_sequence_shape(
         if let Some(repeated) = parse_repeated_move_shape(&middle[0]) {
             ConsultMiddleShape::RepeatedMove(repeated)
         } else if let Some(matched) = parse_consult_matched_move_shape(&middle[0]) {
+            if matched.selection == ConsultMoveSelectionShape::AllMatched {
+                claim_restated_match_reference(&consult.stop.filter, &middle[0]);
+            }
             ConsultMiddleShape::MatchedMove(matched)
         } else {
             ConsultMiddleShape::Generic(middle)

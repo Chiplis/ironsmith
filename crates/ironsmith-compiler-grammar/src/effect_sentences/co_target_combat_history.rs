@@ -26,6 +26,14 @@ pub(super) fn parse(tokens: &[OwnedLexToken]) -> Result<Option<Vec<EffectAst>>, 
     let mut creature = parse_target_phrase(&first[creature_span])?;
     let TargetAst::Object(filter, _, _) = &mut creature else { return Ok(None); };
     filter.blocked_by = Some(crate::filter::ObjectRef::Target);
+    // The fixed words around the counter, recipient and blocker operands:
+    // "put X", "on", "that", and "blocked this turn, where X is the power of
+    // that blocked creature" (the recipient's power).
+    for (start, end) in [(0, 2), (on, on + 1), (that, that + 1), (blocked, words.len())] {
+        if let Some(range) = span(start, end) {
+            crate::word_claims::claim_tokens(&first[range]);
+        }
+    }
     let blocker_tag = crate::util::helper_tag_for_tokens(first, "co_target_blocker");
     let creature_tag = crate::util::helper_tag_for_tokens(first, "co_target_attacker");
     let mut effects = vec![

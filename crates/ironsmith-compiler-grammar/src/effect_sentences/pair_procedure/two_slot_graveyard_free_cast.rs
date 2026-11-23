@@ -225,5 +225,10 @@ pub(super) fn read(
             .collect(),
         if_false: Vec::new(),
     }));
+    // All four sentences were matched word for word above (the slot filters
+    // read themselves): the procedure's frames are read.
+    for sentence in [first, rider, copy, retarget] {
+        crate::word_claims::claim_tokens(&word_tokens(sentence));
+    }
     Ok(Some(effects))
 }

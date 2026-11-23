@@ -25,6 +25,8 @@ pub(super) fn parse(words: &[&str]) -> Option<(Value, usize)> {
                 Box::new(Value::Scaled(Box::new(minimum), -1)),
             )
             .with_surface_hint(ValueSurfaceHint::WhicheverIsGreater);
+            // The maximum's frame, read word for word above.
+            crate::word_claims::claim_words(&words[..offset + prefix.len()]);
             return Some((maximum, words.len()));
         }
     }
@@ -39,6 +41,8 @@ pub(super) fn parse(words: &[&str]) -> Option<(Value, usize)> {
         // This exact suffix supplies the partition. Existing specialized
         // "shared creature type" subset reductions keep their own readers.
         filter.controller = Some(PlayerFilter::Any);
+        crate::word_claims::claim_words(&words[..offset + 3]);
+        crate::word_claims::claim_words(&scope[objects.len()..]);
         return Some((Value::GreatestCount(filter), words.len()));
     }
     None

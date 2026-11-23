@@ -114,7 +114,10 @@ fn statement(
     let Some(range) = view.token_span_for_words(start, start + this_way) else {
         return Ok(None);
     };
-    let mut filter = crate::object_filters::parse_object_filter(&lowered[range], false)?;
+    let mut filter = crate::object_filters::parse_object_filter(&lowered[range.clone()], false)?;
+    // The words around the filter were matched exactly above.
+    crate::word_claims::claim_tokens(&lowered[..range.start]);
+    crate::word_claims::claim_tokens(&lowered[range.end..]);
     filter.zone = Some(Zone::Hand);
     filter = in_pool(filter, pool);
     if let Some(highest) = extremum {
@@ -152,6 +155,8 @@ pub(super) fn open(
     if !is_reveal(next) {
         return Ok(None);
     }
+    // "each player chooses a card in their hand", matched exactly.
+    crate::word_claims::claim_tokens(sentence.lowered());
     let anchor = sentence
         .lowered()
         .first()
@@ -190,7 +195,8 @@ pub(super) fn continue_with(
         if !is_reveal(sentence) {
             return Ok(false);
         }
-        // One joint reveal of every chosen card.
+        // One joint reveal of every chosen card, matched exactly.
+        crate::word_claims::claim_tokens(sentence.lowered());
         group
             .effects
             .push(EffectAst::subject_verb_reveal_tagged(group.pool.clone()));

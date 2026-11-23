@@ -5,7 +5,11 @@ use super::*;
 pub(super) fn parse_prefix_then_look_at_top_exile_one(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    for then_idx in (1..tokens.len()).filter(|idx| tokens[*idx].is_word("then")) {
+    // Locating candidate splits reads nothing; the follow-up parse claims.
+    let then_positions = crate::word_claims::probe_only(|| {
+        (1..tokens.len()).filter(|idx| tokens[*idx].is_word("then")).collect::<Vec<_>>()
+    });
+    for then_idx in then_positions {
         let prefix = trim_edge_punctuation(&tokens[..then_idx]);
         let followup = trim_edge_punctuation(&tokens[then_idx + 1..]);
         if prefix.is_empty() || followup.is_empty() {
@@ -124,6 +128,8 @@ pub(super) fn parse_source_and_blocked_creatures_top_library_shuffle_sentence(
     };
     let mut effects = Vec::new();
     if let Some(related) = joint_relation {
+        // The operand is the whole phrase compared above.
+        crate::word_claims::claim_tokens(operand);
         let mut moved_objects = ObjectFilter::default();
         moved_objects.any_of = vec![ObjectFilter::source(), related];
         effects.push(EffectAst::TagAffected {

@@ -181,6 +181,14 @@ pub(super) fn parse_retained_spell_copy_bundle(
         return Ok(None);
     }
 
+    // The upkeep timing and guard, and the exact recast sentence.
+    crate::word_claims::claim_tokens(&upkeep_sentence[..remove_idx]);
+    if copy_words.len() == COPY_TAIL.len() + 9
+        && copy_words[..5] == ["if", "the", "card", "has", "no"]
+        && copy_words[7..9] == ["on", "it"]
+    {
+        crate::word_claims::claim_tokens(copy_sentence);
+    }
     let spell_tag = crate::util::helper_tag_for_tokens(exile_sentence, "retained_spell");
     let exiled_tag = crate::util::helper_tag_for_tokens(exile_sentence, "retained_spell_card");
     let controller_tag =

@@ -30,6 +30,8 @@ pub(super) fn read(sentences: &[SentenceInput], index: usize) -> Result<Option<V
             crate::target::TaggedOpbjectRelation::SameNameAsTagged);
     effects.push(EffectAst::subject_verb_discard(PlayerAst::That,
         Value::Count(matched.clone()), false, false, Some(matched), None));
+    // The second sentence, compared word for word above.
+    crate::word_claims::claim_tokens(second.lowered());
     Ok(Some(effects))
 }
 #[cfg(test)]

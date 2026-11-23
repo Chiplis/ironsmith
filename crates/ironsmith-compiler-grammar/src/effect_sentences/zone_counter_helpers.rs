@@ -551,6 +551,8 @@ pub fn parse_put_counters(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTex
             let starts = body_view.token_start_indices();
             if let Some(&start) = starts.get(NOUN) {
                 let target = parse_counter_target_phrase(&body[start..])?;
+                // The exact counter noun phrase before the target.
+                crate::word_claims::claim_tokens(&body[..start]);
                 return Ok(EffectAst::PutTriggeringCounterKind {
                     target,
                     one_of_each: false,
@@ -568,6 +570,8 @@ pub fn parse_put_counters(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTex
             let starts = body_view.token_start_indices();
             if let Some(&start) = starts.get(EACH_NOUN) {
                 let target = parse_counter_target_phrase(&body[start..])?;
+                // The exact counter noun phrase before the target.
+                crate::word_claims::claim_tokens(&body[..start]);
                 return Ok(EffectAst::PutTriggeringCounterKind {
                     target,
                     one_of_each: true,

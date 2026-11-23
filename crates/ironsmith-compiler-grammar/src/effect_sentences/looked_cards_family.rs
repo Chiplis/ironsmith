@@ -8,13 +8,16 @@ use crate::grammar::effects::looked_card_shapes;
 fn parse_imperative_possessive_library_view(
     tokens: &[OwnedLexToken],
 ) -> Option<(PlayerAst, crate::effect::Value, bool)> {
-    let owner_start = crate::slice_primitives::find_window_by(tokens, 4, |window| {
-        if !window[0].is_word("of") || !window[3].is_word("library") {
-            return false;
-        }
-        (window[1].is_word("target")
-            && (window[2].is_word("player's") || window[2].is_word("opponent's")))
-            || (window[1].is_word("an") && window[2].is_word("opponent's"))
+    // Locating the possessive owner reads nothing yet.
+    let owner_start = crate::word_claims::probe_only(|| {
+        crate::slice_primitives::find_window_by(tokens, 4, |window| {
+            if !window[0].is_word("of") || !window[3].is_word("library") {
+                return false;
+            }
+            (window[1].is_word("target")
+                && (window[2].is_word("player's") || window[2].is_word("opponent's")))
+                || (window[1].is_word("an") && window[2].is_word("opponent's"))
+        })
     })?;
     let player = if tokens[owner_start + 1].is_word("an") {
         PlayerAst::Opponent
@@ -31,6 +34,8 @@ fn parse_imperative_possessive_library_view(
     normalized.remove(owner_start + 1);
     normalized.get_mut(owner_start + 1)?.replace_word("your");
     let shape = looked_card_shapes::parse_top_cards_view_shape(&normalized)?;
+    // The possessive library owner replaced above ("of target player's").
+    crate::word_claims::claim_tokens(&tokens[owner_start..owner_start + 4]);
     Some((player, shape.count, shape.revealed))
 }
 

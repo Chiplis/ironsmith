@@ -189,6 +189,8 @@ pub fn parse_become_leading_creature_prefix(words: &[&str]) -> BecomeLeadingCrea
             colors: None,
         };
     }
+    // The articles and connectors between the descriptor words.
+    claim_descriptor_connectors(words, &["a", "an", "the", "and"]);
     BecomeLeadingCreaturePrefix {
         supported: true,
         card_types,
@@ -245,6 +247,7 @@ pub fn parse_become_creature_descriptor_words(words: &[&str]) -> Option<BecomeCr
     if card_types.is_empty() && !saw_subtype {
         return None;
     }
+    claim_descriptor_connectors(words, &["a", "an", "the", "and"]);
     Some(BecomeCreatureDescriptor {
         card_types,
         subtypes,
@@ -381,5 +384,16 @@ pub fn parse_become_mixed_characteristics(words: &[&str]) -> Option<BecomeMixedC
     // This bounded shape has the existing creature-subtype operation. Do not
     // use it to approximate an artifact/enchantment subtype replacement.
     if !subtypes.is_empty() && (!card_types.contains(&CardType::Creature) || !creature_subtypes_only(&subtypes)) { return None; }
-    (saw_colors && !card_types.is_empty()).then_some(BecomeMixedCharacteristics { colors, card_types, subtypes, preserve_other_types, preserve_other_colors })
+    if !saw_colors || card_types.is_empty() { return None; }
+    claim_descriptor_connectors(body, &["a", "an", "and"]);
+    Some(BecomeMixedCharacteristics { colors, card_types, subtypes, preserve_other_types, preserve_other_colors })
+}
+
+/// Claim the connector words (`connectors`) a descriptor loop skipped.
+fn claim_descriptor_connectors(words: &[&str], connectors: &[&str]) {
+    for word in words {
+        if connectors.contains(word) {
+            crate::word_claims::claim_word(word);
+        }
+    }
 }

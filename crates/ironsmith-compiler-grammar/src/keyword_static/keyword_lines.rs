@@ -112,6 +112,10 @@ pub fn parse_dynamic_firebending_with_source(
             parse_where_x_named_source_stat_value(binding_tokens, source_name)
         })
     })?;
+    // "Firebending X," heads the X binding read above.
+    if let Some(head) = view.token_span_for_words(0, where_word) {
+        crate::word_claims::claim_tokens(&tokens[head]);
+    }
     let surface_range = view.token_span_for_words(1, view.len())?;
     let surface = crate::lexer::render_token_slice(&tokens[surface_range])
         .trim()

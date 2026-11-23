@@ -129,6 +129,10 @@ pub fn parse_roll_die_segment_tokens(
         _ => None,
     }
     .filter(|sides| *sides > 0);
+    if sides.is_some() {
+        // An exact cost segment.
+        crate::word_claims::claim_tokens(tokens);
+    }
     sides
         .map(|sides| ActivationCostSegmentCst::RollDie { sides })
         .ok_or_else(|| {
@@ -275,7 +279,8 @@ fn parse_life_payment<'a>(input: &mut LexStream<'a>) -> WResult<ActivationCostSe
         return Ok(ActivationCostSegmentCst::Life(amount));
     }
     let words = crate::lexer::parser_token_word_refs(suffix);
-    let per = if words == ["for", "each", "card", "in", "your", "hand"] {
+    let per_card_in_hand = words == ["for", "each", "card", "in", "your", "hand"];
+    let per = if per_card_in_hand {
         // Preserve the existing fixed-card-count payload shape.
         Value::CardsInHand(PlayerFilter::You)
     } else {
@@ -287,6 +292,9 @@ fn parse_life_payment<'a>(input: &mut LexStream<'a>) -> WResult<ActivationCostSe
             "fixed multiplier before a counted amount",
         ));
     };
+    if per_card_in_hand {
+        crate::word_claims::claim_tokens(suffix);
+    }
     Ok(ActivationCostSegmentCst::Life(if scale == 1 {
         per
     } else {
@@ -391,6 +399,8 @@ fn parse_life_equal_payment<'a>(input: &mut LexStream<'a>) -> WResult<Activation
         ["the", "number", "of", "colors", "in", "your", commanders, "color", "identity"]
             if commanders.starts_with("commander")
     ) {
+        // The whole value phrase, matched exactly.
+        crate::word_claims::claim_tokens(rest);
         Value::CommanderColorIdentityColors(PlayerFilter::You)
     } else {
         let (value, used) = crate::grammar::shared_util::value_expr::parse_value_expr_tokens(rest)

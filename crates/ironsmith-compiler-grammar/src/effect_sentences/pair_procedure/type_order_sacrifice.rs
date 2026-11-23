@@ -116,6 +116,9 @@ pub(super) fn read(
             "type-order sacrifice names a position beyond the ordered types".to_string(),
         ));
     }
+    // Both sentences were read word for word above.
+    crate::word_claims::claim_tokens(first.lowered());
+    crate::word_claims::claim_tokens(second.lowered());
     let modes = permutations(&types)
         .into_iter()
         .map(|order| {

@@ -36,6 +36,11 @@ pub(super) fn parse_direct_prior_effect_result_surface(
         )?;
         filter.zone = None;
         filter.set_prior_effect_action_surface(None);
+        // "two cards that share a card type were milled this way": the count,
+        // the sharing relation and the passive result frame around the filter
+        // (compared on the normalized copy, claimed on its spans).
+        crate::word_claims::claim_tokens(&normalized[..1]);
+        crate::word_claims::claim_tokens(&normalized[relative..]);
         return Some(PriorEffectResultSurface::new(action, filter,
             PriorEffectResultActor::Passive, PriorEffectResultQuantifier::OneOrMore)
             .with_count_sharing(count, characteristic));
@@ -148,6 +153,15 @@ pub(super) fn parse_direct_prior_effect_result_surface(
             _ => return None,
         };
         let filter_tokens = if action_only {
+            // "you search your library this way": the searched zone is the
+            // only object; the whole result phrase is read here.
+            if !matches!(
+                &normalized_words[2..normalized_words.len() - 2],
+                [] | ["your", "library"] | ["library"]
+            ) {
+                return None;
+            }
+            crate::word_claims::claim_tokens(tokens);
             &tokens[0..0]
         } else {
             // The result prefix is lexicalized as ordinary words, so the
@@ -191,7 +205,16 @@ pub(super) fn parse_direct_prior_effect_result_surface(
         let filter = if action_only {
             crate::target::ObjectFilter::default()
         } else {
-            parse_prior_result_object_filter(filter_tokens)?
+            let filter = parse_prior_result_object_filter(filter_tokens)?;
+            // "you reveal a creature card this way": the actor, the verb and
+            // the result frame around the filter (which reads itself).
+            crate::word_claims::claim_tokens(&tokens[..1 + verb_len]);
+            if let Some(this_way) =
+                crate::slice_primitives::select_position(tokens, |token| token.is_word("this"))
+            {
+                crate::word_claims::claim_tokens(&tokens[this_way..]);
+            }
+            filter
         };
         return Some(PriorEffectResultSurface::new(
             action,
@@ -253,7 +276,10 @@ pub(super) fn parse_direct_prior_effect_result_surface(
         let subject = crate::grammar::primitives::strip_lexed_prefix_phrase(
             &tokens[..copula_idx], &["one", "or", "more"])?;
         let kind_tokens = crate::grammar::primitives::strip_lexed_suffix_phrase(subject, &["counters"])?;
-        PriorEffectAction::CountersMoved(crate::util::parse_counter_type_from_tokens(kind_tokens)?)
+        let counter_type = crate::util::parse_counter_type_from_tokens(kind_tokens)?;
+        // "<one or more> <type> counters are moved this way", read above.
+        crate::word_claims::claim_tokens(&tokens[copula_idx..]);
+        PriorEffectAction::CountersMoved(counter_type)
     } else if after.first() == Some(&"removed") {
         PriorEffectAction::Removed
     } else if after.first() == Some(&"prevented") {
@@ -276,6 +302,17 @@ pub(super) fn parse_direct_prior_effect_result_surface(
     } else {
         return None;
     };
+    // "<object> is put into exile this way": the copula and the "this way"
+    // outcome marker are read with the passive action.
+    if after.ends_with(&["this", "way"]) {
+        crate::word_claims::claim_tokens(&tokens[copula_idx..=copula_idx]);
+        let words_at: Vec<usize> = (copula_idx + 1..tokens.len())
+            .filter(|index| tokens[*index].as_word().is_some())
+            .collect();
+        if let [.., this, way] = words_at.as_slice() {
+            crate::word_claims::claim_tokens(&tokens[*this..=*way]);
+        }
+    }
     let non_object_subject = tokens[..copula_idx].iter().any(|token| {
         token.as_word().is_some_and(|word| {
             matches!(

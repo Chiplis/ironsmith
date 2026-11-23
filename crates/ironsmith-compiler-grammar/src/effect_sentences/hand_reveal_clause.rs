@@ -44,6 +44,8 @@ pub(super) fn parse(tokens: &[OwnedLexToken]) -> Result<Option<EffectAst>, CardT
     if !(crate::util::is_source_reference_words(source) || *source == ["it"]) {
         return Ok(None);
     }
+    // The whole clause was read word for word above.
+    crate::word_claims::claim_tokens(tokens);
     Ok(Some(EffectAst::PlayWithHandRevealed(
         ironsmith_core::PlayWithHandRevealedEffect::new(player),
     )))

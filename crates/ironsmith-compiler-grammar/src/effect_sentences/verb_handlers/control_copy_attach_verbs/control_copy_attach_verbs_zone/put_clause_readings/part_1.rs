@@ -287,15 +287,22 @@ pub(super) fn read_from_among_hand_surface(
                 // "..., then put the rest on the bottom of your library in a
                 // random order" (Depala) travels in the same clause; the
                 // remainder is every looked card that wasn't moved.
-                if crate::word_primitives::sequence_occurs(
+                if crate::word_primitives::parse_sequence_start(
                     clause_words,
                     &["then", "put", "the", "rest", "on", "the", "bottom"],
-                ) {
-                    let order = if clause_words.iter().any(|word| *word == "random") {
-                        crate::cards::builders::LibraryBottomOrderAst::Random
-                    } else {
-                        crate::cards::builders::LibraryBottomOrderAst::ChooserChooses
-                    };
+                )
+                .is_some()
+                {
+                    // The destination and its order phrase, read after "rest";
+                    // without an order phrase the owner orders them.
+                    let rest_at = tokens.iter().rposition(|token| token.as_word() == Some("rest"));
+                    let order = rest_at
+                        .and_then(|at| {
+                            crate::grammar::effects::triple_sequence_shapes::parse_consult_remainder_order_tokens(
+                                &tokens[at + 1..],
+                            )
+                        })
+                        .unwrap_or(crate::cards::builders::LibraryBottomOrderAst::ChooserChooses);
                     effects.push(
                         EffectAst::subject_verb_put_tagged_remainder_on_bottom_of_library(
                             crate::tag::TagRef::of(looked_tag),

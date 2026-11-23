@@ -61,6 +61,11 @@ pub(super) fn read_deals_damage_word_view(
             crate::parse_trace::event(
                 "effect-route: subject-verb verb=Deal subject=source recognizer=historical-player-object-union",
             );
+            // The source subject ("this Aura") and the damage verb: the
+            // damage reader below is the source's own action.
+            if crate::util::is_source_reference_words(&words[..verb_word_idx]) {
+                crate::word_claims::claim_words(&words[..=verb_word_idx]);
+            }
             return Ok(Some(vec![
                 super::super::super::super::verb_handlers::parse_deal_damage(&body)?,
             ]));
@@ -105,9 +110,11 @@ pub(super) fn read_becomes_word_view(
                     .copy_exception
                     .is_some())
         {
-            return Ok(Some(vec![
-                super::super::super::super::clause_dispatch::parse_become_clause(&subject, &body)?,
-            ]));
+            let effect =
+                super::super::super::super::clause_dispatch::parse_become_clause(&subject, &body)?;
+            // The "become(s)" verb this reading split the clause at.
+            crate::word_claims::claim_tokens(&tokens[subject_end..body_start]);
+            return Ok(Some(vec![effect]));
         }
     }
     Ok(None)
@@ -455,6 +462,8 @@ pub(super) fn read_this_turn_and_next_turn_restrictions(
                 "targets" | "target", "of", "spells", "or", "activated", "abilities"
             ]
         ) {
+            // The exact clause reads every word.
+            crate::word_claims::claim_tokens(clause);
             let spells_or_activated = crate::target::ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
                 any_of: vec![
                     crate::target::ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {

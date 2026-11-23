@@ -113,6 +113,8 @@ pub(crate) fn parse_targeted_mandatory_unblocked_assignment(
         return Ok(None);
     }
     let target = crate::util::parse_target_phrase(subject)?;
+    // The verb and its body (with the duration) matched word for word.
+    crate::word_claims::claim_tokens(&tokens[verb..]);
     Ok(Some(EffectAst::subject_verb_grant_abilities_to_target(
         target,
         vec![GrantedAbilityAst::StaticAbility(Box::new(StaticAbilityAst::Static(

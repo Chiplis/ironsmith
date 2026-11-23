@@ -1286,12 +1286,14 @@ pub(super) fn apply_spell_filter_word_atoms(filter: &mut ObjectFilter, words: &[
         }
         // The multi-word "Time Lord" creature type is one subtype atom.
         if words.get(idx..idx + 2) == Some(&["time", "lord"][..]) {
+            crate::word_claims::claim_words(&words[idx..idx + 2]);
             push_unique_filter_value(&mut filter.subtypes, Subtype::TimeLord);
             idx += 2;
             continue;
         }
         // The two-word "sea monster" batch names five creature types.
         if matches!(words.get(idx..idx + 2), Some(&["sea", "monster" | "monsters"])) {
+            crate::word_claims::claim_words(&words[idx..idx + 2]);
             crate::util::push_sea_monster_subtypes(&mut filter.subtypes);
             idx += 2;
             continue;
@@ -1307,6 +1309,7 @@ pub(super) fn apply_spell_filter_word_atoms(filter: &mut ObjectFilter, words: &[
                 _ => None,
             }
         {
+            crate::word_claims::claim_word(word);
             push_unique_filter_value(&mut filter.subtypes, subtype);
             idx += 1;
             continue;
@@ -1334,6 +1337,7 @@ pub(super) fn apply_spell_filter_word_atoms(filter: &mut ObjectFilter, words: &[
         if word == "non"
             && let Some(subtype) = words.get(idx + 1).copied().and_then(parse_subtype_flexible)
         {
+            crate::word_claims::claim_word(word);
             push_unique_filter_value(&mut filter.excluded_subtypes, subtype);
             idx += 2;
             continue;
@@ -1369,6 +1373,24 @@ pub(super) fn apply_spell_filter_word_atoms(filter: &mut ObjectFilter, words: &[
         if matches!(word, "spell" | "spells") {
             crate::word_claims::claim_word(word);
         }
+        // "spells you cast this turn that are black and/or red" (Rowan, Scion
+        // of War), "each spell you cast that's a Demon" (Ancient Cellarspawn):
+        // a relative copula before a color or type atom only says the spell
+        // has the characteristics this loop collects.
+        let copula_len = match (word, words.get(idx + 1).copied()) {
+            ("that", Some("are" | "is")) => 2,
+            ("thats" | "that's", _) => 1,
+            _ => 0,
+        };
+        if copula_len > 0
+            && words.get(idx + copula_len).is_some_and(|next| {
+                parse_color(next).is_some()
+                    || parse_card_type(next).is_some()
+                    || parse_subtype_flexible(next).is_some()
+            })
+        {
+            crate::word_claims::claim_words(&words[idx..idx + copula_len]);
+        }
         if word == COLORLESS_WORD {
             crate::word_claims::claim_word(word);
             filter.colorless = true;
@@ -1388,6 +1410,7 @@ pub(super) fn apply_spell_filter_word_atoms(filter: &mut ObjectFilter, words: &[
                 None => words.len() == 1,
             }
         {
+            crate::word_claims::claim_word(word);
             filter.is_commander = true;
         }
         // "Historic spells you cast cost {1} less" (Jhoira's Familiar,
@@ -1541,6 +1564,9 @@ pub(super) fn parse_spell_filter_from_words(words: &[&str]) -> ObjectFilter {
     // "Other Dragon spells" excludes the ability's source. A later
     // "other than your hand" instead belongs to the cast-origin qualifier.
     filter.other = matches!(words.first(), Some(&"other" | &"another"));
+    if filter.other {
+        crate::word_claims::claim_word(words[0]);
+    }
 
     apply_spell_filter_word_atoms(&mut filter, words);
     apply_spell_filter_chosen_type_reference(&mut filter, words);
@@ -1623,6 +1649,8 @@ fn apply_spell_filter_exact_color_count(filter: &mut ObjectFilter, words: &[&str
     {
         return;
     }
+    crate::word_claims::claim_word(words[index]);
+    crate::word_claims::claim_word(words[index + 1 + used]);
     if count == 2 {
         filter.exactly_two_colors = Some(true);
     } else if let Ok(count) = i32::try_from(count) {
@@ -1717,6 +1745,8 @@ fn apply_spell_filter_cast_origin_tail(filter: &mut ObjectFilter, words: &[&str]
             rest = &rest[1..];
         }
     }
+    // "from <zone> [or [from] <zone>]...": the whole origin tail was read.
+    crate::word_claims::claim_words(&words[start - 1..]);
     if origins.len() == 1 {
         filter.zone = Some(origins[0]);
         filter.stack_kind = Some(crate::filter::StackObjectKind::Spell);
@@ -1735,34 +1765,55 @@ fn apply_spell_filter_cast_origin_tail(filter: &mut ObjectFilter, words: &[&str]
     }
 }
 
-fn apply_spell_filter_source_creature_type_relation(filter: &mut ObjectFilter, words: &[&str]) {
-    let shares_creature_type = words_contain_all(words, &["creature", "type"])
-        && words_contain_any_word(words, SHARE_WORDS);
-    let references_source = find_any_phrase_start(
-        words,
-        &[
-            &["with", "this", "creature"],
-            &["with", "this", "permanent"],
-        ],
-    )
-    .is_some();
-    if shares_creature_type && references_source {
-        filter.shares_creature_type_with_source = true;
-    }
+/// The word span of "[that] share(s) <type> with <reference>", read as one
+/// contiguous relation: `types` names the shared characteristic, `references`
+/// what it is shared with.
+fn spell_filter_share_relation_span(
+    words: &[&str],
+    types: &[&[&str]],
+    references: &[&[&str]],
+) -> Option<std::ops::Range<usize>> {
+    (0..words.len()).find_map(|share| {
+        if !SHARE_WORDS.contains(&words[share]) {
+            return None;
+        }
+        let after_share = &words[share + 1..];
+        let type_len = types.iter().find(|phrase| after_share.starts_with(phrase))?.len();
+        let after_type = &after_share[type_len..];
+        let reference_len =
+            references.iter().find(|phrase| after_type.starts_with(phrase))?.len();
+        let start = if share > 0 && words[share - 1] == "that" { share - 1 } else { share };
+        Some(start..share + 1 + type_len + reference_len)
+    })
 }
 
-fn apply_spell_filter_tagged_relations(filter: &mut ObjectFilter, words: &[&str]) {
-    let shares_card_type = find_any_phrase_start(words, SHARED_CARD_TYPE_PHRASES).is_some()
-        && words_contain_any_word(words, SHARE_WORDS);
-    let references_exiled_card =
-        find_any_phrase_start(words, EXILED_CARD_REFERENCE_PHRASES).is_some();
+/// "creature spells you cast that share a creature type with this creature"
+/// (Mistform Warchief).
+fn apply_spell_filter_source_creature_type_relation(filter: &mut ObjectFilter, words: &[&str]) {
+    let Some(span) = spell_filter_share_relation_span(
+        words,
+        CREATURE_TYPE_PHRASES,
+        &[&["with", "this", "creature"], &["with", "this", "permanent"]],
+    ) else {
+        return;
+    };
+    crate::word_claims::claim_words(&words[span]);
+    filter.shares_creature_type_with_source = true;
+}
 
-    if shares_card_type && references_exiled_card {
-        filter.tagged_constraints.push(TaggedObjectConstraint {
-            tag: (crate::tag::CompilerReferenceTag::SourceExiled.bind()).into(),
-            relation: shared_type_relation(words),
-        });
-    }
+/// "spells you cast that share a card type with the exiled card" (Semblance
+/// Anvil).
+fn apply_spell_filter_tagged_relations(filter: &mut ObjectFilter, words: &[&str]) {
+    let Some(span) =
+        spell_filter_share_relation_span(words, SHARED_CARD_TYPE_PHRASES, EXILED_CARD_REFERENCE_PHRASES)
+    else {
+        return;
+    };
+    crate::word_claims::claim_words(&words[span]);
+    filter.tagged_constraints.push(TaggedObjectConstraint {
+        tag: (crate::tag::CompilerReferenceTag::SourceExiled.bind()).into(),
+        relation: shared_type_relation(words),
+    });
 }
 
 pub(super) fn parse_with_no_abilities_words(words: &[&str]) -> Option<usize> {

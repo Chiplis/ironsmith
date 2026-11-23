@@ -320,6 +320,15 @@ pub fn parse_each_opponent_return_unless_draw_shape(
     if words.get(3).copied() != Some("choose") || then_return <= 4 {
         return None;
     }
+    // The returned object is the chosen one, back to its owner's hand.
+    let returned = words.get(then_return + 2..unless_word)?;
+    if !matches!(
+        returned,
+        ["that" | "the", "creature" | "permanent", "to", "its", "owners" | "owner's", "hand"]
+    ) {
+        return None;
+    }
+    crate::word_claims::claim_words(returned);
     Some(EachOpponentReturnUnlessDrawShape {
         target_start_word: 4,
         target_end_word: then_return,

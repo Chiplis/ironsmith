@@ -295,6 +295,10 @@ pub fn parse_outside_game_wish_shape(tokens: &[OwnedLexToken]) -> Option<Outside
     }
     let filter_tokens = token_slice_for_words(tokens, reveal_word + 1..filter_end)?.to_vec();
     let exile_source = has_atom(words.get(put_word + 6..).unwrap_or_default(), "exile");
+    // "You may reveal": the optional revealer, the caller's permission.
+    if words[..reveal_word] == ["you", "may"] {
+        crate::word_claims::claim_words(&words[..reveal_word]);
+    }
     Some(OutsideGameWishShape {
         filter_tokens,
         exile_source,
@@ -777,7 +781,10 @@ pub fn parse_untargeted_life_bid_sentences<'a>(
         &start_words,
         &["you", "start", "the", "bidding", "with", "a", "bid", "of"],
     )? {
-        ["any", "number"] => None,
+        any_number @ ["any", "number"] => {
+            crate::word_claims::claim_words(any_number);
+            None
+        }
         [amount] => Some(amount.parse::<u32>().ok()?),
         _ => return None,
     };
@@ -848,7 +855,10 @@ pub fn parse_two_player_life_bid_sentences<'a>(
         &start_words,
         &["you", "start", "the", "bidding", "with", "a", "bid", "of"],
     )? {
-        ["any", "number"] => None,
+        any_number @ ["any", "number"] => {
+            crate::word_claims::claim_words(any_number);
+            None
+        }
         [amount] => Some(amount.parse::<u32>().ok()?),
         _ => return None,
     };
@@ -1138,12 +1148,16 @@ pub fn parse_kicked_targeted_search_count_shape(
     else {
         return None;
     };
-    Some(KickedTargetedSearchCountShape {
+    let counts = KickedTargetedSearchCountShape {
         default_count: crate::util::parse_number_word_u32(default_count)
             .and_then(|count| crate::util::narrowed_usize(count))?,
         replacement_count: crate::util::parse_number_word_u32(replacement_count)
             .and_then(|count| crate::util::narrowed_usize(count))?,
-    })
+    };
+    // Both sentences matched word for word.
+    crate::word_claims::claim_tokens(default_search);
+    crate::word_claims::claim_tokens(replacement_search);
+    Some(counts)
 }
 
 pub fn parse_kicked_search_library_slots_shape(

@@ -274,7 +274,12 @@ pub fn parse_sentence_put_sticker_on(
         let words = crate::lexer::token_word_refs(clause.tokens());
         match words.as_slice() {
             ["put", "up", "to", amount, ..] => {
-                crate::util::parse_number_word_u32(amount).map(|amount| (amount, true))
+                let amount = crate::util::parse_number_word_u32(amount).map(|amount| (amount, true));
+                if amount.is_some() {
+                    // "up to <n>": the optional repeat count read here.
+                    crate::word_claims::claim_words(&words[1..4]);
+                }
+                amount
             }
             ["put", amount, _, "stickers", ..] | ["put", amount, "stickers", ..] => {
                 crate::util::parse_number_word_u32(amount)
@@ -336,7 +341,11 @@ fn parse_put_ability_sticker_with_ticket_terms(
     let free = match without {
         Some(idx) => {
             let tail = &words[idx..];
-            if !(tail.starts_with(&["without", "paying"]) && tail.ends_with(&["ticket", "cost"])) {
+            if !matches!(
+                tail,
+                ["without", "paying", "that", "sticker's" | "stickers" | "sticker’s", "ticket", "cost"]
+                    | ["without", "paying", "its", "ticket", "cost"]
+            ) {
                 return Ok(None);
             }
             true
@@ -360,6 +369,12 @@ fn parse_put_ability_sticker_with_ticket_terms(
         return Ok(None);
     }
     let target = parse_target_phrase(&tokens[target_span])?;
+    // "put an ability sticker with ticket cost <cap> or less on" and the
+    // free-placement tail, matched word for word above (the cap and the
+    // target read their own words).
+    crate::word_claims::claim_words(&words[..7]);
+    crate::word_claims::claim_words(&words[8..11]);
+    crate::word_claims::claim_words(&words[target_end..]);
     Ok(Some(EffectAst::subject_verb_put_sticker_with_ticket_terms(
         target,
         crate::events::KeywordActionKind::AbilitySticker,
@@ -487,10 +502,16 @@ pub fn parse_sentence_return_multiple_targets(
             if left.is_empty() || right.is_empty() {
                 continue;
             }
+            let mut repeated_verb = None;
             if right.first().and_then(OwnedLexToken::as_word) == Some("return") {
+                repeated_verb = right.get(..1);
                 right = trim_lexed_commas(&right[1..]);
             }
             if let (Ok(left), Ok(right)) = (parse_return(left), parse_return(right)) {
+                // The verb, the conjunction and a repeated "return" read here.
+                crate::word_claims::claim_tokens(&tokens[..1]);
+                crate::word_claims::claim_tokens(&tokens[and_idx..=and_idx]);
+                crate::word_claims::claim_tokens(repeated_verb.unwrap_or_default());
                 return Ok(Some(vec![EffectAst::Coordinated {
                     effects: vec![left, right],
                     leading_duration: false,
@@ -663,9 +684,19 @@ pub fn parse_distribute_counters_sentence(
         match (equal_idx, among_idx) {
             (Some(equal_idx), Some(among_idx)) if equal_idx + 2 < among_idx => {
                 let value_tokens = &tokens[equal_idx + 2..among_idx];
-                parse_value(value_tokens)
+                let value = parse_value(value_tokens)
                     .filter(|(_, used)| *used == value_tokens.len())
-                    .map(|(value, _)| value)
+                    .map(|(value, _)| value);
+                if value.is_some() {
+                    // "a number of ... equal to": the amount head and its
+                    // "equal to" link.
+                    let head_end = crate::lexer::TokenWordView::new(tokens)
+                        .map_word_to_token_start(3)
+                        .unwrap_or(0);
+                    crate::word_claims::claim_tokens(&tokens[..head_end]);
+                    crate::word_claims::claim_tokens(&tokens[equal_idx..equal_idx + 2]);
+                }
+                value
             }
             _ => None,
         }
@@ -832,6 +863,9 @@ fn parse_distribute_stickers(tokens: &[OwnedLexToken]) -> Result<Option<EffectAs
     if filter.zone.is_none() {
         filter.zone = Some(crate::zone::Zone::Battlefield);
     }
+    // "[up to] <n> <kind> stickers among": the count, kind and connective
+    // read above; the recipient count and filter read the rest.
+    crate::word_claims::claim_tokens(&tokens[..=kind_end]);
     let put = EffectAst::subject_verb_put_sticker(TargetAst::Object(filter, None, None), action);
     let placement = if up_to {
         EffectAst::Permissions(crate::cards::builders::PermissionEffectAst::May {

@@ -397,6 +397,9 @@ pub(super) fn try_parse_modal_bullet_block(
     if bullet_modes.is_empty() {
         return Ok(None);
     }
+    if characteristics_template.is_some() {
+        super::characteristic_modes::claim_template_sentence(&header_tokens);
+    }
     // "Visit — Choose one." (Balloon Stand): an Attraction's modal Visit
     // program becomes its spell_effect, which the engine runs as the
     // roll-to-visit trigger (CR 717.5); the label is read here, as for a
@@ -410,6 +413,14 @@ pub(super) fn try_parse_modal_bullet_block(
     {
         crate::word_claims::claim_tokens(label_tokens);
     }
+    // A per-die result table (Celebr-8000) is lowered from the block later;
+    // read it now so its words count as read for this card.
+    let mode_texts: Vec<&str> = bullet_modes.iter().map(|mode| mode.text.as_str()).collect();
+    let _ = crate::semantic_line_parsing::reads_per_die_result_ability_table(
+        &line.info,
+        &header_tokens,
+        &mode_texts,
+    );
 
     Ok(Some((
         RecognizedLine::Modal(RecognizedModalBlock {

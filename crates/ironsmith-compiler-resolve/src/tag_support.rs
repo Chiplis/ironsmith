@@ -82,6 +82,32 @@ pub fn player_loop_exported_exile_collection(effects: &[EffectAst]) -> Option<Ta
     found
 }
 
+/// The cards a player loop's library search found, when the loop body (or
+/// its member condition) holds exactly one bare library search choice: each
+/// member's found cards join one collection, which a following "those cards"
+/// names (Shai-Hulud: "For each player who ..., search your library for a
+/// basic land card. Put those cards onto the battlefield tapped").
+pub fn player_loop_exported_search_collection(effects: &[EffectAst]) -> Option<TagKey> {
+    let mut found: Option<TagKey> = None;
+    for effect in effects {
+        let key = match effect {
+            EffectAst::Conditionals(ConditionalEffectAst::Conditional {
+                if_true, if_false, ..
+            }) if if_false.is_empty() => player_loop_exported_search_collection(if_true),
+            EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjectsAcrossZones {
+                tag, zones, ..
+            }) if zones.contains(&crate::zone::Zone::Library) => Some(tag.clone().into()),
+            _ => None,
+        };
+        if let Some(key) = key
+            && found.replace(key).is_some()
+        {
+            return None;
+        }
+    }
+    found
+}
+
 pub fn is_exiled_collection_tag(tag: &TagKey) -> bool {
     crate::tag::CompilerTagClass::ExiledCollection.contains(tag)
 }

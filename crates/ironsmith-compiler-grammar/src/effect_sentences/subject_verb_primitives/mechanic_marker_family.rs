@@ -1333,6 +1333,7 @@ fn parse_redistribute_life_totals_sentence(
     ) {
         return Ok(None);
     }
+    crate::word_claims::claim_tokens(tokens);
     Ok(Some(vec![EffectAst::subject_verb(
         SubjectVerbRoleAst::Actor,
         PlayerAst::Implicit,

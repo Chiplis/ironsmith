@@ -285,9 +285,12 @@ pub fn parse_cast_more_than_one_limit_filter_words(words: &[&str]) -> Option<Obj
 pub fn parse_cast_additional_limit_filter_words(words: &[&str]) -> Option<ObjectFilter> {
     let mut input = prefix_remainder(words, &["who", "has"]).unwrap_or(words);
     input = prefix_remainder(input, &["cast"])?;
+    let article_start = input;
     if matches!(input.first().copied(), Some("a" | "an")) {
         input = &input[1..];
     }
+    let article = &article_start[..article_start.len() - input.len()];
+    let first_words = input;
     let first = parse_activation_cast_limit_qualifier_words(input)?;
     input = input.get(first.consumed..)?;
     input = prefix_remainder(input, &["spell"])?;
@@ -295,12 +298,21 @@ pub fn parse_cast_additional_limit_filter_words(words: &[&str]) -> Option<Object
         input = rest;
     }
     input = prefix_remainder(input, &["cant", "cast", "additional"])?;
+    let second_words = input;
     let second = parse_activation_cast_limit_qualifier_words(input)?;
     if second.filter != first.filter {
         return None;
     }
     input = input.get(second.consumed..)?;
-    exact(input, &["spells"]).then_some(first.filter)
+    if !exact(input, &["spells"]) {
+        return None;
+    }
+    // The article and both qualifiers ("a nonartifact spell ... additional
+    // nonartifact spells") read into the one limit filter.
+    crate::word_claims::claim_words(article);
+    crate::word_claims::claim_words(&first_words[..first.consumed]);
+    crate::word_claims::claim_words(&second_words[..second.consumed]);
+    Some(first.filter)
 }
 
 /// "cast spells from graveyards or libraries" (Grafdigger's Cage). Each zone
@@ -473,6 +485,8 @@ pub fn parse_player_activation_restriction_tail_words(
             "three" | "3" => 3,
             _ => return None,
         };
+        // The count and its creature noun were both read.
+        crate::word_claims::claim_words(rest);
         return Some(PlayerActivationRestrictionTailFact::BlockWithMoreThan(maximum));
     }
     if let Some(filter) = parse_land_play_restriction_tail_words(words) {
@@ -672,6 +686,8 @@ fn original_printing_set_qualifier(words: &[&str]) -> Option<String> {
     if *last != "expansion" || set_words.is_empty() {
         return None;
     }
+    // The set's name and "expansion" are the qualifier's operand.
+    crate::word_claims::claim_words(rest);
     Some(
         set_words
             .iter()

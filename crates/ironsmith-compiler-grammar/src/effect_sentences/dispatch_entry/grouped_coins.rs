@@ -72,7 +72,14 @@ fn flip_instruction(tokens: &[OwnedLexToken], kind: CoinFlipKind) -> Option<Effe
             count, kind: if repeat_until_loss { CoinFlipKind::Called } else { kind }, repeat_until_loss, stop_condition, loss_action: None, opponent_results, count_value,
         }),
     );
+    // Every word above was matched exactly (or read by the number leaf).
+    crate::word_claims::claim_tokens(tokens);
     Some(if optional { EffectAst::Permissions(PermissionEffectAst::May { effects: vec![flip] }) } else { flip })
+}
+
+/// Whether `tokens` is a coin instruction, without reading it.
+fn is_flip_instruction(tokens: &[OwnedLexToken]) -> bool {
+    crate::word_claims::probe_only(|| flip_instruction(tokens, CoinFlipKind::Called).is_some())
 }
 
 fn prefix_metric(words: &[&str]) -> Option<(usize, EffectMetric)> {
@@ -138,6 +145,8 @@ pub(super) fn parse_die_result_document(
         if rolled && words.ends_with(&["for", "each", "even", "result"]) {
             let end = view.map_word_to_token_start(words.len() - 4)
                 .ok_or_else(|| CardTextError::ParseError("die-result suffix has no action".into()))?;
+            // "... for each even result": the quantifier.
+            crate::word_claims::claim_tokens(&sentence[end..]);
             let effects = parse_effect_sentences_lexed(&sentence[..end])?;
             let value = Value::PendingPriorEffectMetric(
                 PriorEffectMetricQuery::new(EffectMetricSource::Outcome, EffectMetric::EvenDieResults)
@@ -155,6 +164,11 @@ pub(super) fn parse_die_result_document(
             if let (Some(face), Some(count), Some(comma)) =
                 (face, count, sentence.iter().position(OwnedLexToken::is_comma))
             {
+                // "if you rolled <face> exactly <count> times,": the whole
+                // predicate when it ends at the comma.
+                if crate::lexer::token_word_refs(&sentence[..comma]).len() == 7 {
+                    crate::word_claims::claim_tokens(&sentence[..comma]);
+                }
                 let effects = parse_effect_sentences_lexed(&sentence[comma + 1..])?;
                 parsed.push(EffectAst::Conditionals(ConditionalEffectAst::Conditional {
                     predicate: PredicateAst::ValueComparison {
@@ -184,6 +198,8 @@ pub(super) fn parse_die_result_document(
             if !bare_words(&sentence[..start], TokenKind::Comma) {
                 return Ok(None);
             }
+            // "for each different|odd|even result,": the quantifier.
+            crate::word_claims::claim_tokens(&sentence[..start]);
             let effects = parse_effect_sentences_lexed(&sentence[start..])?;
             let value = Value::PendingPriorEffectMetric(
                 PriorEffectMetricQuery::new(EffectMetricSource::Outcome, metric)
@@ -241,6 +257,8 @@ fn receipt_consumer(tokens: &[OwnedLexToken]) -> Result<Option<Vec<EffectAst>>, 
     {
         let start = view.map_word_to_token_start(5).ok_or_else(malformed_coin_clause)?;
         if !bare_words(&tokens[..start], TokenKind::Comma) { return Err(malformed_coin_clause()); }
+        // The coin-result predicate, matched word for word.
+        crate::word_claims::claim_tokens(&tokens[..start]);
         let metric = if words[2] == "lose" { EffectMetric::CoinFlipsLost } else { EffectMetric::CoinFlipsWon };
         return Ok(Some(vec![EffectAst::Conditionals(ConditionalEffectAst::Conditional {
             predicate: coin_comparison(metric, ironsmith_core::ValueComparisonOperator::GreaterThan, 0),
@@ -254,6 +272,9 @@ fn receipt_consumer(tokens: &[OwnedLexToken]) -> Result<Option<Vec<EffectAst>>, 
         let end = view.map_word_to_token_start(words.len() - 3).ok_or_else(malformed_coin_clause)?;
         if !bare_words(&tokens[..start], TokenKind::Comma)
             || !bare_words(&tokens[end..], TokenKind::Period) { return Err(malformed_coin_clause()); }
+        // "If you win all the flips, ... for each flip": the predicate and quantifier.
+        crate::word_claims::claim_tokens(&tokens[..start]);
+        crate::word_claims::claim_tokens(&tokens[end..]);
         return Ok(Some(vec![EffectAst::Conditionals(ConditionalEffectAst::Conditional {
             predicate: PredicateAst::ValueComparison {
                 left: metric_value(EffectMetric::CoinFlipsWon), operator: ironsmith_core::ValueComparisonOperator::Equal,
@@ -272,6 +293,8 @@ fn receipt_consumer(tokens: &[OwnedLexToken]) -> Result<Option<Vec<EffectAst>>, 
         if count > i32::MAX as u32 || Some(number_start + consumed) != view.map_word_to_token_start(4) { return Err(malformed_coin_clause()); }
         let start = view.map_word_to_token_start(7).ok_or_else(malformed_coin_clause)?;
         if !bare_words(&tokens[..start], TokenKind::Comma) { return Err(malformed_coin_clause()); }
+        // The coin-result predicate, matched word for word.
+        crate::word_claims::claim_tokens(&tokens[..start]);
         return Ok(Some(vec![EffectAst::Conditionals(ConditionalEffectAst::Conditional {
             predicate: coin_comparison(EffectMetric::CoinFlipsWon, ironsmith_core::ValueComparisonOperator::GreaterThanOrEqual, count as i32),
             if_true: parse_effect_sentences_lexed(&tokens[start..])?, if_false: Vec::new(),
@@ -280,12 +303,16 @@ fn receipt_consumer(tokens: &[OwnedLexToken]) -> Result<Option<Vec<EffectAst>>, 
     if let Some((word, metric)) = prefix_metric(&words) {
         let start = view.map_word_to_token_start(word).ok_or_else(|| CardTextError::ParseError("coin count has no following action".into()))?;
         if !bare_words(&tokens[..start], TokenKind::Comma) { return Err(malformed_coin_clause()); }
+        // "for each flip you won, ...": the quantifier.
+        crate::word_claims::claim_tokens(&tokens[..start]);
         let effects = parse_effect_sentences_lexed(&tokens[start..])?;
         return Ok(Some(quantified_effect(effects, metric)));
     }
     if let Some((word, metric)) = suffix_metric(&words) {
         let end = view.map_word_to_token_start(word).expect("matched suffix has tokens");
         if !bare_words(&tokens[end..], TokenKind::Period) { return Err(malformed_coin_clause()); }
+        // "... for each coin that comes up heads": the quantifier.
+        crate::word_claims::claim_tokens(&tokens[end..]);
         let effects = parse_effect_sentences_lexed(&tokens[..end])?;
         return Ok(Some(quantified_effect(effects, metric)));
     }
@@ -299,6 +326,8 @@ fn receipt_consumer(tokens: &[OwnedLexToken]) -> Result<Option<Vec<EffectAst>>, 
         if number_start + consumed != flips_start || count > i32::MAX as u32 { return Err(malformed_coin_clause()); }
         let start = view.map_word_to_token_start(7).ok_or_else(malformed_coin_clause)?;
         if !bare_words(&tokens[..start], TokenKind::Comma) { return Err(malformed_coin_clause()); }
+        // The coin-result predicate, matched word for word.
+        crate::word_claims::claim_tokens(&tokens[..start]);
         return Ok(Some(vec![EffectAst::Conditionals(ConditionalEffectAst::Conditional {
             predicate: PredicateAst::ValueComparison {
                 left: metric_value(EffectMetric::CoinFlipsWon), operator: ironsmith_core::ValueComparisonOperator::Equal,
@@ -315,6 +344,8 @@ fn receipt_consumer(tokens: &[OwnedLexToken]) -> Result<Option<Vec<EffectAst>>, 
     if let Some(metric) = single_face {
         let start = view.map_word_to_token_start(5).ok_or_else(|| CardTextError::ParseError("coin predicate has no following action".into()))?;
         if !bare_words(&tokens[..start], TokenKind::Comma) { return Err(malformed_coin_clause()); }
+        // The coin-result predicate, matched word for word.
+        crate::word_claims::claim_tokens(&tokens[..start]);
         return Ok(Some(vec![EffectAst::Conditionals(ConditionalEffectAst::Conditional {
             predicate: coin_comparison(metric, ironsmith_core::ValueComparisonOperator::GreaterThan, 0),
             if_true: parse_effect_sentences_lexed(&tokens[start..])?, if_false: Vec::new(),
@@ -326,6 +357,8 @@ fn receipt_consumer(tokens: &[OwnedLexToken]) -> Result<Option<Vec<EffectAst>>, 
     if let Some(metric) = metric {
         let start = view.map_word_to_token_start(6).ok_or_else(|| CardTextError::ParseError("coin predicate has no following action".into()))?;
         if !bare_words(&tokens[..start], TokenKind::Comma) { return Err(malformed_coin_clause()); }
+        // The coin-result predicate, matched word for word.
+        crate::word_claims::claim_tokens(&tokens[..start]);
         return Ok(Some(vec![EffectAst::Conditionals(ConditionalEffectAst::Conditional {
             predicate: PredicateAst::ValueComparison {
                 left: metric_value(metric), operator: ironsmith_core::ValueComparisonOperator::Equal,
@@ -390,6 +423,12 @@ fn paired_face_repeat(sentences: &[&[OwnedLexToken]]) -> Result<Option<Vec<Effec
                 amount, target: TargetAst::Player(PlayerFilter::IteratedPlayer, None), unpreventable: false,
             }))],
     });
+    // The first and last sentences are exact; the middle one's source,
+    // verb and recipient frame the amount.
+    crate::word_claims::claim_tokens(sentences[0]);
+    crate::word_claims::claim_tokens(sentences[2]);
+    crate::word_claims::claim_tokens(&sentences[1][..amount_start]);
+    crate::word_claims::claim_tokens(&sentences[1][damage_start..]);
     let mut effects = vec![EffectAst::ForEach(ForEachEffectAst::RepeatProcess {
         effects: vec![round, consequences], continue_effect_index: 0,
         continue_predicate: IfResultPredicate::Value(ironsmith_core::Comparison::LessThan(2)),
@@ -413,7 +452,11 @@ fn per_object_face_destroy(
     if !first_words.starts_with(&LEAD) || first_words.len() <= LEAD.len() { return Ok(None); }
     let second_words = crate::lexer::TokenWordView::new(second).word_refs();
     const TAILS: [&str; 5] = ["whose", "coin", "comes", "up", "tails"];
-    if second_words.first() != Some(&"destroy") || !second_words.ends_with(&TAILS) {
+    // "Destroy each <object> whose coin comes up tails": the iterated object.
+    if second_words.len() != TAILS.len() + 3
+        || second_words[..2] != ["destroy", "each"]
+        || !second_words.ends_with(&TAILS)
+    {
         return Ok(None);
     }
     let start = first_view.map_word_to_token_start(LEAD.len()).ok_or_else(malformed_coin_clause)?;
@@ -435,6 +478,8 @@ fn per_object_face_destroy(
             }),
         ],
     })];
+    // The second sentence was matched word for word.
+    crate::word_claims::claim_tokens(second);
     for sentence in rest { effects.extend(parse_effect_sentences_lexed(sentence)?); }
     Ok(Some(effects))
 }
@@ -470,10 +515,22 @@ fn life_stakes_flip_process(sentences: &[&[OwnedLexToken]]) -> Result<Option<Vec
     let Some(target) = won.iter().position(|token| token.is_word("target")) else { return Ok(None) };
     let Some(opponent_tokens) = won.get(target..target + 2) else { return Ok(None) };
     let opponent = crate::util::parse_target_phrase(opponent_tokens)?;
+    // All four sentences matched their exact shapes.
+    for sentence in [flip, won, lost, double] {
+        crate::word_claims::claim_tokens(sentence);
+    }
     Ok(Some(vec![EffectAst::CoinFlipLifeStakes { opponent, initial_stakes }]))
 }
 
 pub(super) fn parse_document(tokens: &[OwnedLexToken]) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    // What the coin readers claim counts only when this reader takes the
+    // document.
+    crate::word_claims::speculative_keep_if(|| parse_coin_document(tokens), |result| {
+        matches!(result, Ok(Some(_)))
+    })
+}
+
+fn parse_coin_document(tokens: &[OwnedLexToken]) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     let sentences = split_lexed_sentences(tokens);
     if let Some(effects) = life_stakes_flip_process(&sentences)? { return Ok(Some(effects)); }
     if let Some(effects) = paired_face_repeat(&sentences)? { return Ok(Some(effects)); }
@@ -488,6 +545,10 @@ pub(super) fn parse_document(tokens: &[OwnedLexToken]) -> Result<Option<Vec<Effe
         }) = &mut flip
     {
         *loss_action = Some(ironsmith_core::CoinFlipLossAction::StopResolution);
+        // The flip instruction is matched word for word.
+        crate::word_claims::claim_tokens(&sentences[0]);
+        // "If you lose a flip, <this> has no effect.": the stop control.
+        crate::word_claims::claim_tokens(sentences[1]);
         let mut effects = vec![flip];
         for sentence in &sentences[2..] { effects.extend(parse_effect_sentences_lexed(sentence)?); }
         return Ok(Some(effects));
@@ -503,13 +564,13 @@ pub(super) fn parse_document(tokens: &[OwnedLexToken]) -> Result<Option<Vec<Effe
             || words.starts_with(&["you", "flip"])
             || words.starts_with(&["you", "may", "flip"]);
         if coin_head && (words.contains(&"coins") || words.contains(&"coin"))
-            && flip_instruction(sentence, CoinFlipKind::Called).is_none()
+            && !is_flip_instruction(sentence)
             && !bare_words(sentence, TokenKind::Period)
         { return Err(malformed_coin_clause()); }
         let mut kind = CoinFlipKind::Called;
         let mut observes_winner = false;
         for following in sentences.iter().skip(index + 1) {
-            if flip_instruction(following, CoinFlipKind::Called).is_some() { break; }
+            if is_flip_instruction(following) { break; }
             let words = crate::lexer::TokenWordView::new(following).word_refs();
             observes_winner |= prefix_metric(&words).is_some()
                 || suffix_metric(&words).is_some_and(|(_, metric)| matches!(metric, EffectMetric::CoinFlipsWon | EffectMetric::CoinFlipsLost))
@@ -523,6 +584,8 @@ pub(super) fn parse_document(tokens: &[OwnedLexToken]) -> Result<Option<Vec<Effe
         }
         if observes_winner { kind = CoinFlipKind::Called; }
         let effects = if let Some(flip) = flip_instruction(sentence, kind) {
+            // The flip instruction is matched word for word.
+            crate::word_claims::claim_tokens(sentence);
             opponent_loss_tag = match &flip {
                 EffectAst::SubjectVerb(SubjectVerbEffectAst {
                     action: SubjectVerbActionAst::Random(RandomActionAst::FlipCoins { opponent_results: Some((_, lost)), .. }), ..
@@ -536,6 +599,7 @@ pub(super) fn parse_document(tokens: &[OwnedLexToken]) -> Result<Option<Vec<Effe
             let view = crate::lexer::TokenWordView::new(sentence);
             let start = view.map_word_to_token_start(5).ok_or_else(malformed_coin_clause)?;
             if !bare_words(&sentence[..start], TokenKind::Comma) { return Err(malformed_coin_clause()); }
+            crate::word_claims::claim_tokens(&sentence[..start]);
             Some(vec![EffectAst::ForEach(ForEachEffectAst::ForEachTaggedPlayer {
                 require_evidence: true,
                 tag, effects: parse_effect_sentences_lexed(&sentence[start..])?,

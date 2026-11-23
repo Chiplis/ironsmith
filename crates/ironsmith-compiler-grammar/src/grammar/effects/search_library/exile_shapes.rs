@@ -376,16 +376,25 @@ pub fn parse_search_exiled_consult_shape_lexed(
     if filter_tokens.is_empty() {
         return None;
     }
-    let finish = if marker_present(after_put, &["then", "shuffles"]) {
-        SearchExiledConsultFinish::Shuffle
-    } else if marker_present(
-        after_put,
-        &["then", "puts", "the", "rest", "on", "the", "bottom"],
-    ) {
-        SearchExiledConsultFinish::PutRestOnBottom
-    } else {
-        return None;
+    // The remainder's disposition, read whole: the revealed cards stay in
+    // the library (revealing moves none), so shuffling "the rest" into it is
+    // shuffling that library; the bottom placement names its random order.
+    let tail = trim_lexed_commas(after_put);
+    let finish = match crate::lexer::parser_token_word_refs(tail).as_slice() {
+        ["then", "shuffles"] | ["then", "shuffles", "the", "rest", "into", "their", "library"] => {
+            SearchExiledConsultFinish::Shuffle
+        }
+        [
+            "then", "puts", "the", "rest", "on", "the", "bottom", "of", "their", "library", "in",
+            "a", "random", "order",
+        ]
+        | [
+            "then", "puts", "the", "rest", "on", "the", "bottom", "of", "their", "library", "in",
+            "random", "order",
+        ] => SearchExiledConsultFinish::PutRestOnBottom,
+        _ => return None,
     };
+    crate::word_claims::claim_tokens(tail);
     Some(SearchExiledConsultShape {
         filter_tokens,
         finish,

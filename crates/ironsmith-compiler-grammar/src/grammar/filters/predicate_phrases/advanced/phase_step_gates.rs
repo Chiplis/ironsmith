@@ -110,6 +110,14 @@ fn parse_player_counter_placement_gate(clause: LexedClause<'_>) -> Option<Predic
     let mut filter =
         crate::grammar::primitives::probe_shape(parse_object_filter(objects.tokens(), false))?;
     filter.zone = None;
+    // "you've put <count> [<type>] counter(s) on" and "this turn" around the
+    // object filter, read word for word above.
+    if let Some(frame) = clause.between_word_range(0, noun + 2) {
+        crate::word_claims::claim_tokens(frame.tokens());
+    }
+    if let Some(turn) = clause.from_word(words.len() - 2) {
+        crate::word_claims::claim_tokens(turn.tokens());
+    }
     Some(value_at_least(
         Value::TurnHistoryCount(TurnHistoryCount::CountersPutOn {
             source_controller: Some(PlayerFilter::You),
@@ -767,6 +775,12 @@ fn parse_two_color_devotion_gate(tokens: &[OwnedLexToken]) -> Option<PredicateAs
         return None;
     }
     let (operator, amount) = comparison_to_value_comparison_operator(comparison)?;
+    // The two colors the devotion counts.
+    for name in ["first_color", "second_color"] {
+        if let Some(color) = matched.capture_clause(name, clause) {
+            crate::word_claims::claim_tokens(color.tokens());
+        }
+    }
     Some(PredicateAst::ValueComparison {
         left: Value::devotion_to_colors(PlayerFilter::You, [first, second].into_iter().collect()),
         operator,
@@ -846,6 +860,10 @@ fn parse_control_gate(tokens: &[OwnedLexToken]) -> Result<Option<PredicateAst>, 
                 .or_else(|| crate::util::decimal_count(margin))
         {
             let filter = crate::object_filters::parse_object_filter_words(filter_words, false)?;
+            // The margin words around the filter, as matched above.
+            let last = tail_words.len() - 2;
+            crate::word_claims::claim_words(&tail_words[..4]);
+            crate::word_claims::claim_words(&tail_words[last..]);
             return Ok(Some(PredicateAst::ValueComparison {
                 left: Value::PlayersWhoControlAtLeastMoreThanYou {
                     players: controller,
@@ -892,14 +910,21 @@ fn parse_control_gate(tokens: &[OwnedLexToken]) -> Result<Option<PredicateAst>, 
     }
     // "eight or more artifacts with the same name as one another" (Mechanized
     // Production) counts the largest same-name group, not all matching objects.
-    const SAME_NAME_GROUP_SUFFIX: &[&str] =
-        &["with", "the", "same", "name", "as", "one", "another"];
+    // "three or more lands with the same name" (Endless Atlas) is the same
+    // group count with the reciprocal left implicit.
+    const SAME_NAME_GROUP_SUFFIXES: &[&[&str]] = &[
+        &["with", "the", "same", "name", "as", "one", "another"],
+        &["with", "the", "same", "name"],
+    ];
     let mut same_name_group = false;
-    let group_clause = LexedClause::new(filter_tokens);
-    let group_stripped = group_clause.without_trailing_phrase(SAME_NAME_GROUP_SUFFIX);
-    if group_stripped.tokens().len() != filter_tokens.len() {
-        same_name_group = true;
-        filter_tokens = group_stripped.tokens();
+    for suffix in SAME_NAME_GROUP_SUFFIXES {
+        let group_clause = LexedClause::new(filter_tokens);
+        let group_stripped = group_clause.without_trailing_phrase(suffix);
+        if group_stripped.tokens().len() != filter_tokens.len() {
+            same_name_group = true;
+            filter_tokens = group_stripped.tokens();
+            break;
+        }
     }
     // "a Villain with greater mana value than that creature" (Evil's Thrall):
     // a mana-value comparison against the referenced object.
@@ -1082,25 +1107,33 @@ fn parse_attachment_gate(tokens: &[OwnedLexToken]) -> Result<Option<PredicateAst
     if let Some(relation) = parse_copula_relation_clauses(tokens)
         && surface::exact_any(
             relation.subject_clause,
-            &[&["enchanted", "creature"], &["enchanted", "permanent"]],
+            &[
+                &["enchanted", "creature"],
+                &["enchanted", "permanent"],
+                &["enchanted", "land"],
+            ],
         )
     {
         let mut filter = if surface::exact(relation.subject_clause, &["enchanted", "creature"]) {
             ObjectFilter::creature()
+        } else if surface::exact(relation.subject_clause, &["enchanted", "land"]) {
+            ObjectFilter::land()
         } else {
             ObjectFilter::permanent()
         };
         let tail = relation.tail_clause;
-        if tail.word_refs().len() == 1
-            && let Some(color) = tail
-                .token(0)
-                .and_then(|token| parse_color(token.parser_text()))
-        {
-            filter.colors = Some(color);
-            return Ok(Some(PredicateAst::AttachedToSourceMatches(filter)));
-        }
-        if surface::exact(tail, &["tapped"]) {
-            filter.tapped = true;
+        // "white", "untapped", "white and untapped" (Nature's Chosen,
+        // Tourach's Gate): a color and tapped-state adjective list.
+        if let Some(adjectives) = attachment_state_adjectives(tail.tokens()) {
+            for adjective in adjectives {
+                match adjective {
+                    AttachmentStateAdjective::Color(color) => {
+                        filter.colors = Some(filter.colors.map_or(color, |colors| colors.union(color)));
+                    }
+                    AttachmentStateAdjective::Tapped => filter.tapped = true,
+                    AttachmentStateAdjective::Untapped => filter.untapped = true,
+                }
+            }
             return Ok(Some(PredicateAst::AttachedToSourceMatches(filter)));
         }
         if surface::exact_any(
@@ -1192,7 +1225,43 @@ fn parse_attachment_gate(tokens: &[OwnedLexToken]) -> Result<Option<PredicateAst
         .expect("attached-to capture");
     let mut filter = parse_object_filter(attachment_tokens, false)?;
     filter.attached_to_object = Some(Box::new(parse_object_filter(attached_to.tokens(), false)?));
+    // "enchanted" names the permanent this source is attached to.
+    if let Some(enchanted) = attachment.tokens().first() {
+        crate::word_claims::claim_tokens(std::slice::from_ref(enchanted));
+    }
     Ok(Some(PredicateAst::AttachedToSourceMatches(filter)))
+}
+
+enum AttachmentStateAdjective {
+    Color(crate::color::ColorSet),
+    Tapped,
+    Untapped,
+}
+
+/// "white", "untapped", "white and untapped": each word a color or a tapped
+/// state, joined by "and". Claims the words only when the whole list reads.
+fn attachment_state_adjectives(tokens: &[OwnedLexToken]) -> Option<Vec<AttachmentStateAdjective>> {
+    let words: Vec<&OwnedLexToken> = tokens.iter().filter(|token| token.as_word().is_some()).collect();
+    if words.is_empty() || words.len() % 2 == 0 {
+        return None;
+    }
+    let mut adjectives = Vec::new();
+    for (index, token) in words.iter().enumerate() {
+        let word = token.parser_text();
+        if index % 2 == 1 {
+            if word != "and" {
+                return None;
+            }
+            continue;
+        }
+        adjectives.push(match word {
+            "tapped" => AttachmentStateAdjective::Tapped,
+            "untapped" => AttachmentStateAdjective::Untapped,
+            word => AttachmentStateAdjective::Color(parse_color(word)?),
+        });
+    }
+    crate::word_claims::claim_tokens(tokens);
+    Some(adjectives)
 }
 
 fn parse_empty_battlefield_gate(
@@ -1378,7 +1447,11 @@ fn parse_existing_zone_history_gate(tokens: &[OwnedLexToken]) -> Option<Predicat
             } else {
                 all
             };
-            return Some(value_at_least(count, i32::try_from(amount).ok()?));
+            let amount = i32::try_from(amount).ok()?;
+            // The count and passive history frame around the filter, as matched.
+            crate::word_claims::claim_words(&words[..3]);
+            crate::word_claims::claim_words(&words[passive..]);
+            return Some(value_at_least(count, amount));
         }
     }
 

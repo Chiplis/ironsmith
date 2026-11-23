@@ -109,6 +109,8 @@ pub fn parse_scaled_target_power_sentence(
                 _ => None,
             };
             if let Some(tag) = attached_host {
+                // "equipped/enchanted creature's" was matched word for word.
+                crate::word_claims::claim_tokens(target_tokens);
                 let spec = Box::new(ChooseSpec::Tagged(tag.clone().into()));
                 let scaled_stat = |value: Value| {
                     if multiplier == 1 { value } else { Value::Scaled(Box::new(value), multiplier) }

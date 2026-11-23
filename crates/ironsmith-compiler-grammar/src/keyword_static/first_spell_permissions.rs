@@ -64,6 +64,7 @@ pub fn parse_first_spell_each_player_free_cast_line(
     else {
         return Ok(None);
     };
+    crate::word_claims::claim_words(&words);
     let own_turn_only = words.contains(&"during");
     let mut filter = ObjectFilter::default();
     filter.first_spell_cast_each_turn = true;

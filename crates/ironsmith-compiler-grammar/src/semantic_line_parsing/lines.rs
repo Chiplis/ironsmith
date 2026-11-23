@@ -2035,6 +2035,8 @@ fn parse_villainous_choice_statement_chunk(
 fn parse_die_roll_result_adjustment_static_chunk(tokens: &[OwnedLexToken]) -> Option<LineAst> {
     let rendered = render_token_slice(tokens);
     if crate::grammar::statement_shapes::is_extra_coin_ignore_one(tokens) {
+        // An exact whole-line shape.
+        crate::word_claims::claim_tokens(tokens);
         return Some(LineAst::StaticAbilities(vec![
             crate::cards::builders::StaticAbilityAst::Static(
                 StaticAbility::extra_coin_ignore_one(PlayerFilter::You, rendered),
@@ -2042,6 +2044,8 @@ fn parse_die_roll_result_adjustment_static_chunk(tokens: &[OwnedLexToken]) -> Op
         ]));
     }
     if crate::grammar::statement_shapes::is_first_coin_batch_heads_win(tokens) {
+        // An exact whole-line shape.
+        crate::word_claims::claim_tokens(tokens);
         return Some(LineAst::StaticAbilities(vec![
             crate::cards::builders::StaticAbilityAst::Static(
                 StaticAbility::first_coin_batch_heads_win(PlayerFilter::You, rendered),
@@ -2051,6 +2055,8 @@ fn parse_die_roll_result_adjustment_static_chunk(tokens: &[OwnedLexToken]) -> Op
     if let Some(sides) =
         crate::grammar::statement_shapes::parse_die_roll_exchange_with_source_base_pt(tokens)
     {
+        // An exact whole-line shape.
+        crate::word_claims::claim_tokens(tokens);
         return Some(LineAst::StaticAbilities(vec![
             crate::cards::builders::StaticAbilityAst::Static(
                 StaticAbility::die_roll_result_exchange_with_source_base_pt(
@@ -2062,6 +2068,8 @@ fn parse_die_roll_result_adjustment_static_chunk(tokens: &[OwnedLexToken]) -> Op
         ]));
     }
     if crate::grammar::statement_shapes::is_extra_die_ignore_lowest(tokens) {
+        // An exact whole-line shape.
+        crate::word_claims::claim_tokens(tokens);
         return Some(LineAst::StaticAbilities(vec![
             crate::cards::builders::StaticAbilityAst::Static(
                 StaticAbility::extra_die_ignore_lowest(PlayerFilter::You, 1, rendered),
@@ -2069,6 +2077,8 @@ fn parse_die_roll_result_adjustment_static_chunk(tokens: &[OwnedLexToken]) -> Op
         ]));
     }
     if crate::grammar::statement_shapes::is_extra_planar_die_ignore_one(tokens) {
+        // An exact whole-line shape.
+        crate::word_claims::claim_tokens(tokens);
         return Some(LineAst::StaticAbilities(vec![
             crate::cards::builders::StaticAbilityAst::Static(
                 StaticAbility::extra_planar_die_ignore_one(PlayerFilter::You, rendered),
@@ -2615,6 +2625,7 @@ mod statement_grouping_tests;
 #[path = "lines/lines_choice.rs"]
 mod lines_choice_programs;
 pub use lines_choice_programs::rewrite_modal_to_parsed_item;
+pub(crate) use lines_choice_programs::reads_per_die_result_ability_table;
 use lines_choice_programs::{
     specialize_modal_common_target_suffix, try_parse_chosen_type_behold_two_additional_cost,
 };

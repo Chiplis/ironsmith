@@ -239,6 +239,8 @@ fn parse_attached_loses_all_abilities_and_has_line(
         return Ok(None);
     };
     let filter = parse_object_filter(subject_tokens, false)?;
+    // "loses all abilities and": the removal read above, joined to the grant.
+    crate::word_claims::claim_tokens(&tokens[..has_idx]);
     let mut abilities = vec![StaticAbility::remove_all_abilities(filter).into()];
     abilities.append(&mut grants);
     Ok(Some(abilities))
@@ -1554,6 +1556,14 @@ pub fn parse_enchanted_creature_has_line(
         );
         let preserves_controlled_attachments = protection_attachment_exception
             && matches!(action, KeywordAction::ProtectionFromChosenColor);
+        if preserves_controlled_attachments {
+            // The attachment exception sentence, read into the flag below.
+            for pattern in [PROTECTION_ATTACHMENT_EXCEPTION, PROTECTION_ATTACHMENT_EXCEPTION_ASCII] {
+                if let Some(at) = line_words.windows(pattern.len()).position(|window| window == pattern) {
+                    crate::word_claims::claim_words(&line_words[at..at + pattern.len()]);
+                }
+            }
+        }
         let ability_text = if preserves_controlled_attachments {
             format!(
                 "{ability_text}. This effect doesn't remove Auras and Equipment you control that are already attached to it"
@@ -1827,6 +1837,13 @@ pub fn parse_attached_restrictions_with_ignore_special_action_line(
         Some((cost, crate::lexer::render_token_slice(&special_action[range]).trim().to_string()))
     };
 
+    // The special action's head and "for that player to ignore ..." tail,
+    // and the sacrifice cost when it is the fixed one (a payment reads its own).
+    crate::word_claims::claim_words(&special_action_words[..head_len]);
+    crate::word_claims::claim_words(&special_action_words[special_action_words.len() - IGNORE_TAIL.len()..]);
+    if sacrifices_permanent {
+        crate::word_claims::claim_words(cost_words);
+    }
     let subject = format!("enchanted {attached_noun}");
     let attached_filter = match attached_noun {
         "creature" => ObjectFilter::creature(),

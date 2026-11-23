@@ -1348,6 +1348,16 @@ pub(crate) fn describe_activation_timing_clause(timing: &ActivationTiming) -> Op
         ActivationTiming::DuringEndOfCombatStep => {
             Some("Activate only during the end of combat step")
         }
+        ActivationTiming::DuringCombatAfterBlockersDeclared => {
+            Some("Activate only during combat after blockers are declared")
+        }
+        ActivationTiming::DuringOpponentsTurnBeforeAttackersDeclared => {
+            Some("Activate only during an opponent's turn, before attackers are declared")
+        }
+        ActivationTiming::BeforeCombat => Some("Activate only before combat"),
+        ActivationTiming::AnyPlayerDuringTheirTurn => {
+            Some("Any player may activate this ability but only during their turn")
+        }
     }
 }
 

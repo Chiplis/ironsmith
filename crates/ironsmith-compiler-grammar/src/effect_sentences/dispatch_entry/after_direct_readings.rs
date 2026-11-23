@@ -173,8 +173,10 @@ pub(super) fn read(input: &AfterDirect<'_>) -> ParseOutcome<RuleMatch<Vec<Effect
     // Equal readings from two rules are one reading.
     let mut distinct: Vec<RegistryCandidate<Vec<EffectAst>>> = Vec::new();
     for candidate in candidates {
-        if !distinct.iter().any(|kept| kept.value == candidate.value) {
-            distinct.push(candidate);
+        match distinct.iter_mut().find(|kept| kept.value == candidate.value) {
+            // Both rules read the same meaning; either one's words are read.
+            Some(kept) => kept.claims.extend(&candidate.claims),
+            None => distinct.push(candidate),
         }
     }
     if distinct.len() > 1 {
@@ -201,6 +203,8 @@ fn read_otherwise_face_down_exile_top(
     let tokens = input.tokens;
     if let Some((exile_tokens, count)) = complete_simple_otherwise_face_down_exile_top_shape(tokens)
     {
+        // "Otherwise, ...": the alternative branch marker.
+        crate::word_claims::claim_tokens(&tokens[..tokens.len() - exile_tokens.len()]);
         return Ok(Some(build_complete_simple_otherwise_face_down_exile_top(
             exile_tokens,
             count,
@@ -233,6 +237,8 @@ fn read_secret_choices_match_conditional(
     if tokens.first().is_some_and(|token| token.is_word("if"))
         && let Some(source_type) = secret_choices_match_conditional_source_type(tokens)
     {
+        // The predicate and consequence were matched word for word.
+        crate::word_claims::claim_tokens(tokens);
         return Ok(Some(build_secret_choices_match_conditional_effects(
             source_type,
         )));

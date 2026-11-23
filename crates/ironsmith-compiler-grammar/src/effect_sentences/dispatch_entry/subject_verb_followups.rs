@@ -682,6 +682,7 @@ fn pre_rule_note_activation_mana_type(
     {
         return Ok(None);
     }
+    crate::word_claims::claim_words(&words);
     Ok(Some(PreParseFollowupResult::Plan(SentenceParsePlan {
         tokens: sentence_tokens.to_vec(),
         wrap_if_result: None,
@@ -764,6 +765,9 @@ fn pre_rule_next_adapt_ignores_counters(
         return Ok(None);
     };
     let target = crate::util::parse_target_phrase(&sentence_tokens[start..end])?;
+    // The exact frame around the target phrase.
+    crate::word_claims::claim_words(&words[..3]);
+    crate::word_claims::claim_words(&words[words.len() - TAIL.len()..]);
     Ok(Some(PreParseFollowupResult::Plan(SentenceParsePlan {
         tokens: sentence_tokens.to_vec(),
         wrap_if_result: None,
@@ -1182,6 +1186,7 @@ fn pre_rule_whenever_card_drawn_this_way_followup(
     }
     *state.effects = rewritten;
     *state.carried_context = None;
+    crate::word_claims::claim_words(&words[..HEAD.len()]);
     Ok(Some(PreParseFollowupResult::Handled {
         consumed_sentences: 1,
         route: Some("whenever-card-drawn-this-way-reflexive"),
@@ -2026,6 +2031,8 @@ fn pre_rule_permission_payment_followup(
     if let Some(rider) = rider {
         state.effects.push(rider);
     }
+    // The follow-up sentence was matched word for word.
+    crate::word_claims::claim_words(&words);
     Ok(Some(PreParseFollowupResult::Handled {
         consumed_sentences: 1,
         route: Some("permission-payment-followup"),
@@ -2093,6 +2100,8 @@ fn pre_rule_repeat_sacrifice_for_types(
         repetitions.extend(process);
     }
     state.effects.extend(repetitions);
+    // "[then] repeat this process for" and the type list matched exactly.
+    crate::word_claims::claim_tokens(tokens);
     Ok(Some(PreParseFollowupResult::Handled {
         consumed_sentences: 1,
         route: Some("repeat-sacrifice-for-types"),
@@ -2210,6 +2219,10 @@ fn pre_rule_excess_damage_to_controller(
             }
             _ => return Ok(None),
         };
+        // The replacement head and body ("and" opening a rider read above).
+        crate::word_claims::claim_tokens(&tokens[..comma]);
+        let body_end = (REPLACEMENT_BODY.len() + usize::from(!rider.is_empty())).min(body_words.len());
+        crate::word_claims::claim_words(&body_words[..body_end]);
         let damage = effects.pop().expect("checked above");
         effects.push(EffectAst::Sequence {
             effects: vec![
@@ -2237,6 +2250,7 @@ fn pre_rule_excess_damage_to_controller(
         }));
     }
     let condition = if words.as_slice() == TAIL {
+        crate::word_claims::claim_words(&words);
         None
     } else if words.first() == Some(&"if")
         && words.ends_with(TAIL)
@@ -2248,7 +2262,7 @@ fn pre_rule_excess_damage_to_controller(
         let condition_tokens = &tokens[1..comma];
         let condition_words = crate::lexer::parser_token_word_refs(condition_tokens);
         let has_idx = condition_words.iter().position(|word| *word == "has");
-        match (condition_words.first(), has_idx) {
+        let condition = match (condition_words.first(), has_idx) {
             (Some(&"the"), Some(has_idx)) if damage_by_object && has_idx > 1 => {
                 let mut filter_tokens = condition_tokens[1..has_idx].to_vec();
                 filter_tokens.extend(crate::lexer::synthetic_phrase_tokens("with"));
@@ -2258,6 +2272,10 @@ fn pre_rule_excess_damage_to_controller(
                 if filter.static_abilities.is_empty() {
                     return Ok(None);
                 }
+                // "the <object> has <ability>": the article and verb that
+                // frame the object filter.
+                crate::word_claims::claim_words(&condition_words[..1]);
+                crate::word_claims::claim_words(&condition_words[has_idx..=has_idx]);
                 Some(PredicateAst::Source(SourcePredicateAst::SourceMatches(
                     filter,
                 )))
@@ -2266,7 +2284,11 @@ fn pre_rule_excess_damage_to_controller(
             _ => Some(crate::grammar::filters::parse_condition_predicate_lexed(
                 condition_tokens,
             )?),
-        }
+        };
+        // "if" and the redirect tail this shape matched.
+        crate::word_claims::claim_tokens(&tokens[..1]);
+        crate::word_claims::claim_tokens(&tokens[comma + 1..]);
+        condition
     } else {
         return Ok(None);
     };
@@ -2354,6 +2376,7 @@ fn pre_rule_text_change_destination_exclusion(
         return Err(CardTextError::ParseError("text-change destination exclusion has no matching preceding choice".into()));
     };
     if !excluded_new.contains(&subtype) { excluded_new.push(subtype); }
+    crate::word_claims::claim_words(&words);
     *state.carried_context = None;
     Ok(Some(PreParseFollowupResult::Handled { consumed_sentences: 1, route: Some("typed-text-change-destination-exclusion") }))
 }

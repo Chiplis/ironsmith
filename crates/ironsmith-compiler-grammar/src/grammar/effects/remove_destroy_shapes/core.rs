@@ -15,6 +15,10 @@ fn parse_controller_dealt_combat_damage_by_source_filter(
     {
         return None;
     }
+    // The relation and its "this turn" frame; the filter and the source are
+    // read by their own readers.
+    crate::word_claims::claim_tokens(&tokens[whose..whose + RELATION.len()]);
+    crate::word_claims::claim_tokens(&after[after.len() - 2..]);
     Some((&tokens[..whose], &after[..after.len() - 2]))
 }
 
@@ -107,6 +111,14 @@ pub(super) fn parse_destroy_all_shape(tokens: &[OwnedLexToken]) -> DestroyAllSha
         {
             let filter_tokens = trim_lexed_commas(&base_tokens[..except_idx]);
             if !filter_tokens.is_empty() {
+                // "all creatures except creatures chosen this way": the
+                // excepted noun restates the base noun of the chosen set.
+                if let [noun] = &base_tokens[except_idx + 1..]
+                    && noun.as_word().is_some()
+                    && noun.as_word() == filter_tokens.last().and_then(|token| token.as_word())
+                {
+                    crate::word_claims::claim_tokens(&base_tokens[except_idx + 1..]);
+                }
                 return DestroyAllShape::ChosenThisWay {
                     filter_tokens,
                     relation: TaggedDestroyRelation::ExceptMatching,

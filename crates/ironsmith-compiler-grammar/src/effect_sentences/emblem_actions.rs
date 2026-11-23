@@ -91,6 +91,8 @@ fn parse_emblem_ability_tokens(tokens: &[OwnedLexToken]) -> Option<EmblemAbility
     ) && let Ok(trigger_tokens) =
         crate::lexer::lex_line("At the beginning of each opponent's draw step, you draw a card.", 0)
     {
+        // The exact authored sentence, read as this synthetic trigger.
+        crate::word_claims::claim_tokens(tokens);
         return parse_complete_typed_emblem_trigger(&trigger_tokens);
     }
     let input = emblem_ability_readings::EmblemAbility { tokens };

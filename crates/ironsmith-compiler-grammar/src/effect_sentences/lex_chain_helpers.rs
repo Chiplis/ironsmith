@@ -31,8 +31,11 @@ pub fn find_verb_lexed(tokens: &[OwnedLexToken]) -> Option<(Verb, usize)> {
 /// All) is still a real chain boundary, so the list only shields the clause
 /// when no such boundary follows it.
 pub fn lists_mana_combination_without_chain_boundary(tokens: &[OwnedLexToken]) -> bool {
-    let Some(start) = tokens.windows(3).position(|window| {
-        window[0].is_word("any") && window[1].is_word("combination") && window[2].is_word("of")
+    // A locator: finding the mana-combination list reads nothing.
+    let Some(start) = crate::word_claims::probe_only(|| {
+        tokens.windows(3).position(|window| {
+            window[0].is_word("any") && window[1].is_word("combination") && window[2].is_word("of")
+        })
     }) else {
         return false;
     };

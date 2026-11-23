@@ -392,6 +392,14 @@ fn parse_direct_enter_as_copy_lexed<'a>(
         }
         CopySourceKind::Source
     } else if primitives::parse_prefix(copy_source_tokens, primitives::kw("enchanted")).is_some() {
+        // "enchanted creature" (Infinite Reflection): the enchanted object
+        // is the source; its noun is part of that reference.
+        let source = trim_lexed_commas(copy_source_tokens);
+        if let [_, noun] = source
+            && noun.is_any_word(&["creature", "permanent", "artifact", "land"])
+        {
+            crate::word_claims::claim_tokens(source);
+        }
         CopySourceKind::Enchanted
     } else {
         CopySourceKind::Filter
@@ -765,7 +773,15 @@ fn parse_copy_characteristic_remainder<'a>(
                 "to",
                 "this",
             ]),
-            repeat_till::<_, _, (), _, _, _, _>(0.., any.void(), peek(primitives::sentence_end())),
+            // "... equal to this creature's power and toughness" (Hulking
+            // Metamorph): the source's own stats, read word for word.
+            alt((
+                primitives::phrase(&["creature's", "power", "and", "toughness"]),
+                primitives::phrase(&["creatures", "power", "and", "toughness"]),
+                primitives::phrase(&["creature", "s", "power", "and", "toughness"]),
+                primitives::phrase(&["permanent's", "power", "and", "toughness"]),
+                primitives::phrase(&["permanents", "power", "and", "toughness"]),
+            )),
             primitives::sentence_end(),
         )
             .value(CopyCharacteristicRemainder::PowerToughnessFromSource),

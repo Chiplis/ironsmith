@@ -7,7 +7,7 @@ use crate::grammar::{leaf, primitives};
 use crate::lexer::{LexStream, OwnedLexToken};
 
 use super::super::sequence_pairs::{
-    contains_content_sequence, contains_sequence_phrase, contains_sequence_word,
+    contains_content_sequence, contains_sequence_phrase, contains_sequence_word, read_sequence_phrase, claim_bottom_of_library,
     finish_sequence_words, matches_complete_content_sequence, matches_complete_sequence,
     seek_sequence_phrase, sequence_any_phrase, sequence_phrase, starts_content_sequence,
     starts_sequence,
@@ -48,11 +48,6 @@ const MILLED_TO_GRAVEYARD: &[&[&str]] = &[
     &["put", "into", "graveyard", "this", "way"],
 ];
 const OPPONENT_EXILES: &[&[&str]] = &[&["an", "opponent", "exiles"], &["opponent", "exiles"]];
-const DOES_NOT_HAVE_NAME: &[&[&str]] = &[
-    &["doesn't", "have", "that", "name"],
-    &["doesnt", "have", "that", "name"],
-    &["doesn", "t", "have", "that", "name"],
-];
 const SEARCH_RESULT_HAND: &[&[&str]] = &[
     &["put", "one", "into", "your", "hand"],
     &["put", "one", "of", "them", "into", "your", "hand"],
@@ -102,7 +97,13 @@ pub fn parse_land_or_nonland_consult_sequence_tokens(
                 "reveal", "cards", "from", "the", "top", "of", "your", "library",
             ]],
         )
-        || !contains_sequence_phrase(reveal, &[&["a", "card", "of", "the", "chosen", "kind"]])
+        || !read_sequence_phrase(
+            reveal,
+            &[
+                &["you", "reveal", "a", "card", "of", "the", "chosen", "kind"],
+                &["a", "card", "of", "the", "chosen", "kind"],
+            ],
+        )
         || !starts_sequence(move_match, CHOSEN_KIND_TO_HAND)
         || !contains_sequence_word(move_match, "rest")
     {
@@ -164,6 +165,22 @@ pub fn parse_opponent_exile_then_hand_shape(
     })
 }
 
+/// "If you searched for a creature card that doesn't have that name, you may
+/// put it onto the battlefield under your control." (articles aside)
+const SEARCHED_CREATURE_WITHOUT_NAME: &[&[&str]] = &[
+    &[
+        "if", "you", "searched", "for", "creature", "card", "that", "doesn't", "have", "that",
+        "name", "you", "may", "put", "it", "onto", "battlefield", "under", "your", "control",
+    ],
+    &[
+        "if", "you", "searched", "for", "creature", "card", "that", "doesnt", "have", "that",
+        "name", "you", "may", "put", "it", "onto", "battlefield", "under", "your", "control",
+    ],
+    &[
+        "if", "you", "searched", "for", "creature", "card", "that", "doesn", "t", "have", "that",
+        "name", "you", "may", "put", "it", "onto", "battlefield", "under", "your", "control",
+    ],
+];
 const CHOOSE_NAME: &[&[&str]] = &[
     &["that", "player", "chooses", "card", "name"],
     &["that", "player", "choose", "card", "name"],
@@ -186,24 +203,7 @@ pub fn parse_search_then_name_shape(
     let name_start = first.len().saturating_sub(input.len());
     if !matches_complete_content_sequence(&first[..then_at], SEARCH_CARD)
         || !matches_complete_content_sequence(&first[name_start..], CHOOSE_NAME)
-        || !contains_sequence_phrase(conditional, &[&["if", "you", "searched", "for"]])
-        || !contains_sequence_phrase(conditional, &[&["creature", "card"]])
-        || !contains_sequence_phrase(conditional, DOES_NOT_HAVE_NAME)
-        || !contains_sequence_phrase(
-            conditional,
-            &[&[
-                "you",
-                "may",
-                "put",
-                "it",
-                "onto",
-                "the",
-                "battlefield",
-                "under",
-                "your",
-                "control",
-            ]],
-        )
+        || !matches_complete_content_sequence(conditional, SEARCHED_CREATURE_WITHOUT_NAME)
         || !matches_complete_sequence(
             shuffle,
             &[
@@ -271,17 +271,24 @@ pub fn is_search_two_disposition_then_shuffle_shape(
         && matches_complete_content_sequence(third, SHUFFLE)
 }
 
+/// "in a random order" / "in any order": the remainder order a reader honours.
+pub const RANDOM_ORDER: &[&[&str]] =
+    &[&["in", "a", "random", "order"], &["in", "random", "order"], &["random", "order"]];
+pub const ANY_ORDER: &[&[&str]] = &[&["in", "any", "order"], &["any", "order"]];
+
 pub fn parse_consult_remainder_order_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<LibraryBottomOrderAst> {
     if !contains_sequence_word(tokens, "bottom") || !contains_sequence_word(tokens, "library") {
         return None;
     }
-    if contains_sequence_phrase(tokens, &[&["random", "order"]]) {
-        Some(LibraryBottomOrderAst::Random)
-    } else if contains_sequence_phrase(tokens, &[&["any", "order"]]) {
-        Some(LibraryBottomOrderAst::ChooserChooses)
+    let order = if read_sequence_phrase(tokens, RANDOM_ORDER) {
+        LibraryBottomOrderAst::Random
+    } else if read_sequence_phrase(tokens, ANY_ORDER) {
+        LibraryBottomOrderAst::ChooserChooses
     } else {
-        None
-    }
+        return None;
+    };
+    claim_bottom_of_library(tokens);
+    Some(order)
 }

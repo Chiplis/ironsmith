@@ -474,6 +474,8 @@ fn search_library_battlefield_entry_counters(words: &[&str]) -> Vec<BattlefieldE
             amount =
                 amount.with_surface_hint(ironsmith_core::ValueSurfaceHint::AdditionalEntryCounter);
         }
+        // "with <amount> [additional] <kind> counter(s) on it".
+        crate::word_claims::claim_words(&words[with_idx..counter_idx + 3]);
         counters.push(BattlefieldEntryCounterSpec::new(
             counter_type,
             amount,
@@ -791,6 +793,8 @@ pub fn strip_search_library_instead_of_count_tokens(
     if !crate::util::is_number_word(count) {
         return trimmed;
     }
+    // "instead of <count>": the replaced count, read here and dropped.
+    crate::word_claims::claim_tokens(&trimmed[*instead_index..]);
     trim_commas(&trimmed[..*instead_index])
 }
 
@@ -890,6 +894,8 @@ pub fn parse_search_library_basic_land_type_slots_lexed(
     if !search_word_stream_eq_phrase(&words, BASIC_LAND_TYPE_SEARCH_SELECTOR) {
         return None;
     }
+    // "a land card of each basic land type", matched exactly (articles aside).
+    crate::word_claims::claim_tokens(tokens);
 
     Some(
         [
@@ -1190,6 +1196,9 @@ pub fn derive_search_library_effect_routing_lexed(
         };
         if let Some(zone) = words.iter().position(|word| *word == zone_word) {
             let start = match words[..zone] {
+                // "into that player's graveyard" (Quiet Speculation): the
+                // searched library's owner, whose graveyard the cards go to.
+                [.., "into", "that", "player's" | "players"] => zone - 3,
                 [.., "into" | "on", "your" | "their"] => zone - 2,
                 [.., "onto", "the"] => zone - 2,
                 [.., "into" | "on" | "onto"] => zone - 1,
@@ -1236,7 +1245,42 @@ pub fn derive_search_library_effect_routing_lexed(
         }
         face_down
     });
-    let shuffle = clause_markers.shuffle_idx.is_some() && !trailing_discard_before_shuffle;
+    // "exile them in a face-down pile, and shuffle that pile" (Mangara's
+    // Tome, Parallel Thoughts): the shuffle randomizes the exiled pile, not a
+    // library (CR 701.24a). No one knows its order, so a later "top card of
+    // the pile" is a uniformly random member; no library shuffle happens here.
+    let pile_shuffle = face_down_exile
+        && clause_markers.shuffle_idx.is_some_and(|idx| {
+            let exile_words = clause_markers
+                .exile_idx
+                .map(|exile| parser_token_word_refs(&search_tokens[exile..idx]))
+                .unwrap_or_default();
+            let shuffle_words = parser_token_word_refs(&search_tokens[idx..]);
+            let pile = exile_words.windows(4).position(|window| window == ["in", "a", "face", "down"])
+                .filter(|at| exile_words.get(at + 4) == Some(&"pile"));
+            let shuffled = matches!(shuffle_words.as_slice(), ["shuffle", "that", "pile", ..]);
+            if let (Some(at), true) = (pile, shuffled) {
+                crate::word_claims::claim_words(&exile_words[at..at + 5]);
+                crate::word_claims::claim_words(&shuffle_words[..3]);
+                true
+            } else {
+                false
+            }
+        });
+    let shuffle = clause_markers.shuffle_idx.is_some()
+        && !trailing_discard_before_shuffle
+        && !pile_shuffle;
+    // "..., then the player shuffles" (Rootwater Thief): the searched
+    // library's owner named as the shuffling player.
+    if shuffle
+        && let Some(shuffle_idx) = clause_markers.shuffle_idx
+        && shuffle_idx >= 2
+        && let [the, player] = &search_tokens[shuffle_idx - 2..shuffle_idx]
+        && matches!(the.parser_text(), "the" | "that")
+        && player.parser_text() == "player"
+    {
+        crate::word_claims::claim_tokens(&search_tokens[shuffle_idx - 2..shuffle_idx]);
+    }
     let split_battlefield_and_hand = clause_markers.put_idx.is_some()
         && search_library_words_contain_all(&words_all, BATTLEFIELD_HAND_ONE_MARKER_WORDS)
         && (search_library_words_have_word(&words_all, "other")
@@ -1250,6 +1294,10 @@ pub fn derive_search_library_effect_routing_lexed(
             && battlefield > one
         {
             crate::word_claims::claim_words(&words[one..=one]);
+            // "one of them": the partitioned group's anaphor.
+            if words.get(one + 1..one + 3) == Some(&["of", "them"][..]) {
+                crate::word_claims::claim_words(&words[one + 1..one + 3]);
+            }
             let start = match words[..battlefield] {
                 [.., "onto", "the"] => battlefield - 2,
                 _ => battlefield,
@@ -1281,6 +1329,15 @@ pub fn derive_search_library_effect_routing_lexed(
         Vec::new()
     };
 
+    // "search their library ... put it onto the battlefield under their
+    // control": the searching player puts the card, so it enters under their
+    // control by default.
+    if destination == Zone::Battlefield
+        && crate::word_primitives::sequence_occurs(&words_all, &["their", "library"])
+        && let Some(words) = put_clause_words.as_ref()
+    {
+        let _ = crate::word_primitives::parse_sequence_start(words, &["under", "their", "control"]);
+    }
     let enters_under_your_control = put_clause_words.as_ref().is_some_and(|words| {
         crate::word_primitives::sequence_occurs(words, &["under", "your", "control"])
     });
@@ -1294,6 +1351,15 @@ pub fn derive_search_library_effect_routing_lexed(
                 &["under", "target", "players", "control"],
             )
         });
+    // "under target player's control": the entering controller read here.
+    if enters_under_target_player_control
+        && let Some(words) = put_clause_words.as_ref()
+        && let Some(under) = words
+            .windows(4)
+            .position(|window| window[0] == "under" && window[1] == "target" && window[3] == "control")
+    {
+        crate::word_claims::claim_words(&words[under..under + 4]);
+    }
 
     SearchLibraryEffectRouting {
         destination,
@@ -1313,10 +1379,12 @@ pub fn derive_search_library_effect_routing_lexed(
             .and_then(|words| search_library_put_position_from_top_words(words)),
         result_reference_surface: search_library_reference_surface_after(&words_all, "put")
             .unwrap_or(crate::effect::SearchResultReferenceSurface::It),
-        search_top_in_any_order_surface: crate::word_primitives::sequence_occurs(
+        // "put those cards on top in any order": the searcher orders them.
+        search_top_in_any_order_surface: crate::word_primitives::parse_sequence_start(
             &words_all,
             &["in", "any", "order"],
-        ),
+        )
+        .is_some(),
     }
 }
 
@@ -1330,10 +1398,28 @@ pub fn derive_search_library_subject_routing_lexed(
         .map(String::as_str)
         .collect::<Vec<_>>();
     let search_body_words = &search_words[1..];
+    // The words are a normalized copy: a matched prefix claims the authored
+    // tokens it covers (after the "search" verb).
+    let starts_with_any = |phrases: &[&[&str]]| {
+        let Some(len) = phrases
+            .iter()
+            .find(|phrase| search_word_stream_starts_with_any(search_body_words, &[**phrase]))
+            .map(|phrase| phrase.len())
+        else {
+            return false;
+        };
+        if let Some(range) =
+            crate::lexer::TokenWordView::new(search_tokens).token_span_for_words(1, 1 + len)
+        {
+            crate::word_claims::claim_tokens(&search_tokens[range]);
+        }
+        true
+    };
     let mut player = chooser;
     let mut search_player_target: Option<TargetAst> = None;
     let mut forced_library_owner: Option<PlayerFilter> = None;
     let mut search_zones_override: Option<Vec<Zone>> = None;
+    let mut outside_game_zone = false;
 
     let their_library_owner = |chooser| match chooser {
         // In a coordinated fragment such as "Target player gains life, then
@@ -1356,8 +1442,7 @@ pub fn derive_search_library_subject_routing_lexed(
         _ => Some(PlayerFilter::You),
     };
 
-    if search_word_stream_starts_with_any(
-        search_body_words,
+    if starts_with_any(
         YOUR_OR_THEIR_LIBRARY_GRAVEYARD_FOR_PREFIX_PATTERN,
     ) {
         forced_library_owner = if search_body_words.first() == Some(&"their") {
@@ -1378,32 +1463,27 @@ pub fn derive_search_library_subject_routing_lexed(
         } else {
             vec![Zone::Library, Zone::Graveyard]
         });
-    } else if search_word_stream_starts_with_any(
-        search_body_words,
+    } else if starts_with_any(
         YOUR_OR_THEIR_LIBRARY_FOR_PREFIX_PATTERN,
     ) {
         if search_body_words.first() == Some(&"their") {
             forced_library_owner = their_library_owner(chooser);
         }
-    } else if search_word_stream_starts_with_any(
-        search_body_words,
+    } else if starts_with_any(
         CONTROLLER_GRAVEYARD_HAND_LIBRARY_FOR_PREFIX_PATTERN,
-    ) || search_word_stream_starts_with_any(
-        search_body_words,
+    ) || starts_with_any(
         CONTROLLER_SUFFIX_GRAVEYARD_HAND_LIBRARY_FOR_PREFIX_PATTERN,
     ) {
         player = PlayerAst::ItsController;
         forced_library_owner = Some(PlayerFilter::ControllerOf(crate::filter::ObjectRef::Target));
         search_zones_override = Some(vec![Zone::Graveyard, Zone::Hand, Zone::Library]);
-    } else if search_word_stream_starts_with_any(
-        search_body_words,
+    } else if starts_with_any(
         OWNER_GRAVEYARD_HAND_LIBRARY_FOR_PREFIX_PATTERN,
     ) {
         player = PlayerAst::ItsOwner;
         forced_library_owner = Some(PlayerFilter::OwnerOf(crate::filter::ObjectRef::Target));
         search_zones_override = Some(vec![Zone::Graveyard, Zone::Hand, Zone::Library]);
-    } else if search_word_stream_starts_with_any(
-        search_body_words,
+    } else if starts_with_any(
         TARGET_PLAYER_GRAVEYARD_HAND_LIBRARY_FOR_PREFIX_PATTERN,
     ) {
         player = PlayerAst::That;
@@ -1413,8 +1493,7 @@ pub fn derive_search_library_subject_routing_lexed(
         ));
         forced_library_owner = Some(PlayerFilter::target_player());
         search_zones_override = Some(vec![Zone::Graveyard, Zone::Hand, Zone::Library]);
-    } else if search_word_stream_starts_with_any(
-        search_body_words,
+    } else if starts_with_any(
         TARGET_OPPONENT_GRAVEYARD_HAND_LIBRARY_FOR_PREFIX_PATTERN,
     ) {
         player = PlayerAst::That;
@@ -1424,8 +1503,7 @@ pub fn derive_search_library_subject_routing_lexed(
         ));
         forced_library_owner = Some(PlayerFilter::target_opponent());
         search_zones_override = Some(vec![Zone::Graveyard, Zone::Hand, Zone::Library]);
-    } else if search_word_stream_starts_with_any(
-        search_body_words,
+    } else if starts_with_any(
         TARGET_PLAYER_LIBRARY_FOR_PREFIX_PATTERN,
     ) {
         player = PlayerAst::That;
@@ -1434,8 +1512,7 @@ pub fn derive_search_library_subject_routing_lexed(
             span_from_tokens(&search_tokens[1..3]),
         ));
         forced_library_owner = Some(PlayerFilter::target_player());
-    } else if search_word_stream_starts_with_any(
-        search_body_words,
+    } else if starts_with_any(
         TARGET_OPPONENT_LIBRARY_FOR_PREFIX_PATTERN,
     ) {
         player = PlayerAst::That;
@@ -1444,8 +1521,7 @@ pub fn derive_search_library_subject_routing_lexed(
             span_from_tokens(&search_tokens[1..3]),
         ));
         forced_library_owner = Some(PlayerFilter::target_opponent());
-    } else if search_word_stream_starts_with_any(
-        search_body_words,
+    } else if starts_with_any(
         THAT_PLAYER_LIBRARY_FOR_PREFIX_PATTERN,
     ) {
         player = PlayerAst::That;
@@ -1453,20 +1529,17 @@ pub fn derive_search_library_subject_routing_lexed(
         // placeholder resolves to a preceding target in ordinary spell text
         // and remains IteratedPlayer only inside a real player loop.
         forced_library_owner = Some(PlayerFilter::IteratedPlayer);
-    } else if search_word_stream_starts_with_any(
-        search_body_words,
+    } else if starts_with_any(
         THAT_PLAYER_GRAVEYARD_HAND_LIBRARY_FOR_PREFIX_PATTERN,
     ) {
         player = PlayerAst::That;
         forced_library_owner = Some(PlayerFilter::IteratedPlayer);
         search_zones_override = Some(vec![Zone::Graveyard, Zone::Hand, Zone::Library]);
-    } else if search_word_stream_starts_with_any(
-        search_body_words,
+    } else if starts_with_any(
         CONTROLLER_LIBRARY_FOR_PREFIX_PATTERN,
     ) {
         player = PlayerAst::ItsController;
-    } else if search_word_stream_starts_with_any(
-        search_body_words,
+    } else if starts_with_any(
         OWNER_LIBRARY_FOR_PREFIX_PATTERN,
     ) {
         player = PlayerAst::ItsOwner;
@@ -1508,6 +1581,7 @@ pub fn derive_search_library_subject_routing_lexed(
         if !saw_library || zones.is_empty() {
             return None;
         }
+        outside_game_zone = saw_outside_game;
         search_zones_override = Some(zones);
     } else {
         return None;
@@ -1526,7 +1600,7 @@ pub fn derive_search_library_subject_routing_lexed(
                     | "players" | "opponent's" | "opponents" | "owner's" | "owners"
                     | "controller's" | "controllers" | "library" | "libraries" | "graveyard"
                     | "graveyards" | "hand" | "hands" | "and" | "or" | "and/or"
-            )
+            ) || (outside_game_zone && matches!(**word, "outside" | "the" | "game"))
         })
         .count();
     if head_len > 0 {
@@ -1718,6 +1792,8 @@ pub fn parse_search_library_same_name_reference_lexed(
                 .is_some_and(|token| search_library_token_is_any_word(token, &["another", "other"]))
             {
                 other_reference = true;
+                // "another creature you control": the other-object constraint.
+                crate::word_claims::claim_tokens(&reference_filter_tokens[..1]);
                 reference_filter_tokens = trim_commas(&reference_filter_tokens[1..]);
             }
             let reference_filter = parse_object_filter(&reference_filter_tokens, other_reference)
@@ -1762,6 +1838,8 @@ pub fn parse_search_library_object_filter_lexed(
             .nth(idx + 1)
             .map(|(position, _)| position)
     {
+        // "[an] additional": the not-the-earlier-card constraint below.
+        crate::word_claims::claim_tokens(&filter_tokens[..position]);
         let mut filter =
             parse_search_library_object_filter_lexed(&filter_tokens[position..], clause_display)?;
         filter
@@ -1858,6 +1936,10 @@ pub fn parse_search_library_object_filter_lexed(
         crate::word_claims::claim_tokens(&filter_tokens[name_start..name_end]);
         let named_token = parser_words[named_idx].0;
         crate::word_claims::claim_tokens(&filter_tokens[named_token..=named_token]);
+        // "not named <name>": the negation read for the excluded name.
+        if negated_named {
+            crate::word_claims::claim_tokens(&filter_tokens[base_token_end..named_token]);
+        }
         if is_default_search_library_card_selector(&base_tokens) {
             crate::word_claims::claim_tokens(&base_tokens);
         }
@@ -1967,6 +2049,7 @@ mod library_programs;
 pub use library_programs::{
     parse_search_library_iterated_object_subject_lexed,
     parse_search_library_leading_effect_prelude_lexed,
+    search_library_counted_colors_prelude_lexed,
     search_library_has_unsupported_top_position_probe,
     search_library_has_unsupported_top_position_probe_lexed,
     search_library_put_position_from_top_words, search_library_starts_with_search_verb_lexed,

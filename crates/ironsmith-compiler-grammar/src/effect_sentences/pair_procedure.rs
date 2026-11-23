@@ -199,6 +199,26 @@ fn is_each_copy_targets_different(sentence: &SentenceInput) -> bool {
     effect_grammar::each_copy_targets_different_shape(sentence.lowered())
 }
 
+/// Claim the completing "Each copy targets a different one of those
+/// <nouns>." The nouns ("Golems", "creatures", "permanents and players")
+/// restate the opener's candidate set the copies were made for.
+fn claim_each_copy_targets_different(sentence: &SentenceInput) {
+    const HEAD: &[&str] = &["each", "copy", "targets", "a", "different", "one", "of", "those"];
+    let words = crate::lexer::token_word_refs(sentence.lowered());
+    if !words.starts_with(HEAD) {
+        return;
+    }
+    let tail = &words[HEAD.len()..];
+    let restates = |word: &str| {
+        matches!(word, "and" | "or" | "players" | "permanents")
+            || crate::util::parse_card_type(word).is_some()
+            || crate::util::parse_subtype_flexible(word).is_some()
+    };
+    if !tail.is_empty() && crate::word_claims::probe_only(|| tail.iter().all(|word| restates(word))) {
+        crate::word_claims::claim_words(&words);
+    }
+}
+
 fn choose_subtype_sentence(sentence: &SentenceInput) -> bool {
     let words = crate::lexer::token_word_refs(sentence.lowered());
     words.first() == Some(&"choose")
@@ -1718,6 +1738,13 @@ fn read_resolving_spell_exile_then_gains_suspend(
     ]))
 }
 
+/// Claim the sentences a procedure read word for word, once it commits.
+fn claim_sentences<'a>(sentences: impl IntoIterator<Item = &'a SentenceInput>) {
+    for sentence in sentences {
+        crate::word_claims::claim_tokens(sentence.lowered());
+    }
+}
+
 fn statements(
     sentences: &[SentenceInput],
     sentence_idx: usize,
@@ -1774,8 +1801,10 @@ pub(super) fn open(
     candidates.retain(|candidate| candidate.value.1 == longest);
     let mut distinct: Vec<RegistryCandidate<(Pair, usize)>> = Vec::new();
     for candidate in candidates {
-        if !distinct.iter().any(|kept| kept.value == candidate.value) {
-            distinct.push(candidate);
+        match distinct.iter_mut().find(|kept| kept.value == candidate.value) {
+            // Both rules read the same meaning; either one's words are read.
+            Some(kept) => kept.claims.extend(&candidate.claims),
+            None => distinct.push(candidate),
         }
     }
     match resolve_registry_candidates(RuleId::new("pair-shape-registry"), distinct, diagnostics) {
@@ -1804,7 +1833,13 @@ pub(super) fn continue_with(
         return Ok(false);
     }
     let completes = match &group.pair {
-        Pair::CopyForEachTarget(_) => is_each_copy_targets_different(sentence),
+        Pair::CopyForEachTarget(_) => {
+            let completes = is_each_copy_targets_different(sentence);
+            if completes {
+                claim_each_copy_targets_different(sentence);
+            }
+            completes
+        }
         // The opener read the completing sentences; these are the ones it read.
         Pair::FlashbackGrant(_)
         | Pair::ChosenCreatureType(_)
@@ -1932,6 +1967,7 @@ fn parse_top_zone_choice_complement(
     ) {
         return Ok(None);
     }
+    claim_sentences([first, second]);
     let pool = helper_tag_for_tokens(first.lowered(), "ordered_zone_pool");
     let chosen = helper_tag_for_tokens(first.lowered(), "chosen_from_pool");
     let mut remainder = ObjectFilter::tagged(crate::tag::TagRef::of(pool.clone()));

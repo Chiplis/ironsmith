@@ -361,8 +361,12 @@ pub fn matching_phrase<'p>(words: &[&str], expected: &'p [&'p [&'p str]]) -> Opt
         .find(|phrase| equals(words, phrase))
 }
 
+/// The value of the phrase `words` equals exactly; like [`equals`], a match
+/// reads every word.
 pub fn matching_value<T: Clone>(words: &[&str], expected: &[(&[&str], T)]) -> Option<T> {
-    crate::slice_primitives::matching_value(words, expected)
+    let value = crate::slice_primitives::matching_value(words, expected);
+    claimed(value.is_some(), words);
+    value
 }
 
 pub fn ends_with(words: &[&str], expected: &[&str]) -> bool {

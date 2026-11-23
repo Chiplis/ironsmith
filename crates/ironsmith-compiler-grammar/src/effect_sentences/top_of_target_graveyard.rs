@@ -55,6 +55,10 @@ pub(crate) fn parse(tokens: &[OwnedLexToken]) -> Option<Vec<EffectAst>> {
         return None;
     }
 
+    // The condition head and the body were matched word for word; the
+    // quality is the filter's.
+    crate::word_claims::claim_tokens(&condition[..quality_start]);
+    crate::word_claims::claim_tokens(body);
     let player_tokens_start = condition
         .iter()
         .position(|token| token.is_word("target"))?;

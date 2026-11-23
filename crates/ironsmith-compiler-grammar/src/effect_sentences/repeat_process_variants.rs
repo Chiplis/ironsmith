@@ -89,6 +89,38 @@ fn parse_repeat_values(tokens: &[OwnedLexToken]) -> Option<RepeatValues<'_>> {
     Some(RepeatValues::Keywords(items))
 }
 
+/// "repeat this process for instant cards with mana values 2 and 1": the
+/// descriptor restates, in the plural, the phrase that the substituted
+/// number measures in the base instruction ("an instant card with mana
+/// value 3"). It is read only when it does.
+fn claim_repeat_number_descriptor(base: &[OwnedLexToken], repeat: &[OwnedLexToken]) {
+    let repeat = strip_sentence_edges(repeat);
+    let Some(((), rest)) = primitives::parse_prefix(
+        repeat,
+        primitives::phrase(&["repeat", "this", "process", "for"]),
+    ) else {
+        return;
+    };
+    let Some(first_number) = rest.iter().position(|token| token.kind == TokenKind::Number) else {
+        return;
+    };
+    let descriptor = &rest[..first_number];
+    let Some(slot) = base.iter().position(|token| token.kind == TokenKind::Number) else {
+        return;
+    };
+    let singular: Vec<String> = crate::lexer::parser_token_word_refs(descriptor)
+        .iter()
+        .map(|word| word.strip_suffix('s').unwrap_or(word).to_string())
+        .collect();
+    let base_words: Vec<String> = crate::lexer::parser_token_word_refs(&base[..slot])
+        .iter()
+        .map(|word| word.strip_suffix('s').unwrap_or(word).to_string())
+        .collect();
+    if !singular.is_empty() && base_words.ends_with(&singular) {
+        crate::word_claims::claim_tokens(descriptor);
+    }
+}
+
 /// The previous instruction read once for each new value.
 fn substituted_instructions(
     base: &[OwnedLexToken],
@@ -200,15 +232,22 @@ fn read_excess_type_choice_phase_out(
         primitives::phrase(&["repeat", "this", "process", "for"]),
     )?;
     let mut types = vec![first];
+    let mut items = Vec::new();
     for item in list_items(rest) {
         let item_words = crate::lexer::parser_token_word_refs(item);
         let [word] = item_words.as_slice() else {
             return None;
         };
         types.push(card_type_word(word)?);
+        items.push(item);
     }
     if types.len() < 2 {
         return None;
+    }
+    // Both sentences were read word for word above.
+    crate::word_claims::claim_tokens(base_tokens);
+    for item in items {
+        crate::word_claims::claim_tokens(item);
     }
     let target_player = PlayerFilter::Target(Box::new(PlayerFilter::Any));
     let mut effects = vec![EffectAst::subject_verb_target_only(TargetAst::Player(
@@ -265,6 +304,9 @@ pub(super) fn read_repeat_with_new_values(
     let Some(repetitions) = substituted_instructions(base_tokens, &values) else {
         return Ok(None);
     };
+    if matches!(values, RepeatValues::Numbers(_)) {
+        claim_repeat_number_descriptor(base_tokens, repeat.lowered());
+    }
     let mut effects = super::parse_effect_sentence_lexed(base.lowered())?;
     for repetition in repetitions {
         effects.extend(super::parse_effect_sentence_lexed(&repetition)?);
@@ -368,6 +410,8 @@ pub(super) fn read_greatest_mana_value_tie_break(
     if tie_words.as_slice() != TIE {
         return Ok(None);
     }
+    // The tie-break sentence, matched word for word.
+    crate::word_claims::claim_tokens(tie.lowered());
     let winner_tokens = strip_sentence_edges(winner.lowered());
     let Some(((), action)) = primitives::parse_prefix(
         winner_tokens,
@@ -422,6 +466,9 @@ pub(super) fn read_inline_return_for_types(
     let positions = crate::lexer::parser_token_word_positions(base);
     let suffix = &base[positions[5].0..];
     let mut effects = super::parse_effect_sentences_lexed(base)?;
+    // "then repeats this process for <a type>, ...": each listed type is
+    // read as one more return.
+    crate::word_claims::claim_tokens(&tokens[split..]);
     for item in items {
         let mut repetition = crate::lexer::synthetic_word_tokens(["that", "player", "returns"]);
         repetition.extend_from_slice(item);

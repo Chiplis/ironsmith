@@ -420,6 +420,8 @@ fn parse_shared_subject_base_pt_from_has_tail(
             .is_some_and(|parsed| parsed.consumed_words == tail.len() && &parsed.duration == duration)
         { return Ok(None); }
         let (power, toughness) = if rest_words[1] == "power" { (Some(value), None) } else { (None, Some(value)) };
+        // "has base toughness|power <value>": the characteristic set.
+        crate::word_claims::claim_words(&clause_words[has_word_idx..has_word_idx + 3]);
         return Ok(Some((power, toughness, has_word_idx, duration.clone())));
     }
     match gain_shapes::parse_gain_base_pt_after_has_shape(rest_words) {
@@ -688,6 +690,10 @@ fn color_only_hexproof_filter(tokens: &[OwnedLexToken]) -> Option<ObjectFilter> 
         filter.colors = Some(crate::color::ColorSet::from_color(color));
         filters.push(filter);
     }
+    // Every word was a color or a list connective, each read into the union.
+    if !filters.is_empty() {
+        crate::word_claims::claim_tokens(tokens);
+    }
 
     match filters.len() {
         0 => None,
@@ -867,6 +873,8 @@ fn parse_granted_ability_component_for_gain_unlabeled(
                 "else",
             ]
     {
+        // The whole quoted replacement matched word for word.
+        crate::word_claims::claim_words(&ability_words);
         return Ok(Some(vec![GrantedAbilityAst::StaticAbility(Box::new(
             StaticAbilityAst::Static(StaticAbility::redirect_zone_change(
                 ObjectFilter::source().with_source_surface(
@@ -954,6 +962,8 @@ fn parse_granted_ability_component_for_gain_unlabeled(
         _ => true,
     };
     if references_prior_object_colors {
+        // The whole protection phrase matched one of the shapes above.
+        crate::word_claims::claim_words(&ability_words);
         let spec =
             crate::target::ChooseSpec::Tagged(crate::tag::CompilerReferenceTag::It.bind().into());
         return Ok(Some(vec![GrantedAbilityAst::StaticAbility(Box::new(
@@ -2716,6 +2726,8 @@ fn parse_simple_ability_modifier_clause_lexed(
         if losing && ability_surface == gain_shapes::AbilityReferenceSurface::ThisAbility {
             (vec![GrantedAbilityAst::ThisAbility], false)
         } else if losing && ability_word_refs.as_slice() == ["all", "landwalk", "abilities"] {
+            // The exact ability family read word for word.
+            crate::word_claims::claim_tokens(&ability_tokens);
             (
                 vec![GrantedAbilityAst::StaticAbilityFamily(
                     ironsmith_core::static_ability_id::StaticAbilityId::Landwalk,
@@ -3129,6 +3141,8 @@ pub fn parse_pronoun_ability_and_type_pair(
     let it = crate::lexer::synthetic_word_tokens(["it"]);
     let become_effect = parse_become_clause(&it, descriptor)?;
     let ability_effect = if crate::lexer::parser_token_word_refs(has_tail) == ["no", "abilities"] {
+        // "has no abilities" is read whole as the synthetic loss below.
+        crate::word_claims::claim_tokens(has_tail);
         let lose = crate::lexer::synthetic_word_tokens(["it", "loses", "all", "abilities"]);
         parse_simple_lose_ability_clause_lexed(&lose)?
     } else {
@@ -3139,6 +3153,25 @@ pub fn parse_pronoun_ability_and_type_pair(
     let Some(ability_effect) = ability_effect else {
         return Ok(None);
     };
+    // The pair's frame: the pronoun and its two copulas ("it has ... and is
+    // ..."), and the descriptor's article, read around the two operands.
+    crate::word_claims::claim_tokens(
+        crate::util::trim_edge_punctuation_tokens(tokens)
+            .iter()
+            .filter(|token| {
+                let inside = |part: &[OwnedLexToken]| {
+                    part.iter().any(|other| std::ptr::eq(other, *token))
+                };
+                !inside(has_tail) && !inside(descriptor)
+            })
+            .filter(|token| token.is_any_word(&["it", "it's", "it’s", "has", "and", "is"]))
+            .cloned()
+            .collect::<Vec<_>>()
+            .as_slice(),
+    );
+    if let Some(article) = descriptor.first().filter(|token| token.is_any_word(&["a", "an"])) {
+        crate::word_claims::claim_tokens(std::slice::from_ref(article));
+    }
     Ok(Some(vec![ability_effect, become_effect]))
 }
 
@@ -3305,7 +3338,10 @@ fn parse_complete_simple_source_gain_ability_sentence(
         && ability_tokens
             .last()
             .is_some_and(|token| token.kind == TokenKind::Quote);
+    // "that creature also gains ...": the additive adverb belongs to the verb
+    // (the subject keeps it for its rendered surface).
     let subject_tokens = trim_commas(shape.subject_tokens);
+    let _ = trim_trailing_also(&subject_tokens);
     let subject_words = GainAbilityWordView::new(&subject_tokens).to_word_refs();
     // A source reference followed by a conversion is a compound action,
     // not a complete simple grant. The compound reader preserves both arms.
@@ -3393,6 +3429,10 @@ pub(crate) fn parse_mana_cost_keyword_grant(
             crate::grant::GrantDuration::UntilEndOfTurn,
         )
     };
+    // "gains <keyword> until end of turn" and the price sentence, matched
+    // word for word.
+    crate::word_claims::claim_tokens(&grant[gain..]);
+    crate::word_claims::claim_words(&price_words);
     Ok(Some(vec![effect]))
 }
 
@@ -3728,10 +3768,11 @@ fn parse_current_identity_grant_condition_suffix(tokens:&[OwnedLexToken])->Resul
     let mut quotes=Vec::new();let mut split=None;
     for (index,token) in tokens.iter().enumerate(){
         if matches!(token.kind,TokenKind::Quote|TokenKind::Apostrophe){if quotes.last()==Some(&token.kind){quotes.pop();}else{quotes.push(token.kind);}continue;}
-        if quotes.is_empty()&&token.is_word("only")&&tokens.get(index+1).is_some_and(|next|next.is_word("while")){split=Some(index);}
+        // Locating the "only while" split reads nothing yet.
+        if quotes.is_empty()&&crate::word_claims::probe_only(||token.is_word("only")&&tokens.get(index+1).is_some_and(|next|next.is_word("while"))){split=Some(index);}
     }
     let Some(split)=split else{return Ok(None);};
-    if !tokens[..split].iter().any(|token|token.is_any_word(&["gain","gains","have","has"])) {return Ok(None);}
+    if !crate::word_claims::probe_only(||tokens[..split].iter().any(|token|token.is_any_word(&["gain","gains","have","has"]))) {return Ok(None);}
     let condition=&tokens[split+2..];
     let Some(has)=condition.iter().position(|token|token.is_word("has"))else{return Err(CardTextError::ParseError("current grant condition requires an object and a property".into()));};
     let subject=crate::lexer::parser_token_word_refs(&condition[..has]);

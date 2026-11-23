@@ -148,6 +148,45 @@ pub(super) fn contains_sequence_phrase(
     seek_sequence_phrase(&mut input, alternatives).is_ok()
 }
 
+/// "on the bottom of <owner's> library": the destination a remainder-order
+/// reader names. A card always goes to its owner's library (CR 400.3), so
+/// the possessive only restates whose library it is.
+pub(super) fn claim_bottom_of_library(tokens: &[OwnedLexToken]) {
+    let text = |index: usize| tokens.get(index).and_then(|token| token.as_word().map(|_| token.parser_text()));
+    let Some(bottom) = tokens.iter().position(|token| token.as_word().is_some() && token.parser_text() == "bottom") else {
+        return;
+    };
+    let mut start = bottom;
+    if start >= 1 && text(start - 1) == Some("the") {
+        start -= 1;
+    }
+    if start >= 1 && matches!(text(start - 1), Some("on" | "onto")) {
+        start -= 1;
+    }
+    let mut end = bottom + 1;
+    if text(end) == Some("of") {
+        let owner_len = match (text(end + 1), text(end + 2), text(end + 3)) {
+            (Some("your" | "their" | "its" | "his" | "her"), Some("library"), _) => 1,
+            (Some("that" | "the"), Some("library"), _) => 1,
+            (Some("its" | "their" | "that"), Some("owner's" | "owners" | "owners'" | "player's" | "players"), Some("library")) => 2,
+            _ => return crate::word_claims::claim_tokens(&tokens[start..=bottom]),
+        };
+        end += 2 + owner_len;
+    }
+    crate::word_claims::claim_tokens(&tokens[start..end]);
+}
+
+/// [`contains_sequence_phrase`] for a reader that honours the phrase it
+/// finds: the first matching phrase is claimed.
+pub(super) fn read_sequence_phrase(
+    tokens: &[OwnedLexToken],
+    alternatives: &[&'static [&'static str]],
+) -> bool {
+    let mut input = LexStream::new(tokens);
+    seek_sequence_phrase(&mut input, alternatives).is_ok()
+        && sequence_any_phrase(alternatives).parse_next(&mut input).is_ok()
+}
+
 pub(super) fn contains_sequence_word(tokens: &[OwnedLexToken], expected: &'static str) -> bool {
     let mut input = LexStream::new(tokens);
     while let Ok(token) = next_word(&mut input) {
@@ -195,6 +234,8 @@ pub(super) fn matches_complete_content_sequence(
             .is_ok()
             && next_content_word(&mut input).is_err()
         {
+            // As `matches_complete_sequence`: the whole sentence was read.
+            crate::word_claims::claim_tokens(tokens);
             return true;
         }
     }
@@ -211,6 +252,8 @@ pub(super) fn starts_content_sequence(
             .parse_next(&mut input)
             .is_ok()
         {
+            // As `starts_sequence`: the matched prefix was read.
+            crate::word_claims::claim_tokens(&tokens[..tokens.len() - input.len()]);
             return true;
         }
     }
@@ -229,6 +272,10 @@ pub(super) fn contains_content_sequence(
                 .parse_next(&mut probe)
                 .is_ok()
             {
+                // As the word-level finders: the matched window was read.
+                let start = tokens.len() - input.len();
+                let end = tokens.len() - probe.len();
+                crate::word_claims::claim_tokens(&tokens[start..end]);
                 return true;
             }
         }
@@ -253,6 +300,8 @@ pub(super) fn ends_content_sequence(
                 .is_ok()
                 && next_content_word(&mut probe).is_err()
             {
+                // As `starts_content_sequence`: the matched suffix was read.
+                crate::word_claims::claim_tokens(&tokens[tokens.len() - input.len()..]);
                 return true;
             }
         }

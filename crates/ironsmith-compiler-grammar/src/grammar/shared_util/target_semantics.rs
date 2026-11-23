@@ -124,6 +124,9 @@ fn source_owner_exclusion(words: &[&str]) -> Option<PlayerFilter> {
         .filter(|word| !word.is_empty())
         .collect::<Vec<_>>();
     this_source_surface_for_words(&normalized)?;
+    // "this artifact's owner": the possessive was read through stripped
+    // copies, so the authored words are claimed here.
+    crate::word_claims::claim_words(words);
     Some(PlayerFilter::OwnerOf(crate::filter::ObjectRef::tagged(
         crate::tag::CompilerReferenceTag::SourceObject.bind(),
     )))

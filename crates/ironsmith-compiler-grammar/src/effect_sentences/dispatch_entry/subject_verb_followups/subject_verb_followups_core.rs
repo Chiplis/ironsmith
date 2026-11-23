@@ -86,6 +86,9 @@ pub(super) fn pre_rule_do_the_same_for_keywords_followup(
         }
         repeated.extend(crate::effect_sentences::parse_effect_sentence_lexed(&rewritten)?);
     }
+    // "Do the same for <keyword list>": each listed keyword is re-read in
+    // the previous sentence's place, through synthetic copies.
+    crate::word_claims::claim_tokens(sentence_tokens);
     state.effects.extend(repeated);
     Ok(Some(PreParseFollowupResult::Handled {
         consumed_sentences: 1,
@@ -115,9 +118,11 @@ pub(crate) fn speed_floor_followup_minimum(tokens: &[OwnedLexToken]) -> Option<u
     let ["speed", "below", amount] = rest else {
         return None;
     };
-    crate::util::parse_number_word_u32(amount)
+    let floor = crate::util::parse_number_word_u32(amount)
         .or_else(|| crate::util::decimal_count(amount))
-        .and_then(|value| u8::try_from(value).ok())
+        .and_then(|value| u8::try_from(value).ok())?;
+    crate::word_claims::claim_words(&words);
+    Some(floor)
 }
 
 fn set_reduce_speed_minimum(effect: &mut EffectAst, floor: u8) -> bool {
@@ -467,6 +472,8 @@ pub(super) fn post_rule_numeric_result_branch_label(
         return Ok(None);
     }
     let nested = std::mem::take(effects);
+    // The label is retained as the branch's authored name.
+    crate::word_claims::claim_tokens(label_split.label_tokens);
     effects.push(EffectAst::ResultBranchLabel {
         label,
         effects: nested,
@@ -526,6 +533,7 @@ fn is_unbounded_x_payment(effect: &EffectAst) -> bool {
                 x_maximum: None,
                 independent_x_choice: false,
                 mana_cost_of: None,
+                instant_speed_window: false,
             }),
             ..
         }) if cost.has_x()
@@ -621,6 +629,8 @@ pub(super) fn pre_rule_spend_symbol_for_copied_abilities_followup(
     if !set_copied_abilities_spend_symbol(last, symbol) {
         return Ok(None);
     }
+    // The follow-up sentence was matched word for word.
+    crate::word_claims::claim_tokens(sentence_tokens);
     Ok(Some(PreParseFollowupResult::Handled {
         consumed_sentences: 1,
         route: None,

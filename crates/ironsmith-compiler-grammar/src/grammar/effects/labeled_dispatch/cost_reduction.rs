@@ -186,6 +186,13 @@ pub fn parse_matching_spell_cost_reduction_shape(
     let between_words = parser_token_word_refs(&tokens[spell_token_idx + 1..cost_token_idx]);
     if has_chosen_name {
         filter.name = Some("{chosen name}".to_string());
+        // "with [the] chosen name": the spell's name constraint.
+        for phrase in [&["with", "the", "chosen", "name"][..], &["with", "chosen", "name"]] {
+            if let Some(at) = common::word_offset(&words, phrase) {
+                crate::word_claims::claim_words(&words[at..at + phrase.len()]);
+                break;
+            }
+        }
     }
     if common::present(&between_words, &["from", "exile"]) {
         filter.zone = Some(Zone::Exile);

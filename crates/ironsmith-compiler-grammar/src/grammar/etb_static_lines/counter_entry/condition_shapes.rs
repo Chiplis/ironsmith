@@ -1,4 +1,4 @@
-use winnow::combinator::{alt, repeat_till};
+use winnow::combinator::{alt, opt, repeat_till};
 use crate::grammar::primitives::peek;
 use winnow::error::ModalResult as WResult;
 use winnow::prelude::*;
@@ -201,13 +201,9 @@ fn parse_colors_mana_spent_condition_shape<'a>(
     ))
     .parse_next(input)?;
     primitives::phrase(&["of", "mana"]).parse_next(input)?;
-    repeat_till(
-        0..,
-        any.void(),
-        peek(primitives::phrase(&["spent", "to", "cast"])),
-    )
-    .map(|((), ())| ())
-    .parse_next(input)?;
+    // "colors of mana were spent to cast it": only the auxiliary sits
+    // between the mana and its spending.
+    opt(alt((primitives::kw("was"), primitives::kw("were")))).parse_next(input)?;
     primitives::phrase(&["spent", "to", "cast"]).parse_next(input)?;
     alt((
         primitives::kw("it").void(),

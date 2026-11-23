@@ -42,6 +42,19 @@ pub(super) fn characteristics_template(
     })
 }
 
+/// Claim the template sentence ("Create a red and white creature token with
+/// those characteristics.") once its characteristic bullets were read.
+pub(super) fn claim_template_sentence(header_tokens: &[OwnedLexToken]) {
+    for sentence in split_lexed_sentences(header_tokens) {
+        let single = crate::word_claims::probe_only(|| {
+            characteristics_template(sentence).is_some()
+        });
+        if single {
+            crate::word_claims::claim_tokens(sentence);
+        }
+    }
+}
+
 /// The color words of a "create a <colors> creature token with those
 /// characteristics" sentence that follows the modal choice sentence.
 pub(super) fn token_template_colors(header_tokens: &[OwnedLexToken]) -> Option<Vec<String>> {

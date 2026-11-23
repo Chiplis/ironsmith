@@ -91,13 +91,14 @@ fn parse_modal_common_suffix_effects(
 
     let mut effects = Vec::new();
     for sentence in split_lexed_sentences(&tokens[sentence_end + 1..]) {
-        let return_action = sentence
-            .first()
-            .is_some_and(|token| token.is_word("return"));
-        let demonstrative_object = sentence.iter().any(|token| {
-            ["it", "them", "that", "those"]
-                .iter()
-                .any(|word| token.is_word(word))
+        // Detection only: the parse below reads the words it uses.
+        let (return_action, demonstrative_object) = crate::word_claims::probe_only(|| {
+            (
+                sentence.first().is_some_and(|token| token.is_word("return")),
+                sentence.iter().any(|token| {
+                    ["it", "them", "that", "those"].iter().any(|word| token.is_word(word))
+                }),
+            )
         });
         if return_action && demonstrative_object {
             effects.extend(parse_effect_sentences_lexed(sentence)?);
@@ -229,7 +230,16 @@ pub fn parse_modal_header(
     let mut trigger = None;
     let mut activated = None;
     let x_replacement = choose_spec.x_clause_start.and_then(|x_clause_start| {
-        parse_x_is_value_clause(trim_lexed_commas(&tokens[x_clause_start..]))
+        let value = parse_x_is_value_clause(trim_lexed_commas(&tokens[x_clause_start..]))?;
+        // "choose up to X, where X is ...": the binding re-reads the clause
+        // behind a synthetic "where"; the authored one is read here.
+        let before = trim_lexed_commas(&tokens[..x_clause_start]);
+        if let Some(where_token) = before.last()
+            && crate::word_claims::probe_only(|| where_token.is_word("where"))
+        {
+            crate::word_claims::claim_tokens(std::slice::from_ref(where_token));
+        }
+        Some(value)
     });
     let mut effect_start_idx = presentation_prefix_end.unwrap_or(0);
     if let Some(colon_idx) = locate_token_index(tokens, |token| token.kind == TokenKind::Colon)
@@ -529,6 +539,13 @@ fn parse_conditional_mode_change(
     let optional = change_choose_idx >= 2
         && tokens[change_choose_idx - 2].is_word("you")
         && tokens[change_choose_idx - 1].is_word("may");
+    // "..., you choose one instead": the chooser of the changed selection.
+    if !optional
+        && change_choose_idx > comma_idx + 1
+        && crate::lexer::parser_token_word_refs(&tokens[comma_idx + 1..change_choose_idx]) == ["you"]
+    {
+        crate::word_claims::claim_tokens(&tokens[comma_idx + 1..change_choose_idx]);
+    }
     Ok(Some(ParsedConditionalModeChange {
         condition,
         selection,
@@ -541,6 +558,25 @@ fn parse_x_is_value_clause(tokens: &[OwnedLexToken]) -> Option<Value> {
         return None;
     }
 
+    // "X is the number of spells you've cast this turn" (Gnostro): read
+    // exactly, every word claimed.
+    {
+        let words = crate::lexer::token_word_refs(tokens);
+        let player = match words.as_slice() {
+            ["x", "is", "the", "number", "of", "spells", "you've" | "youve", "cast", "this", "turn"]
+            | ["x", "is", "the", "number", "of", "spells", "you", "have", "cast", "this", "turn"] => {
+                Some(PlayerFilter::You)
+            }
+            ["x", "is", "the", "number", "of", "spells", "cast", "this", "turn"] => {
+                Some(PlayerFilter::Any)
+            }
+            _ => None,
+        };
+        if let Some(player) = player {
+            crate::word_claims::claim_tokens(tokens);
+            return Some(Value::SpellsCastThisTurn(player));
+        }
+    }
     if locate_token_word_choice(tokens, &["spell", "spells"]).is_some()
         && locate_token_word_choice(tokens, &["cast", "casts"]).is_some()
         && contains_token_word(tokens, "turn")
@@ -606,6 +642,9 @@ fn parse_modal_header_prefix_effects(
                 IfResultPredicate::ExcessDamageDealt => EffectPredicate::ExcessDamageDealt,
                 IfResultPredicate::ExcessDamageDealtToCreature => {
                     EffectPredicate::ExcessDamageDealtToCreature
+                }
+                IfResultPredicate::ExcessDamageDealtToObjectMatching(filter) => {
+                    EffectPredicate::ExcessDamageDealtToObjectMatching(filter)
                 }
                 IfResultPredicate::DealtDamageToPlayer => EffectPredicate::DealtDamageToPlayer,
                 IfResultPredicate::ExcessDamageRedirected => EffectPredicate::ExcessDamageRedirected,

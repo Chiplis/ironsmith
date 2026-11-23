@@ -51,6 +51,11 @@ pub(super) fn parse(tokens: &[OwnedLexToken]) -> Result<Option<StaticAbility>, C
         if words(&amount_tokens[used..]) != ["less", "to", "activate"] {
             return Err(error(tokens, "first-activation direction"));
         }
+        // "the first activated ability of" ... "you activate each turn" and
+        // "less to activate", read word for word; the filter reads its own.
+        crate::word_claims::claim_tokens(&subject[..5]);
+        crate::word_claims::claim_tokens(&subject[subject.len() - 4..]);
+        crate::word_claims::claim_tokens(&amount_tokens[used..]);
         let display = render_token_slice(tokens).trim().trim_end_matches('.').to_string();
         return Ok(Some(
             StaticAbility::reduce_activated_ability_costs_with_display(
@@ -91,6 +96,8 @@ pub(super) fn parse(tokens: &[OwnedLexToken]) -> Result<Option<StaticAbility>, C
         if words(&amount_tokens[used..]) != ["less", "to", "activate"] {
             return Err(error(tokens, "first-targeting-activation direction"));
         }
+        crate::word_claims::claim_tokens(&subject[..=targets_at]);
+        crate::word_claims::claim_tokens(&amount_tokens[used..]);
         let display = render_token_slice(tokens).trim().trim_end_matches('.').to_string();
         return Ok(Some(
             StaticAbility::reduce_activated_ability_costs_with_display(
@@ -145,20 +152,32 @@ pub(super) fn parse(tokens: &[OwnedLexToken]) -> Result<Option<StaticAbility>, C
     let mut gates = Vec::new();
     if let Some(kind) = kind { gates.push(kind); }
     let scope = &subject[abilities + 1..];
+    // The kind words, "abilities" and the scope words this match reads (a
+    // source filter reads its own).
+    let mut read: Vec<&[OwnedLexToken]> = vec![&subject[..=abilities]];
     match words(scope).as_slice() {
         [] => {},
-        ["you", "activate"] => gates.push(Gate::Activator(PlayerFilter::You)),
-        ["your", "opponents", "activate"] => gates.push(Gate::Activator(PlayerFilter::Opponent)),
+        ["you", "activate"] => {
+            read.push(scope);
+            gates.push(Gate::Activator(PlayerFilter::You));
+        }
+        ["your", "opponents", "activate"] => {
+            read.push(scope);
+            gates.push(Gate::Activator(PlayerFilter::Opponent));
+        }
         ["you", "activate", "that", "aren't" | "arent", "mana", "abilities"] => {
+            read.push(scope);
             gates.push(Gate::Activator(PlayerFilter::You));
             gates.push(Gate::NonManaAbility);
         }
         // "Mana abilities of this land ..." (Thran Portal): the source's own
         // abilities.
         ["of", rest @ ..] if crate::util::is_source_reference_words(rest) => {
+            read.push(scope);
             filter = ObjectFilter::source();
         }
         ["of", ..] if scope.len() > 1 => {
+            read.push(&scope[..1]);
             filter = crate::keyword_static::parse_complete_cost_count_filter(&scope[1..])?
                 .ok_or_else(|| error(tokens, "complete source scope"))?;
             // A source qualifier is an object scope, distinct from the payer.
@@ -181,6 +200,9 @@ pub(super) fn parse(tokens: &[OwnedLexToken]) -> Result<Option<StaticAbility>, C
         if increase.is_free() {
             return Err(error(tokens, "loyalty surcharge"));
         }
+        read.into_iter().for_each(crate::word_claims::claim_tokens);
+        crate::word_claims::claim_tokens(&amount_tokens[..=additional]);
+        crate::word_claims::claim_tokens(&amount_tokens[to..]);
         let display = render_token_slice(tokens).trim().trim_end_matches('.').to_string();
         let mut ability = StaticAbility::increase_activated_ability_costs(filter, increase);
         if let ironsmith_core::StaticAbilityPayload::ActivatedAbilityCostIncrease { display: slot, .. } = &mut ability.payload {
@@ -197,6 +219,8 @@ pub(super) fn parse(tokens: &[OwnedLexToken]) -> Result<Option<StaticAbility>, C
     {
         let pay = crate::lexer::synthetic_word_tokens(["pay", &life.to_string(), "life"]);
         let increase = parse_compiler_activation_cost(&pay)?;
+        read.into_iter().for_each(crate::word_claims::claim_tokens);
+        crate::word_claims::claim_tokens(amount_tokens);
         let display = render_token_slice(tokens).trim().trim_end_matches('.').to_string();
         let mut ability = StaticAbility::increase_activated_ability_costs(filter, increase);
         if let ironsmith_core::StaticAbilityPayload::ActivatedAbilityCostIncrease { display: slot, .. } = &mut ability.payload {
@@ -206,6 +230,9 @@ pub(super) fn parse(tokens: &[OwnedLexToken]) -> Result<Option<StaticAbility>, C
         return Ok(Some(ability));
     }
     let optional = words(amount_tokens).starts_with(&["up", "to"]);
+    if optional {
+        read.push(&amount_tokens[..2]);
+    }
     let amount_tokens = if optional { &amount_tokens[2..] } else { amount_tokens };
     let Some((amount, used)) = parse_cost_modifier_amount(amount_tokens) else {
         return Err(error(tokens, "generic amount"));
@@ -220,11 +247,16 @@ pub(super) fn parse(tokens: &[OwnedLexToken]) -> Result<Option<StaticAbility>, C
         || words(&remainder[1..3]) != ["to", "activate"]
     { return Err(error(tokens, "direction or action")); }
     let tail = &remainder[3..];
+    read.push(&remainder[..3]);
     let mut per_objects = None;
     match words(tail).as_slice() {
         [] => {},
-        ["unless", "they're" | "theyre", "mana", "abilities"] => gates.push(Gate::NonManaAbility),
+        ["unless", "they're" | "theyre", "mana", "abilities"] => {
+            read.push(tail);
+            gates.push(Gate::NonManaAbility);
+        }
         ["for", "each", ..] if direction == "less" && tail.len() > 2 => {
+            read.push(&tail[..2]);
             let mut counted = crate::keyword_static::parse_complete_cost_count_filter(&tail[2..])?
                 .ok_or_else(|| error(tokens, "counted objects"))?;
             if counted.zone.is_none() { counted.zone = Some(Zone::Battlefield); }
@@ -274,6 +306,7 @@ pub(super) fn parse(tokens: &[OwnedLexToken]) -> Result<Option<StaticAbility>, C
         ability
     };
     for gate in gates { ability = ability.with_activated_ability_cost_condition(gate); }
+    read.into_iter().for_each(crate::word_claims::claim_tokens);
     Ok(Some(ability))
 }
 

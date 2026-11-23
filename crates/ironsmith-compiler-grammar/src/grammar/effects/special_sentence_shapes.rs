@@ -421,16 +421,32 @@ pub fn parse_scaled_power_shape(tokens: &[OwnedLexToken]) -> Option<ScaledPowerS
     scaled_target_surface(subject_tokens, axes, multiplier)
 }
 
+/// "If you cast a spell this way, [you] pay life equal to its mana value
+/// rather than pay[ing] its mana cost." (Bolas's Citadel, Nashi, Xander's
+/// Pact: "that spell's mana value"), read whole.
 pub fn parses_spell_this_way_pay_life(tokens: &[OwnedLexToken]) -> bool {
     let tokens = trim_shape_edges(tokens);
-    primitives::parse_prefix(
+    primitives::probe_all(
         tokens,
-        primitives::phrase(&["if", "you", "cast", "a", "spell", "this", "way"]),
+        |input: &mut LexStream<'_>| {
+            primitives::phrase(&["if", "you", "cast", "a", "spell", "this", "way"])
+                .parse_next(input)?;
+            winnow::combinator::opt(primitives::comma()).parse_next(input)?;
+            winnow::combinator::opt(primitives::kw("you")).parse_next(input)?;
+            primitives::phrase(&["pay", "life", "equal", "to"]).parse_next(input)?;
+            alt((
+                primitives::kw("its").void(),
+                (primitives::kw("that"), alt((primitives::kw("spell's"), primitives::kw("spells"))))
+                    .void(),
+            ))
+            .parse_next(input)?;
+            primitives::phrase(&["mana", "value", "rather", "than"]).parse_next(input)?;
+            alt((primitives::kw("pay"), primitives::kw("paying"))).parse_next(input)?;
+            primitives::phrase(&["its", "mana", "cost"]).parse_next(input)
+        },
+        "spell-this-way-pay-life",
     )
     .is_some()
-        && primitives::contains_word(tokens, "rather")
-        && primitives::contains_word(tokens, "mana")
-        && primitives::contains_word(tokens, "cost")
 }
 
 pub fn parse_sacrifice_then_draw_shape(

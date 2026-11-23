@@ -222,6 +222,8 @@ fn open_round(
     ) {
         return Ok(None);
     }
+    // The repetition head ("As many times as you choose,") is this reader's.
+    crate::word_claims::claim_tokens(&tokens[..body_start]);
     let tag = crate::tag::declared_key("exiled_as_many_times_as_chosen");
     let accumulated = accumulate_exiles(&mut body, &tag).then_some(tag);
     let continue_effect_index = body.len() - 1;
@@ -368,6 +370,8 @@ fn continue_after_looks(
     if words != PUT_LAST_LOOKED_ON_TOP {
         return Ok(false);
     }
+    // The sentence is the phrase compared above.
+    crate::word_claims::claim_tokens(sentence.lowered());
     group.effects.push(EffectAst::subject_verb(
         SubjectVerbRoleAst::LibraryOwner,
         PlayerAst::You,

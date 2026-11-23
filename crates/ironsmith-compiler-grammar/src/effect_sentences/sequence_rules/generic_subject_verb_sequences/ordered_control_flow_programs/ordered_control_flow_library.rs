@@ -45,6 +45,16 @@ pub fn parse_top_cards_choose_for_each_filter_one_battlefield_others_hand_rest_g
         return Ok(None);
     }
 
+    // The partition sentence, when it says exactly that.
+    if crate::lexer::token_word_refs(sentences[sentence_idx + 2].lowered()).as_slice()
+        == [
+            "put", "one", "of", "the", "chosen", "cards", "onto", "the", "battlefield", "the",
+            "other", "chosen", "cards", "into", "your", "hand", "and", "the", "rest", "into",
+            "your", "graveyard",
+        ]
+    {
+        crate::word_claims::claim_tokens(sentences[sentence_idx + 2].lowered());
+    }
     let looked_tag = helper_tag_for_tokens(sentences[sentence_idx].lowered(), "revealed");
     let chosen_tag = helper_tag_for_tokens(sentences[sentence_idx + 1].lowered(), "chosen");
     let battlefield_tag =
@@ -560,6 +570,11 @@ pub fn parse_reveal_top_exile_one_per_card_type_rest_graveyard_threshold_cast_re
         return Ok(None);
     }
 
+    // The per-type exile, threshold cast and rest-to-hand sentences matched
+    // word for word.
+    crate::word_claims::claim_tokens(&second_tokens);
+    crate::word_claims::claim_tokens(&fourth_tokens);
+    crate::word_claims::claim_tokens(&fifth_tokens);
     let revealed_tag = helper_tag_for_tokens(sentences[sentence_idx].lowered(), "revealed");
     let exiled_tag = helper_tag_for_tokens(&second_tokens, "exiled");
     let cast_tag = helper_tag_for_tokens(&fourth_tokens, "cast_from_collection");

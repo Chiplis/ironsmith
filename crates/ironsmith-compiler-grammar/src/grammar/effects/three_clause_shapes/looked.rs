@@ -12,10 +12,12 @@ use super::super::control_copy_attach_shapes::{
     BattlefieldControllerShape, parse_battlefield_controller_prefix,
 };
 use super::super::sequence_pairs::{
-    contains_sequence_phrase, contains_sequence_word, finish_sequence_words, seek_sequence_phrase,
+    contains_sequence_phrase, contains_sequence_word, finish_sequence_words, read_sequence_phrase,
+    claim_bottom_of_library,
+    seek_sequence_phrase,
     sequence_any_phrase, sequence_phrase, starts_sequence,
 };
-use super::parse_consult_remainder_order_tokens;
+use super::{ANY_ORDER, RANDOM_ORDER, parse_consult_remainder_order_tokens};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum LookedMoveDestinationShape {
@@ -187,11 +189,22 @@ pub fn parse_looked_move_action_shape(tokens: &[OwnedLexToken]) -> Option<Looked
                 .flatten()
                 .map(|shape| shape.controller)
         });
+        let attacks_that_player =
+            attacking && contains_sequence_phrase(tail, &[&["attacking", "that", "player"]]);
+        if attacks_that_player
+            && let Some(at) = tail.windows(3).position(|window| {
+                window[0].parser_text() == "attacking"
+                    && window[1].parser_text() == "that"
+                    && window[2].parser_text() == "player"
+            })
+        {
+            // "attacking that player": the attack target read here.
+            crate::word_claims::claim_tokens(&tail[at..at + 3]);
+        }
         LookedMoveDestinationShape::Battlefield {
             tapped,
             attacking,
-            attacks_that_player: attacking
-                && contains_sequence_phrase(tail, &[&["attacking", "that", "player"]]),
+            attacks_that_player,
             controller,
         }
     };
@@ -240,6 +253,14 @@ pub fn parse_looked_hand_action_shape(
     } else {
         starts_sequence(tail, &[&["into"]]) && contains_sequence_word(tail, "hand")
     };
+    // "... into your hand": the destination through its hand noun.
+    if valid_tail
+        && let Some(hand) = crate::word_claims::probe_only(|| {
+            tail.iter().position(|token| token.is_word("hand"))
+        })
+    {
+        crate::word_claims::claim_tokens(&tail[..=hand]);
+    }
     valid_tail.then_some(LookedHandActionShape {
         count,
         filter: filter.clone(),
@@ -312,11 +333,45 @@ pub fn parse_looked_top_and_remainder_action_shape(
     {
         return None;
     }
+    // "on top of your library": the top destination's library, read right
+    // after "top".
+    if let Some(top) = top_tail.iter().position(|token| token.parser_text() == "top")
+        && let [of, owner, library, ..] = &top_tail[top + 1..]
+        && of.parser_text() == "of"
+        && matches!(owner.parser_text(), "your" | "their")
+        && library.parser_text() == "library"
+    {
+        crate::word_claims::claim_tokens(&top_tail[top + 1..top + 4]);
+    }
+    // Each destination's own order phrase: the remainder's after "rest"
+    // ("on top ... in any order and the rest on the bottom in any order",
+    // Munda). Before "rest", "in any order" is the chooser's order for the
+    // cards put on top one by one, in the order they chose them.
+    let rest = top_tail.iter().rposition(|token| token.parser_text() == "rest")?;
+    let remainder_order = remainder_bottom_order(&top_tail[rest + 1..])?;
+    let _ = read_sequence_phrase(&top_tail[..rest], ANY_ORDER);
     Some(LookedTopAndRemainderActionShape {
         count,
         filter,
-        remainder_order: parse_consult_remainder_order_tokens(top_tail)?,
+        remainder_order,
     })
+}
+
+/// "on the bottom [of your library] in a random order / in any order", after
+/// "the rest"; the library may stay implicit once the top named it.
+fn remainder_bottom_order(tail: &[OwnedLexToken]) -> Option<LibraryBottomOrderAst> {
+    if !contains_sequence_word(tail, "bottom") {
+        return None;
+    }
+    let order = if read_sequence_phrase(tail, RANDOM_ORDER) {
+        LibraryBottomOrderAst::Random
+    } else if read_sequence_phrase(tail, ANY_ORDER) {
+        LibraryBottomOrderAst::ChooserChooses
+    } else {
+        return None;
+    };
+    claim_bottom_of_library(tail);
+    Some(order)
 }
 
 pub fn parse_looked_cast_action_shape(tokens: &[OwnedLexToken]) -> Option<LookedCastActionShape> {

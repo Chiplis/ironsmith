@@ -225,8 +225,10 @@ pub(super) fn read(input: &ExileClause<'_>) -> ParseOutcome<RuleMatch<EffectAst>
     // Equal readings from two rules are one reading.
     let mut distinct: Vec<RegistryCandidate<EffectAst>> = Vec::new();
     for candidate in candidates {
-        if !distinct.iter().any(|kept| kept.value == candidate.value) {
-            distinct.push(candidate);
+        match distinct.iter_mut().find(|kept| kept.value == candidate.value) {
+            // Both rules read the same meaning; either one's words are read.
+            Some(kept) => kept.claims.extend(&candidate.claims),
+            None => distinct.push(candidate),
         }
     }
     if distinct.len() > 1 {
@@ -395,6 +397,8 @@ fn read_target_player_graveyard_filter(
     // "Exile any number of target players' graveyards": the targets are the
     // players, and each chosen player's whole graveyard is exiled.
     if !until_source_leaves && let Some(count) = counted_target_players_graveyards(tokens) {
+        // The count and "target players' graveyards": the whole clause.
+        crate::word_claims::claim_tokens(tokens);
         let mut filter = ObjectFilter::default().in_zone(Zone::Graveyard);
         filter.owner = Some(PlayerFilter::IteratedPlayer);
         return Ok(Some(EffectAst::ForEach(

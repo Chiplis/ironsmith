@@ -15,6 +15,7 @@ pub fn exact_atomic_return_as_aura_bundle(
     // "<rule>." Harold and Bob loses all other abilities.": the loss is its
     // own sentence after the quoted rule. The card's own name there names the
     // returned object (after normalization it reads as a source reference).
+    let mut loss_tokens: &[OwnedLexToken] = &[];
     let (return_sentence, aura_sentence, separate_loss) = match sentences.as_slice() {
         [return_sentence, aura_sentence] => (return_sentence, aura_sentence, false),
         [return_sentence, aura_sentence, loss_sentence] => {
@@ -26,6 +27,7 @@ pub fn exact_atomic_return_as_aura_bundle(
             if !(subject == &["it"][..] || crate::util::is_source_reference_words(subject)) {
                 return None;
             }
+            loss_tokens = loss_sentence;
             (return_sentence, aura_sentence, true)
         }
         _ => return None,
@@ -57,7 +59,10 @@ pub fn exact_atomic_return_as_aura_bundle(
             .then_some(idx)
         });
         match found {
-            Some(idx) => idx,
+            Some(idx) => {
+                loss_tokens = &aura_sentence[idx..];
+                idx
+            }
             None => {
                 removes_other_abilities = false;
                 aura_sentence.len()
@@ -146,5 +151,7 @@ pub fn exact_atomic_return_as_aura_bundle(
         remove_all_abilities: removes_other_abilities,
         granted_abilities: aura_grants,
     });
+    // The ability loss matched literally above is the payload's removal.
+    crate::word_claims::claim_tokens(loss_tokens);
     Some(effects)
 }

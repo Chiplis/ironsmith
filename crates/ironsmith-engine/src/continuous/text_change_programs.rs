@@ -241,6 +241,9 @@ fn rewrite_result_predicate(predicate: &EffectPredicate, change: TextChange) -> 
             *player = rewrite_player_filter_words(player, change)?;
         }
         EffectPredicate::ResultObjectsMatch {filter,..} => *filter=rewrite_filter_words(filter,change)?,
+        EffectPredicate::ExcessDamageDealtToObjectMatching(filter) => {
+            *filter = rewrite_filter_words(filter, change)?
+        }
         EffectPredicate::PriorEffectResult(surface) => surface.filter = rewrite_filter_words(&surface.filter, change)?,
         EffectPredicate::NamedActionCompleted {..}
         | EffectPredicate::Succeeded | EffectPredicate::Failed | EffectPredicate::Happened

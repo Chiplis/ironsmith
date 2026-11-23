@@ -51,6 +51,7 @@ pub(super) fn open(
             return Ok(None);
         };
         let blockers = crate::util::parse_target_phrase(pair_tokens)?;
+        crate::word_claims::claim_tokens(check_tokens);
         return Ok(Some(ExchangeBlocksGroup {
             effects: vec![EffectAst::ExchangeBlocks { blockers, attackers: true }],
             first_sentence: sentence_idx,
@@ -80,6 +81,8 @@ pub(super) fn open(
         return Ok(None);
     };
     let blockers = crate::util::parse_target_phrase(pair_tokens)?;
+    crate::word_claims::claim_tokens(check_tokens);
+    crate::word_claims::claim_tokens(reblock.lowered());
     Ok(Some(ExchangeBlocksGroup {
         effects: vec![EffectAst::ExchangeBlocks { blockers, attackers: false }],
         first_sentence: sentence_idx,

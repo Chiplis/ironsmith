@@ -21,8 +21,13 @@ fn trim(tokens: &[OwnedLexToken]) -> &[OwnedLexToken] {
     crate::util::trim_edge_punctuation_tokens(tokens)
 }
 
-/// The instruction after "If you gain control of <object> this way,".
-fn followup_body(tokens: &[OwnedLexToken]) -> Option<&[OwnedLexToken]> {
+/// "If you gain control of <object> this way,": the header's length and the
+/// instruction after it. The object is "a/an <noun>", the noun the choice
+/// gains control of (`choice` holds "gain control of a/an <noun>").
+fn followup_body<'a>(
+    tokens: &'a [OwnedLexToken],
+    choice: &[OwnedLexToken],
+) -> Option<(usize, &'a [OwnedLexToken])> {
     let words = crate::lexer::token_word_refs(tokens);
     if !words.starts_with(&["if", "you", "gain", "control", "of"]) {
         return None;
@@ -30,6 +35,17 @@ fn followup_body(tokens: &[OwnedLexToken]) -> Option<&[OwnedLexToken]> {
     let way = tokens
         .windows(2)
         .position(|window| window[0].is_word("this") && window[1].is_word("way"))?;
+    let object = crate::lexer::token_word_refs(tokens.get(5..way)?);
+    let [article @ ("a" | "an"), noun] = object.as_slice() else {
+        return None;
+    };
+    let choice_words = crate::lexer::token_word_refs(choice);
+    if !choice_words
+        .windows(5)
+        .any(|window| window == ["gain", "control", "of", *article, *noun])
+    {
+        return None;
+    }
     let mut body = &tokens[way + 2..];
     if body
         .first()
@@ -37,7 +53,7 @@ fn followup_body(tokens: &[OwnedLexToken]) -> Option<&[OwnedLexToken]> {
     {
         body = &body[1..];
     }
-    (!body.is_empty()).then_some(body)
+    (!body.is_empty()).then_some((way + 2, body))
 }
 
 fn gains_control(effects: &[EffectAst]) -> bool {
@@ -81,7 +97,8 @@ pub(super) fn open(
     else {
         return Ok(None);
     };
-    let Some(body) = followup_body(trim(followup.lowered())) else {
+    let followup_tokens = trim(followup.lowered());
+    let Some((header_len, body)) = followup_body(followup_tokens, choice.lowered()) else {
         return Ok(None);
     };
     let Ok(mut effects) = super::parse_effect_sentence_lexed(choice.lowered()) else {
@@ -96,6 +113,8 @@ pub(super) fn open(
     if !attach_to_gain_control_branch(&mut effects, &followup_effects) {
         return Ok(None);
     }
+    // "if you gain control of a/an <noun> this way", read above.
+    crate::word_claims::claim_tokens(&followup_tokens[..header_len]);
     Ok(Some(GainedControlFollowupGroup {
         effects,
         first_sentence: sentence_idx,

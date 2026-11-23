@@ -40,7 +40,11 @@ pub fn parse_players_with_poison_counters_at_least(
         remainder.as_slice(),
         ["poison", "counter" | "counters"] | ["poison", "counter" | "counters", "on", "them"]
     )
-    .then_some((players, minimum))
+    .then(|| {
+        // The player group, threshold and counted noun, matched exactly.
+        crate::word_claims::claim_tokens(tokens);
+        (players, minimum)
+    })
 }
 
 pub fn parse_players_with_cards_in_hand_at_least(
@@ -71,5 +75,9 @@ pub fn parse_players_with_cards_in_hand_at_least(
         remainder.as_slice(),
         ["card" | "cards", "in", "hand"] | ["card" | "cards", "in", "their", "hand"]
     )
-    .then_some((players, minimum))
+    .then(|| {
+        // The player group, threshold and counted noun, matched exactly.
+        crate::word_claims::claim_tokens(tokens);
+        (players, minimum)
+    })
 }

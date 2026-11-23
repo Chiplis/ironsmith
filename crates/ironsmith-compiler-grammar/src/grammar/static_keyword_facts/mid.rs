@@ -169,6 +169,10 @@ pub fn parse_attached_color_choice_fact(
         return None;
     }
     let choose_token = view.map_word_to_token_boundary(choose_word)?;
+    // The source noun and the attachment recipient ("a creature": an
+    // Equipment or Aura attaches only to what it can).
+    crate::word_claims::claim_words(&words[consumed..=consumed]);
+    crate::word_claims::claim_words(&words[after_attached_word..choose_word]);
     Some(AttachedColorChoiceFact {
         subject,
         choice_tokens: tokens.get(choose_token..)?,
@@ -195,6 +199,8 @@ pub fn parse_redirect_damage_to_source_fact(
             "you", "control", "is", "dealt", "to", "this", "creature", "instead",
         ],
     )?;
+    // The permanent noun the fixed phrases surround.
+    crate::word_claims::claim_words(&words[10..11]);
     Some(RedirectDamageToSourceFact)
 }
 
@@ -431,14 +437,31 @@ pub fn parse_known_spell_cost_condition(
 
     if starts_with(&words, &["there", "are"])
         && contains_all_words(&words, &["card", "types", "graveyard"])
-        && let Some((count, _)) = at_least_quantity(&words, 2)
+        && let Some((count, used)) = at_least_quantity(&words, 2)
     {
+        // "there are four or more card types among cards in your
+        // graveyard" (delirium), read word for word.
+        if words.get(used..) == Some(&["card", "types", "among", "cards", "in", "your", "graveyard"][..]) {
+            crate::word_claims::claim_words(&words);
+        }
         return Some(KnownSpellCostConditionFact::DistinctCardTypesInYourGraveyardOrMore(count));
     }
     if starts_with(&words, &["you", "have"])
         && has_suffix(&words, &["in", "your", "graveyard"])
-        && let Some((count, _)) = at_least_quantity(&words, 2)
+        && let Some((count, used)) = at_least_quantity(&words, 2)
     {
+        // "you have eight or more instant and/or sorcery cards in your
+        // graveyard": an exact counted-card phrase is read word for word.
+        if matches!(
+            words.get(used..words.len().saturating_sub(3)),
+            Some(["cards"]
+                | ["instant" | "sorcery", "cards"]
+                | ["instant", "or" | "and", "sorcery", "cards"]
+                | ["instant", "and", "or", "sorcery", "cards"]
+                | ["instant", "and/or", "sorcery", "cards"])
+        ) {
+            crate::word_claims::claim_words(&words);
+        }
         return Some(KnownSpellCostConditionFact::CardsInYourGraveyardOrMore {
             count,
             card_types: mentioned_instant_sorcery_types(&words),

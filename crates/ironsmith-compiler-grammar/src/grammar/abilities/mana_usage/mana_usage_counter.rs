@@ -20,6 +20,7 @@ pub(super) fn parse_mana_spend_counter_shape(
     }
     let start = words.len().checked_sub(tail.len())?;
     Some(ManaSpendCounterShape {
+        head_tokens: token_slice_for_words(tokens, &view, 0, start)?,
         counter_tail_tokens: token_slice_for_words(tokens, &view, start, words.len())?,
     })
 }

@@ -3132,6 +3132,9 @@ pub(crate) fn describe_mana_activation_condition(condition: &crate::ConditionExp
                 "Any player may activate this ability but only during their turn before the end step"
                     .to_string()
             }
+            ActivationTiming::AnyPlayerDuringTheirTurn => {
+                "Any player may activate this ability but only during their turn".to_string()
+            }
             ActivationTiming::DuringSourceOwnersUpkeep => {
                 "Activate only during this card's owner's upkeep".to_string()
             }

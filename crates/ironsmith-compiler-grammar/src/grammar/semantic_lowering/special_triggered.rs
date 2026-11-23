@@ -147,34 +147,34 @@ fn parse_different_names_library_divvy(
     Ok(SpecialTriggeredProgram::DifferentNamesLibraryDivvy)
 }
 
+/// Oath of Druids, read word for word: a different chooser, comparison or
+/// disposition must not fall into this program.
 fn parse_opponent_creature_majority_consult(
     input: &mut LexStream<'_>,
 ) -> WResult<SpecialTriggeredProgram> {
-    seek_phrase(input, &["at", "the", "beginning", "of", "each"])?;
-    seek_phrase(input, &["upkeep"])?;
-    seek_phrase(
-        input,
-        &[
-            "chooses",
-            "target",
-            "player",
-            "who",
-            "controls",
-            "more",
-            "creatures",
-        ],
-    )?;
-    seek_phrase(
-        input,
-        &[
-            "reveal", "cards", "from", "the", "top", "of", "their", "library",
-        ],
-    )?;
-    seek_phrase(input, &["until", "they", "reveal", "a", "creature", "card"])?;
-    seek_phrase(
-        input,
-        &["puts", "that", "card", "onto", "the", "battlefield"],
-    )?;
+    primitives::phrase(&["at", "the", "beginning", "of", "each", "player's", "upkeep"])
+        .parse_next(input)?;
+    primitives::comma().parse_next(input)?;
+    primitives::phrase(&[
+        "that", "player", "chooses", "target", "player", "who", "controls", "more", "creatures",
+        "than", "they", "do", "and", "is", "their", "opponent",
+    ])
+    .parse_next(input)?;
+    primitives::period().parse_next(input)?;
+    primitives::phrase(&[
+        "the", "first", "player", "may", "reveal", "cards", "from", "the", "top", "of", "their",
+        "library", "until", "they", "reveal", "a", "creature", "card",
+    ])
+    .parse_next(input)?;
+    primitives::period().parse_next(input)?;
+    primitives::phrase(&["if", "the", "first", "player", "does"]).parse_next(input)?;
+    primitives::comma().parse_next(input)?;
+    primitives::phrase(&[
+        "that", "player", "puts", "that", "card", "onto", "the", "battlefield", "and", "all",
+        "other", "cards", "revealed", "this", "way", "into", "their", "graveyard",
+    ])
+    .parse_next(input)?;
+    primitives::sentence_end().parse_next(input)?;
     Ok(SpecialTriggeredProgram::OpponentCreatureMajorityConsult)
 }
 
@@ -214,40 +214,26 @@ fn parse_prime_controlled_land_count_token(
     Ok(SpecialTriggeredProgram::PrimeControlledLandCountToken)
 }
 
+/// Oath of Ghouls, read word for word.
 fn parse_opponent_graveyard_minority_return(
     input: &mut LexStream<'_>,
 ) -> WResult<SpecialTriggeredProgram> {
-    seek_phrase(input, &["at", "the", "beginning", "of", "each"])?;
-    seek_phrase(input, &["upkeep"])?;
-    seek_phrase(
-        input,
-        &[
-            "chooses",
-            "target",
-            "player",
-            "whose",
-            "graveyard",
-            "has",
-            "fewer",
-            "creature",
-            "cards",
-        ],
-    )?;
-    seek_phrase(
-        input,
-        &[
-            "return",
-            "a",
-            "creature",
-            "card",
-            "from",
-            "their",
-            "graveyard",
-            "to",
-            "their",
-            "hand",
-        ],
-    )?;
+    primitives::phrase(&["at", "the", "beginning", "of", "each", "player's", "upkeep"])
+        .parse_next(input)?;
+    primitives::comma().parse_next(input)?;
+    primitives::phrase(&[
+        "that", "player", "chooses", "target", "player", "whose", "graveyard", "has", "fewer",
+        "creature", "cards", "in", "it", "than", "their", "graveyard", "does", "and", "is",
+        "their", "opponent",
+    ])
+    .parse_next(input)?;
+    primitives::period().parse_next(input)?;
+    primitives::phrase(&[
+        "the", "first", "player", "may", "return", "a", "creature", "card", "from", "their",
+        "graveyard", "to", "their", "hand",
+    ])
+    .parse_next(input)?;
+    primitives::sentence_end().parse_next(input)?;
     Ok(SpecialTriggeredProgram::OpponentGraveyardMinorityReturn)
 }
 

@@ -332,6 +332,7 @@ pub fn colored_mana_symbols_in_costs(words: &[&str]) -> Option<(Value, usize)> {
             .get(idx + 3)
             .is_some_and(|word| matches!(*word, "cost" | "costs"))
     {
+        crate::word_claims::claim_words(&words[..idx + 4]);
         return Some((
             Value::ManaSymbolsInManaCostOf {
                 spec: Box::new(ChooseSpec::All(ObjectFilter::tagged(
@@ -351,6 +352,9 @@ pub fn colored_mana_symbols_in_costs(words: &[&str]) -> Option<(Value, usize)> {
         let filter_start = idx + 3;
         let filter_end = filter_start + value_boundary(&words[filter_start..]);
         let filter = parse_object_filter_words(&words[filter_start..filter_end], false).ok()?;
+        // "the number of <color> mana symbols in the mana costs of": the
+        // frame before the filter, which reads its own words.
+        crate::word_claims::claim_words(&words[..filter_start]);
         return Some((
             Value::ManaSymbolsInManaCostOf {
                 spec: Box::new(ChooseSpec::All(filter)),
@@ -366,6 +370,7 @@ pub fn colored_mana_symbols_in_costs(words: &[&str]) -> Option<(Value, usize)> {
         return None;
     }
     idx += 2;
+    crate::word_claims::claim_words(&words[..idx]);
 
     Some((
         Value::ManaSymbolsInManaCostOf {
@@ -408,6 +413,8 @@ fn sacrificed_postpositive_characteristic_prefix(
         "permanent" | "permanents" => SacrificedObjectKind::Permanent,
         _ => return None,
     };
+    // "[the] <characteristic> of [the] sacrificed <noun>": the cost object.
+    crate::word_claims::claim_words(&words[..idx + 2]);
     Some((kind, idx + 2))
 }
 
@@ -586,6 +593,9 @@ fn parse_whichever_is_greater_value_words(words: &[&str]) -> Option<(Value, usiz
             Box::new(Value::Scaled(Box::new(minimum), -1)),
         )
         .with_surface_hint(ValueSurfaceHint::WhicheverIsGreater);
+        // The alternatives' connective and the selector suffix.
+        crate::word_claims::claim_words(&body[split..=split]);
+        crate::word_claims::claim_words(&words[body_len..]);
         return Some((maximum, words.len()));
     }
     None

@@ -1,6 +1,22 @@
 use super::*;
 
 pub fn parse_token_copy_modifier_kind(tokens: &[OwnedLexToken]) -> Option<TokenCopyModifierKind> {
+    let kind = parse_token_copy_modifier_kind_words(tokens)?;
+    // These kinds match the whole sentence (articles aside) word for word;
+    // an article is no reading of its own.
+    if matches!(
+        kind,
+        TokenCopyModifierKind::GainHasteUntilEndOfTurn
+            | TokenCopyModifierKind::HasHaste
+            | TokenCopyModifierKind::EnterTappedAndAttacking
+            | TokenCopyModifierKind::EnterTappedAndAttackingThatPlayer
+    ) {
+        crate::word_claims::claim_tokens(tokens);
+    }
+    Some(kind)
+}
+
+fn parse_token_copy_modifier_kind_words(tokens: &[OwnedLexToken]) -> Option<TokenCopyModifierKind> {
     let words = non_article_words(tokens);
     if common::exact_any(
         &words,
@@ -79,6 +95,8 @@ pub fn parse_token_copy_modifier_kind(tokens: &[OwnedLexToken]) -> Option<TokenC
             &["enters", "tapped", "and", "attacking"],
         )
     {
+        // The token's name, read as the subject the applier binds.
+        crate::word_claims::claim_words(&words[..1]);
         return Some(TokenCopyModifierKind::EnterTappedAndAttacking);
     }
     if common::exact_any(

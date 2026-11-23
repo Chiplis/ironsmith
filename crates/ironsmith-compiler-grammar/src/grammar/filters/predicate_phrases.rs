@@ -509,8 +509,13 @@ fn parse_source_zone_predicate(tokens: &[OwnedLexToken]) -> Option<PredicateAst>
     if !is_source_reference_clause(source) {
         return None;
     }
+    let predicate = source_zone_predicate_tail(source, relation.tail_clause)?;
+    // The "in"/"on" between the copula and the zone the reading names.
+    crate::word_claims::claim_tokens(relation.preposition_clause.tokens());
+    Some(predicate)
+}
 
-    let zone = relation.tail_clause;
+fn source_zone_predicate_tail(source: LexedClause<'_>, zone: LexedClause<'_>) -> Option<PredicateAst> {
     if surface::exact_any(zone, &[&["the", "battlefield"], &["battlefield"]]) {
         return Some(PredicateAst::Source(SourcePredicateAst::SourceIsInZone(
             Zone::Battlefield,
@@ -624,6 +629,9 @@ fn parse_source_graveyard_cards_above_predicate(
             "ordered-graveyard filter cannot carry a zone or player scope".to_string(),
         ));
     }
+    // The frame around the filter, matched word for word above.
+    crate::word_claims::claim_tokens(&tokens[..or_token + 2]);
+    crate::word_claims::claim_tokens(&tokens[above_token..]);
     Ok(Some(PredicateAst::Source(
         SourcePredicateAst::SourceInGraveyardWithCardsAbove {
             filter,
@@ -1223,6 +1231,8 @@ fn parse_source_started_turn_state_shape(tokens: &[OwnedLexToken]) -> Option<Pre
     if !is_source_state_subject_clause(LexedClause::new(&tokens[..subject_end])) {
         return None;
     }
+    // "started the turn [un]tapped", read word for word above.
+    crate::word_claims::claim_tokens(&tokens[subject_end..]);
     let untapped = PredicateAst::Source(SourcePredicateAst::SourceStartedTurnUntapped);
     Some(if tapped {
         PredicateAst::Not(Box::new(untapped))
@@ -1511,9 +1521,16 @@ fn parse_terminal_counter_phrase_shape(tokens: &[OwnedLexToken]) -> Option<Termi
     let clause = LexedClause::new(tokens);
     let matched = TERMINAL_COUNTER_PATTERN.parse_full(clause)?;
     let count_and_type = matched.capture_clause_by_role(WinnowCaptureRole::Amount, clause)?;
-    let count = parse_number(count_and_type.tokens())
-        .map(|(count, _)| count)
-        .unwrap_or(1);
+    let parsed_number = parse_number(count_and_type.tokens());
+    // "seven or more <kind> counters": the threshold is an at-least count.
+    if let Some((_, used)) = parsed_number
+        && let Some([or, more, ..]) = count_and_type.tokens().get(used..)
+        && or.as_word() == Some("or")
+        && more.as_word() == Some("more")
+    {
+        crate::word_claims::claim_tokens(&count_and_type.tokens()[used..used + 2]);
+    }
+    let count = parsed_number.map(|(count, _)| count).unwrap_or(1);
     let counter_type = if count_and_type.tokens().is_empty() {
         None
     } else {
@@ -1681,6 +1698,8 @@ fn parse_source_has_counted_counter_predicate_with_binding(
     if !is_counter_on_source_pronoun_tail_clause(target_clause) {
         return None;
     }
+    // "... on it": the counters' holder, the subject itself.
+    crate::word_claims::claim_tokens(target_clause.tokens());
     // "if it has an odd number of counters on it" (Sab-Sunen): the parity of
     // the object's total counters, not a counter named "of".
     if let Some(counter_clause) =
@@ -1689,6 +1708,7 @@ fn parse_source_has_counted_counter_predicate_with_binding(
         // Same reading as the source-has-counter rule, so the registry sees
         // equivalent results for the shared surface.
         if let Some(parity) = total_counters_parity_phrase(counter_clause) {
+            crate::word_claims::claim_tokens(counter_clause.tokens());
             return Some(source_total_counters_parity_predicate(parity));
         }
     }
@@ -2008,6 +2028,12 @@ fn parse_there_are_no_counters_on_source_predicate(
     }
     let counter_clause = matched.capture_clause_by_role(WinnowCaptureRole::Object, clause)?;
     let counter_type = parse_terminal_counter_phrase(counter_clause.tokens())??;
+    // "no more <kind> counters": "more" restates the absence.
+    if let Some(first) = counter_clause.tokens().first()
+        && first.is_word("more")
+    {
+        crate::word_claims::claim_tokens(std::slice::from_ref(first));
+    }
     Some(PredicateAst::Source(
         SourcePredicateAst::SourceHasNoCounter(counter_type),
     ))
@@ -2120,6 +2146,11 @@ fn parse_triggering_object_had_counter_predicate(tokens: &[OwnedLexToken]) -> Op
     // "If it had seven or more verse counters on it": keep the threshold.
     let parsed = parse_terminal_counter_phrase_shape(counter_clause.tokens())?;
     let counter_type = parsed.counter_type?;
+    // "seven or more": the at-least threshold this predicate keeps.
+    let counter_tokens = counter_clause.tokens();
+    if crate::lexer::parser_token_word_refs(counter_tokens).get(1..3) == Some(&["or", "more"][..]) {
+        crate::word_claims::claim_tokens(&counter_tokens[..3.min(counter_tokens.len())]);
+    }
     Some(PredicateAst::Triggering(
         TriggeringPredicateAst::TriggeringObjectHadCounterAtLeast {
             counter_type,
@@ -2272,6 +2303,9 @@ pub fn parse_there_are_source_counters_at_least_predicate(
     }
     let target = matched.capture_clause("target", clause)?;
     let source_surface = counter_on_source_surface(target)?;
+    // "on <this source>" ("on her", "on this creature"): the counted
+    // object, the source the surface names.
+    crate::word_claims::claim_tokens(target.tokens());
     let counter_clause = matched.capture_clause_by_role(WinnowCaptureRole::Object, clause)?;
     let (comparison, used) = predicate_quantity_prefix_tokens(counter_clause.tokens())?;
     let count = comparison_to_at_least_threshold(&comparison)?;
@@ -2425,6 +2459,8 @@ fn parse_ring_bearer_temptation_predicate(tokens: &[OwnedLexToken]) -> Option<Pr
         .and_then(|tail| tail.strip_suffix(&["as", "your", "ring", "bearer"]))
         && is_source_reference_words(source_words)
     {
+        // The exact predicate around the source reference.
+        crate::word_claims::claim_tokens(tokens);
         return Some(PredicateAst::Triggering(
             TriggeringPredicateAst::YouChoseAnotherRingBearer,
         ));
@@ -2506,15 +2542,17 @@ fn parse_stack_object_targets_object_predicate(tokens: &[OwnedLexToken]) -> Opti
     }
     // "if it targets one or more other permanents you control" (Orvar, the
     // All-Form): an existential over the spell's targets.
-    let target_tokens = target.tokens();
-    let target_tokens = match crate::lexer::token_word_refs(target_tokens).as_slice() {
+    let all_target_tokens = target.tokens();
+    let target_tokens = match crate::lexer::token_word_refs(all_target_tokens).as_slice() {
         ["one", "or", "more", ..] => {
-            let view = crate::lexer::TokenWordView::new(target_tokens);
+            let view = crate::lexer::TokenWordView::new(all_target_tokens);
             let start = view.token_start_indices().get(3).copied()?;
-            &target_tokens[start..]
+            &all_target_tokens[start..]
         }
-        _ => target_tokens,
+        _ => all_target_tokens,
     };
+    // "one or more" read as the existential over the spell's targets.
+    let quantifier = &all_target_tokens[..all_target_tokens.len() - target_tokens.len()];
     let target = crate::grammar::primitives::probe_shape(
         crate::grammar::shared_util::target_semantics::parse_target_phrase_inner(target_tokens),
     )?;
@@ -2533,6 +2571,7 @@ fn parse_stack_object_targets_object_predicate(tokens: &[OwnedLexToken]) -> Opti
         }
         _ => return None,
     };
+    crate::word_claims::claim_tokens(quantifier);
     Some(PredicateAst::ItMatches(spell_filter))
 }
 
@@ -4941,10 +4980,15 @@ fn parse_demonstrative_power_or_toughness_predicate(
         &descriptor_words[1..]
     };
     let clause_words = LexedClause::new(tokens).word_refs();
-    let Some((cmp, _consumed)) = parse_filter_comparison_tokens(axis, value_tail, &clause_words)?
+    let Some((cmp, consumed)) = parse_filter_comparison_tokens(axis, value_tail, &clause_words)?
     else {
         return Ok(None);
     };
+    // The axis and its copula frame the comparison read above.
+    if consumed == value_tail.len() {
+        let frame_len = descriptor_words.len() - value_tail.len();
+        crate::word_claims::claim_words(&descriptor_words[..frame_len]);
+    }
     let mut filter = ObjectFilter::default();
     if axis == POWER_WORD {
         filter.power = Some(cmp);
@@ -5036,10 +5080,15 @@ fn parse_demonstrative_mana_value_predicate(
     else {
         return Ok(None);
     };
-    // "4 or less": the comparison this predicate builds, when it reads the
-    // whole tail.
+    // "4 or less": the comparison this predicate builds. A tail it leaves
+    // ("... 4 or less instead if ...", Fatal Push) belongs to the caller, so
+    // only the consumed comparison words are claimed.
     if consumed == comparison_words.len() {
         crate::word_claims::claim_tokens(comparison.tokens());
+    } else if let Some(end) =
+        crate::lexer::TokenWordView::new(comparison.tokens()).token_index_after_words(consumed)
+    {
+        crate::word_claims::claim_tokens(&comparison.tokens()[..end]);
     }
     filter.mana_value = Some(cmp);
     let match_time = if clause
@@ -5184,6 +5233,9 @@ fn parse_demonstrative_shares_predicate(tokens: &[OwnedLexToken]) -> Option<Pred
             && let ["the", "mana", producer @ .., "produced"] = rest
             && !producer.is_empty()
         {
+            // The comparison and the producing permanent's reference are
+            // carried as surfaces; the whole predicate is read here.
+            crate::word_claims::claim_words(&all_words);
             return Some(PredicateAst::TurnHistory(
                 crate::cards::builders::TurnHistoryPredicateAst::TaggedSharesColorWithTriggeringMana {
                     tag: crate::tag::CompilerReferenceTag::It.bind(),
@@ -5374,6 +5426,8 @@ fn parse_shared_suffix_exact_count_or(
             let Ok(right) = parse_predicate(&complete_right) else {
                 continue;
             };
+            // The disjunction joining the two reconstructed branches.
+            crate::word_claims::claim_tokens(&tokens[or_idx..=or_idx]);
             return Ok(Some(PredicateAst::Or(Box::new(left), Box::new(right))));
         }
     }
@@ -5441,22 +5495,35 @@ fn parse_or_predicate(tokens: &[OwnedLexToken]) -> Result<Option<PredicateAst>, 
 fn parse_attacking_you_own_control_predicate(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<PredicateAst>, CardTextError> {
+    // The authored token behind each synthetic word below, by position.
+    let mut originals: Vec<&OwnedLexToken> = Vec::new();
     let mut normalized_tokens: Vec<_> = tokens
         .iter()
         .filter_map(|token| {
             let word = token
                 .parser_text()
                 .trim_matches(|ch: char| !ch.is_ascii_alphanumeric());
-            (!word.is_empty()).then(|| OwnedLexToken::synthetic_word(word))
+            (!word.is_empty()).then(|| {
+                originals.push(token);
+                OwnedLexToken::synthetic_word(word)
+            })
         })
         .collect();
+    let authored = originals;
     let normalized_clause = LexedClause::new(&normalized_tokens);
+    // A split before "then meld them into ..." leaves the meld program's
+    // "exile them" at the end of this condition; the meld effect exiles the
+    // pair itself, so those two trailing words are the meld's.
+    let mut trailing_meld_exile = None;
     if let Some(exile_word_idx) = surface::find(normalized_clause, EXILE_THEM_PHRASE)
         && let Some(exile_token_idx) = normalized_clause
             .words()
             .token_span_for_words(exile_word_idx, exile_word_idx + 1)
             .map(|range| range.start)
     {
+        if exile_token_idx + EXILE_THEM_PHRASE.len() == normalized_tokens.len() {
+            trailing_meld_exile = Some(exile_token_idx);
+        }
         normalized_tokens.truncate(exile_token_idx);
     }
     let tokens = normalized_tokens.as_slice();
@@ -5522,6 +5589,16 @@ fn parse_attacking_you_own_control_predicate(
     right_filter.controller = Some(PlayerFilter::You);
     right_filter.owner = Some(PlayerFilter::You);
     right_filter.attacking = true;
+    // Both meld subjects and the fixed attacking/ownership phrase were read:
+    // the authored words the synthetic clause stands for.
+    for token in authored.iter().take(tokens.len()) {
+        crate::word_claims::claim_tokens(std::slice::from_ref(*token));
+    }
+    if let Some(exile_token_idx) = trailing_meld_exile {
+        for token in &authored[exile_token_idx..] {
+            crate::word_claims::claim_tokens(std::slice::from_ref(*token));
+        }
+    }
 
     Ok(Some(PredicateAst::And(
         Box::new(PredicateAst::Player(PlayerPredicateAst::PlayerControls {

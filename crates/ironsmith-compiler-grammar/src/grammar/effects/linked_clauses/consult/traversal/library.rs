@@ -64,6 +64,9 @@ pub(super) fn parse_active_stop(tokens: &[OwnedLexToken]) -> Option<ConsultTrave
         if let [threshold, "or", "greater"] = words
             && let Ok(threshold) = threshold.parse::<i32>()
         {
+            // "with total mana value <n> or greater [this way]": the stop's
+            // aggregate threshold, read word for word.
+            crate::word_claims::claim_tokens(total);
             return Some(ConsultTraversalStopShape {
                 stop_rule: LibraryConsultStopRuleAst::TotalManaValue(Value::Fixed(threshold)),
                 max_exposed: None,
@@ -91,6 +94,8 @@ pub(super) fn parse_active_stop(tokens: &[OwnedLexToken]) -> Option<ConsultTrave
                 .first()
                 .is_some_and(|token| token.is_any_word(&["a", "an"]))
             {
+                // "for each <option> vote": the vote count the stop reads.
+                crate::word_claims::claim_tokens(vote_tail);
                 return Some(ConsultTraversalStopShape {
                     stop_rule: LibraryConsultStopRuleAst::MatchCount(Value::VoteCount(
                         label.join(" "),

@@ -243,7 +243,11 @@ fn split_total_mana_value_cap(tokens: &[OwnedLexToken]) -> (&[OwnedLexToken], Op
         _ => None,
     };
     match value {
-        Some(value) => (trim_lexed_commas(&tokens[..index]), Some(value)),
+        Some(value) => {
+            // "N or less" / "X or less": the whole bound is the cap.
+            crate::word_claims::claim_tokens(trim_lexed_commas(bound));
+            (trim_lexed_commas(&tokens[..index]), Some(value))
+        }
         None => (tokens, None),
     }
 }
@@ -388,6 +392,9 @@ fn parse_unpriced_collection_cast_clause(
                 | ["the", "rest", "of", "those", "cards"]
         )
     {
+        // "the other cards" / "the rest": the collection's complement, read
+        // whole as the rest reference.
+        crate::word_claims::claim_tokens(reference_tokens);
         let mut filter = ObjectFilter::default();
         exclude_lands_from_spell_filter(&mut filter);
         filter.tagged_constraints.push(TaggedObjectConstraint {
@@ -434,6 +441,8 @@ fn parse_unpriced_collection_cast_clause(
         )
         && let Some(count) = authored_count
     {
+        // "a card that player milled this way", matched word for word.
+        crate::word_claims::claim_tokens(reference_tokens);
         let mut filter = ObjectFilter::default().in_zone(Zone::Graveyard);
         filter.owner = Some(PlayerFilter::IteratedPlayer);
         exclude_lands_from_spell_filter(&mut filter);
@@ -549,6 +558,8 @@ fn parse_unpriced_collection_cast_clause(
     let subject_words = token_word_refs(subject_tokens);
     let plural_subject = matches!(subject_words.last(), Some(&"spells" | &"cards"));
     let mut filter = if matches!(subject_words.as_slice(), ["card"] | ["cards"]) {
+        // The bare noun names any card of the collection.
+        crate::word_claims::claim_tokens(subject_tokens);
         ObjectFilter::default()
     } else {
         let Some(mut filter) =

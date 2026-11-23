@@ -119,8 +119,10 @@ pub(super) fn read(input: &ForEachPhrase<'_>) -> ParseOutcome<RuleMatch<AnthemCo
     // Equal readings from two rules are one reading.
     let mut distinct: Vec<RegistryCandidate<AnthemCountExpression>> = Vec::new();
     for candidate in candidates {
-        if !distinct.iter().any(|kept| kept.value == candidate.value) {
-            distinct.push(candidate);
+        match distinct.iter_mut().find(|kept| kept.value == candidate.value) {
+            // Both rules read the same meaning; either one's words are read.
+            Some(kept) => kept.claims.extend(&candidate.claims),
+            None => distinct.push(candidate),
         }
     }
     if distinct.len() > 1 {
@@ -224,6 +226,12 @@ fn read_commander_cast_count(
 ) -> Result<Option<AnthemCountExpression>, CardTextError> {
     let rest = input.rest;
     if let Some(player) = parse_commander_cast_count_player(rest) {
+        // The value reader claims the history clause when it reads word for
+        // word ("time you've cast your commander from the command zone this
+        // game"); the player test above only checks for its key words.
+        let _ = crate::grammar::shared_util::value_helper_shapes::parse_commander_cast_count_value(
+            &crate::lexer::parser_token_word_refs(rest),
+        );
         return Ok(Some(AnthemCountExpression::CommanderCastCount(player)));
     }
     Ok(None)

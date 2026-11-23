@@ -489,9 +489,16 @@ fn self_reference_replacement_tokens<'a>(
             {
                 return false;
             }
-            occurrences
-                .iter()
-                .any(|&(start, end)| start <= source.start && source.end <= end)
+            // A possessive of the name ("Hold for Ransom's controller") lexes
+            // as one word running past the name by its "'s".
+            let possessive_end = |end: usize| {
+                matches!(normalized.original.get(end..source.end), Some("'s" | "’s" | "'S" | "’S"))
+            };
+            occurrences.iter().any(|&(start, end)| {
+                start <= source.start
+                    && source.start < end
+                    && (source.end <= end || possessive_end(end))
+            })
         })
         .collect()
 }
@@ -529,8 +536,14 @@ fn preserved_self_reference_tokens<'a>(
             {
                 return false;
             }
+            // A possessive of the name ("Hold for Ransom's controller") lexes
+            // as one word running past the name by its "'s".
+            let source_end = ["'s", "’s", "'S", "’S"]
+                .iter()
+                .find_map(|suffix| original.get(..source.end)?.strip_suffix(suffix))
+                .map_or(source.end, str::len);
             let (Some(before_start), Some(before_end)) =
-                (original.get(..source.start), original.get(..source.end))
+                (original.get(..source.start), original.get(..source_end))
             else {
                 return false;
             };

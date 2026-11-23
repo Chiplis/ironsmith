@@ -26,6 +26,8 @@ pub(super) fn parse_alternative_cast_spell_with_origin(
         _ => return None,
     };
 
+    // "spell[s] with <alternative cast> from <zone>", word for word.
+    crate::word_claims::claim_tokens(tokens);
     let mut filter = ObjectFilter::default().in_zone(zone);
     filter.owner = owner;
     filter.alternative_cast = Some(alternative.kind);

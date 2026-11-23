@@ -587,12 +587,13 @@ fn parse_cant_gain_life_lexed<'a>(input: &mut LexStream<'a>) -> WResult<()> {
 }
 
 pub fn parses_cant_gain_life_replacement_tokens(tokens: &[OwnedLexToken]) -> bool {
-    primitives::parse_all(
+    let ok = primitives::parse_all(
         tokens,
         parse_cant_gain_life_lexed,
         "cant gain life replacement",
     )
-    .is_ok()
+    .is_ok();
+    ok
 }
 
 fn parse_next_end_step_prefix_lexed<'a>(input: &mut LexStream<'a>) -> WResult<()> {
@@ -1104,6 +1105,7 @@ fn parse_chosen_objects_power_difference_where_lexed<'a>(
 ) -> WResult<WhereXValueShape> {
     where_x_prefix.parse_next(input)?;
     primitives::phrase(&["the", "difference", "between", "the", "chosen"]).parse_next(input)?;
+    let kind_token = input.first().cloned();
     let object_kind_token = primitives::word_text.parse_next(input)?;
     let object_kind = match leaf::parse_leaf_demonstrative_object_head_complete(
         leaf::strip_leaf_source_possessive_suffix(object_kind_token),
@@ -1123,6 +1125,10 @@ fn parse_chosen_objects_power_difference_where_lexed<'a>(
     };
     alt((primitives::kw("power"), primitives::kw("powers"))).parse_next(input)?;
     primitives::sentence_end().parse_next(input)?;
+    // The chosen objects' noun ("the chosen creatures' powers").
+    if let Some(token) = kind_token {
+        crate::word_claims::claim_tokens(std::slice::from_ref(&token));
+    }
     Ok(WhereXValueShape::ChosenObjectsPowerDifference {
         object_kind: object_kind.to_string(),
     })

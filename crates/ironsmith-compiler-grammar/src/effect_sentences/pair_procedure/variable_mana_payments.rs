@@ -67,6 +67,10 @@ pub(super) fn read_failure_consequence(
         crate::util::trim_edge_punctuation_tokens(&body[..join]),
     )?;
     otherwise.extend(crate::effect_sentences::parse_effect_sentence_lexed(&body[join + 1..])?);
+    // "If they don't pay," heads the failure branch; its "and" joins the two
+    // failure consequences.
+    crate::word_claims::claim_tokens(&tokens[..comma]);
+    crate::word_claims::claim_tokens(&body[join..join + 1]);
     Ok(Some(vec![EffectAst::Conditionals(
         crate::cards::builders::ConditionalEffectAst::IfEffectDidNotHappen {
             effect: Box::new(payment.remove(0)), otherwise,

@@ -7251,7 +7251,9 @@
             register.counter_type.description()
         ));
         return format!(
-            "For each 1 damage that would be dealt to {} {duration}, you remove {counter} from {} instead",
+            // The deciding player elects the whole replacement ("target
+            // opponent may choose that for each 1 damage ...", Soul Echo).
+            "choose that for each 1 damage that would be dealt to {} {duration}, you remove {counter} from {} instead",
             describe_player_filter(&register.player),
             describe_choose_spec(&register.object)
         );
@@ -7694,7 +7696,14 @@
         {
             return "If a permanent you control would be put into a graveyard from the battlefield this turn, exile it instead".to_string();
         }
-        if register.filter == ObjectFilter::instant_or_sorcery().cast_by_you()
+        // "from your hand": the spell filter's cast-origin zone.
+        let cast_from_hand = {
+            let mut filter = ObjectFilter::instant_or_sorcery().cast_by_you();
+            filter.zone = Some(Zone::Hand);
+            filter
+        };
+        if (register.filter == ObjectFilter::instant_or_sorcery().cast_by_you()
+            || register.filter == cast_from_hand)
             && register.from_zone == Some(Zone::Stack)
             && register.to_zone == Some(Zone::Graveyard)
             && register.replacement_zone == Zone::Hand

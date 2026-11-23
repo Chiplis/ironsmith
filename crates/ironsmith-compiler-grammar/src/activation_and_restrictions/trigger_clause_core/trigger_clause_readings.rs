@@ -193,8 +193,10 @@ pub(super) fn read(input: &TriggerClause<'_>) -> ParseOutcome<RuleMatch<TriggerS
     // Equal readings from two rules are one reading.
     let mut distinct: Vec<RegistryCandidate<TriggerSpec>> = Vec::new();
     for candidate in candidates {
-        if !distinct.iter().any(|kept| kept.value == candidate.value) {
-            distinct.push(candidate);
+        match distinct.iter_mut().find(|kept| kept.value == candidate.value) {
+            // Both rules read the same meaning; either one's words are read.
+            Some(kept) => kept.claims.extend(&candidate.claims),
+            None => distinct.push(candidate),
         }
     }
     if distinct.len() > 1 {
@@ -465,6 +467,9 @@ fn read_first_combat_phase_end_trigger(
     let end_of_combat =
         crate::lexer::synthetic_word_tokens(["end", "of", "combat", "on", "your", "turn"]);
     let trigger = super::parse_trigger_clause_lexed(&end_of_combat)?;
+    // The synthetic restatement carries no authored spans; the authored
+    // words matched exactly above.
+    crate::word_claims::claim_tokens(input.tokens);
     Ok(Some(TriggerSpec::ConditionQualified {
         trigger: Box::new(trigger),
         condition: crate::cards::builders::PredicateAst::FirstCombatPhaseOfTurn,

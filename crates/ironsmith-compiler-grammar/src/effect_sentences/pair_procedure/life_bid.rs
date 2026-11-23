@@ -27,6 +27,8 @@ pub(super) fn read(
             && word.ends_with('s')
             && !word.ends_with("ss")
         {
+            // The authored third-person verb ("draws"), read as its stem.
+            crate::word_claims::claim_tokens(std::slice::from_ref(&*first));
             let stem = word[..word.len() - 1].to_string();
             *first = crate::lexer::OwnedLexToken::word(stem, first.span.clone());
         }
@@ -109,6 +111,8 @@ pub(super) fn read_two_player(
     if !matches!(target, TargetAst::Object(_, Some(_), _) | TargetAst::Spell(Some(_))) {
         return Ok(None);
     }
+    // The authored possessive ("spell's"), read above as its stem.
+    crate::word_claims::claim_tokens(std::slice::from_ref(possessed));
     let winner_effects = crate::effect_sentences::chain_carry::parse_effect_chain(shape.reward)?;
     if winner_effects.is_empty() {
         return Ok(None);

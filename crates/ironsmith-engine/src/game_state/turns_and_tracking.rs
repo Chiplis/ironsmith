@@ -36,6 +36,11 @@ impl GameState {
         self.effect_store.continuous_effects.expire_at_upkeep_end(&players);
     }
 
+    /// Whether `player` has begun an extra turn this game.
+    pub fn player_has_begun_extra_turn_this_game(&self, player: PlayerId) -> bool {
+        self.turn_store.players_who_began_extra_turn.contains(&player)
+    }
+
     /// "you haven't been dealt combat damage since your last turn": combat
     /// damage dealt to `player` in any turn after their most recently
     /// completed turn (the whole game when they haven't completed one).
@@ -1895,6 +1900,9 @@ impl GameState {
         for player in self.turn_players() {
             let tally = self.turn_store.turns_taken.entry(player).or_insert(0);
             *tally = tally.saturating_add(1);
+            if self.turn_store.current_turn_is_extra {
+                self.turn_store.players_who_began_extra_turn.insert(player);
+            }
         }
         // CR 723.1: controlling a turn lasts through every cleanup step.
         // Expire it only when the next actual (non-skipped) turn begins.

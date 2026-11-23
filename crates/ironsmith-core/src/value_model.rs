@@ -2850,6 +2850,9 @@ pub enum TurnHistoryCondition {
     /// Resolute Monarch): any turn after the player's most recent completed
     /// turn, including the current one so far.
     PlayerWasDealtCombatDamageSinceTheirLastTurn(PlayerFilter),
+    /// "you haven't begun an extra turn this game" (H.M.S. Bounty): the
+    /// player has begun at least one extra turn (CR 500.7) this game.
+    PlayerHasBegunExtraTurnThisGame(PlayerFilter),
     TriggeringPlayersTurn {
         definite_player: bool,
     },

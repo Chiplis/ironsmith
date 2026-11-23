@@ -43,6 +43,7 @@ pub fn parse_independent_alternative_price_line(
             "spell",
         ]
     {
+        crate::word_claims::claim_words(&words);
         let mut discard = ObjectFilter::default();
         discard.zone = Some(Zone::Hand);
         discard.other = true;
@@ -248,6 +249,19 @@ pub fn parse_independent_alternative_price_line(
     );
     spec.usage_limit = once_limit;
     spec.instant_timing = instant_timing;
+    // The frame read above word by word: the usage limit and "you may
+    // cast"/"you may pay", "by", the "rather than ..." clause, "you cast",
+    // the origin or bound tail and the flash follow-up. The subject and the
+    // payment were read by their own parsers.
+    crate::word_claims::claim_words(&words[..head + 3]);
+    if cast_head {
+        crate::word_claims::claim_words(&words[subject_end..subject_end + 1]);
+        crate::word_claims::claim_words(&words[rather..trailing_start]);
+    } else {
+        crate::word_claims::claim_words(&words[rather..subject_start]);
+        crate::word_claims::claim_words(&words[subject_end..trailing_start]);
+    }
+    crate::word_claims::claim_words(&words[trailing_start..]);
     // Presentation only. Every cost/filter/origin/timing word has been consumed
     // above; execution never reads this complete, strictly recognized surface.
     let surface = render_token_slice(tokens);

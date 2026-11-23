@@ -228,6 +228,26 @@ pub(super) fn predicate_matches_with_context(
         let matched=memory.iter().any(|object|filter.matches_snapshot(object,&context,game));
         return matched!=*negated;
     }
+    // "excess damage is dealt to <objects> this way": an excess-damage event
+    // of the antecedent whose recipient object matches the filter, judged as
+    // the recipient is right after the damage (CR 120.4a).
+    if let EffectPredicate::ExcessDamageDealtToObjectMatching(filter) = predicate {
+        let context = ctx.filter_context(game);
+        return outcome
+            .events_of_type::<crate::events::DamageEvent>()
+            .any(|event| {
+                event.excess_damage > 0
+                    && match event.target {
+                        crate::events::DamageTarget::Object(id) => {
+                            crate::snapshot::ObjectSnapshot::from_object_id(game, id)
+                                .is_some_and(|snapshot| {
+                                    filter.matches_snapshot(&snapshot, &context, game)
+                                })
+                        }
+                        _ => false,
+                    }
+            });
+    }
     if let EffectPredicate::AffectedObjectsShare { required_count, characteristic } = predicate {
         let Some(memory) = outcome.affected_object_memory() else { return false; };
         let mut seen = std::collections::HashSet::new();

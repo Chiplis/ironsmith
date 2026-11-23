@@ -2946,6 +2946,8 @@ pub fn exact_each_other_player_copies_triggering_spell_bundle(
     } else {
         return None;
     };
+    // Each accepted shape is the exact bundle.
+    crate::word_claims::claim_tokens(effect_parse_tokens);
     let copy = EffectAst::subject_verb_copy_spell(
         TargetAst::Tagged(crate::tag::CompilerReferenceTag::Triggering.bind(), None),
         crate::effect::Value::Fixed(1),

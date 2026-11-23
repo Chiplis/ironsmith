@@ -105,6 +105,7 @@ pub fn parse_counter_target_phrase(tokens: &[OwnedLexToken]) -> Result<TargetAst
     // trigger" (Strict Proctor): the triggered ability the event names, found
     // through its source and trigger identity.
     if words == ["that", "ability"] {
+        crate::word_claims::claim_tokens(tokens);
         return Ok(TargetAst::Tagged(
             crate::tag::CompilerReferenceTag::TriggeringSource.bind(),
             span_from_tokens(tokens),
@@ -512,12 +513,15 @@ fn parse_counter_ability_target_phrase(
             continue;
         }
         if word == COUNTER_FROM_WORD || (loyalty_ability_term && word == "of") {
+            // "from"/"of" and its article introduce the source types below.
+            crate::word_claims::claim_tokens(&clause_tokens[idx..=idx]);
             idx += 1;
             if clause_tokens.get(idx).is_some_and(|token| {
                 token
                     .as_word()
                     .is_some_and(|word| counter_word_choice(word, COUNTER_ARTICLE_WORDS))
             }) {
+                crate::word_claims::claim_tokens(&clause_tokens[idx..=idx]);
                 idx += 1;
             }
 
@@ -819,6 +823,10 @@ pub fn parse_reveal(
                         if words.starts_with(&["a", "number", "of"]) {
                             crate::word_claims::claim_words(&words[..3]);
                         }
+                        // The revealed noun the count applies to.
+                        if let Some(noun) = counter_grammar::find_word(&words, REVEAL_CARD_WORDS) {
+                            crate::word_claims::claim_word(words[noun]);
+                        }
                         return Ok(EffectAst::subject_verb_reveal_cards_from_hand(
                             player,
                             ChoiceCount::dynamic_x(),
@@ -997,7 +1005,11 @@ pub fn parse_life_equal_to_value(tokens: &[OwnedLexToken]) -> Result<Option<Valu
     if amount_words.starts_with(&["equal", "to", "the", "damage", "dealt", "but", "not", "more"]) {
         let value_tokens = &amount_tokens[2..];
         if let Some((value, used)) = crate::grammar::shared_util::value_expr::parse_value_expr_tokens(value_tokens)
-            && used == value_tokens.len() { return Ok(Some(value)); }
+            && used == value_tokens.len() {
+            // "equal to" introduces the capped amount read above.
+            crate::word_claims::claim_tokens(&amount_tokens[..2]);
+            return Ok(Some(value));
+        }
     }
     let input = life_equal_amount_readings::LifeAmount {
         tokens: amount_tokens,
@@ -1419,6 +1431,8 @@ pub(super) fn parse_half_life_value(tokens: &[OwnedLexToken], player: PlayerAst)
             _ => return None,
         };
         let mut basis = Value::LifeTotal(player_filter_for_life_reference(reference_player)?);
+        // The fraction of the life total and any rounding suffix.
+        crate::word_claims::claim_words(&clause_words);
         if up {
             basis = Value::Add(Box::new(basis), Box::new(Value::Fixed(denominator - 1)));
         }

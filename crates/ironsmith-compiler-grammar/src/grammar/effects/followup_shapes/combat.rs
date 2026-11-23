@@ -15,6 +15,8 @@ pub struct DamageAmountReplacementShape<'a> {
     /// "it deals twice that much damage to itself instead" (Cut
     /// Propulsion): the replacement repeats a self-damage recipient.
     pub self_recipient: bool,
+    /// The damage source phrase before "deals".
+    pub source_tokens: &'a [OwnedLexToken],
 }
 
 pub fn parse_damage_amount_replacement(
@@ -87,6 +89,7 @@ pub fn parse_damage_amount_replacement(
         repeats_source,
         definite_source,
         self_recipient,
+        source_tokens: &action[..deal],
     })
 }
 

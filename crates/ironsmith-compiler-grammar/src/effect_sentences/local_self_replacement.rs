@@ -10,7 +10,8 @@ pub(super) fn read(tokens: &[OwnedLexToken]) -> Result<Option<Vec<EffectAst>>, C
         &tokens[..tokens.len() - 1]
     } else { tokens };
     if tokens.iter().any(|token| token.kind == TokenKind::Period) { return Ok(None); }
-    let Some(index) = tokens.iter().position(|token| token.is_word("instead")) else { return Ok(None); };
+    // A locator: finding the replacement marker reads nothing yet.
+    let Some(index) = crate::word_claims::probe_only(|| tokens.iter().position(|token| token.is_word("instead"))) else { return Ok(None); };
     let action = &tokens[..index];
     let words = crate::lexer::parser_token_word_refs(action);
     let counter = words.starts_with(&["counter", "that", "spell"]);
@@ -22,6 +23,7 @@ pub(super) fn read(tokens: &[OwnedLexToken]) -> Result<Option<Vec<EffectAst>>, C
         && tokens.iter().filter(|token| token.is_word("instead")).count() == 1
         && tokens.get(index + 1).is_some_and(|token| token.is_word("if"));
     if counter_unless {
+        crate::word_claims::claim_tokens(&tokens[index..=index]);
         let predicate =
             crate::grammar::filters::parse_condition_predicate_lexed(&tokens[index + 2..])?;
         let effects = crate::effect_sentences::parse_effect_sentence_lexed(action)?;
@@ -36,6 +38,8 @@ pub(super) fn read(tokens: &[OwnedLexToken]) -> Result<Option<Vec<EffectAst>>, C
     let sacrifice = words.starts_with(&["each", "player", "sacrifices", "all"])
         && words.ends_with(&["they", "control"]);
     if !counter && !sacrifice { return Ok(None); }
+    // The replacement marker of the adopted local replacement.
+    crate::word_claims::claim_tokens(&tokens[index..=index]);
     // Both adopted action heads have word/number predicates. An embedded
     // symbol or a second replacement marker must not disappear in a fallback.
     if (counter && words.as_slice() != ["counter", "that", "spell"])

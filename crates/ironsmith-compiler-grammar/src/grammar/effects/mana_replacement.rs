@@ -325,7 +325,15 @@ fn mana_rewrite_filtered_source<'a>(input: &mut LexStream<'a>) -> Result<ManaOut
         // the tapped source named again, same as "it".
         names_source_again = alt((
             primitives::phrase(&["it", "produces"]).value(false),
-            (primitives::kw("that"), any, primitives::kw("produces")).value(true),
+            // The restated source noun ("that Mountain") is the tapped source.
+            (
+                primitives::kw("that"),
+                any.map(|token: &OwnedLexToken| {
+                    crate::word_claims::claim_tokens(std::slice::from_ref(token))
+                }),
+                primitives::kw("produces"),
+            )
+                .value(true),
         ))
         .parse_next(input)?;
     } else { primitives::kw("produce").parse_next(input)?; }

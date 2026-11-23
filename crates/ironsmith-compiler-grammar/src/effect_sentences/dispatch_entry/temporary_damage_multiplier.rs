@@ -128,6 +128,11 @@ fn parse_until_your_next_turn(tokens: &[OwnedLexToken]) -> Option<EffectAst> {
     if !repeated_ok {
         return None;
     }
+    // Each slice matched one of the exact readings above.
+    crate::word_claims::claim_tokens(shape.source.filter_tokens);
+    for read in [shape.damaged_tokens, shape.repeated_target_tokens].into_iter().flatten() {
+        crate::word_claims::claim_tokens(read);
+    }
     Some(EffectAst::subject_verb(
         SubjectVerbRoleAst::Actor,
         PlayerAst::Implicit,
@@ -159,8 +164,9 @@ fn parse_this_turn_amount_change(
         return Ok(None);
     };
     if comma < 3
-        || !tokens[comma - 2].is_word("this")
-        || !tokens[comma - 1].is_word("turn")
+        || !crate::word_claims::probe_only(|| {
+            tokens[comma - 2].is_word("this") && tokens[comma - 1].is_word("turn")
+        })
     {
         return Ok(None);
     }
@@ -187,6 +193,8 @@ fn parse_this_turn_amount_change(
     else {
         return Ok(None);
     };
+    // The leading "this turn" duration, stripped above.
+    crate::word_claims::claim_tokens(&tokens[comma - 2..comma]);
     Ok(Some(EffectAst::subject_verb(
         SubjectVerbRoleAst::Actor,
         PlayerAst::Implicit,
@@ -256,6 +264,26 @@ fn parse_each_time_target_source(
         [] => (Some(PlayerFilter::Any), Some(ObjectFilter::default())),
         _ => return Ok(None),
     };
+    // "to that <recipient>" restates the recipient it matched.
+    let repeated = shape
+        .repeated_target_tokens
+        .map(crate::lexer::parser_token_word_refs)
+        .unwrap_or_default();
+    let restates_recipient = match (recipient.as_slice(), repeated.as_slice()) {
+        (_, []) => true,
+        (["a", rest @ ..], ["that", repeated_rest @ ..]) => {
+            rest.iter().filter(|word| **word != "a").eq(repeated_rest.iter())
+        }
+        _ => false,
+    };
+    // "Each time" is the trigger-free replacement frame read here.
+    crate::word_claims::claim_tokens(&tokens[..2]);
+    if let Some(damaged) = shape.damaged_tokens {
+        crate::word_claims::claim_tokens(damaged);
+    }
+    if restates_recipient && let Some(repeated) = shape.repeated_target_tokens {
+        crate::word_claims::claim_tokens(repeated);
+    }
     Ok(Some(EffectAst::Sequence {
         effects: vec![
             EffectAst::subject_verb_explicit_target_only(target),

@@ -59,10 +59,10 @@ fn strip_lead<'a>(sentence: &'a [OwnedLexToken], lead: &[&str]) -> Option<&'a [O
 }
 
 pub(crate) fn read(sentences: &[&[OwnedLexToken]]) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    let &[setup, guess, reveal, right, wrong] = sentences else {
+    let &[authored_setup, guess, reveal, right, wrong] = sentences else {
         return Ok(None);
     };
-    let Some(setup) = strip_kind_choice(setup) else {
+    let Some(setup) = strip_kind_choice(authored_setup) else {
         return Ok(None);
     };
     if !matches!(
@@ -86,6 +86,11 @@ pub(crate) fn read(sentences: &[&[OwnedLexToken]]) -> Result<Option<Vec<EffectAs
     let setup_effects = super::parse_effect_chain(setup)?;
     let right_effects = super::parse_effect_chain(right)?;
     let wrong_effects = super::parse_effect_chain(wrong)?;
+    // The kind choice, the guess and the reveal were read word for word.
+    let authored_setup = crate::util::trim_edge_punctuation_tokens(authored_setup);
+    crate::word_claims::claim_tokens(&authored_setup[setup.len()..]);
+    crate::word_claims::claim_tokens(guess);
+    crate::word_claims::claim_tokens(reveal);
     let reveal_tokens = crate::lexer::synthetic_word_tokens(["reveal", "the", "top", "card", "of", "your", "library"]);
     let reveal_effects = super::parse_effect_chain(&reveal_tokens)?;
 

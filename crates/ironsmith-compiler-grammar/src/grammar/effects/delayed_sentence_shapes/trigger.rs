@@ -66,12 +66,15 @@ pub fn parse_delayed_dies_shape(tokens: &[OwnedLexToken]) -> Option<DelayedDiesS
     let trigger_words = crate::lexer::parser_token_word_refs(trigger_tokens);
     match trigger_words.as_slice() {
         ["it", "dies", "this", "turn"] => {
+            crate::word_claims::claim_tokens(trigger_tokens);
             return Some(DelayedDiesShape::ItReference {
                 under_your_control: false,
                 effect_tokens,
             });
         }
         ["it", "dies", "under", "your", "control", "this", "turn"] => {
+            // The whole delayed event, read word for word.
+            crate::word_claims::claim_tokens(trigger_tokens);
             return Some(DelayedDiesShape::ItReference {
                 under_your_control: true,
                 effect_tokens,

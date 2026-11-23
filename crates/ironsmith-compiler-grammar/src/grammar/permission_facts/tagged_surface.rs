@@ -476,10 +476,20 @@ pub fn parse_spells_from_tagged_tokens(
 
     // "you may play lands and cast spells from among cards exiled this way"
     // (Magus of the Mind): the land-and-spell pair names the whole pool.
+    const LANDS_AND_SPELLS: [&str; 7] = ["lands", "and", "cast", "spells", "from", "among", "cards"];
     let surface = if surface == TaggedPermissionTargetSurface::CardsExiledThisWay
-        && crate::lexer::token_word_refs(subject_tokens)
-            .ends_with(&["lands", "and", "cast", "spells", "from", "among", "cards"])
+        && crate::lexer::token_word_refs(subject_tokens).ends_with(&LANDS_AND_SPELLS)
     {
+        // The pair reading consumes those words, "cast" included, which the
+        // spell filter downstream never reads.
+        let pair_words = subject_tokens
+            .iter()
+            .filter(|token| token.as_word().is_some())
+            .rev()
+            .take(LANDS_AND_SPELLS.len());
+        for token in pair_words {
+            crate::word_claims::claim_tokens(std::slice::from_ref(token));
+        }
         TaggedPermissionTargetSurface::LandsAndSpellsFromAmongCardsExiledThisWay
     } else {
         surface

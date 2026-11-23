@@ -52,6 +52,10 @@ pub(crate) fn read(
     if mana.is_empty() {
         return Ok(None);
     }
+    // Both sentences were matched word for word (the mana symbols above).
+    crate::word_claims::claim_words(&first_words);
+    crate::word_claims::claim_words(&head);
+    crate::word_claims::claim_tokens(&second_tokens[add_idx..]);
     Ok(Some(vec![EffectAst::GrantPayLifeManaAbilityUntilEndOfTurn(
         ironsmith_core::GrantPayLifeManaAbilityUntilEndOfTurnEffect::new(
             PlayerFilter::You,

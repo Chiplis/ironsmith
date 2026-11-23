@@ -296,6 +296,11 @@ pub(super) fn parse_static_line_impl(
             .trim()
             .trim_end_matches('.')
             .to_string();
+        if !ironsmith_core::draft_rule(&display).unmodeled {
+            // The draft-rule classifier matched every sentence of the line
+            // exactly against a known draft action.
+            crate::word_claims::claim_tokens(parse_tokens);
+        }
         return wrap_chosen_option_static_chunk(
             LineAst::StaticAbility(StaticAbility::draft_rule_text(display).into()),
             chosen_option,
@@ -369,9 +374,12 @@ pub(super) fn parse_static_line_impl(
         );
     }
     if let Some(semantic_grammar::StaticSpecialLineShape::DeckConstruction(rule)) = special_shape {
+        // A copy limit or a color choice (Cryptic Spires: "circle two of the
+        // colors below") is the whole line, modeled by the rule.
         if matches!(
             rule,
             ironsmith_core::static_ability_model::DeckConstructionRule::CopyLimit(_)
+                | ironsmith_core::static_ability_model::DeckConstructionRule::ChooseColors(_)
         ) {
             crate::word_claims::claim_tokens(parse_tokens);
         }

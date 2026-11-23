@@ -1356,7 +1356,8 @@ impl EffectPredicateRuntimeExt for EffectPredicate {
             Self::PlayerAffectedObjectHasGreatestManaValue { .. }
             | Self::PlayerActionObjectHasGreatestManaValue { .. }
             | Self::AffectedObjectsShare { .. }
-            | Self::ResultObjectsMatch { .. } => false,
+            | Self::ResultObjectsMatch { .. }
+            | Self::ExcessDamageDealtToObjectMatching(_) => false,
             Self::PriorEffectResult(surface) => {
                 if surface.negated {
                     let mut positive = surface.clone();

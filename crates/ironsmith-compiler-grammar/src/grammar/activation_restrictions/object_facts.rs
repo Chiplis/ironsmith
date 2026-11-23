@@ -271,7 +271,9 @@ pub fn parse_target_restriction_envelope_tokens(
         && (noun + 1 == words.len()
             || exact_any(&words[noun + 1..], &[&["your", "opponents", "control"], &["you", "control"]]))
     {
-        crate::word_claims::claim_words(&words[noun..noun + 1]);
+        // "abilities from", the source noun and its controller tail.
+        crate::word_claims::claim_words(&words[4..6]);
+        crate::word_claims::claim_words(&words[noun..]);
         let source_controller = match words.len() - noun - 1 {
             0 => None,
             3 => Some(true),
@@ -292,6 +294,9 @@ pub fn parse_target_restriction_envelope_tokens(
         && exact_any(&words[spell_noun + 1..split], &[&["your", "opponents", "control"], &["you", "control"]])
         && exact_any(&words[source_noun + 1..], &[&["your", "opponents", "control"], &["you", "control"]])
     {
+        // "or abilities from" and both nouns with their controller tails.
+        crate::word_claims::claim_words(&words[spell_noun..split + 3]);
+        crate::word_claims::claim_words(&words[source_noun..]);
         return Some(TargetRestrictionEnvelope::PairedControlledSources {
             spell_tokens: token_range_for_words(tokens, &view, 4..split)?,
             spell_noun: token_range_for_words(tokens, &view, spell_noun..spell_noun + 1)?.start,

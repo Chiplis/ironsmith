@@ -396,14 +396,19 @@ fn finalize_rewrite_activated_effect_sentences(
 /// can't be 0." (Gogo, Master of Mimicry): `Some(also_x_cant_be_zero)`.
 fn ability_cant_be_copied_sentence(tokens: &[OwnedLexToken]) -> Option<bool> {
     let words = crate::lexer::parser_token_word_refs(tokens);
-    match words.as_slice() {
+    let also_x = match words.as_slice() {
         ["this", "ability", "cant" | "can't", "be", "copied"] => Some(false),
         [
             "this", "ability", "cant" | "can't", "be", "copied", "and", "x", "cant" | "can't",
             "be", "0",
         ] => Some(true),
         _ => None,
+    };
+    // Each accepted sentence is exact.
+    if also_x.is_some() {
+        crate::word_claims::claim_tokens(tokens);
     }
+    also_x
 }
 
 fn split_rewrite_activated_effect_text(
@@ -644,6 +649,8 @@ fn parse_named_source_leading_gain_activated(
         }
     }
     apply(&mut effects, &surface);
+    // The source subject and its pump verb ("Azula gets").
+    crate::word_claims::claim_tokens(&tokens[subject_start..=get_token_index]);
     Ok(Some(effects))
 }
 

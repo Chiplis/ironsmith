@@ -163,6 +163,11 @@ pub(super) fn parse_structured_become_copy_exception_shape(
         || !parsed.add_subtypes.is_empty()
         || !parsed.set_subtypes.is_empty()
         || parsed.granted_ability_tokens.is_some();
+    if has_typed_exception {
+        // Every descriptor word was read above: a characteristic, or the
+        // article/conjunction/type-addition frame around them.
+        crate::word_claims::claim_tokens(descriptor_tokens);
+    }
     has_typed_exception.then_some(parsed)
 }
 

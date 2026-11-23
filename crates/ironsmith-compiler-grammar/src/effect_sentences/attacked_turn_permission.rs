@@ -81,6 +81,8 @@ fn parse_exiled_card_has_self_cast(
     if !rest.is_empty() {
         return Ok(None);
     }
+    // Every word was compared above, the quoted permission included.
+    crate::word_claims::claim_tokens(tokens);
     let tag: crate::host::TagKey = crate::tag::CompilerReferenceTag::It.bind().into();
     let mut effect = EffectAst::subject_verb_grant_play_tagged_for_as_long_as_exiled(
         crate::tag::TagRef::of(tag),

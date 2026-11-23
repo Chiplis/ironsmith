@@ -43,13 +43,37 @@ pub fn parse_consult_remainder_order_shape(words: &[&str]) -> Option<LibraryBott
     {
         return None;
     }
-    if permission_shapes::find_words(words, &["random", "order"]).is_some() {
-        return Some(LibraryBottomOrderAst::Random);
+    let order = if permission_shapes::find_words(words, &["random", "order"]).is_some() {
+        LibraryBottomOrderAst::Random
+    } else if permission_shapes::find_words(words, &["any", "order"]).is_some() {
+        LibraryBottomOrderAst::ChooserChooses
+    } else {
+        return None;
+    };
+    claim_exact_bottom_destination(words);
+    Some(order)
+}
+
+/// Claim "on the bottom of <owner's> library in [a] random|any order" when
+/// the words end with exactly that destination.
+fn claim_exact_bottom_destination(words: &[&str]) {
+    let Some(on) = words.iter().rposition(|word| matches!(*word, "on" | "onto")) else {
+        return;
+    };
+    let tail = &words[on..];
+    let rest = match tail {
+        ["on" | "onto", "the", "bottom", "of", rest @ ..] | ["on" | "onto", "bottom", "of", rest @ ..] => rest,
+        _ => return,
+    };
+    let order = match rest {
+        ["your" | "their" | "that", "library", order @ ..]
+        | ["that", "player's" | "players", "library", order @ ..]
+        | ["its", "owner's" | "owners", "library", order @ ..] => order,
+        _ => return,
+    };
+    if matches!(order, ["in", "a", "random", "order"] | ["in", "random", "order"] | ["in", "any", "order"]) {
+        crate::word_claims::claim_words(tail);
     }
-    if permission_shapes::find_words(words, &["any", "order"]).is_some() {
-        return Some(LibraryBottomOrderAst::ChooserChooses);
-    }
-    None
 }
 
 pub fn parse_consult_bottom_remainder_shape(

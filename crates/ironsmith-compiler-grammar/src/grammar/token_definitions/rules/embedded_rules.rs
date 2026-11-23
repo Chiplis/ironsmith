@@ -266,7 +266,14 @@ fn token_rule_target_is_self(target_tokens: &[OwnedLexToken], named_token: Optio
     ]
     .iter()
     .any(|expected| primitives::parse_word_sequence_complete(&target_words, expected).is_some())
-        || named_token.is_some_and(|name| trimmed_render(target_tokens).eq_ignore_ascii_case(name))
+        || named_token.is_some_and(|name| {
+            // The token's own name ("... on Zabu"), compared whole.
+            let named = trimmed_render(target_tokens).eq_ignore_ascii_case(name);
+            if named {
+                crate::word_claims::claim_tokens(target_tokens);
+            }
+            named
+        })
 }
 
 fn parse_self_maximum_blockers_rule(
@@ -298,9 +305,21 @@ pub fn parse_embedded_token_rule_tokens(
     tokens: &[OwnedLexToken],
     named_token: Option<&str>,
 ) -> Option<TokenEmbeddedRuleShape> {
-    let body_tokens = effects::labeled_dispatch::parse_leading_effect_label_tokens(tokens)
-        .map(|shape| shape.body_tokens)
-        .unwrap_or(tokens);
+    let label = effects::labeled_dispatch::parse_leading_effect_label_tokens(tokens);
+    let body_tokens = label.as_ref().map(|shape| shape.body_tokens).unwrap_or(tokens);
+    let rule = parse_embedded_token_rule_body(body_tokens, named_token)?;
+    // "Landfall — ...": an ability word has no rules meaning (CR 207.2c);
+    // the token's rules text keeps it as the rule's label.
+    if let Some(label) = &label {
+        crate::word_claims::claim_tokens(label.label_tokens);
+    }
+    Some(rule)
+}
+
+fn parse_embedded_token_rule_body(
+    body_tokens: &[OwnedLexToken],
+    named_token: Option<&str>,
+) -> Option<TokenEmbeddedRuleShape> {
     if let Some(rule) = parse_self_maximum_blockers_rule(body_tokens, named_token) {
         return Some(rule);
     }

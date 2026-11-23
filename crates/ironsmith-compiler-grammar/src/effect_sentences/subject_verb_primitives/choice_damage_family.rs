@@ -569,6 +569,9 @@ pub fn parse_sentence_target_player_reveals_random_card_from_hand(
             && is_hand_reference_clause(SubjectVerbPrimitiveClause::new(shape.hand_tokens))
         {
             let target = parse_target_phrase(&object_tokens)?;
+            // The re-lexed "target <object>'s" copy has no authored spans:
+            // claim the subject itself, "controller" included.
+            crate::word_claims::claim_tokens(&subject_tokens);
             let target_tag = crate::util::helper_tag_for_tokens(clause.tokens(), "targeted");
             let revealed_tag = helper_tag_for_tokens(clause.tokens(), "revealed");
             return Ok(Some(vec![
@@ -745,6 +748,9 @@ fn parse_unless_any_player_has_source_deal_damage(
     if effects.is_empty() {
         return Ok(None);
     }
+    // "unless a player has <this source> deal N damage to them": matched
+    // word for word above.
+    crate::word_claims::claim_tokens(&tokens[unless..]);
     Ok(Some(vec![EffectAst::Conditionals(ConditionalEffectAst::UnlessAction {
         effects,
         alternative: vec![EffectAst::subject_verb_damage(
@@ -805,11 +811,14 @@ pub fn parse_sentence_damage_unless_controller_has_source_deal_damage(
         return Ok(None);
     }
 
-    let Some((_before_deal, deal_tail_clause)) =
+    let Some((before_deal, deal_tail_clause)) =
         alt_clause.split_once_on_word_any(&["deal", "deals"])
     else {
         return Ok(None);
     };
+    // The damage's source is the ability's source ("has Lava Blister deal
+    // ..."); only then is the alternative read as written.
+    let source_is_this = crate::util::is_source_reference_words(&before_deal.word_refs());
     let deal_tail = deal_tail_clause.tokens();
     let deal_words = deal_tail_clause.word_refs();
     let alt_amount = if crate::word_primitives::parse_sequence_prefix(
@@ -876,6 +885,10 @@ pub fn parse_sentence_damage_unless_controller_has_source_deal_damage(
             None,
         ),
     );
+    if source_is_this {
+        // "unless <its|that creature's> controller has <this> deal ...".
+        crate::word_claims::claim_tokens(shape.condition_tokens);
+    }
     let unless = EffectAst::Conditionals(ConditionalEffectAst::UnlessAction {
         effects,
         alternative: vec![alternative],

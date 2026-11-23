@@ -333,7 +333,7 @@ fn parse_nontoken_exile_would_die_lexed<'a>(
         opt(primitives::period()).parse_next(input)?;
         if input
             .first()
-            .is_some_and(|token| token.as_word() == Some("when"))
+            .is_some_and(|token| token.is_word("when"))
         {
             follow_up_tokens =
                 repeat::<_, _, Vec<_>, _, _>(0.., any.map(Clone::clone)).parse_next(input)?;
@@ -626,7 +626,7 @@ fn parse_simple_creature_exile_would_die_lexed<'a>(
     opt(primitives::period()).parse_next(input)?;
     let follow_up_tokens = if input
         .first()
-        .is_some_and(|token| token.as_word() == Some("when"))
+        .is_some_and(|token| token.is_word("when"))
     {
         repeat::<_, _, Vec<_>, _, _>(0.., any.map(Clone::clone)).parse_next(input)?
     } else {

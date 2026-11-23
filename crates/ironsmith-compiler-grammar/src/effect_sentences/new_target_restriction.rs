@@ -106,6 +106,13 @@ pub(super) fn parse_new_targets_exclusion(
         filter.controller = Some(PlayerFilter::NotYou);
         Some(filter)
     };
+    if excludes_you {
+        // "you [or]": the excluded player arm and its connective.
+        let view = crate::lexer::TokenWordView::new(tokens);
+        let head_words = words.len() - object_words.len();
+        let head_end = view.token_start_indices().get(head_words).copied().unwrap_or(tokens.len());
+        crate::word_claims::claim_tokens(&tokens[..head_end]);
+    }
     match object {
         Some(object) => Ok(ironsmith_core::NewTargetRestriction::PlayerOrObject { player, object }),
         None if !excludes_you => Err(unsupported()),

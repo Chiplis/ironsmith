@@ -67,7 +67,7 @@ pub fn parse_commander_cast_count_value(words: &[&str]) -> Option<crate::effect:
     // from the command zone this game") is read word for word.
     let clause = words
         .iter()
-        .position(|word| matches!(*word, "youve" | "you've"))
+        .position(|word| matches!(*word, "youve" | "you've" | "theyve" | "they've"))
         .map(|start| (&words[..start], &words[start..]));
     if let Some((prefix, rest)) = clause
         && matches!(
@@ -77,7 +77,10 @@ pub fn parse_commander_cast_count_value(words: &[&str]) -> Option<crate::effect:
         )
         && matches!(
             rest,
-            ["youve" | "you've", "cast", "your" | "a", "commander" | "commanders", "from", "the",
+            ["youve" | "you've" | "theyve" | "they've", "cast", "your" | "a", "commander" | "commanders", "from", "the",
+             "command", "zone", "this", "game"]
+            // Article-free word lists drop "the" (it is claimed where dropped).
+            | ["youve" | "you've" | "theyve" | "they've", "cast", "your" | "a", "commander" | "commanders", "from",
              "command", "zone", "this", "game"]
         )
     {
@@ -190,6 +193,8 @@ pub fn parse_counter_reference_value_shape(words: &[&str]) -> Option<CounterRefe
     } else {
         return None;
     };
+    // The counted object ("it", "this creature"), read whole above.
+    crate::word_claims::claim_words(reference_words);
 
     Some(CounterReferenceValueShape {
         counter_type,

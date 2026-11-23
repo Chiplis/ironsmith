@@ -473,6 +473,8 @@ pub fn parse_static_effect_continues_until_end_of_turn_surface(
     {
         return None;
     }
+    // "if this <noun>" opens the exact sentence matched above.
+    crate::word_claims::claim_words(&words[..3]);
     Some(StaticEffectContinuesUntilEndOfTurnSurface)
 }
 

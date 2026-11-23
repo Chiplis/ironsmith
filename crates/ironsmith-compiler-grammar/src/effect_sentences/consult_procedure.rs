@@ -830,7 +830,8 @@ pub(super) fn continue_with(
         Statement::IfFoundOthersGraveyardMatchOnTop => {
             // The revealed cards stay on top of the library in reveal order,
             // so removing every revealed card except the match leaves the
-            // match on top.
+            // match on top. The recognizer matched the sentence exactly.
+            crate::word_claims::claim_tokens(sentence.lowered());
             group
                 .followups
                 .push(EffectAst::Conditionals(ConditionalEffectAst::Conditional {
@@ -898,6 +899,7 @@ pub(super) fn continue_with(
             ));
         }
         Statement::HandOthersGraveyard => {
+            effect_grammar::read_consult_others_graveyard_tail(&stripped);
             group.gate_on_result = gate_on_result;
             group.followups.push(EffectAst::subject_verb_move_to_zone(
                 TargetAst::Tagged(crate::tag::TagRef::of(match_tag.clone()), None),
@@ -941,6 +943,7 @@ pub(super) fn continue_with(
                     controller_you,
                     tapped,
                 } => {
+                    effect_grammar::read_consult_others_graveyard_tail(&stripped);
                     group.followups.push(EffectAst::subject_verb_move_to_zone(
                         TargetAst::Tagged(crate::tag::TagRef::of(match_tag.clone()), None),
                         Zone::Battlefield,

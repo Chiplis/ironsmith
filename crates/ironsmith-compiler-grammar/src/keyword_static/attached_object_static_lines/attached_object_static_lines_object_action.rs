@@ -78,6 +78,9 @@ pub fn parse_attached_quoted_grant_then_type_sentence_line(
             && let Some(mut abilities) =
                 parse_attached_gets_and_has_ability_line(&tokens[..=close])?
         {
+            // The authored pronoun copula ("It's") the synthetic "is" above
+            // stands for.
+            crate::word_claims::claim_tokens(&rest[..tail_start]);
             abilities.append(&mut changes);
             return Ok(Some(abilities));
         }
@@ -119,6 +122,7 @@ pub fn parse_attached_gets_and_has_ability_line(
         && crate::util::is_source_reference_words(source)
         && crate::lexer::token_word_refs(tokens).first() == Some(&"equipped")
     {
+        crate::word_claims::claim_tokens(&ability_tokens);
         return Ok(Some(vec![
             anthem.into(),
             crate::cards::builders::StaticAbilityAst::Static(
@@ -144,6 +148,7 @@ pub fn parse_attached_gets_and_has_ability_line(
     ] = crate::lexer::token_word_refs(&ability_tokens).as_slice()
         && crate::lexer::token_word_refs(tokens).first() == Some(&"equipped")
     {
+        crate::word_claims::claim_tokens(&ability_tokens);
         return Ok(Some(vec![
             anthem.into(),
             crate::cards::builders::StaticAbilityAst::Static(

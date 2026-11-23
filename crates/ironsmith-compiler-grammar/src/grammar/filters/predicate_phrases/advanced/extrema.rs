@@ -30,6 +30,8 @@ pub(super) fn parse(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
         return None;
     }
     let scope = crate::object_filters::parse_object_filter_words(scope_words, false).ok()?;
+    // The extremum frame before its scope, read word for word above.
+    crate::word_claims::claim_words(&words[..words.len() - scope_words.len()]);
     let value = match (direction, axis) {
         ("greatest", "power") => Value::GreatestPower(scope),
         ("greatest", "toughness") => Value::GreatestToughness(scope),

@@ -309,5 +309,7 @@ fn parse_unless_targets_surcharge(
         return None;
     }
     let filter = crate::object_filters::parse_object_filter_lexed(&filter_tokens, false).ok()?;
+    // "more to cast this way": the surcharge applies to this permission.
+    crate::word_claims::claim_tokens(&tokens[more..]);
     Some((cost, filter))
 }

@@ -127,6 +127,8 @@ fn revealed_hand_and_library_top(sentence: &SentenceInput) -> Option<(Vec<Effect
         }
         _ => return None,
     };
+    // Matched word for word.
+    crate::word_claims::claim_tokens(sentence.lowered());
     Some((
         vec![
             EffectAst::subject_verb_reveal_top_cards(
@@ -154,6 +156,7 @@ fn choose_revealed_across_hand_and_library(
     if words != ["you", "choose", "a", "card", "revealed", "this", "way"] {
         return None;
     }
+    crate::word_claims::claim_tokens(sentence.lowered());
     let mut filter =
         ObjectFilter::tagged(crate::tag::CompilerReferenceTag::RevealedThisWay.bind());
     filter.owner = Some(PlayerFilter::AliasedTarget(Box::new(match revealer {
@@ -322,6 +325,10 @@ fn draw_for_each_in_it(sentence: &SentenceInput, revealed: PlayerFilter) -> Opti
     )?;
     filter.zone = Some(Zone::Hand);
     filter.owner = Some(PlayerFilter::AliasedTarget(Box::new(revealed)));
+    // The draw head and the "in it" hand reference; the union filter reads
+    // its own words.
+    crate::word_claims::claim_words(&words[..6]);
+    crate::word_claims::claim_words(&words[words.len() - 2..]);
     let count = Value::Count(filter).with_surface_hint(ironsmith_core::ValueSurfaceHint::ForEach);
     Some(EffectAst::subject_verb(
         SubjectVerbRoleAst::AffectedPlayer,
@@ -557,6 +564,10 @@ fn alternating_hand_exile(
             ]
     {
         return None;
+    }
+    // All three sentences were matched word for word.
+    for sentence in [alternation, repeat, partition] {
+        crate::word_claims::claim_tokens(sentence.lowered());
     }
     let owner = PlayerFilter::AliasedTarget(Box::new(match revealer {
         PlayerAst::TargetOpponent => PlayerFilter::Opponent,

@@ -433,11 +433,16 @@ pub fn parse_trigger_enchanted_by_relative_clause(words: &[&str]) -> bool {
 
 /// "a source of the chosen color" as a complete damage-source subject.
 pub fn parse_trigger_chosen_color_source(words: &[&str]) -> bool {
-    matches!(
+    let matched = matches!(
         words,
         ["a" | "any", "source", "of", "the", "chosen", "color"]
             | ["source", "of", "the", "chosen", "color"]
-    )
+    );
+    // The exact subject reads every word.
+    if matched {
+        crate::word_claims::claim_words(words);
+    }
+    matched
 }
 
 /// "... that was turned face up this turn" on a trigger subject (Kaust):
@@ -548,7 +553,10 @@ pub fn parse_targeting_source_controller_tail(
     } else {
         return None;
     };
-    Some((kind, parse_trigger_control_tail(&words[prefix_words..])?))
+    let controller = parse_trigger_control_tail(&words[prefix_words..])?;
+    // The stack-object kind words ("an ability", "a spell or ability").
+    crate::word_claims::claim_words(&words[..prefix_words]);
+    Some((kind, controller))
 }
 
 pub fn parse_spell_or_ability_controller_tail(

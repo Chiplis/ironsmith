@@ -27,6 +27,32 @@ fn trigger_source_words(words: &[&str]) -> bool {
     crate::grammar::trigger_subjects::parse_trigger_source_subject_words(words).is_some()
 }
 
+/// "[a] creature(s) [<controller>] [each] with power greater than its base
+/// power", the whole subject: `Some(controller)` when it reads exactly so.
+fn power_above_base_subject_controller(
+    words: &[&str],
+) -> Option<Option<crate::grammar::trigger_subjects::TriggerControllerReference>> {
+    const TAIL: &[&str] = &["with", "power", "greater", "than", "its", "base", "power"];
+    let lead = usize::from(matches!(words.first(), Some(&"a")));
+    let noun_end = lead + 1;
+    if !matches!(words.get(lead), Some(&("creature" | "creatures"))) || !words.ends_with(TAIL) {
+        return None;
+    }
+    let mut middle_end = words.len().checked_sub(TAIL.len())?;
+    if middle_end > noun_end && words[middle_end - 1] == "each" {
+        middle_end -= 1;
+    }
+    if middle_end < noun_end {
+        return None;
+    }
+    if middle_end == noun_end {
+        return Some(None);
+    }
+    let phrase = crate::grammar::trigger_subjects::parse_trigger_control_phrase(words)?;
+    (phrase.start == noun_end && phrase.start + phrase.words == middle_end)
+        .then_some(Some(phrase.controller))
+}
+
 pub fn parse_discard_trigger_card_filter(
     after_discard_tokens: &[OwnedLexToken],
     clause_words: &[&str],
@@ -573,6 +599,8 @@ fn trigger_subject_filter_reading(
                 "creature" | "permanent" | "artifact" | "enchantment" | "land" | "planeswalker"
             )
         {
+            // The demonstrative and its noun, which names the antecedent's kind.
+            crate::word_claims::claim_tokens(subject_tokens);
             return Ok(Some(ObjectFilter::tagged(
                 crate::tag::CompilerReferenceTag::It.bind(),
             )));
@@ -583,19 +611,20 @@ fn trigger_subject_filter_reading(
         )));
     }
 
-    if subject_facts.power_greater_than_base_power {
+    // "a creature [you control] [each] with power greater than its base
+    // power" (Ms. Marvel, Kutzil): exactly that noun phrase, nothing else.
+    if subject_facts.power_greater_than_base_power
+        && let Some(controller) = power_above_base_subject_controller(&subject_words)
+    {
         let mut filter = ObjectFilter::creature().in_zone(Zone::Battlefield);
         filter.power_greater_than_base_power = true;
         if other {
             filter.other = true;
         }
-        if let Some(controller_phrase) =
-            crate::grammar::trigger_subjects::parse_trigger_control_phrase(&subject_words)
-        {
-            filter.controller = Some(trigger_controller_player_filter(
-                controller_phrase.controller,
-            ));
+        if let Some(controller) = controller {
+            filter.controller = Some(trigger_controller_player_filter(controller));
         }
+        crate::word_claims::claim_tokens(subject_tokens);
         return Ok(Some(filter));
     }
 
@@ -874,6 +903,8 @@ pub fn parse_spell_activity_trigger(
         let mut filter = ObjectFilter::default();
         filter.physical_card = true;
         let subject_player = parse_trigger_subject_player_filter(&clause_words[..cast]);
+        // "casts a card": the verb and its object, read word for word.
+        crate::word_claims::claim_words(&clause_words[cast..]);
         return Ok(Some(TriggerSpec::SpellCast {
             filter: Some(filter),
             mana_source_filter: None,
@@ -951,6 +982,13 @@ pub fn parse_spell_activity_trigger(
             crate::word_claims::claim_tokens(&tokens[..first_verb]);
         }
         crate::word_claims::claim_tokens(&tokens[verb..=verb]);
+        // The passive "the first noncreature spell of a turn is cast"
+        // (Nullstone Gargoyle): the auxiliary belongs to the verb.
+        if verb > 0
+            && tokens[verb - 1].as_word().is_some_and(|word| matches!(word, "is" | "are"))
+        {
+            crate::word_claims::claim_tokens(&tokens[verb - 1..verb]);
+        }
     };
     let mut during_turn = activity_facts
         .during_turn
@@ -1021,6 +1059,13 @@ pub fn parse_spell_activity_trigger(
         && cast_idx.is_some()
         && let Some(spell_number) = exact_spells_this_turn
     {
+        // "the fourth spell of a turn is cast" (Erayo): read word for word.
+        let body = clause_words.strip_prefix(&["the"][..]).unwrap_or(&clause_words);
+        if let [ordinal, "spell", "of", "a", "turn", "is", "cast"] = body
+            && ironsmith_core::parse_ordinal_word(ordinal) == Some(spell_number)
+        {
+            crate::word_claims::claim_tokens(tokens);
+        }
         return Ok(Some(TriggerSpec::NthSpellOfTurnCast { spell_number }));
     }
 
@@ -1267,6 +1312,8 @@ pub fn parse_spell_activity_trigger(
                 };
                 let filter = parse_filter(&suffix_tokens[..index])?;
                 claim_caster_and_verb(cast);
+                // The same-name relation and the graveyard it names.
+                crate::word_claims::claim_tokens(&suffix_tokens[index..]);
                 return Ok(Some(TriggerSpec::SpellCastSameNameCardInZone {
                     filter,
                     caster: actor,
@@ -1419,6 +1466,12 @@ pub fn parse_may_cast_it_sentence(tokens: &[OwnedLexToken]) -> Option<MayCastTag
         }
         MayCastSurfaceReference::Copy => (crate::tag::CompilerReferenceTag::It.bind(), true),
     };
+    // The facts reader matched every word up to an open value expression,
+    // which reads its own words.
+    let read_end = match &facts.tail {
+        MayCastTailSurface::ManaValueAtMost { value_words } => value_words.start,
+        _ => clause_words.len(),
+    };
     let (without_paying_mana_cost, predicate) = match facts.tail {
         MayCastTailSurface::None => (false, None),
         MayCastTailSurface::WithoutPayingManaCost => (true, None),
@@ -1451,6 +1504,7 @@ pub fn parse_may_cast_it_sentence(tokens: &[OwnedLexToken]) -> Option<MayCastTag
         }
     };
 
+    crate::word_claims::claim_words(&clause_words[..read_end]);
     Some(MayCastTaggedSpec {
         tag: tag.key.clone(),
         alternative_cost: None,
@@ -1493,7 +1547,13 @@ pub fn parse_cast_this_way_cost_reduction_sentence(tokens: &[OwnedLexToken]) -> 
     }
     let reduction_tokens = trim_commas(&rest[..less]).to_vec();
     let (reduction, consumed) = parse_cost_modifier_mana_cost(&reduction_tokens)?;
-    (consumed == reduction_tokens.len()).then_some(reduction)
+    if consumed != reduction_tokens.len() {
+        return None;
+    }
+    // The subject, "costs" and the "less to cast this way" tail, compared above.
+    crate::word_claims::claim_tokens(&tokens[..2]);
+    crate::word_claims::claim_tokens(&rest[less..]);
+    Some(reduction)
 }
 
 pub fn build_may_cast_tagged_effect(spec: &MayCastTaggedSpec) -> EffectAst {
@@ -1679,6 +1739,9 @@ pub fn parse_sentence_sacrifice_source_when_that_token_leaves(
     }
 
     let _ = last_created_token_info(prior_effects)?;
+    // "Sacrifice <this> when that token leaves the battlefield", matched
+    // word for word.
+    crate::word_claims::claim_tokens(tokens);
 
     Some(EffectAst::subject_verb_sacrifice_source_when_leaves(
         TargetAst::Tagged(

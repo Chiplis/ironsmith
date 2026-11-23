@@ -83,9 +83,10 @@ fn allowed_verb(
     input: &mut LexStream<'_>,
     verbs: &'static [&'static str],
 ) -> WResult<&'static str> {
-    let parsed = primitives::word_parser_text.parse_next(input)?;
+    let token: &OwnedLexToken = winnow::token::any.parse_next(input)?;
     for verb in verbs {
-        if parsed == *verb {
+        // `is_word` claims the verb it matches, like the actor's `kw`.
+        if token.is_word(verb) {
             return Ok(*verb);
         }
     }

@@ -41,8 +41,26 @@ pub fn parse_consult_traversal_shape(tokens: &[OwnedLexToken]) -> Option<Consult
             .iter()
             .map(OwnedLexToken::parser_text)
             .collect();
+        // A prefix with a third-person subject ("Its controller mills that
+        // many cards, then exiles cards from the top of their library")
+        // implies that player.
+        let third_person_prefix = prefix.as_ref().is_some_and(|prefix| {
+            let words = crate::lexer::parser_token_word_refs(prefix);
+            matches!(
+                words.as_slice(),
+                ["that" | "target" | "each", "player" | "opponent", ..]
+                    | ["its", "controller" | "owner", ..]
+                    | ["they", ..]
+            )
+        });
+        let third_person = matches!(
+            possessor.as_slice(),
+            ["their"] | ["his", "or", "her"] | ["that", "player's"] | ["that", "players"]
+        );
         let consistent = match player {
-            ConsultTraversalPlayerShape::ImpliedByPrefixOrYou => possessor == ["your"],
+            ConsultTraversalPlayerShape::ImpliedByPrefixOrYou => {
+                possessor == ["your"] || (third_person_prefix && third_person)
+            }
             _ => matches!(
                 possessor.as_slice(),
                 ["their"] | ["his", "or", "her"] | ["that", "player's"] | ["that", "players"]

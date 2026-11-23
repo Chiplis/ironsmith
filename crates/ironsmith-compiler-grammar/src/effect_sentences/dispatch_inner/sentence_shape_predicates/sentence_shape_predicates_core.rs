@@ -324,14 +324,17 @@ fn parse_effect_sentence_lexed_uncached(
     if !tokens
         .first()
         .is_some_and(|token| token.parser_text().eq_ignore_ascii_case("target"))
-        && crate::slice_primitives::find_window_by(tokens, 5, |window| {
-            window[0].is_word("blocked")
-                && window[1].is_word("this")
-                && window[2].is_word("turn")
-                && window[3].is_word("except")
-                && window[4].is_word("by")
+        // Locating the phrase reads nothing; the parse below claims it.
+        && crate::word_claims::probe_only(|| {
+            crate::slice_primitives::find_window_by(tokens, 5, |window| {
+                window[0].is_word("blocked")
+                    && window[1].is_word("this")
+                    && window[2].is_word("turn")
+                    && window[3].is_word("except")
+                    && window[4].is_word("by")
+            })
+            .is_some()
         })
-        .is_some()
     {
         let mut effects = parse_effect_sentence_lexed_uncached_inner(tokens)?;
         if let [
@@ -1680,8 +1683,10 @@ pub(crate) fn parse_effect_sentence_with_where_x_lexed(
 /// owner's library-position choice whose upper option leaves X cards above.
 fn parse_owner_bottom_or_beneath_top_x(tokens: &[OwnedLexToken]) -> Result<Option<EffectAst>, CardTextError> {
     let tokens = crate::util::trim_edge_punctuation_tokens(tokens);
-    let Some(owner) = tokens.iter().position(|token| token.is_word("owner")) else { return Ok(None); };
-    if owner == 0 || !tokens.get(owner + 1).is_some_and(|token| token.is_word("puts")) { return Ok(None); }
+    // A locator: finding the owner subject reads nothing yet (the whole
+    // sentence is claimed once it is this reading).
+    let Some(owner) = crate::word_claims::probe_only(|| tokens.iter().position(|token| token.is_word("owner"))) else { return Ok(None); };
+    if owner == 0 || !crate::word_claims::probe_only(|| tokens.get(owner + 1).is_some_and(|token| token.is_word("puts"))) { return Ok(None); }
     // The binding comma follows the owner's action; an earlier comma (in the
     // subject or a leading clause) is not the one that introduces "where X is".
     let Some(comma) = tokens[owner + 1..].iter().position(|token| token.is_comma()).map(|offset| owner + 1 + offset) else { return Ok(None); };

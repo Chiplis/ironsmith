@@ -119,6 +119,20 @@ pub fn parse_leaf_target_head_tokens(
             )));
         }
     };
+    // The random-selection marker ("random", "at random", "chosen at
+    // random") the head records as its at-random count.
+    if let Some(Some(marker)) = normalized.random.as_ref().map(|random| random.span) {
+        let marked = tokens
+            .iter()
+            .filter(|token| {
+                token.span.line == marker.line
+                    && token.span.start >= marker.start
+                    && token.span.end <= marker.end
+            })
+            .cloned()
+            .collect::<Vec<_>>();
+        ironsmith_compiler_syntax::word_claims::claim_tokens(&marked);
+    }
     Ok(LeafTargetHead {
         normalized_tokens: normalized.tokens,
         prefix,

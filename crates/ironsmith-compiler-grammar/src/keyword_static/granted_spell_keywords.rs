@@ -236,6 +236,9 @@ fn parse_granted_hand_evoke(
     let Some(span) = view.token_span_for_words(0, words.len() - SUFFIX.len()) else {
         return Ok(None);
     };
+    // "you cast from your hand": the grant is a cast-from-hand alternative
+    // for cards you own (below), read here.
+    crate::word_claims::claim_tokens(&subject[span.end..]);
     let mut filter = parse_object_filter_lexed(&subject[span], false)?;
     filter.zone = None;
     filter.stack_kind = None;
@@ -333,7 +336,10 @@ fn parse_granted_hand_web_slinging(
     // "that's one or more colors": the spell is not colorless (CR 105.2).
     let colored = match &words[cast_word + 2..] {
         [] => false,
-        ["that's" | "thats", "one", "or", "more", "colors"] => true,
+        ["that's" | "thats", "one", "or", "more", "colors"] => {
+            crate::word_claims::claim_words(&words[cast_word + 2..]);
+            true
+        }
         _ => return Ok(None),
     };
     let Some(span) = view.token_span_for_words(0, cast_word) else {

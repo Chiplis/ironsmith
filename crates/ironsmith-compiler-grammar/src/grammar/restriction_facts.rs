@@ -147,6 +147,8 @@ fn parse_cant_activate_this_ability_window_restriction(
     if matches!(window, ActivationTiming::AnyTime | ActivationTiming::OncePerTurn) {
         return None;
     }
+    // "You can't activate this ability" heads the negated window.
+    crate::word_claims::claim_tokens(&tokens[..tail_start]);
     Some(ParsedActivationRestriction {
         presentation_text: normalized_surface(tokens),
         timing: None,

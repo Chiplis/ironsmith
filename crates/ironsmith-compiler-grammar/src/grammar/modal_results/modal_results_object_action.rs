@@ -132,11 +132,18 @@ pub fn parse_if_result_predicate_lexed_tokens(
     if let Some(predicate)=completed_named_program_receipt(tokens){return Some(predicate);}
     if let Some(predicate)=exact_creation_result(tokens) {return Some(predicate);}
     let normalized = normalized_word_tokens(tokens);
+    // A restated action ("If you can't sacrifice a creature", "If they didn't
+    // put the card on top of their library") names the preceding
+    // instruction, which the bare result reads.
     if let Some(prefix) = cant_restatement_prefix(&normalized) {
-        return parse_if_result_predicate_lexed_tokens(prefix);
+        let predicate = parse_if_result_predicate_lexed_tokens(prefix)?;
+        crate::word_claims::claim_tokens(&normalized[prefix.len()..]);
+        return Some(predicate);
     }
     if let Some(prefix) = didnt_put_restatement_prefix(&normalized) {
-        return parse_if_result_predicate_lexed_tokens(prefix);
+        let predicate = parse_if_result_predicate_lexed_tokens(prefix)?;
+        crate::word_claims::claim_tokens(&normalized[prefix.len()..]);
+        return Some(predicate);
     }
     let shape = parse_modal_result_shape(&normalized);
     let word_count = normalized.len();
@@ -149,6 +156,7 @@ pub fn parse_if_result_predicate_lexed_tokens(
     {
         let tail = words[1..].strip_prefix(&["or", "more"]).unwrap_or(&words[1..]);
         if tail == ["of", "those", "cards", "have", "same", "name"] {
+            crate::word_claims::claim_tokens(&normalized);
             return Some(IfResultPredicate::AffectedObjectsShare {
                 required_count: count, characteristic: ObjectCharacteristic::Name,
             });
@@ -178,6 +186,8 @@ pub fn parse_if_result_predicate_lexed_tokens(
         && let Some(count) = crate::util::parse_number_word_u32(count)
         && count > 0
     {
+        // The whole threshold ("you paid one or more {E} this way").
+        crate::word_claims::claim_tokens(tokens);
         return Some(IfResultPredicate::Value(if count == 1 {
             crate::effect::Comparison::GreaterThan(0)
         } else {
@@ -191,6 +201,7 @@ pub fn parse_if_result_predicate_lexed_tokens(
         words.as_slice(),
         ["those" | "the", "permanents" | "creatures", "are" | "were", "exchanged", "this", "way"]
     ) {
+        crate::word_claims::claim_tokens(&normalized);
         return Some(IfResultPredicate::Did);
     }
     // "Whenever you clash, ... If you won, ..." (Rebellion of the Flamekin,
@@ -234,6 +245,8 @@ pub fn parse_if_result_predicate_lexed_tokens(
             );
             surface.required_count = Some(count as u32);
             surface.negated = true;
+            // Every non-article word of the predicate matched above.
+            crate::word_claims::claim_tokens(tokens);
             return Some(IfResultPredicate::PriorEffectResult(surface));
         }
     }
@@ -261,6 +274,15 @@ pub fn parse_if_result_predicate_lexed_tokens(
                 && surface.shared_characteristic.is_none()
         })
     {
+        // "no counters were removed this way": every word names the
+        // antecedent action's (absent) result.
+        if passive_no_result
+            && let ["if" | "when", "no", "counters", "were", "removed", "this", "way"]
+            | ["no", "counters", "were", "removed", "this", "way"] =
+                crate::lexer::parser_token_word_refs(tokens).as_slice()
+        {
+            crate::word_claims::claim_tokens(tokens);
+        }
         return Some(IfResultPredicate::DidNot);
     }
     if let Some(mut surface) =
@@ -317,6 +339,12 @@ pub fn parse_if_result_predicate_lexed_tokens(
         .iter()
         .any(|phrase| starts_with_phrase(&normalized, phrase))
     {
+        // "... make an exchange": the restated exchange of the preceding
+        // instruction, read whole.
+        // (Articles are dropped from `words`.)
+        if words.ends_with(&["make", "exchange"]) && words.len() == 6 {
+            crate::word_claims::claim_tokens(tokens);
+        }
         return Some(IfResultPredicate::DidNot);
     }
     // "You may pay eight {E}. If you pay, ..." (Lightning Runner): the bare
@@ -581,6 +609,37 @@ pub fn parse_if_result_predicate_lexed_tokens(
             || has_phrase(&normalized, &["planeswalker"]))
         && ends_with_phrase(&normalized, &["this", "way"])
     {
+        // "excess damage is dealt to the creature an opponent controls this
+        // way" (Rhino's Rampage), "... to a permanent this way" (Bottle-Cap
+        // Blast): the recipient description is an object filter the excess
+        // damage's recipient must match. A demonstrative ("that creature")
+        // only names the antecedent's own recipient.
+        if let Some(to) = tokens.iter().position(|token| token.as_word() == Some("to"))
+            && let Some(this) = tokens.iter().rposition(|token| token.as_word() == Some("this"))
+            && to + 1 < this
+        {
+            let mut start = to + 1;
+            let reference = tokens[start]
+                .as_word()
+                .is_some_and(|word| matches!(word, "that" | "those" | "it" | "them"));
+            if !reference {
+                if tokens[start].as_word().is_some_and(|word| matches!(word, "the" | "a" | "an")) {
+                    start += 1;
+                }
+                if start < this
+                    && let Ok(filter) =
+                        crate::grammar::filters::parse_object_filter_with_grammar_entrypoint_lexed(
+                            &tokens[start..this],
+                            false,
+                        )
+                {
+                    // "excess damage is/was dealt to [the|a]" and "this way".
+                    crate::word_claims::claim_tokens(&tokens[..start]);
+                    crate::word_claims::claim_tokens(&tokens[this..]);
+                    return Some(IfResultPredicate::ExcessDamageDealtToObjectMatching(filter));
+                }
+            }
+        }
         return Some(IfResultPredicate::ExcessDamageDealt);
     }
     if matches_phrase(

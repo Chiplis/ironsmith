@@ -93,7 +93,7 @@ pub fn strip_any_suffix<'a, 'p, T: PartialEq>(
 
 pub fn select_position<T>(items: &[T], mut predicate: impl FnMut(&T) -> bool) -> Option<usize> {
     for (idx, item) in items.iter().enumerate() {
-        if predicate(item) {
+        if crate::word_claims::held_claims(|| predicate(item), |matched| *matched) {
             return Some(idx);
         }
     }
@@ -105,7 +105,7 @@ pub fn select_last_position<T>(
     mut predicate: impl FnMut(&T) -> bool,
 ) -> Option<usize> {
     for (idx, item) in items.iter().enumerate().rev() {
-        if predicate(item) {
+        if crate::word_claims::held_claims(|| predicate(item), |matched| *matched) {
             return Some(idx);
         }
     }
@@ -142,7 +142,8 @@ pub fn find_window_by<T>(
     }
     let mut start = 0usize;
     while start + window_len <= items.len() {
-        if predicate(&items[start..start + window_len]) {
+        let window = &items[start..start + window_len];
+        if crate::word_claims::held_claims(|| predicate(window), |matched| *matched) {
             return Some(start);
         }
         start += 1;
@@ -163,7 +164,8 @@ pub fn find_last_window_by<T>(
     }
     let mut start = items.len() - window_len;
     loop {
-        if predicate(&items[start..start + window_len]) {
+        let window = &items[start..start + window_len];
+        if crate::word_claims::held_claims(|| predicate(window), |matched| *matched) {
             return Some(start);
         }
         if start == 0 {

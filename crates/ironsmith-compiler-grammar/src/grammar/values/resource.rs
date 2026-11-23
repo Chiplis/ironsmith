@@ -28,6 +28,8 @@ pub fn parse_add_mana_equal_amount_value_lexed(tokens: &[OwnedLexToken]) -> Opti
         && let Some(player_words) = rest.strip_suffix(&["lost", "this", "way"])
         && matches!(player_words, [] | ["that", "player"] | ["they"] | ["you"])
     {
+        // The whole tail was matched word for word.
+        crate::word_claims::claim_words(&tail);
         return Some(Value::PendingPriorEffectMetric(
             ironsmith_core::PriorEffectMetricQuery::new(
                 ironsmith_core::EffectMetricSource::Outcome,
@@ -184,7 +186,19 @@ pub fn parse_add_mana_equal_amount_value_lexed(tokens: &[OwnedLexToken]) -> Opti
             && let Some(left) = parse_difference_segment(prefix_len, and_idx)
             && let Some(right) = parse_difference_segment(and_idx + 1, tail.len())
         {
+            // "(the) difference between" and the "and" joining the two
+            // segments; each segment read itself.
+            crate::word_claims::claim_words(&tail[..prefix_len]);
             crate::word_claims::claim_words(&tail[and_idx..=and_idx]);
+            // A "that <reference>'s mana value" segment was read whole.
+            for (start, end) in [(prefix_len, and_idx), (and_idx + 1, tail.len())] {
+                let segment = &tail[start..end];
+                if segment.first().copied() == Some("that")
+                    && crate::word_primitives::parse_sequence_suffix(segment, &["mana", "value"])
+                {
+                    crate::word_claims::claim_words(segment);
+                }
+            }
             let absolute = Value::absolute_difference(left, right);
             return Some(absolute.with_surface_hint(ValueSurfaceHint::Difference));
         }

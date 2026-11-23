@@ -64,19 +64,26 @@ pub fn parse_shuffle_trigger_subject_facts(words: &[&str]) -> Option<ShuffleTrig
         return None;
     }
     let caused_player_words = &words[5..words.len() - 1];
+    // "a spell or ability causes <player> to": the causal frame.
+    fn claim_frame(words: &[&str]) {
+        crate::word_claims::claim_words(&words[..5]);
+        crate::word_claims::claim_words(&words[words.len() - 1..]);
+    }
     if word_slice_is(caused_player_words, &["its", "controller"]) {
+        claim_frame(words);
+        crate::word_claims::claim_words(caused_player_words);
         return Some(ShuffleTriggerSubjectFacts {
             player: TriggerControllerReference::AnyPlayer,
             caused_by_spell_or_ability: true,
             use_effect_controller: true,
         });
     }
-    parse_trigger_controller_reference(caused_player_words).map(|player| {
-        ShuffleTriggerSubjectFacts {
-            player,
-            caused_by_spell_or_ability: true,
-            use_effect_controller: false,
-        }
+    let player = parse_trigger_controller_reference(caused_player_words)?;
+    claim_frame(words);
+    Some(ShuffleTriggerSubjectFacts {
+        player,
+        caused_by_spell_or_ability: true,
+        use_effect_controller: false,
     })
 }
 

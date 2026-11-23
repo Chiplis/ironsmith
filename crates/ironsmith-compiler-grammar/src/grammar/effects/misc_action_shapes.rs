@@ -388,6 +388,8 @@ pub fn parse_trailing_for_each_count(tokens: &[OwnedLexToken]) -> Option<Value> 
         &after_each[4..],
         ["them"] | ["that", "player"] | ["you"]
     ) {
+        // The whole per-damage count phrase matched above.
+        crate::word_claims::claim_words(&refs);
         return Some(
             Value::EventValue(EventValueSpec::Amount)
                 .with_surface_hint(ironsmith_core::ValueSurfaceHint::ForEachOneDamage),
@@ -408,6 +410,11 @@ pub fn parse_trailing_for_each_count(tokens: &[OwnedLexToken]) -> Option<Value> 
             if let Some(counter_type) =
                 crate::util::parse_counter_type_from_tokens(&tokens[counter_start..counter_end])
             {
+                // "for each <kind> counter on this creature" / "on it": the
+                // whole per-counter phrase names the source's counters.
+                if reference == ["it"] || crate::util::is_source_reference_words(reference) {
+                    crate::word_claims::claim_words(&refs);
+                }
                 return Some(Value::CountersOnSource(counter_type));
             }
         }

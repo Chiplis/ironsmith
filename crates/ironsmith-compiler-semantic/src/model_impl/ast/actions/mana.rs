@@ -97,6 +97,10 @@ pub enum ManaActionAst {
         /// "pay that spell's mana cost" (Ice Cave): the object whose mana
         /// cost is paid in addition to `cost`.
         mana_cost_of: Option<crate::target::ChooseSpec>,
+        /// "you may pay {1} any time you could cast an instant" (Guardian
+        /// Angel): the payment is offered as a repeatable window at instant
+        /// speed for the enclosing duration, not once as the effect resolves.
+        instant_speed_window: bool,
     },
     DoubleManaPool,
     EmptyManaPool,

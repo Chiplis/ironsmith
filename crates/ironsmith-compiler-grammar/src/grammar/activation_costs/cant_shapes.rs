@@ -1,7 +1,8 @@
 #[path = "cant_shapes/attack_unless.rs"]
 mod attack_unless;
 pub use attack_unless::{
-    AttackUnlessScope, AttackUnlessSurface, parse_attack_unless_condition_tokens,
+    AttackUnlessConditionFact, AttackUnlessScope, AttackUnlessSurface,
+    parse_attack_unless_condition_tokens,
 };
 
 #[path = "cant_shapes/attack_tax.rs"]

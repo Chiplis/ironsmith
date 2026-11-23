@@ -185,6 +185,24 @@ pub fn claim_for_line<'a>(tokens: impl IntoIterator<Item = &'a OwnedLexToken>) {
     LINE_CONSUMED.with(|set| set.borrow_mut().extend(&consumed));
 }
 
+/// Claim the registered `original` words a reader read through owned copies
+/// (`copy`, a contiguous run of them): claims on the copies themselves
+/// register nothing. The last matching run is claimed; nothing when the copy
+/// is not a run of `original`.
+pub fn claim_copied_words<S: AsRef<str>>(original: &[&str], copy: &[S]) {
+    if copy.is_empty() || copy.len() > original.len() || !is_recording() {
+        return;
+    }
+    if let Some(start) = (0..=original.len() - copy.len()).rev().find(|&start| {
+        original[start..start + copy.len()]
+            .iter()
+            .zip(copy)
+            .all(|(word, copied)| *word == copied.as_ref())
+    }) {
+        claim_words(&original[start..start + copy.len()]);
+    }
+}
+
 /// Whether `IRONSMITH_REGISTRY_TRACE` asks for per-registry resolution
 /// traces on stderr.
 pub fn registry_trace_enabled() -> bool {
@@ -450,7 +468,19 @@ fn check_line_coverage(
                             .get(*index)
                             .copied()
                             .flatten()
-                            .is_some_and(|authored| authored.end > authored.start && read(authored))
+                            .is_some_and(|authored| {
+                                // A substituted word ("she" normalized to
+                                // "it") lexes at the authored start with the
+                                // normalized word's length.
+                                let substituted = |len: usize| crate::TextSpan {
+                                    end: authored.start + len,
+                                    ..authored
+                                };
+                                authored.end > authored.start
+                                    && (read(authored)
+                                        || read(substituted(word.len()))
+                                        || read(substituted(span.end - span.start)))
+                            })
                 })
                 .map(|(_, (_, word))| word.as_str())
                 .collect();

@@ -4807,8 +4807,8 @@ fn describe_referenced_unblockable_then_characteristics(effects: &[Effect]) -> O
 }
 
 /// "search your library for five cards, exile them in a face-down pile, and
-/// shuffle your library" (Mangara's Tome, Parallel Thoughts): a multi-card
-/// search exiled face down as one group.
+/// shuffle that pile" (Mangara's Tome, Parallel Thoughts): a multi-card
+/// search exiled face down as one shuffled group.
 pub(super) fn describe_coordinated_search_exile_face_down_pile_shuffle(
     sequence: &crate::effects::SequenceEffect,
 ) -> Option<String> {
@@ -4817,23 +4817,22 @@ pub(super) fn describe_coordinated_search_exile_face_down_pile_shuffle(
     {
         return None;
     }
-    let [choose_effect, exile_effect, shuffle_effect] = sequence.effects.as_slice() else {
+    // The pile shuffle randomizes the exiled group (CR 701.24a); it has no
+    // library-shuffle effect of its own.
+    let [choose_effect, exile_effect] = sequence.effects.as_slice() else {
         return None;
     };
     let choose = structural_unwrap_render_wrappers(choose_effect)
         .downcast_ref::<crate::effects::ChooseObjectsEffect>()?;
     let exile = structural_unwrap_render_wrappers(exile_effect)
         .downcast_ref::<crate::effects::ExileEffect>()?;
-    let shuffle = structural_unwrap_render_wrappers(shuffle_effect)
-        .downcast_ref::<crate::effects::ShuffleLibraryEffect>()?;
     if !choose.is_search
         || choose.chooser != PlayerFilter::You
         || choose.count.min < 2
         || choose.count.max != Some(choose.count.min)
         || !exile.face_down
         || !matches!(&exile.spec, ChooseSpec::Tagged(tag) if *tag == choose.tag)
-        || shuffle.player != PlayerFilter::You
-        || shuffle.target_spec.is_some()
+        || choose.zone != Some(Zone::Library)
     {
         return None;
     }

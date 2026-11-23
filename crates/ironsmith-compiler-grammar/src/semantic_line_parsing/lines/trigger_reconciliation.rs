@@ -242,24 +242,20 @@ pub fn end_of_combat_destroy_then_next_end_step_counter_program(
     };
     let destroy_words = crate::lexer::parser_token_word_refs(destroy_sentence);
     let counter_words = crate::lexer::parser_token_word_refs(counter_sentence);
-    let exact_destroy = crate::word_primitives::first_is(&destroy_words, "destroy")
-        && crate::word_primitives::sequence_occurs(
-            &destroy_words,
-            &["the", "other", "creature", "at", "end", "of", "combat"],
-        );
-    let exact_counter_followup = crate::word_primitives::sequence_occurs(
-        &counter_words,
-        &["at", "the", "beginning", "of", "the", "next", "end", "step"],
-    ) && crate::word_primitives::sequence_occurs(
-        &counter_words,
-        &["if", "that", "creature", "was", "destroyed", "this", "way"],
-    ) && crate::word_primitives::sequence_occurs(
-        &counter_words,
-        &["counter", "on", "the", "first", "creature"],
-    );
+    let exact_destroy = destroy_words
+        == ["destroy", "the", "other", "creature", "at", "end", "of", "combat"];
+    let exact_counter_followup = counter_words
+        == [
+            "at", "the", "beginning", "of", "the", "next", "end", "step", "if", "that", "creature",
+            "was", "destroyed", "this", "way", "put", "a", "+1/+1", "counter", "on", "the", "first",
+            "creature",
+        ];
     if !exact_destroy || !exact_counter_followup {
         return None;
     }
+    // Both sentences matched word for word.
+    crate::word_claims::claim_tokens(destroy_sentence);
+    crate::word_claims::claim_tokens(counter_sentence);
 
     let destroyed = ironsmith_core::PriorEffectResultSurface::new(
         ironsmith_core::PriorEffectAction::Destroyed,

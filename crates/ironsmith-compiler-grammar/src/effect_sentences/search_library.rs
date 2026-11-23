@@ -436,6 +436,8 @@ pub fn parse_shuffle_graveyard_into_library_sentence(
                 target_words.as_slice(),
                 ["your" | "their", "hand", "and", "graveyard"]
                     | ["your" | "their", "hand", "graveyard", "and", "all", "permanents", "you" | "they", "own"]
+                    | ["your", "hand", "your", "graveyard", "and", "all", "permanents", "you", "own"]
+                    | ["their", "hand", "their", "graveyard", "and", "all", "permanents", "they", "own"]
             ) {
                 crate::word_claims::claim_words(&target_words);
             }

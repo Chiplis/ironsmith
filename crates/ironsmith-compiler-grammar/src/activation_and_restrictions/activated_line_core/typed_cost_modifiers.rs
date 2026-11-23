@@ -153,6 +153,7 @@ fn parse_typed_price(tokens: &[OwnedLexToken]) -> Result<Option<StaticAbility>, 
                 "where", "x", "is", "the", "power", "of", "the", "creature", "it", "targets",
             ],
         ) {
+            crate::word_claims::claim_tokens(tail);
             Some(Value::PowerOf(Box::new(ChooseSpec::target(
                 ChooseSpec::Object(ObjectFilter::creature()),
             ))))

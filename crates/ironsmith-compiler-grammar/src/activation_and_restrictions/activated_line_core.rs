@@ -1473,6 +1473,7 @@ fn parse_cost_reduction_line_inner(
                     if crate::lexer::parser_token_word_refs(filter_tokens)
                         == ["color", "of", "the", "creature", "it", "targets"]
                     {
+                        crate::word_claims::claim_tokens(filter_tokens);
                         let mut ability =
                             StaticAbility::reduce_activated_ability_costs_with_display(
                                 ObjectFilter::source(),

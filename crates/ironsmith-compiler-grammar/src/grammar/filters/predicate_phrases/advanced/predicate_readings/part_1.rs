@@ -15,6 +15,7 @@ fn read_exact_revealed_color_count(input: &Predicate<'_>) -> Result<Option<Predi
     if words != ["that", "opponent", "reveals", "exactly", "the", "chosen", "number", "of", "cards", "of", "the", "chosen", "color"] {
         return Ok(None);
     }
+    crate::word_claims::claim_tokens(input.predicate_tokens);
     let mut revealed = ironsmith_core::PriorEffectMetricQuery::new(
         ironsmith_core::EffectMetricSource::AffectedObjects, ironsmith_core::EffectMetric::Count,
     ).with_action(ironsmith_core::PriorEffectAction::Revealed)

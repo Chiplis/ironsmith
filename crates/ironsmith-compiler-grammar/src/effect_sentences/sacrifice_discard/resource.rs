@@ -40,6 +40,8 @@ pub fn parse_sacrifice(
         && filter.source
         && filter.source_surface.is_some()
     {
+        // The "it" naming the captured source object.
+        crate::word_claims::claim_tokens(tokens);
         let tag = crate::util::helper_tag_for_tokens(tokens, "sacrifice_subject");
         return Ok(EffectAst::Sequence {
             effects: vec![

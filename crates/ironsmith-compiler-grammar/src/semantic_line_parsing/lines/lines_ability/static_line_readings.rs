@@ -17,10 +17,11 @@ pub(super) struct StaticLine<'a> {
     pub(super) tokens: &'a [OwnedLexToken],
     pub(super) line: &'a RewriteStaticLine,
     /// The broad static-ability reading of the line, computed once for the
-    /// readings that build on it.
-    pub(super) broad_static: std::cell::OnceCell<
+    /// readings that build on it, with the words that computation read.
+    pub(super) broad_static: std::cell::OnceCell<(
         Result<Option<Vec<crate::cards::builders::StaticAbilityAst>>, CardTextError>,
-    >,
+        crate::word_claims::ClaimSet,
+    )>,
     /// Which readings of this registry read this input, once asked.
     pub(super) read_by_cache: std::cell::RefCell<std::collections::HashMap<&'static str, bool>>,
 }
@@ -48,9 +49,14 @@ impl StaticLine<'_> {
     pub(super) fn broad_static(
         &self,
     ) -> Result<Option<Vec<crate::cards::builders::StaticAbilityAst>>, CardTextError> {
-        self.broad_static
-            .get_or_init(|| parse_static_ability_ast_line_lexed(self.tokens))
-            .clone()
+        // The first computation may run inside a probe whose claims are
+        // dropped; every use replays the words the computation read, as the
+        // sentence memo does on a hit.
+        let (result, claims) = self.broad_static.get_or_init(|| {
+            crate::word_claims::scoped(|| parse_static_ability_ast_line_lexed(self.tokens))
+        });
+        crate::word_claims::adopt(claims);
+        result.clone()
     }
 
     /// A reading's outcome: its error is a committed diagnostic on the input.
@@ -260,8 +266,10 @@ pub(super) fn read(input: &StaticLine<'_>) -> ParseOutcome<RuleMatch<LineAst>> {
     // Equal readings from two rules are one reading.
     let mut distinct: Vec<RegistryCandidate<LineAst>> = Vec::new();
     for candidate in candidates {
-        if !distinct.iter().any(|kept| kept.value == candidate.value) {
-            distinct.push(candidate);
+        match distinct.iter_mut().find(|kept| kept.value == candidate.value) {
+            // Both rules read the same meaning; either one's words are read.
+            Some(kept) => kept.claims.extend(&candidate.claims),
+            None => distinct.push(candidate),
         }
     }
     if distinct.len() > 1 {

@@ -50,6 +50,8 @@ pub fn parse_combat_damage_target_shape_lexed(
                     ]
             )
         {
+            // The exception clause matched word for word.
+            crate::word_claims::claim_tokens(predicate_tokens);
             return Ok(CombatDamageTargetShape::TrailingUnless {
                 target_tokens: leading_tokens,
                 predicate: PredicateAst::ValueComparison {

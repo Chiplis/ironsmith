@@ -355,6 +355,13 @@ pub fn parse_return(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextError
             ]
         ) {
             let mut base = base;
+            // The noted-counters entry tail and its "with", word for word.
+            crate::word_claims::claim_tokens(&entry_counter_tokens);
+            if let Some(with) = tokens.get(split) {
+                if with.parser_text() == "with" {
+                    crate::word_claims::claim_tokens(std::slice::from_ref(with));
+                }
+            }
             if !base.set_return_noted_counters(crate::util::noted_counters_tag()) {
                 return Err(CardTextError::ParseError(format!(
                     "unsupported noted-counter return clause (clause: '{clause_text}')"

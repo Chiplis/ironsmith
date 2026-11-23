@@ -112,6 +112,25 @@ pub fn parse_targeting_as_though_no_ability_spec(
     if objects.is_none() && players.is_none() {
         return Ok(None);
     }
+    // "your opponents [and]", "can be the target(s)", the source scope and
+    // the complete "as though they didn't have <ability>" tail. The words are
+    // parser texts, so the claims go through their tokens.
+    let word_tokens: Vec<&OwnedLexToken> =
+        tokens.iter().filter(|token| token.as_word().is_some()).collect();
+    let claim_range = |range: std::ops::Range<usize>| {
+        for token in &word_tokens[range] {
+            crate::word_claims::claim_tokens(std::slice::from_ref(*token));
+        }
+    };
+    claim_range(0..object_start);
+    claim_range(can..as_though);
+    if matches!(
+        &words[as_though..],
+        ["as", "though", "they" | "it", "didnt" | "didn't", "have", "hexproof" | "shroud"]
+            | ["as", "though", "they" | "it", "did", "not", "have", "hexproof" | "shroud"]
+    ) {
+        claim_range(as_though..words.len());
+    }
 
     Ok(Some(
         ironsmith_core::static_ability_model::TargetingAsThoughNoAbilitySpec {

@@ -193,6 +193,8 @@ pub fn parse_early_keyword_marker_tokens(
         ironsmith_core::keyword_marker_mechanic(&words.join(" ")),
         Some(ironsmith_core::KeywordMarkerMechanic::ContributesMultipliedPower { .. })
     ) {
+        // The marker matches the whole sentence text.
+        crate::word_claims::claim_words(&words);
         return Some(EarlyKeywordMarkerKind::MultipliedPowerContributes);
     }
     (prefix(
@@ -346,6 +348,7 @@ pub fn parse_trigger_duplication_event_shape_tokens(
 
     if let Some(subject) = words.strip_suffix(&["gaining", "life"])
         && let Some(player) = parse_trigger_duplication_player_subject_words(subject) {
+        crate::word_claims::claim_words(&words[words.len() - 2..]);
         return Ok(Some(TriggerDuplicationEventShape::PlayerGainingLife(player)));
     }
 

@@ -827,7 +827,7 @@ impl DeckConstructionRule {
             {
                 if let ["circle" | "choose", rest @ ..] = rest
                     && let Some((count, used)) = crate::parse_cardinal_words(rest)
-                    && rest[used..].starts_with(&["of", "the", "colors"])
+                    && matches!(&rest[used..], ["of", "the", "colors"] | ["of", "the", "colors", "below"])
                 {
                     return Some(Self::ChooseColors(count));
                 }

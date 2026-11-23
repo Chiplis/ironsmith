@@ -1220,7 +1220,7 @@ fn parse_equipment_rules_text_keeps_single_quoted_activated_grant() {
     let source_text = "Colorless Equipment artifact token named Rock with \"Equipped creature has '{1}, {T}, Sacrifice Rock: This creature deals 2 damage to any target'\" and equip {1}.";
 
     let source_tokens = lex_line(source_text, 0).expect("equipment rules fixture should lex");
-    let rules_text = token_grammar::parse_equipment_rules_tokens(&source_tokens)
+    let rules_text = token_grammar::parse_equipment_rules_tokens(&source_tokens, Some("Rock"))
         .expect("equipment rules shape")
         .text;
 

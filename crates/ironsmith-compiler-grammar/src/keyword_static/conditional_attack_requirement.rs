@@ -79,6 +79,8 @@ pub fn parse_conditional_attack_requirement_line(
         _ => required_words.as_slice(),
     };
     if !source_words.is_empty() && crate::util::is_source_reference_words(source_words) {
+        // The source reference and its optional "also" were both read.
+        crate::word_claims::claim_tokens(required_tokens);
         let mut required = ObjectFilter::source();
         required.zone = Some(crate::zone::Zone::Battlefield);
         return Ok(Some(

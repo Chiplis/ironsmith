@@ -40,6 +40,8 @@ pub(super) fn read(
     {
         return Ok(None);
     }
+    // All three sentences matched word for word.
+    claim_sentences([reveal, matched, unmatched]);
     let it = crate::tag::CompilerReferenceTag::It.bind();
     let guessed = ObjectFilter::default().match_tagged(
         crate::tag::CompilerReferenceTag::ChosenName.bind(),

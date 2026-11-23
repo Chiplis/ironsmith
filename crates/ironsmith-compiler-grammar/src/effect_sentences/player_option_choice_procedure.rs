@@ -265,6 +265,8 @@ fn own_number_statement(tokens: &[OwnedLexToken]) -> Result<Option<Vec<EffectAst
     {
         return Ok(None);
     }
+    // "equal to the number of <noun> they <verb>", replaced by X above.
+    crate::word_claims::claim_tokens(&tokens[idx..idx + 8]);
     super::dispatch_entry::replace_unbound_x_in_effects_anywhere(
         &mut effects,
         &crate::effect::Value::IteratedPlayerChosenNumber,
@@ -293,6 +295,7 @@ fn extreme_player_statement(tokens: &[OwnedLexToken]) -> Option<(Vec<OwnedLexTok
     {
         return None;
     }
+    crate::word_claims::claim_tokens(&tokens[..consumed]);
     let mut rewritten = vec![synthetic("each"), synthetic("player")];
     rewritten.extend_from_slice(&tokens[consumed..]);
     Some((rewritten, highest))
@@ -470,6 +473,7 @@ fn guessers_consequence(
             // iterated over the guessers below ("they lose life ... and you
             // draw a card" draws once per wrong guesser, not once per
             // player, and only guessers lose life).
+            crate::word_claims::claim_tokens(&tokens[..2]);
             rewritten.extend([synthetic("that"), synthetic("player")]);
             let verb = tokens[1].as_word().unwrap_or_default();
             let verb = if verb.ends_with('s') {
@@ -485,6 +489,7 @@ fn guessers_consequence(
             && tokens[idx..idx + 6].iter().all(|token| token.as_word().is_some())
             && let Some(noun) = rewritten.pop()
         {
+            crate::word_claims::claim_tokens(&tokens[idx..idx + 6]);
             rewritten.extend([synthetic("x"), noun]);
             guess_value = true;
             idx += 6;
@@ -621,6 +626,9 @@ fn rewrite_number_quantifier(
         if after[..consumed].iter().any(|token| token.as_word().is_none()) {
             continue;
         }
+        // The quantifier and its number qualifier, replaced below.
+        crate::word_claims::claim_tokens(&tokens[start..start + 2]);
+        crate::word_claims::claim_tokens(&after[..consumed]);
         let mut rewritten = tokens[..start].to_vec();
         rewritten.extend([synthetic("each"), synthetic("player")]);
         rewritten.extend_from_slice(&after[consumed..]);
@@ -641,6 +649,7 @@ fn rewrite_number_value(
             let extreme = last_named_extreme(&tokens[..idx])
                 .or(default_extreme)
                 .unwrap_or(true);
+            crate::word_claims::claim_tokens(&tokens[idx..idx + 2]);
             tokens.splice(idx..idx + 2, [synthetic("x")]).for_each(drop);
             return Some(extreme);
         }
@@ -653,6 +662,7 @@ fn rewrite_number_value(
             && tokens[idx - 1].as_word().is_some()
         {
             let noun = tokens[idx - 1].clone();
+            crate::word_claims::claim_tokens(&tokens[idx..idx + 5]);
             tokens.splice(idx - 1..idx + 5, [synthetic("x"), noun]).for_each(drop);
             return Some(extreme);
         }
@@ -696,6 +706,8 @@ fn rewrite_option_quantifier(
         };
         let (option_token, after) = rest.split_first()?;
         let index = option_index(options, option_token)?;
+        // The quantifier read through the named option.
+        crate::word_claims::claim_tokens(&tokens[start..tokens.len() - after.len()]);
         let mut rewritten = tokens[..start].to_vec();
         rewritten.extend([synthetic("for"), synthetic("each"), synthetic("player")]);
         rewritten.extend_from_slice(after);
@@ -714,6 +726,8 @@ fn rewrite_option_quantifier(
         let Some(index) = option_index(options, &tokens[start + 4]) else {
             continue;
         };
+        // The quantifier read through the named option.
+        crate::word_claims::claim_tokens(&tokens[start..start + 5]);
         let mut rewritten = tokens[..start].to_vec();
         rewritten.extend([synthetic("each"), synthetic("player")]);
         rewritten.extend_from_slice(&tokens[start + 5..]);
@@ -727,6 +741,8 @@ fn rewrite_option_quantifier(
         let Some(index) = option_index(options, &tokens[start + 1]) else {
             continue;
         };
+        // The quantifier read through the named option.
+        crate::word_claims::claim_tokens(&tokens[start..start + 2]);
         let mut rewritten = tokens[..start].to_vec();
         rewritten.extend([synthetic("each"), synthetic("player")]);
         rewritten.extend_from_slice(&tokens[start + 2..]);
@@ -883,6 +899,7 @@ fn rewrite_each_of_them(tokens: &[OwnedLexToken]) -> Option<Vec<OwnedLexToken>> 
     let start = tokens.windows(3).position(|window| {
         window[0].is_word("each") && window[1].is_word("of") && window[2].is_word("them")
     })?;
+    crate::word_claims::claim_tokens(&tokens[start..start + 3]);
     let mut rewritten = tokens[..start].to_vec();
     rewritten.extend([synthetic("each"), synthetic("player")]);
     rewritten.extend_from_slice(&tokens[start + 3..]);
@@ -988,9 +1005,11 @@ pub(super) fn open(
     let Some(next) = sentences.get(sentence_idx + 1) else {
         return Ok(None);
     };
-    if !reads_choice(next, &choice) {
+    if !crate::word_claims::probe_only(|| reads_choice(next, &choice)) {
         return Ok(None);
     }
+    // The opening reads its whole sentence (participants, options or range).
+    crate::word_claims::claim_tokens(trim(sentence.lowered()));
     Ok(Some(PlayerOptionChoiceGroup {
         options: choice.options.clone(),
         number: choice.number.is_some(),
@@ -1012,10 +1031,14 @@ pub(super) fn continue_with(
     // "Then those numbers are revealed.": the choices were collected before
     // any was recorded, so the reveal adds no instruction.
     if is_reveal_statement(tokens) {
+        // Every word of the reveal statement is a reveal word.
+        crate::word_claims::claim_tokens(tokens);
         group.consumed += 1;
         return Ok(true);
     }
     if let Some((lead, rest)) = split_lead(tokens) {
+        // The lead words each statement below matches exactly.
+        let claim_lead = || crate::word_claims::claim_words(&lead);
         // "If you do, an opponent guesses which number you chose, then you
         // reveal the number you chose."
         if lead.as_slice() == ["if", "you", "do"]
@@ -1029,6 +1052,8 @@ pub(super) fn continue_with(
                 if_true: vec![EffectAst::ChoosePlayerOption(guess)],
                 if_false: Vec::new(),
             }));
+            claim_lead();
+            crate::word_claims::claim_tokens(rest);
             group.pending_conditions.clear();
             group.consumed += 1;
             return Ok(true);
@@ -1046,6 +1071,7 @@ pub(super) fn continue_with(
                 if_true,
                 if_false: Vec::new(),
             }));
+            claim_lead();
             group.last_group = Some(guessers);
             group.consumed += 1;
             return Ok(true);
@@ -1055,6 +1081,7 @@ pub(super) fn continue_with(
             && let Some(predicate) = everyone_chose_condition(&lead[1..], &group.options)
         {
             let if_true = consequence(rest, group)?;
+            claim_lead();
             group.pending_conditions.push(predicate.clone());
             group.effects.push(EffectAst::Conditionals(ConditionalEffectAst::Conditional {
                 predicate,
@@ -1072,6 +1099,7 @@ pub(super) fn continue_with(
                 .reduce(|left, right| PredicateAst::Or(Box::new(left), Box::new(right)))
                 .expect("pending conditions are non-empty");
             let if_true = consequence(rest, group)?;
+            claim_lead();
             group.effects.push(EffectAst::Conditionals(ConditionalEffectAst::Conditional {
                 predicate: PredicateAst::Not(Box::new(any)),
                 if_true,
@@ -1085,6 +1113,7 @@ pub(super) fn continue_with(
             && let Some(players) = group.last_group.clone()
         {
             let if_true = super::parse_effect_sentence_lexed(rest)?;
+            claim_lead();
             group.effects.push(EffectAst::Conditionals(ConditionalEffectAst::Conditional {
                 predicate: PredicateAst::Bound(Box::new(crate::ConditionExpr::PlayerIsYou {
                     player: players,
@@ -1122,11 +1151,15 @@ pub(super) fn continue_with(
             return Ok(true);
         }
         if is_tie_restatement(tokens, group.last_extreme) {
+            // A restatement of the extreme set's instruction for ties.
+            crate::word_claims::claim_tokens(tokens);
             group.consumed += 1;
             return Ok(true);
         }
     }
     if let Some(sweep) = color_choice_sweep(tokens, &group.options) {
+        // The sweep matched the whole statement.
+        crate::word_claims::claim_tokens(tokens);
         group.effects.push(sweep);
         group.pending_conditions.clear();
         group.consumed += 1;

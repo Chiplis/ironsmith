@@ -207,14 +207,18 @@ pub(super) fn read_cant_gain_life_replacement(
         // "that player or that planeswalker's controller": the damaged target
         // player, or the controller of the damaged target planeswalker.
         let words = crate::lexer::token_word_refs(tokens);
-        let player = if matches!(
-            words.get(..7),
-            Some(["if", "that", "player", "or", "that", "planeswalker's" | "planeswalkers", "controller"])
-        ) {
-            crate::target::PlayerFilter::TargetPlayerOrControllerOfTarget
-        } else {
-            crate::target::PlayerFilter::DamagedPlayer
+        let Some((player, rest)) = cant_gain_life_subject(&words) else {
+            return Ok(None);
         };
+        // The replaced player restated before the result.
+        if !matches!(
+            rest,
+            ["would", "gain", "life", "this", "turn", "that", "player" | "players", "gains" | "gain", "no", "life", "instead"]
+                | ["would", "gain", "life", "this", "turn", "they", "gain", "no", "life", "instead"]
+        ) {
+            return Ok(None);
+        }
+        crate::word_claims::claim_tokens(tokens);
         return Ok(Some(vec![EffectAst::subject_verb_cant(
             crate::effect::Restriction::gain_life(player),
             crate::effect::Until::EndOfTurn,
@@ -222,6 +226,22 @@ pub(super) fn read_cant_gain_life_replacement(
         )]));
     }
     Ok(None)
+}
+/// The would-gain subject of a can't-gain-life window, and the words after it.
+fn cant_gain_life_subject<'a, 'b>(
+    words: &'b [&'a str],
+) -> Option<(crate::target::PlayerFilter, &'b [&'a str])> {
+    match words {
+        // "that player or that planeswalker's controller": the damaged target
+        // player, or the controller of the damaged target planeswalker.
+        ["if", "that", "player", "or", "that", "planeswalker's" | "planeswalkers", "controller", rest @ ..] => {
+            Some((crate::target::PlayerFilter::TargetPlayerOrControllerOfTarget, rest))
+        }
+        ["if", "that", "player" | "players", rest @ ..] | ["if", "they", rest @ ..] => {
+            Some((crate::target::PlayerFilter::DamagedPlayer, rest))
+        }
+        _ => None,
+    }
 }
 pub(super) fn read_reveal_source_exiled_permanents_sentence(
     input: &Sentence<'_>,

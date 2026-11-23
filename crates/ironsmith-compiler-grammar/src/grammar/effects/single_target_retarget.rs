@@ -73,6 +73,8 @@ pub fn parse(tokens: &[OwnedLexToken]) -> Result<Option<Vec<EffectAst>>, CardTex
         return Ok(None);
     };
     let target = crate::util::parse_target_phrase(target_tokens)?;
+    // The possessive "that spell's" matched above names the targeted spell.
+    crate::word_claims::claim_tokens(&after_change[..target_word]);
     let matching = ObjectFilter::default()
         .targeting_only_object(current)
         .target_count_exact(1);

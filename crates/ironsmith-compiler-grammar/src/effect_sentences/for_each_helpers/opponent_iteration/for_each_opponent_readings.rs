@@ -199,8 +199,10 @@ pub(super) fn read(input: &ParticipantClause<'_>) -> ParseOutcome<RuleMatch<Effe
     // Equal readings from two rules are one reading.
     let mut distinct: Vec<RegistryCandidate<EffectAst>> = Vec::new();
     for candidate in candidates {
-        if !distinct.iter().any(|kept| kept.value == candidate.value) {
-            distinct.push(candidate);
+        match distinct.iter_mut().find(|kept| kept.value == candidate.value) {
+            // Both rules read the same meaning; either one's words are read.
+            Some(kept) => kept.claims.extend(&candidate.claims),
+            None => distinct.push(candidate),
         }
     }
     if distinct.len() > 1 {
@@ -469,8 +471,25 @@ fn read_opponent_special_shape(
 fn read_who_clause(input: &ParticipantClause<'_>) -> Result<Option<EffectAst>, CardTextError> {
     let outer = input.outer;
     let clause_text = input.clause_text;
+    // "who controlled <objects> returned/destroyed this way": players among
+    // the controllers (as last known) of the prior effect's objects.
+    fn controlled_this_way(
+        controlled: &[OwnedLexToken],
+    ) -> Option<(usize, ironsmith_core::PriorEffectAction, &[OwnedLexToken])> {
+        const RETURNED: &[&str] = &["returned", "this", "way"];
+        const DESTROYED: &[&str] = &["destroyed", "this", "way"];
+        [
+            (RETURNED, ironsmith_core::PriorEffectAction::Returned),
+            (DESTROYED, ironsmith_core::PriorEffectAction::Destroyed),
+        ]
+        .into_iter()
+        .find_map(|(tail, action)| {
+            primitives::find_prefix(controlled, || primitives::phrase(tail))
+                .map(|(at, (), body)| (at, action, body))
+        })
+    }
     if let Some(((), controlled)) = primitives::parse_prefix(outer.inner_tokens, primitives::phrase(&["who", "controlled"]))
-        && let Some((returned, (), body)) = primitives::find_prefix(controlled, || primitives::phrase(&["returned", "this", "way"]))
+        && let Some((returned, action, body)) = controlled_this_way(controlled)
         && returned > 0 && !body.is_empty()
     {
         let mut filter = parse_object_filter(&controlled[..returned], false)?;
@@ -478,7 +497,7 @@ fn read_who_clause(input: &ParticipantClause<'_>) -> Result<Option<EffectAst>, C
         filter.zone = Some(crate::zone::Zone::Battlefield);
         let mut query = ironsmith_core::PriorEffectMetricQuery::new(
             ironsmith_core::EffectMetricSource::AffectedObjects, ironsmith_core::EffectMetric::Count,
-        ).with_filter(filter).with_action(ironsmith_core::PriorEffectAction::Returned);
+        ).with_filter(filter).with_action(action);
         query.use_origin_memory = true;
         let effects = parse_effect_chain_inner(crate::lexer::trim_lexed_commas(body))?;
         return Ok(Some(wrap_opponents(&input.iteration_filter, vec![
@@ -601,6 +620,8 @@ fn read_who_clause(input: &ParticipantClause<'_>) -> Result<Option<EffectAst>, C
                     && crate::lexer::token_word_refs(result_tokens)
                         .ends_with(&["discarded", "their", "hand", "this", "way"])
                 {
+                    let words = crate::lexer::token_word_refs(result_tokens);
+                    crate::word_claims::claim_words(&words[words.len() - 5..]);
                     IfResultPredicate::AcceptedChoice
                 } else {
                     result_predicate

@@ -361,6 +361,11 @@ pub(crate) fn read_optional_copy_from_revealed(
     else {
         return Ok(None);
     };
+    // "you may copy" ... "in it" and the cast sentence, matched word for word;
+    // the described card was read by the choice clause.
+    crate::word_claims::claim_tokens(&copy[..3]);
+    crate::word_claims::claim_tokens(&copy[copy.len() - 2..]);
+    crate::word_claims::claim_words(&cast_words);
     let chosen = crate::util::helper_tag_for_tokens(copy, "copied_from_hand");
     Ok(Some(vec![EffectAst::Permissions(PermissionEffectAst::May {
         effects: vec![

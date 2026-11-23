@@ -259,7 +259,12 @@ pub fn parse_sacrifice_fraction_rounded_shape(
             )?;
             let ordinal_words = parser_token_word_refs(&after_article[..of_index]);
             let (denominator, used) = ironsmith_core::parse_ordinal_words(&ordinal_words)?;
-            (denominator > 1 && used == ordinal_words.len()).then_some((denominator, rest))
+            let fraction = denominator > 1 && used == ordinal_words.len();
+            // The ordinal names the fraction's denominator ("a third of").
+            if fraction {
+                crate::word_claims::claim_tokens(&after_article[..of_index]);
+            }
+            fraction.then_some((denominator, rest))
         })?
     };
     let (rounded_up, before_rounding) = if let Some((_, stripped)) =

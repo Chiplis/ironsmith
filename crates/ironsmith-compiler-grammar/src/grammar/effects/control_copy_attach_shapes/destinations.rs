@@ -232,6 +232,37 @@ fn placement_start(
     }
 }
 
+/// "on the bottom of your library in a random order": the placement head,
+/// the owner's library and the order phrase, read when the destination is
+/// exactly that (the order sets the shape's order; the library owner is the
+/// moved cards' owner, CR 400.3).
+fn claim_exact_library_placement(placement: &[OwnedLexToken], destination: &[OwnedLexToken]) {
+    let words = crate::lexer::parser_token_word_refs(destination);
+    let (library_len, order_len) = {
+        let order_len = if words.ends_with(&["in", "a", "random", "order"]) {
+            4
+        } else if words.ends_with(&["in", "random", "order"]) || words.ends_with(&["in", "any", "order"]) {
+            3
+        } else {
+            0
+        };
+        let library = &words[..words.len() - order_len];
+        let library_len = match library {
+            [] => 0,
+            ["your" | "their" | "its" | "his" | "her", "library"] => 2,
+            ["its" | "their", "owner's" | "owners" | "owners'", "library" | "libraries"]
+            | ["that", "player's" | "players", "library"] => 3,
+            _ => return,
+        };
+        (library_len, order_len)
+    };
+    if library_len + order_len != words.len() {
+        return;
+    }
+    crate::word_claims::claim_tokens(&placement[..placement.len() - destination.len()]);
+    crate::word_claims::claim_tokens(destination);
+}
+
 pub fn parse_library_placement_destination_shape(
     tokens: &[OwnedLexToken],
 ) -> Option<LibraryPlacementDestinationShape<'_>> {
@@ -262,6 +293,7 @@ pub fn parse_library_placement_destination_shape(
                 primitives::phrase(&["in", "any", "order"]),
             ))
         });
+        claim_exact_library_placement(&tokens[index..], destination);
     }
     (!target_tokens.is_empty()).then_some(LibraryPlacementDestinationShape {
         target_tokens,

@@ -81,6 +81,8 @@ pub(crate) fn parse_land_quality_union_filter(tokens: &[OwnedLexToken]) -> Optio
     if arms.len() < 2 || !saw_connective {
         return None;
     }
+    // The whole "<quality>, <quality>, or <quality> land card" phrase.
+    crate::word_claims::claim_tokens(tokens);
     let mut filter = ObjectFilter::default();
     filter.any_of = arms;
     Some(filter)
@@ -194,10 +196,14 @@ pub fn parse_restriction_duration_lexed(
 
     // An exception can follow the duration: "can't be blocked this turn
     // except by ...". Retain that exception when removing the time clause.
-    if let Some(at) = tokens.windows(3).position(|part|
-        part[0].is_word("this") && part[1].is_word("turn") && part[2].is_word("except"))
-        && tokens[..at].iter().any(|token| token.is_word("blocked"))
+    if let Some(at) = crate::word_claims::probe_only(|| {
+        tokens.windows(3).position(|part|
+            part[0].is_word("this") && part[1].is_word("turn") && part[2].is_word("except"))
+    })
+        && crate::word_claims::probe_only(|| tokens[..at].iter().any(|token| token.is_word("blocked")))
     {
+        // "this turn": the duration removed here.
+        crate::word_claims::claim_tokens(&tokens[at..at + 2]);
         let mut body = tokens[..at].to_vec();
         body.extend_from_slice(&tokens[at + 2..]);
         return Ok(Some((Until::EndOfTurn, body)));
@@ -254,6 +260,8 @@ pub fn parse_restriction_duration_lexed(
         // while the restricted object keeps the named counter.
         let suffix_words = token_word_refs(suffix_tokens);
         if suffix_words == ["for", "as", "long", "as", "it", "remains", "tapped"] {
+            // The exact duration tail reads every word.
+            crate::word_claims::claim_tokens(suffix_tokens);
             return Ok(Some((
                 Until::ForAsLongAs(ironsmith_core::ContinuousDurationPredicate::ObjectTapped(
                     ironsmith_core::ContinuousDurationObject::Tagged(

@@ -488,6 +488,17 @@ pub fn claim(span: TextSpan) {
     });
 }
 
+/// Test one search candidate: what `test` claims counts only when `keep`
+/// accepts its answer. A scan that tries every position reads only the
+/// candidate it returns, never the ones it passed over (a window whose first
+/// word matched before the second did not).
+pub fn held_claims<T>(test: impl FnOnce() -> T, keep: impl FnOnce(&T) -> bool) -> T {
+    if !is_recording() {
+        return test();
+    }
+    speculative_keep_if(test, keep)
+}
+
 /// Record that the current reading read `word`, a word handed out by one of
 /// the registering functions. Words of unknown origin are ignored.
 pub fn claim_word(word: &str) {

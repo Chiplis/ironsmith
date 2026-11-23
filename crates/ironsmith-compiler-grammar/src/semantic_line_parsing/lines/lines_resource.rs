@@ -64,8 +64,9 @@ pub fn try_parse_optional_waterbend_additional_cost(
 /// "reveal a Dragon card from your hand or choose a Dragon you control"
 /// (Dragon's Fire) is beholding spelled out (CR 701.66a): read it as
 /// "behold a Dragon" so the cost, its paid label, and the beheld object's
-/// cost tag are the behold mechanism's own.
-fn spelled_out_behold_cost_tokens(tokens: &[OwnedLexToken]) -> Option<Vec<OwnedLexToken>> {
+/// cost tag are the behold mechanism's own. Returns the rewritten tokens and
+/// the index where the spelled-out words start.
+fn spelled_out_behold_cost_tokens(tokens: &[OwnedLexToken]) -> Option<(Vec<OwnedLexToken>, usize)> {
     let start = tokens
         .iter()
         .position(|token| token.is_word("reveal") || token.is_word("choose"))?;
@@ -86,7 +87,7 @@ fn spelled_out_behold_cost_tokens(tokens: &[OwnedLexToken]) -> Option<Vec<OwnedL
     for word in ["behold", "a", subtype] {
         rewritten.push(OwnedLexToken::word(word.to_string(), span));
     }
-    Some(rewritten)
+    Some((rewritten, start))
 }
 
 pub fn try_parse_optional_behold_additional_cost(
@@ -96,8 +97,9 @@ pub fn try_parse_optional_behold_additional_cost(
     if line.kind != RewriteKeywordLineKind::AdditionalCost {
         return Ok(None);
     }
+    let original_tokens = parse_tokens;
     let spelled_out = spelled_out_behold_cost_tokens(parse_tokens);
-    let parse_tokens = spelled_out.as_deref().unwrap_or(parse_tokens);
+    let parse_tokens = spelled_out.as_ref().map_or(parse_tokens, |(tokens, _)| tokens.as_slice());
 
     let Some(shape) =
         keyword_special_grammar::parse_optional_keyword_additional_cost_tokens(parse_tokens)
@@ -116,6 +118,10 @@ pub fn try_parse_optional_behold_additional_cost(
             crate::cost::OptionalCostKind::Behold,
             subtype.to_string(),
         );
+    }
+    // The spelled-out words the "behold a <subtype>" copy stands for.
+    if let Some((_, start)) = &spelled_out {
+        crate::word_claims::claim_tokens(&original_tokens[*start..]);
     }
 
     Ok(Some(LineAst::OptionalCost(optional_cost)))

@@ -42,6 +42,7 @@ pub(super) fn read(
     else {
         return Ok(None);
     };
+    super::claim_sentences([choose, control]);
     // The other of the two declared target players.
     *controller = Some(PlayerFilter::excluding(
         PlayerFilter::target_player(),

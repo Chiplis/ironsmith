@@ -41,6 +41,8 @@ pub(super) fn split_counter_recipient_or_player(
         &["or", "players"][..],
     ] {
         if words.len() > suffix.len() && &words[words.len() - suffix.len()..] == suffix {
+            // The player arm read into `include_players`.
+            crate::word_claims::claim_tokens(&tokens[tokens.len() - suffix.len()..]);
             return (&tokens[..tokens.len() - suffix.len()], true);
         }
     }

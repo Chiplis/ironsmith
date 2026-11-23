@@ -109,6 +109,9 @@ pub(super) fn parse(tokens: &[OwnedLexToken]) -> Result<Option<Vec<EffectAst>>, 
             target: TargetAst::Object(original, None, None),
         }),
     );
+    // The two exact word runs compared above.
+    crate::word_claims::claim_tokens(&members);
+    crate::word_claims::claim_tokens(&tokens[then_index + 1..]);
     Ok(Some(vec![EffectAst::CommaThen {
         effects: vec![declare, capture, first, second],
     }]))

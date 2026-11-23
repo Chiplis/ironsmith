@@ -120,10 +120,10 @@ const IF_YOU_DO_IT_BECOMES_PLOTTED: &[&str] = &["if", "you", "do", "it", "become
 /// be an entering-counter phrase, which the caller reads separately.
 pub fn is_resolving_spell_exile_instead_shape(tokens: &[OwnedLexToken]) -> bool {
     let tokens = crate::util::trim_edge_punctuation_tokens(tokens);
-    starts_sequence(tokens, RESOLVING_SPELL_EXILE_HEADS)
-        && ends_content_sequence(tokens, INSTEAD_OF_GRAVEYARD_AS_IT_RESOLVES)
-        && !contains_sequence_word(tokens, "if")
+    !contains_sequence_word(tokens, "if")
         && !contains_sequence_word(tokens, "may")
+        && starts_sequence(tokens, RESOLVING_SPELL_EXILE_HEADS)
+        && ends_content_sequence(tokens, INSTEAD_OF_GRAVEYARD_AS_IT_RESOLVES)
 }
 
 /// "If you do, it becomes plotted." (Lilah, Undefeated Slickshot): a follow-up
@@ -221,6 +221,8 @@ pub fn parse_directional_adjacent_player_control_shape(
     if !same_words_without_articles(&choice[choice_object.clone()], &gain[gained_object.clone()]) {
         return None;
     }
+    // The gained object restates the chosen one; the comparison reads it.
+    crate::word_claims::claim_tokens(&gain[gained_object.clone()]);
     Some(DirectionalAdjacentPlayerControlShape {
         choice_object,
         gained_object,

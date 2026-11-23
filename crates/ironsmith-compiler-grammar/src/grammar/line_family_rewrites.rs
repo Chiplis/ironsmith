@@ -76,7 +76,12 @@ pub fn parse_graveyard_cast_control_condition_tokens(
     let mut input = LexStream::new(tokens);
     let condition =
         crate::grammar::primitives::take_leaf(&mut input, graveyard_cast_control_condition)?;
-    input.is_empty().then_some(condition)
+    if !input.is_empty() {
+        return None;
+    }
+    // The complete permission, its color or subtype words included.
+    crate::word_claims::claim_tokens(tokens);
+    Some(condition)
 }
 
 pub fn parse_count_that_number_life_total_rewrite_tokens(

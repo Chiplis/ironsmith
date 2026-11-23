@@ -1120,6 +1120,7 @@ pub fn parse_sentence_you_and_attacking_player_each_draw_and_lose(
                     clause.text()
                 )));
             }
+            crate::word_claims::claim_tokens(&draw_clause.tokens()[used..=used]);
             count
         };
     let lose_clause = SubjectVerbPrimitiveClause::new(shape.lose_tokens);
@@ -1140,6 +1141,7 @@ pub fn parse_sentence_you_and_attacking_player_each_draw_and_lose(
             clause.text()
         )));
     }
+    crate::word_claims::claim_tokens(&lose_clause.tokens()[lose_used..=lose_used]);
     Ok(Some(vec![
         EffectAst::subject_verb(
             SubjectVerbRoleAst::AffectedPlayer,

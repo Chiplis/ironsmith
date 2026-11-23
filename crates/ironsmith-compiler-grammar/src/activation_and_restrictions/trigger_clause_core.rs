@@ -983,6 +983,9 @@ fn parse_damage_source_trigger_filter_lexed(
         == Some(&"another")
     {
         filter.other = true;
+        if let Some(another) = subject_tokens.iter().find(|token| token.as_word().is_some()) {
+            crate::word_claims::claim_tokens(std::slice::from_ref(another));
+        }
     }
     filter.set_union_one_or_more(one_or_more);
     Ok(Some((filter, source_surface)))
@@ -2240,6 +2243,8 @@ fn try_parse_championed_with_this_trigger_lexed(
         return Ok(None);
     }
     let filter = parse_object_filter_lexed(&subject_tokens, false)?;
+    // "is championed with this [<noun>]": the event and its source.
+    crate::word_claims::claim_words(&words[is_idx..]);
     let mut source = ObjectFilter::default();
     source.source = true;
     Ok(Some(TriggerSpec::PutIntoExileFromZones {
@@ -2292,6 +2297,10 @@ fn try_parse_transforms_or_enters_transformed_trigger_lexed(
     }
     let transforms_filter = parse_object_filter_lexed(&first_subject, false)?;
     let enters_filter = parse_object_filter_lexed(&second_subject, false)?;
+    // "transforms or", "enters transformed" and the subjects' articles.
+    crate::word_claims::claim_tokens(&trimmed[..first_end - first_subject.len()]);
+    crate::word_claims::claim_tokens(&trimmed[first_end..second_end - second_subject.len()]);
+    crate::word_claims::claim_tokens(&trimmed[second_end..]);
     Ok(Some(TriggerSpec::Either(
         Box::new(TriggerSpec::PermanentTransforms(transforms_filter)),
         Box::new(TriggerSpec::ConditionQualified {
@@ -2702,7 +2711,11 @@ fn try_parse_kicks_a_spell_trigger_lexed(
     rewritten.extend(crate::lexer::synthetic_word_tokens([
         "casts", "a", crate::keyword_forms::KICKED, "spell",
     ]));
-    parse_trigger_clause_lexed(&rewritten).map(Some)
+    let trigger = parse_trigger_clause_lexed(&rewritten)?;
+    // The synthetic "casts a kicked spell" stands for the authored "kicks a
+    // spell", read above.
+    crate::word_claims::claim_tokens(&trimmed[kick_idx..]);
+    Ok(Some(trigger))
 }
 
 /// "When you cast or cycle Drownyard Lurker" (Warped Tusker): one trigger
@@ -2805,6 +2818,8 @@ fn try_parse_while_source_is_attacking_trigger_lexed(
         return Ok(None);
     }
     let trigger = parse_trigger_clause_lexed(head)?;
+    // "while this [creature] is attacking", matched word for word above.
+    crate::word_claims::claim_tokens(&trimmed[while_token_idx..]);
     Ok(Some(TriggerSpec::ConditionQualified {
         trigger: Box::new(trigger),
         condition: crate::cards::builders::PredicateAst::Source(
@@ -3379,6 +3394,10 @@ fn try_parse_shared_player_attack_draw_cast_union_lexed(
         exact_spells_this_turn: Some(spell_number),
         from_not_hand: false,
     };
+    // The fixed "draws their <nth> card each turn" and "casts their <nth>
+    // spell each turn" arms, matched whole above.
+    crate::word_claims::claim_tokens(second);
+    crate::word_claims::claim_tokens(third);
 
     Ok(Some(apply_leading_trigger_intro_surface(
         TriggerSpec::AnyOf(vec![attack, draw, cast]),

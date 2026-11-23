@@ -125,6 +125,11 @@ pub(super) fn read(
             }),
         ));
     }
+    // All three sentences were matched word for word (the word lists are
+    // copies, so the claims go through the tokens).
+    for sentence in [first, again, tie] {
+        crate::word_claims::claim_tokens(sentence.lowered());
+    }
     Ok(Some(effects))
 }
 

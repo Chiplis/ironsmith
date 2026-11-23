@@ -185,6 +185,8 @@ fn parse_for_each_snow_mana_spent_value(tokens: &[OwnedLexToken]) -> Option<Valu
     if rest.iter().any(|token| token.as_word().is_none()) {
         return None;
     }
+    // "spent to cast this spell|it", matched word for word.
+    crate::word_claims::claim_tokens(rest);
     let mut source_filter = ObjectFilter::default();
     source_filter.supertypes.push(crate::types::Supertype::Snow);
     Some(Value::ManaFromSourceSpentToCastThisSpell {
@@ -208,7 +210,12 @@ fn parse_drafted_chosen_color_mana_tail(tail_tokens: &[OwnedLexToken]) -> Option
         .trim_end_matches('.')
         .trim()
         .to_string();
-    (!name.is_empty()).then_some(name)
+    if name.is_empty() {
+        return None;
+    }
+    // The prefix and the card group's name, carried verbatim.
+    crate::word_claims::claim_tokens(tail_tokens);
+    Some(name)
 }
 
 /// "Add X {G} or X {W}, where X is the number of other creatures you
@@ -413,6 +420,7 @@ pub fn parse_add_mana(
         clause_words.as_slice(),
         ["the", "mana", "lost", "this", "way"] | ["all", "mana", "lost", "this", "way"]
     ) {
+        crate::word_claims::claim_words(&clause_words);
         return Ok(EffectAst::subject_verb_add_mana_lost_this_way(
             player,
             Value::PendingPriorEffectMetric(
@@ -435,12 +443,20 @@ pub fn parse_add_mana(
         clause_words.as_slice(),
         [.., "mana", "of", "either" | "any", "of", "the", "circled", "colors"]
     ) {
+        crate::word_claims::claim_words(&clause_words[clause_words.len() - 7..]);
         let amount = parse_add_mana_amount(tokens).unwrap_or(Value::Fixed(1));
         return Ok(EffectAst::subject_verb_add_mana_deck_construction_chosen_colors(
             player, amount,
         ));
     }
     if clause_words.ends_with(&["last", "noted", "type", "and", "amount", "of", "mana"]) {
+        // "this artifact's last noted ...": the source's own note.
+        if let [this, _source, ..] = clause_words.as_slice()
+            && *this == "this"
+            && clause_words.len() == 9
+        {
+            crate::word_claims::claim_words(&clause_words);
+        }
         return Ok(EffectAst::subject_verb(SubjectVerbRoleAst::Actor, player,
             SubjectVerbActionAst::Mana(crate::cards::builders::ManaActionAst::AddManaNotedType {
                 amount: Value::Fixed(0), use_noted_amount: true,
@@ -448,6 +464,12 @@ pub fn parse_add_mana(
     }
     // "Add one mana of this artifact's last noted type."
     if clause_words.ends_with(&["last", "noted", "type"]) && clause_words.contains(&"mana") {
+        // "mana of this artifact's last noted type": the noted-type operand.
+        if let [.., "mana", "of", "this", "artifact's" | "artifacts" | "artifact’s", "last", "noted", "type"] =
+            clause_words.as_slice()
+        {
+            crate::word_claims::claim_words(&clause_words[clause_words.len() - 7..]);
+        }
         let amount = parse_add_mana_amount(tokens).unwrap_or(Value::Fixed(1));
         return Ok(EffectAst::subject_verb_add_mana_noted_type(player, amount));
     }
@@ -499,6 +521,14 @@ pub fn parse_add_mana(
         [.., "any", "combination", "of", "its" | "that", "colors"]
             | [.., "any", "combination", "of", "that", "card's" | "cards" | "card’s", "colors"]
     ) {
+        // "mana in any combination of its colors": the amount reads its own
+        // words.
+        if let Some(at) = clause_words
+            .windows(3)
+            .position(|words| words == ["mana", "in", "any"])
+        {
+            crate::word_claims::claim_words(&clause_words[at..]);
+        }
         let amount = parse_add_mana_amount(tokens).unwrap_or(Value::Fixed(1));
         return Ok(EffectAst::subject_verb_add_mana_any_color_among(
             player,
@@ -561,6 +591,9 @@ pub fn parse_add_mana(
         && let Some(per) = parse_dynamic_cost_modifier_value(&tokens[for_each_idx..])?
     {
         let per = bind_revealed_this_way_count_to_last_object(per);
+        // "mana of the chosen color", matched as the suffix above.
+        let mana_words = crate::lexer::token_word_refs(&tokens[..for_each_idx]);
+        crate::word_claims::claim_words(&mana_words[mana_words.len() - 5..]);
         let amount = match parse_add_mana_amount(&tokens[..for_each_idx]) {
             None | Some(Value::Fixed(1)) => per,
             Some(Value::Fixed(multiplier)) => Value::Scaled(Box::new(per), multiplier),
@@ -649,6 +682,12 @@ pub fn parse_add_mana(
     if facts.amount_that_type {
         // "add three mana of that type instead" (Incubation Druid) restates
         // the default's type choice for the replacement amount.
+        if let Some(at) = clause_words
+            .windows(4)
+            .position(|window| window == ["mana", "of", "that", "type"])
+        {
+            crate::word_claims::claim_words(&clause_words[at..]);
+        }
         let amount = parse_add_mana_amount(tokens).unwrap_or(Value::Fixed(1));
         return Ok(EffectAst::subject_verb_add_mana_from_land_could_produce(
             player,
@@ -1031,6 +1070,10 @@ fn parse_add_mana_equal_to_mana_cost_filter(
     if filter.zone.is_none() {
         filter.zone = Some(crate::zone::Zone::Battlefield);
     }
+    // "mana equal to <object>'s mana cost": the frame and the possessive
+    // object word (read through its stripped copy above).
+    crate::word_claims::claim_tokens(&word_tokens[..3]);
+    crate::word_claims::claim_tokens(&word_tokens[word_tokens.len() - 3..]);
     Ok(Some(filter))
 }
 
@@ -1055,8 +1098,13 @@ fn parse_any_other_color_mana_tail(tokens: &[OwnedLexToken]) -> Option<i32> {
     if rest.iter().any(|token| token.as_word().is_none()) {
         return None;
     }
-    (crate::lexer::token_word_refs(rest).as_slice() == ["mana", "of", "any", "other", "color"])
-        .then_some(amount)
+    let other_color =
+        crate::lexer::token_word_refs(rest).as_slice() == ["mana", "of", "any", "other", "color"];
+    // "and <N> mana of any other color" (Open the Omenpaths), word for word.
+    if other_color {
+        crate::word_claims::claim_tokens(rest);
+    }
+    other_color.then_some(amount)
 }
 
 fn parse_add_mana_colors_among_filter(

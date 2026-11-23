@@ -58,6 +58,12 @@ fn parse_quantified_player_shared_resource_chain(
             Some(SubjectAst::Player(PlayerAst::That)),
             body,
         )?);
+        // The shared-subject verb of this member.
+        crate::word_claims::claim_tokens(&segment[verb_idx..=verb_idx]);
+    }
+    // The conjunctions joining the members.
+    for token in tokens.iter().filter(|token| token.is_word("and")) {
+        crate::word_claims::claim_tokens(std::slice::from_ref(token));
     }
     let effects = vec![EffectAst::Coordinated {
         effects,
@@ -432,10 +438,12 @@ fn recognize_granted_trigger_ability(
         crate::word_claims::ClaimSet,
     )| match result {
             Ok(Some(value)) => {
-                if candidates
-                    .iter()
-                    .any(|candidate: &RegistryCandidate<ParsedAbility>| candidate.value == value)
+                if let Some(kept) = candidates
+                    .iter_mut()
+                    .find(|candidate: &&mut RegistryCandidate<ParsedAbility>| candidate.value == value)
                 {
+                    // An equal reading: either reader's words are read.
+                    kept.claims.extend(&claims);
                     return;
                 }
                 candidates.push(

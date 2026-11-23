@@ -260,6 +260,9 @@ fn read_typed_attack_history_threshold_condition(
     let Some(subtype) = crate::util::parse_subtype_flexible(subtype_word) else {
         return Ok(None);
     };
+    // "you attacked with a/N or more <subtype> [creatures] this turn", read
+    // word for word above.
+    crate::word_claims::claim_tokens(input.tokens);
     Ok(Some(PredicateAst::ValueComparison {
         left: Value::TurnHistoryCount(ironsmith_core::TurnHistoryCount::CreaturesAttackedWith {
             player: PlayerFilter::You,
@@ -299,8 +302,10 @@ pub(super) fn read(input: &ConditionClause<'_>) -> ParseOutcome<RuleMatch<Predic
     // Equal readings from two rules are one reading.
     let mut distinct: Vec<RegistryCandidate<PredicateAst>> = Vec::new();
     for candidate in candidates {
-        if !distinct.iter().any(|kept| kept.value == candidate.value) {
-            distinct.push(candidate);
+        match distinct.iter_mut().find(|kept| kept.value == candidate.value) {
+            // Both rules read the same meaning; either one's words are read.
+            Some(kept) => kept.claims.extend(&candidate.claims),
+            None => distinct.push(candidate),
         }
     }
     if distinct.len() > 1 {
@@ -426,6 +431,9 @@ fn read_subject_status_condition(
         if let Some(condition) = crate::grammar::conditions::parse_subject_status_condition(&affirmative)
             .and_then(|condition| condition.condition_expr())
         {
+            // The affirmative copy is synthetic; the authored clause it
+            // restates (subject, negated copula, state) is what was read.
+            crate::word_claims::claim_tokens(tokens);
             return Ok(Some(PredicateAst::Not(Box::new(condition))));
         }
     }

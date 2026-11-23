@@ -173,8 +173,10 @@ pub(super) fn read(input: &CountedPhrase<'_>) -> ParseOutcome<RuleMatch<Value>> 
     // Equal readings from two rules are one reading.
     let mut distinct: Vec<RegistryCandidate<Value>> = Vec::new();
     for candidate in candidates {
-        if !distinct.iter().any(|kept| kept.value == candidate.value) {
-            distinct.push(candidate);
+        match distinct.iter_mut().find(|kept| kept.value == candidate.value) {
+            // Both rules read the same meaning; either one's words are read.
+            Some(kept) => kept.claims.extend(&candidate.claims),
+            None => distinct.push(candidate),
         }
     }
     if distinct.len() > 1 {
@@ -249,6 +251,12 @@ fn read_relative_controller_clause(input: &CountedPhrase<'_>) -> Option<Value> {
                 false,
             ))?;
             filter.controller = Some(PlayerFilter::ControllerOf(crate::filter::ObjectRef::Target));
+            // "that <object>'s controller controls": the relative controller.
+            if let Some(relative_range) =
+                filter_word_view.token_span_for_words(that_idx, filter_words.len())
+            {
+                crate::word_claims::claim_tokens(&filter_tokens[relative_range]);
+            }
             return Some(Value::Count(filter).with_surface_hint(ValueSurfaceHint::EqualTo));
         }
     }
@@ -271,6 +279,18 @@ fn read_creatures_died_this_turn_count_value(input: &CountedPhrase<'_>) -> Optio
 fn read_cards_discarded_this_turn_count_value(input: &CountedPhrase<'_>) -> Option<Value> {
     let filter_tokens = input.filter_tokens;
     if let Some(value) = parse_cards_discarded_this_turn_count_value(&filter_tokens) {
+        // The reader only tests for its key words; claim the phrase only when
+        // it is exactly "cards <player> discarded this turn" for a player
+        // phrase the reference reader resolves.
+        let words = crate::lexer::token_word_refs(&filter_tokens);
+        if matches!(
+            words.as_slice(),
+            ["cards", "target", "opponent" | "player", "discarded", "this", "turn"]
+                | ["cards", "you've" | "youve" | "you", "discarded", "this", "turn"]
+                | ["cards", "that", "player", "discarded", "this", "turn"]
+        ) {
+            crate::word_claims::claim_tokens(&filter_tokens);
+        }
         return Some(value.with_surface_hint(ValueSurfaceHint::EqualTo));
     }
     None

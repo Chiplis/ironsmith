@@ -37,6 +37,7 @@ pub(super) fn parse(tokens: &[OwnedLexToken]) -> Result<Option<EffectAst>, CardT
     if rest != TAIL {
         return Ok(None);
     }
+    crate::word_claims::claim_words(&words);
     Ok(Some(EffectAst::GrantTapUncontrolledLandsForMana))
 }
 

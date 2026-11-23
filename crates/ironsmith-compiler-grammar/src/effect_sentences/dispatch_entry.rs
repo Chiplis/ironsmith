@@ -1216,6 +1216,7 @@ fn targeting_cause_prevention_from_tokens(tokens: &[OwnedLexToken]) -> Option<Ef
     {
         return None;
     }
+    crate::word_claims::claim_words(&words);
     Some(
         EffectAst::subject_verb_prevent_all_damage_to_target_from_source_filter(
             TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.bind(), None),
@@ -1381,6 +1382,9 @@ pub fn future_zone_replacement_from_sentence_tokens(tokens: &[OwnedLexToken]) ->
             12 | 13
         )
     {
+        // "exile it/that <noun> instead of putting it into a graveyard as it
+        // resolves": every word is the fixed shape.
+        crate::word_claims::claim_tokens(crate::util::trim_edge_punctuation_tokens(tokens));
         let mut spell = ObjectFilter::tagged(crate::tag::CompilerReferenceTag::Triggering.key())
             .in_zone(Zone::Stack);
         spell.stack_kind = Some(crate::filter::StackObjectKind::Spell);
@@ -1395,6 +1399,15 @@ pub fn future_zone_replacement_from_sentence_tokens(tokens: &[OwnedLexToken]) ->
         ));
     }
     if effect_grammar::is_resolving_spell_exile_instead_shape(tokens) {
+        // The head ("exile it", "exile that card") and the replacement tail
+        // from "instead"; an entering-counter phrase between them is read by
+        // `future_zone_replacement_counters`.
+        let trimmed = crate::util::trim_edge_punctuation_tokens(tokens);
+        let head = if trimmed.get(1).is_some_and(|token| token.is_word("it")) { 2 } else { 3 };
+        crate::word_claims::claim_tokens(&trimmed[..head.min(trimmed.len())]);
+        if let Some(instead) = trimmed.iter().rposition(|token| token.as_word() == Some("instead")) {
+            crate::word_claims::claim_tokens(&trimmed[instead..]);
+        }
         return Some(
             EffectAst::subject_verb_register_zone_replacement_with_counters(
                 TargetAst::Tagged(crate::tag::CompilerReferenceTag::Triggering.bind(), None),
@@ -1445,6 +1458,9 @@ pub fn future_zone_replacement_from_sentence_tokens(tokens: &[OwnedLexToken]) ->
         && sentence_contains(tokens, GRAVEYARD_PHRASE)
         && sentence_contains(tokens, HAND_PHRASE)
     {
+        // "instead of into that player's graveyard" (Remand): the replaced
+        // destination, this replacement's `from` zone.
+        claim_replaced_graveyard_destination(tokens);
         return Some(EffectAst::subject_verb_register_zone_replacement(
             target(),
             Some(Zone::Stack),
@@ -1666,6 +1682,32 @@ pub fn future_zone_replacement_from_sentence_tokens(tokens: &[OwnedLexToken]) ->
         return Some(effect);
     }
 
+    // "The next time you cast an instant or sorcery spell from your hand this
+    // turn, put that card into your hand instead of into your graveyard as it
+    // resolves." (Soulfire Grand Master): read exactly. "from your hand" is
+    // the spell's cast origin (a spell filter's non-stack zone, CR 601.2a),
+    // and "as it resolves" limits the replacement to the spell's own
+    // resolution move.
+    if crate::lexer::token_word_refs(&crate::util::trim_edge_punctuation(tokens)).as_slice()
+        == [
+            "the", "next", "time", "you", "cast", "an", "instant", "or", "sorcery", "spell",
+            "from", "your", "hand", "this", "turn", "put", "that", "card", "into", "your", "hand",
+            "instead", "of", "into", "your", "graveyard", "as", "it", "resolves",
+        ]
+    {
+        crate::word_claims::claim_tokens(tokens);
+        let mut cast_from_hand = ObjectFilter::instant_or_sorcery().cast_by_you();
+        cast_from_hand.zone = Some(Zone::Hand);
+        return Some(EffectAst::subject_verb_register_future_zone_replacement(
+            cast_from_hand,
+            Some(Zone::Stack),
+            Some(Zone::Graveyard),
+            Zone::Hand,
+            ZoneReplacementDurationAst::OneShot,
+            crate::cards::builders::FutureZoneReplacementCausePolicyAst::ChangedObjectIsCause,
+            false,
+        ));
+    }
     if sentence_contains(tokens, THE_NEXT_TIME_PHRASE)
         && CAST_INSTANT_OR_SORCERY_FROM_HAND_PHRASES
             .iter()
@@ -3455,6 +3497,8 @@ pub(super) fn parse_effect_sentences_from_sentence_inputs(
                         *duration = Until::EndOfTurn;
                     }
                 }
+                // "During that turn," read as the created-extra-turn window.
+                crate::word_claims::claim_tokens(&during_turn_tokens[..comma]);
                 effects.extend(restrictions);
                 carried_context = None;
                 sentence_idx += 1;
@@ -3681,6 +3725,8 @@ pub(super) fn parse_effect_sentences_from_sentence_inputs(
                 .last_mut()
                 .is_some_and(mark_granted_activated_ability_only_granting_player)
         {
+            // The exact restriction sentence binds the grant's activator.
+            crate::word_claims::claim_tokens(&direct_for_each_tokens);
             carried_context = None;
             sentence_idx += 1;
             continue;
@@ -5066,6 +5112,8 @@ pub(super) fn parse_outside_game_reveal_opponent_chooses_to_hand(
     if movement_words.as_slice() != ["you", "put", "that", "card", "into", "your", "hand"] {
         return Ok(None);
     }
+    // All three sentences are the phrases compared above.
+    crate::word_claims::claim_tokens(tokens);
     let mut filter = ObjectFilter::default();
     filter.owner = Some(PlayerFilter::You);
     filter.zone = Some(Zone::OutsideGame);
@@ -5190,6 +5238,8 @@ pub(super) fn parse_each_player_coin_face_sequence(
         return Ok(None);
     };
 
+    // "each player whose coin comes up heads|tails": the face predicate.
+    crate::word_claims::claim_tokens(&followup_sentence[..tail_start]);
     *action = SubjectVerbActionAst::Random(RandomActionAst::FlipCoinFaceOnly);
     flip.push(EffectAst::ForEach(ForEachEffectAst::ForEachPlayerDid {
         effects: followup_body.clone(),
@@ -5729,6 +5779,8 @@ fn push_complete_simple_face_down_exile_top(
     tokens: &[OwnedLexToken],
     count: i32,
 ) {
+    // "exile the top N cards of your library face down", matched exactly.
+    crate::word_claims::claim_tokens(tokens);
     effects.push(EffectAst::subject_verb(
         SubjectVerbRoleAst::LibraryOwner,
         PlayerAst::You,
@@ -6659,13 +6711,13 @@ pub(super) fn parse_flat_independent_statements(
     // "Mill four cards, then return up to two permanent cards from among them
     // to your hand" (Rickety Gazebo): a later member that selects "from among
     // them" reads the previous member's result, so it is not independent.
-    if sentences.len() == 1 && statements.iter().skip(1).any(|statement| {
+    if sentences.len() == 1 && crate::word_claims::probe_only(|| statements.iter().skip(1).any(|statement| {
         statement.windows(3).any(|window| {
             window[0].is_word("from")
                 && window[1].is_word("among")
                 && window[2].is_any_word(&["them", "those"])
         })
-    }) {
+    })) {
         return Ok(None);
     }
     // "Target player gains 4 life, then gains 4 life for each ...": a later
@@ -7138,7 +7190,9 @@ fn parse_composable_typed_statements(
             .iter()
             .find(|token| !token.is_comma())
             .is_some_and(|token| token.is_word("otherwise"))
-            || subject_verb_followups::speed_floor_followup_minimum(sentence).is_some()
+            || crate::word_claims::probe_only(|| {
+                subject_verb_followups::speed_floor_followup_minimum(sentence).is_some()
+            })
             || crate::lexer::token_word_refs(sentence).starts_with(&["do", "the", "same", "for"])
     }) {
         return Ok(None);
@@ -7854,6 +7908,7 @@ fn parse_highest_life_win_with_tie_draw(
         if_false: vec![win],
     });
     let gated = if win_words.len() == HIGHEST_WINS.len() {
+        crate::word_claims::claim_tokens(win_sentence);
         tie_gated
     } else {
         // "If <predicate>, the player with the highest life total wins".
@@ -7869,12 +7924,16 @@ fn parse_highest_life_win_with_tie_draw(
             return Ok(None);
         }
         let predicate = parse_predicate_lexed(&trimmed[1..comma])?;
+        crate::word_claims::claim_tokens(&trimmed[..1]);
+        crate::word_claims::claim_tokens(&trimmed[comma + 1..]);
         EffectAst::Conditionals(ConditionalEffectAst::Conditional {
             predicate,
             if_true: vec![tie_gated],
             if_false: Vec::new(),
         })
     };
+    // The tie sentence is exactly `TIE_DRAW`.
+    crate::word_claims::claim_tokens(last);
     let mut effects = if win_start == 0 {
         Vec::new()
     } else {
@@ -7920,6 +7979,8 @@ fn parse_free_play_this_way_body(
     {
         *without_paying_mana_cost = true;
     }
+    // The whole exact body read into the free re-grant.
+    crate::word_claims::claim_tokens(&trimmed);
     Ok(vec![grant])
 }
 
@@ -8241,6 +8302,8 @@ fn parse_for_each_of_those_players_who_didnt_discard(
         if_true: consequence,
         if_false: Vec::new(),
     }));
+    // "for each of those opponents who didn't discard": the head matched above.
+    crate::word_claims::claim_tokens(&last[..=discard_idx]);
     Ok(Some(effects))
 }
 
@@ -8608,6 +8671,7 @@ pub fn parse_effect_sentences_lexed(
         return Ok(effects);
     }
     if crate::lexer::parser_token_word_refs(&trim_edge_punctuation(tokens)) == ["the", "game", "is", "a", "draw"] {
+        crate::word_claims::claim_tokens(tokens);
         return Ok(vec![EffectAst::subject_verb_draw_game()]);
     }
     if let Some(effects) = parse_highest_life_win_with_tie_draw(tokens)? {
@@ -8632,6 +8696,8 @@ pub fn parse_effect_sentences_lexed(
     {
         let mut effects = parse_effect_sentences_lexed(&tokens[..=close])?;
         if effects.last_mut().is_some_and(mark_granted_activated_ability_only_granting_player) {
+            // The exact restriction sentence binds the grant's activator.
+            crate::word_claims::claim_tokens(&tokens[close + 1..]);
             return Ok(effects);
         }
     }
@@ -9064,6 +9130,8 @@ fn parse_effect_sentences_lexed_unfinalized(
         && tokens.iter().filter(|token| token.kind == crate::lexer::TokenKind::ManaGroup).count() == 1
         && tokens.iter().any(|token| token.mana_group_inner().is_some_and(|mana| mana.eq_ignore_ascii_case("x")))
     {
+        // The whole exact program (Illusionary Mask) is this one effect.
+        crate::word_claims::claim_tokens(tokens);
         return Ok(vec![EffectAst::CastFaceDownUsingActivationMana { player: PlayerFilter::You, filter: ObjectFilter::creature(), turn_face_up_before_action: true }]);
     }
     // "The next time target player would roll one or more dice this turn,
@@ -9086,6 +9154,12 @@ fn parse_effect_sentences_lexed_unfinalized(
         let player = parse_target_phrase(&tokens[range])?;
         if !matches!(player, TargetAst::Player(..)) {
             return Err(CardTextError::ParseError("a die-roll replacement needs a player subject".into()));
+        }
+        // "the next time" and the exact replacement surface around the subject.
+        for read in [0..3, would..words.len()] {
+            if let Some(range) = view.token_span_for_words(read.start, read.end) {
+                crate::word_claims::claim_tokens(&tokens[range]);
+            }
         }
         return Ok(vec![EffectAst::RegisterExtraDieReplacement { player, chooser: PlayerFilter::You, additional }]);
     }
@@ -11970,6 +12044,8 @@ fn parse_restart_game_sentence(
         .first()
         .is_some_and(|token| token.parser_text() == "all")
     {
+        // "all <cards> exiled with ...": every matching card is exempt.
+        crate::word_claims::claim_tokens(&object_tokens[..1]);
         object_tokens.remove(0);
     }
     if object_tokens.is_empty() {
@@ -15462,6 +15538,7 @@ pub fn parse_exact_where_x_value_expression(tokens: &[OwnedLexToken]) -> Option<
     }
     let body = words.get(3..)?;
     if body == ["the", "difference"] {
+        crate::word_claims::claim_words(&words);
         return Some(Value::PendingComparisonDifference);
     }
     // "the number of time counters among permanents you control" (Kate
@@ -15488,7 +15565,12 @@ pub fn parse_exact_where_x_value_expression(tokens: &[OwnedLexToken]) -> Option<
         body,
         ["the", "amount", "of", "damage", "dealt"] | ["the", "damage", "dealt"]
             | ["the", "amount", "of", "damage", "this", "creature" | "permanent" | "source", "dealt", "to", "that", "player"]
+            // "... deal combat damage to a player, ... where X is the amount
+            // of damage those creatures dealt to that player" (Quartzwood
+            // Crasher): the grouped damage event's amount.
+            | ["the", "amount", "of", "damage", "those", "creatures", "dealt", "to", "that", "player"]
     ) {
+        crate::word_claims::claim_words(&words);
         return Some(Value::EventValue(crate::effect::EventValueSpec::Amount));
     }
     let (value, used) = crate::grammar::shared_util::value_expr::parse_value_expr_words(body)?;
@@ -16666,6 +16748,9 @@ fn parse_coin_batch_and_counted_turn_skip(
     {
         return Ok(None);
     }
+    // Both statements were read word for word above.
+    crate::word_claims::claim_tokens(flips);
+    crate::word_claims::claim_tokens(skip);
     Ok(Some(vec![
         EffectAst::subject_verb(
             SubjectVerbRoleAst::Actor,
@@ -16942,6 +17027,8 @@ fn parse_put_linked_card_with_that_name_into_hand(tokens: &[OwnedLexToken]) -> O
     else {
         return None;
     };
+    // Matched word for word.
+    crate::word_claims::claim_tokens(tokens);
     let mut filter = crate::target::ObjectFilter::default().in_zone(crate::zone::Zone::Exile);
     filter.tagged_constraints.push(crate::target::TaggedObjectConstraint {
         tag: crate::tag::CompilerReferenceTag::SourceExiled.bind().into(),
@@ -17028,6 +17115,7 @@ fn parse_exile_one_revealed_card_per_color(
         return None;
     }
     let (revealed, slots) = latest_color_counted_consult(prior)?;
+    crate::word_claims::claim_tokens(tokens);
     // One optional choice per color (CR 105.1), made only for a color among
     // the counted permanents, each of a revealed card of that color not
     // already chosen for an earlier color; every choice joins one set.
@@ -17091,6 +17179,7 @@ fn parse_exile_one_revealed_card_per_color(
             PlayerAst::You,
             SubjectVerbActionAst::Library(LibraryActionAst::ShuffleLibrary),
         ));
+        crate::word_claims::claim_tokens(sentences[sentence_idx + 1].lowered());
         consumed += 1;
         if let Some(cast) = words_of(sentence_idx + 2)
             && matches!(
@@ -17106,6 +17195,7 @@ fn parse_exile_one_revealed_card_per_color(
                 false,
                 ironsmith_core::value_model::ManaSpendMode::Normal,
             ));
+            crate::word_claims::claim_tokens(sentences[sentence_idx + 2].lowered());
             consumed += 1;
         }
     }
@@ -17235,6 +17325,10 @@ pub(crate) fn parse_borrowed_variant_gain_sentence(
                 filter.zone = Some(crate::zone::Zone::Battlefield);
             }
         }
+        // "gain <keyword> until end of turn if a" and "has <keyword>": the
+        // filters read the subject and the condition object themselves.
+        crate::word_claims::claim_tokens(&sentence[subject_end..condition_start]);
+        crate::word_claims::claim_tokens(&sentence[condition_end..]);
         let display = crate::lexer::render_token_slice(sentence).trim().trim_end_matches('.').to_string();
         let copy = CopyStaticAbilityVariants::new(
             sources,

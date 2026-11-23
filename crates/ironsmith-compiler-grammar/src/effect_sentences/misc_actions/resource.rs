@@ -82,6 +82,26 @@ pub fn parse_pay(
             })?;
         (pips, &tokens[tokens.len() - stream.eof_offset()..])
     };
+    // "you may pay {1} any time you could cast an instant" (Guardian Angel):
+    // the payment is offered as a repeatable instant-speed window for the
+    // enclosing duration (CR 117.1a timing), carried on the payment itself.
+    if crate::lexer::token_word_refs(rest).as_slice()
+        == ["any", "time", "you", "could", "cast", "an", "instant"]
+    {
+        crate::word_claims::claim_tokens(rest);
+        return Ok(EffectAst::subject_verb(
+            crate::cards::builders::SubjectVerbRoleAst::AffectedPlayer,
+            player,
+            crate::cards::builders::SubjectVerbActionAst::Mana(crate::cards::builders::ManaActionAst::PayMana {
+                cost: ManaCost::from_pips(pips),
+                x_value: None,
+                x_maximum: None,
+                independent_x_choice: false,
+                mana_cost_of: None,
+                instant_speed_window: true,
+            }),
+        ));
+    }
     // "you may pay {1} to draw a card": a purpose clause after the payment.
     // The leading-pip reading would keep only the payment and silently drop
     // what it buys.

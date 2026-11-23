@@ -2708,8 +2708,29 @@ fn looks_like_ability_word_label(
             .iter()
             .any(|token| matches!(token.kind, TokenKind::Colon))
         // Flavor-word labels run up to five words ("A Test of Your
-        // Reflexes!", Magitek Scythe).
-        && token_word_refs(label_tokens).len() <= 5
+        // Reflexes!", Magitek Scythe); a longer one is a title-cased name
+        // ("In You, All Things Are Possible", Aloy), never a sentence.
+        && match token_word_refs(label_tokens).len() {
+            0..=5 => true,
+            6..=7 => is_title_cased_label(label_tokens),
+            _ => false,
+        }
+}
+
+/// Every word of `label_tokens` but short connectors is capitalized as
+/// authored.
+fn is_title_cased_label(label_tokens: &[OwnedLexToken]) -> bool {
+    label_tokens
+        .iter()
+        .filter(|token| token.kind == TokenKind::Word)
+        .all(|token| {
+            let authored = token.literal_surface();
+            matches!(
+                authored,
+                "a" | "an" | "and" | "at" | "for" | "from" | "in" | "of" | "on" | "or" | "the"
+                    | "to" | "with"
+            ) || authored.chars().next().is_some_and(char::is_uppercase)
+        })
 }
 
 /// Build the labeled public-route recognized form for the source-qualified
@@ -3233,6 +3254,16 @@ fn try_parse_labeled_line_dispatch(
         try_parse_labeled_line_dispatch_inner(preprocessed, idx, line, allow_unsupported)?;
     if let Some(result) = &mut dispatch {
         claim_presentation_only_label(preprocessed, idx, line);
+        // "Eminence — As long as <this> is in the command zone or on the
+        // battlefield, ..." (The Ur-Dragon): a static states its own zones,
+        // so the label is only that static's presentation. (Triggered
+        // eminence lines read the label as their zone condition.)
+        if let [RecognizedLine::Static(_)] = result.lines.as_slice()
+            && let Some((label, label_tokens, _)) = split_label_prefix_lexed(&line.info.source_tokens)
+            && label.eq_ignore_ascii_case("eminence")
+        {
+            crate::word_claims::claim_tokens(label_tokens);
+        }
         // This route is also called directly by labeled-line recognition,
         // before the standard registry dispatch. Keep authored ownership
         // here, before stripping the label from the triggered body.
@@ -3260,7 +3291,10 @@ fn is_meaningful_line_label(label: &str, label_tokens: &[OwnedLexToken]) -> bool
     // Named-ability labels ("Stunning Strike", "Bigby's Hand") only route
     // their line to the activation reader; they carry no rules meaning of
     // their own, so they are not listed here. The keyword-like members of
-    // that routing list are named below.
+    // that routing list are named below. "Prize" is not listed: its line is
+    // an ability-word paragraph whose label the semantic document matches by
+    // presentation (splicing it after "claim the prize"), so it is read as
+    // that presentation label.
     document_grammar::parse_preserved_keyword_label_tokens(label_tokens).is_some()
         || is_case_ability_label(label_tokens)
         || crate::keyword_forms::official(&lower).is_some()
@@ -3277,7 +3311,6 @@ fn is_meaningful_line_label(label: &str, label_tokens: &[OwnedLexToken]) -> bool
                 | "join forces"
                 | "companion"
                 | "visit"
-                | "prize"
                 | "forecast"
                 | "boast"
                 | "exhaust"
@@ -3799,9 +3832,22 @@ fn try_parse_labeled_line_dispatch_inner(
             Err(error) => return Err(error),
         }
     }
-    if let Some(split_result) =
+    if let Some(mut split_result) =
         parse_labeled_conditional_replacement_sentence_split(&body_line, idx)?
     {
+        // "Max speed — If you would draw a card, ..." (Vnwxt): the whole
+        // replacement is the max-speed static, as on the ordinary static path.
+        if let Some(chosen_option) = max_speed_chosen_option.clone()
+            && let [RecognizedLine::Static(static_line)] = split_result.lines.as_mut_slice()
+        {
+            static_line.chosen_option = Some(chosen_option);
+            claim_max_speed_label(label_tokens, static_line.chosen_option.as_ref());
+            static_line
+                .info
+                .semantic_facts
+                .static_ability
+                .presentation_label = presentation.clone();
+        }
         return Ok(Some(split_result));
     }
 
@@ -5335,6 +5381,8 @@ fn try_push_chosen_abilities_grant_line(
     if abilities.is_empty() {
         return Ok(false);
     }
+    // "each of the chosen abilities": the recorded combinations stand for it.
+    crate::word_claims::claim_tokens(&tokens[verb + 1..]);
     let recognized = RecognizedLine::Static(RecognizedStaticLine {
         info: line.info.clone(),
         parse_tokens: line.tokens.clone(),
@@ -5452,6 +5500,15 @@ fn try_merge_collection_cast_count_instead_of_one(
     let Ok(predicate) = crate::grammar::filters::parse_condition_predicate_lexed(&body[1..comma]) else {
         return false;
     };
+    // The restated noun ("instant and/or sorcery spells") must name the same
+    // kind of card the original single choice picks; it is checked against
+    // that choice below.
+    let restated_tokens = &body[comma + 1..];
+    let restated_view = crate::lexer::TokenWordView::new(restated_tokens);
+    let from_word = restated_words.iter().position(|word| *word == "from").unwrap_or(6);
+    let noun_span = restated_view.token_span_for_words(6, from_word).unwrap_or(0..0);
+    let noun_filter = crate::object_filters::parse_object_filter_lexed(&restated_tokens[noun_span], false)
+        .unwrap_or_default();
     let Some(RecognizedLine::Statement(previous)) = lines.last_mut() else {
         return false;
     };
@@ -5516,12 +5573,24 @@ fn try_merge_collection_cast_count_instead_of_one(
         }
     }
     let mut found = 0usize;
+    let mut same_noun = false;
     replace_one(&mut effects, &mut found, &mut |original| {
         let mut restated = original.clone();
         if let EffectAst::Sequence { effects } = &mut restated
-            && let Some(EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects { count: choice, .. } | ObjectChoiceEffectAst::ChooseTaggedObjectsInZone { count: choice, .. })) = effects.first_mut()
+            && let Some(EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects { count: choice, filter, .. } | ObjectChoiceEffectAst::ChooseTaggedObjectsInZone { count: choice, filter, .. })) = effects.first_mut()
         {
             *choice = crate::effect::ChoiceCount::up_to(count as usize);
+            // The choice's card types, directly or across its union members.
+            let mut choice_types = filter.card_types.clone();
+            for member in &filter.any_of {
+                choice_types.extend(member.card_types.iter().copied());
+            }
+            let mut noun_types = noun_filter.card_types.clone();
+            for member in &noun_filter.any_of {
+                noun_types.extend(member.card_types.iter().copied());
+            }
+            same_noun = !noun_types.is_empty()
+                && noun_types.iter().all(|card_type| choice_types.contains(card_type));
         }
         EffectAst::Conditionals(ConditionalEffectAst::Conditional {
             predicate: predicate.clone(),
@@ -5531,6 +5600,11 @@ fn try_merge_collection_cast_count_instead_of_one(
     });
     if found != 1 {
         return false;
+    }
+    // The whole restated count read: "you may cast up to <n> <same noun> from
+    // among the revealed cards instead of one", once the noun is the same.
+    if same_noun {
+        crate::word_claims::claim_tokens(restated_tokens);
     }
     previous.parsed_effects = Some(effects);
     previous.text = format!("{} {}", previous.text.trim(), line.info.raw_line.trim());

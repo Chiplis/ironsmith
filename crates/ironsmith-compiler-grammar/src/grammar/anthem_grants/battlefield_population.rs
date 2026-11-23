@@ -109,6 +109,9 @@ pub fn parse_chosen_color_most_common_predicate(
     if filter.zone.is_none() {
         filter.zone = Some(crate::zone::Zone::Battlefield);
     }
+    // The comparison head and tie tail around the filter, matched exactly.
+    crate::word_claims::claim_tokens(&tokens[..filter_start]);
+    crate::word_claims::claim_tokens(&tokens[filter_end..]);
     let condition = PredicateAst::Bound(Box::new(
         crate::ConditionExpr::SourceChosenColorMostCommonAmong { filter, strict },
     ));

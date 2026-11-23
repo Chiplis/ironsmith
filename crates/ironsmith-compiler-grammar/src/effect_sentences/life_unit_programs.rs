@@ -113,6 +113,8 @@ fn mixed_permanent_private_card_exile(
         ] => vec![Zone::Battlefield, Zone::Hand, Zone::Graveyard],
         _ => return None,
     };
+    // The whole instruction matched word for word.
+    crate::word_claims::claim_tokens(tokens);
     let filter = ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
         any_of: vec![
             ObjectFilter::permanent().controlled_by(PlayerFilter::You),

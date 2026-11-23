@@ -113,7 +113,10 @@ pub fn parse_target_phrase_inner(tokens: &[OwnedLexToken]) -> Result<TargetAst, 
     if tokens.first().and_then(OwnedLexToken::as_word) == Some("each")
         && tokens.get(1).and_then(OwnedLexToken::as_word) == Some("other")
     {
-        return parse_target_phrase_inner(&tokens[1..]);
+        let target = parse_target_phrase_inner(&tokens[1..])?;
+        // The quantifier is read here, as the set the filter names.
+        crate::word_claims::claim_tokens(&tokens[..1]);
+        return Ok(target);
     }
 
     // A plain "[up to] X target <filter>" (no multiplier) is the ordinary
@@ -189,6 +192,8 @@ pub fn parse_target_phrase_inner(tokens: &[OwnedLexToken]) -> Result<TargetAst, 
         })
     {
         let mut filter = parse_object_filter(&tokens[2..], false)?;
+        // "the other": the antecedent reference read here.
+        crate::word_claims::claim_tokens(&tokens[..2]);
         filter = filter.match_tagged(
             crate::tag::CompilerReferenceTag::It.bind(),
             TaggedOpbjectRelation::IsTaggedObject,
@@ -201,6 +206,7 @@ pub fn parse_target_phrase_inner(tokens: &[OwnedLexToken]) -> Result<TargetAst, 
     // Definite player references retain the prior player binding before
     // article stripping would turn them into an unrestricted player set.
     if token_words == ["the", "player"] {
+        crate::word_claims::claim_words(&token_words);
         return Ok(TargetAst::Player(PlayerFilter::IteratedPlayer, None));
     }
     // The card's own name inside an ability its Equipment or Aura grants:
@@ -789,6 +795,8 @@ pub fn parse_target_phrase_inner(tokens: &[OwnedLexToken]) -> Result<TargetAst, 
         .and_then(|rest| rest.strip_suffix(&["this", "turn"][..]))
         && crate::util::is_source_reference_words(source_words)
     {
+        // The whole damage-history player phrase matched above.
+        crate::word_claims::claim_words(&remaining_words);
         return Ok(wrap_target_count(
             TargetAst::Player(
                 PlayerFilter::was_dealt_damage_by_source_this_turn(PlayerFilter::Any),
@@ -810,6 +818,7 @@ pub fn parse_target_phrase_inner(tokens: &[OwnedLexToken]) -> Result<TargetAst, 
         } else {
             PlayerFilter::Any
         };
+        crate::word_claims::claim_words(&remaining_words);
         return Ok(wrap_target_count(
             TargetAst::Player(
                 PlayerFilter::WasDealtDamageBySourceThisGame {
@@ -833,6 +842,8 @@ pub fn parse_target_phrase_inner(tokens: &[OwnedLexToken]) -> Result<TargetAst, 
         let sources = crate::util::source_reference_surface_for_words(source_words)
             .map(ObjectFilter::source_with_surface)
             .unwrap_or_else(ObjectFilter::source);
+        // The whole relative clause read into the combat-damage player filter.
+        crate::word_claims::claim_words(&remaining_words);
         return Ok(wrap_target_count(
             TargetAst::Player(
                 PlayerFilter::WasDealtCombatDamageByDistinctSourcesThisTurn {
@@ -1295,6 +1306,8 @@ pub fn parse_target_phrase_inner(tokens: &[OwnedLexToken]) -> Result<TargetAst, 
         | ["that", "player", "or", "a", "planeswalker", "they", "control"]
         | ["that", "player", "or", "planeswalker", "they", "control"])
     {
+        // The whole phrase (articles aside) matched word for word.
+        crate::word_claims::claim_tokens(remaining);
         let filter = ObjectFilter::default().in_zone(Zone::Battlefield)
             .with_type(CardType::Planeswalker).controlled_by(PlayerFilter::IteratedPlayer);
         return Ok(wrap_target_count(TargetAst::ObjectOrPlayer(
@@ -1311,6 +1324,8 @@ pub fn parse_target_phrase_inner(tokens: &[OwnedLexToken]) -> Result<TargetAst, 
     .iter()
     .any(|expected| primitives::parse_word_sequence_complete(&remaining_words, expected).is_some());
     if opponent_or_planeswalker {
+        // Matched completely above (articles aside).
+        crate::word_claims::claim_tokens(remaining);
         return Ok(wrap_target_count(
             TargetAst::PlayerOrPlaneswalker(PlayerFilter::Opponent, target_span),
             target_count,
@@ -1375,6 +1390,8 @@ pub fn parse_target_phrase_inner(tokens: &[OwnedLexToken]) -> Result<TargetAst, 
             TrailingPlayerTargetKind::Any => PlayerFilter::Any,
             TrailingPlayerTargetKind::Opponent => PlayerFilter::Opponent,
         };
+        // The player arm and its connective; the object arm read itself.
+        crate::object_filters::claim_outside(remaining, union.object_tokens);
         // "spell or ability that targets only a single permanent or player"
         // (Radiant Performer): the trailing player arm belongs to the
         // targets-only clause of a stack-object selector, not to the target.
@@ -1538,6 +1555,8 @@ pub fn parse_target_phrase_inner(tokens: &[OwnedLexToken]) -> Result<TargetAst, 
                     .get(words.len() - len)
                     .copied()
                     .unwrap_or(remaining.len());
+                // "with equal toughness": the target set's shared metric.
+                crate::word_claims::claim_tokens(&remaining[cut..]);
                 (&remaining[..cut], Some(metric))
             }
             _ => (remaining, None),

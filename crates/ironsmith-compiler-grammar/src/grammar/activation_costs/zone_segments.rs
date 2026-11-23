@@ -44,6 +44,8 @@ pub fn parse_reveal_segment_tokens(
         lowered.iter().map(String::as_str).collect::<Vec<_>>().as_slice(),
         ["reveal", "the", "player" | "opponent", "you", "chose"]
     ) {
+        // The whole segment is the phrase compared above.
+        crate::word_claims::claim_tokens(tokens);
         return Ok(ActivationCostSegmentCst::RevealChosenPlayer);
     }
     // "Reveal your hand" (Sasaya, Orochi Ascendant): reveal every card in
@@ -52,6 +54,7 @@ pub fn parse_reveal_segment_tokens(
         lowered.iter().map(String::as_str).collect::<Vec<_>>().as_slice(),
         ["reveal", "your", "hand"]
     ) {
+        crate::word_claims::claim_tokens(tokens);
         return Ok(ActivationCostSegmentCst::RevealFromHand {
             count: Value::CardsInHand(PlayerFilter::You),
             color_filter: None,
@@ -61,6 +64,7 @@ pub fn parse_reveal_segment_tokens(
     if let Some(prefix) = lowered.strip_suffix(&["until".into(), "upkeep".into(), "ends".into()])
         && prefix == ["reveal", "this", "card", "from", "your", "hand"]
     {
+        crate::word_claims::claim_tokens(tokens);
         return Ok(ActivationCostSegmentCst::RevealSourceFromHandUntilUpkeepEnds);
     }
     parse_segment(tokens, parse_reveal_segment_lexed, "reveal-cost")

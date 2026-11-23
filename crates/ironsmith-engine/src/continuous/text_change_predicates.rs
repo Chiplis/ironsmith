@@ -546,7 +546,8 @@ fn rewrite_turn_history_condition_words(condition: &TurnHistoryCondition, change
         | TurnHistoryCondition::PlayerVisitedAttractionThisTurn(player)
         | TurnHistoryCondition::PlayerLostLifeLastTurn(player)
         | TurnHistoryCondition::PlayerWasDealtNoncombatDamageLastTurn(player)
-        | TurnHistoryCondition::PlayerWasDealtCombatDamageSinceTheirLastTurn(player) => {
+        | TurnHistoryCondition::PlayerWasDealtCombatDamageSinceTheirLastTurn(player)
+        | TurnHistoryCondition::PlayerHasBegunExtraTurnThisGame(player) => {
             *player = rewrite_player_filter_words(player, change)?;
         }
         TurnHistoryCondition::TriggeringAttackerBlockers { required, prohibited, .. } => {

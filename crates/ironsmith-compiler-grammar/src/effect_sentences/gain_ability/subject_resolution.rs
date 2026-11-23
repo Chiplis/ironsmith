@@ -438,10 +438,14 @@ pub(super) fn parse_gain_ability_sentence_with_subject(
     if abilities.is_empty() && !grants_must_attack && !removes_all_abilities {
         return Ok(None);
     }
+    // The grant verb ("gains", "has", "loses") read for its abilities.
+    crate::word_claims::claim_tokens(&tokens[gain_token_idx..=gain_token_idx]);
     if grants_must_attack {
         abilities.push(GrantedAbilityAst::MustAttack);
     }
     reject_unsupported_lost_abilities(losing, &abilities)?;
+    // The grant verb ("gains", "has", "loses") introducing the abilities read.
+    crate::word_claims::claim_tokens(&tokens[gain_token_idx..=gain_token_idx]);
 
     // Check for "gets +X/+Y and gains/has/loses ..." patterns - if there's a pump
     // modifier before the ability verb, extract it as a separate Pump/PumpAll effect.

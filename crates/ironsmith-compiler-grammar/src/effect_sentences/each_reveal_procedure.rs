@@ -71,13 +71,18 @@ fn open_targets_contest(
                 .split_once(" abilities of permanents named ")
                 .is_some_and(|(_, name)| !name.trim().is_empty())
     });
+    let consumed = if doesnt_trigger_same_named_sources { 4 } else { 3 };
+    // Every consumed sentence was matched word for word.
+    for sentence in &sentences[sentence_idx..sentence_idx + consumed] {
+        crate::word_claims::claim_tokens(sentence.lowered());
+    }
     Some(EachRevealGroup {
         count: ChoiceCount::exactly(0),
         effects: vec![EffectAst::RevealContestWinnerMayChangeTriggeringTargets {
             doesnt_trigger_same_named_sources,
         }],
         first_sentence: sentence_idx,
-        consumed: if doesnt_trigger_same_named_sources { 4 } else { 3 },
+        consumed,
         closed: true,
     })
 }
@@ -187,6 +192,8 @@ pub(super) fn open(
     if statement(next, count).is_none() {
         return Ok(None);
     }
+    // The opening sentence, matched word for word.
+    crate::word_claims::claim_tokens(sentence.lowered());
     Ok(Some(EachRevealGroup {
         count,
         effects: vec![each_target_player(
@@ -213,6 +220,8 @@ pub(super) fn continue_with(
     let Some(effect) = statement(sentence, group.count) else {
         return Ok(false);
     };
+    // The statement, matched word for word.
+    crate::word_claims::claim_tokens(sentence.lowered());
     group.effects.push(effect);
     group.consumed += 1;
     Ok(true)

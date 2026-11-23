@@ -60,6 +60,12 @@ pub(super) fn parse_control_transition_trigger(
     } else {
         return Ok(None);
     };
+    // "[gain(s)] control of ... from <player>": the verb phrase and the
+    // previous controller read above.
+    crate::word_claims::claim_words(&words[verb..verb + 3]);
+    if let Some(index) = from_index {
+        crate::word_claims::claim_words(&words[index..]);
+    }
     Ok(Some(TriggerSpec::ControlChanged(ControlChangeTrigger {
         filter,
         change: if gained {

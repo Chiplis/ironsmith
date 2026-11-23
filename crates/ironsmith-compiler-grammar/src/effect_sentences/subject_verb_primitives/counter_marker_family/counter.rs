@@ -274,6 +274,10 @@ pub fn parse_created_token_enters_with_counters_sentence(
     else {
         return Ok(None);
     };
+    // The entry frame, the counter phrase and the rounding, word for word;
+    // the amount reads its own words.
+    crate::word_claims::claim_tokens(&tokens[..lead]);
+    crate::word_claims::claim_tokens(&tokens[lead + used..]);
     Ok(Some(vec![EffectAst::subject_verb_put_counters(
         counter_type,
         amount

@@ -86,9 +86,11 @@ pub(super) fn read(
     let Some(timing) = timing.strip_prefix(&["from", "that"][..]) else {
         return Ok(None);
     };
+    // "from that creature at ...": the recipient named again.
     let Some(timing) = timing
         .iter()
         .position(|word| *word == "at")
+        .filter(|at| timing[..*at] == after_put[..this_way])
         .map(|at| &timing[at..])
     else {
         return Ok(None);
@@ -139,6 +141,8 @@ pub(super) fn read(
             effects: vec![removal],
         }
     };
+    // Every word of the per-counter sentence was matched above.
+    crate::word_claims::claim_tokens(tokens);
     let mut effects = put;
     effects.push(EffectAst::ForEach(ForEachEffectAst::ForEachObject {
         filter: recipients,

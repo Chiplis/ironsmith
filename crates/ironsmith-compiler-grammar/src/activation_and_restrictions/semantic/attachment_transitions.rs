@@ -62,6 +62,8 @@ pub(super) fn parse_attachment_transition_trigger(
     let recipient = match attachment_mana_value_tail {
         Some(with_at) => {
             let mut recipient = participant(&recipient_tokens[..with_at])?;
+            // The exact comparison tail read into the tagged mana-value bound.
+            crate::word_claims::claim_tokens(&recipient_tokens[with_at..]);
             recipient.tagged_constraints.push(crate::target::TaggedObjectConstraint {
                 tag: ironsmith_core::tag::TagKey::from(ironsmith_core::tag::TRIGGER_ATTACHMENT_TAG)
                     .into(),

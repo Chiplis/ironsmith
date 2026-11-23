@@ -327,8 +327,12 @@ pub fn parse_shuffle_object_shape_lexed(
         && match possessor.parser_text() {
             "your" => subject_tokens.is_empty()
                 || crate::lexer::token_word_refs(subject_tokens).as_slice() == ["you"],
-            "their" | "his" | "her" => !subject_tokens.is_empty()
-                && crate::lexer::token_word_refs(subject_tokens).as_slice() != ["you"],
+            "their" | "his" | "her" => (!subject_tokens.is_empty()
+                && crate::lexer::token_word_refs(subject_tokens).as_slice() != ["you"])
+                // "..., then shuffles the rest into their library": the
+                // conjugated verb continues an earlier player subject.
+                || (subject_tokens.is_empty()
+                    && crate::word_claims::probe_only(|| clause[shuffle_idx].is_word("shuffles"))),
             _ => false,
         }
     {

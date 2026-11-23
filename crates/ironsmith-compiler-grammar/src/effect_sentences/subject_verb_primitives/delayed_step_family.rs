@@ -900,6 +900,25 @@ pub fn has_unless_payment_choice(tokens: &[OwnedLexToken]) -> Result<bool, CardT
     ))
 }
 
+/// "... unless they pay {1} before that [draw] step" (Nafs Asp, Quenchable
+/// Fire): the payment window closes as the delayed step begins. Exactly
+/// that closing phrase; its words are read here.
+fn before_delayed_step_tail(tokens: &[OwnedLexToken]) -> bool {
+    let Some(before) = tokens.iter().position(|token| token.as_word() == Some("before")) else {
+        return false;
+    };
+    let tail = &tokens[before..];
+    let exact = matches!(
+        crate::lexer::parser_token_word_refs(tail).as_slice(),
+        ["before", "that", "step" | "upkeep"]
+            | ["before", "that", "upkeep" | "draw" | "end", "step"]
+    );
+    if exact {
+        crate::word_claims::claim_tokens(tail);
+    }
+    exact
+}
+
 #[inline(never)]
 pub(in crate::effect_sentences) fn try_build_simple_unless_pays(
     effects: Vec<EffectAst>,
@@ -926,13 +945,7 @@ pub(in crate::effect_sentences) fn try_build_simple_unless_pays(
     let Some(cost) = cost else {
         return Ok(None);
     };
-    let before_delayed_step = crate::word_primitives::parse_sequence_start(
-        &after_words,
-        &["before"],
-    )
-    .is_some_and(|before| {
-        crate::slice_primitives::contains_any(&after_words[before + 1..], &["step", "upkeep"])
-    });
+    let before_delayed_step = before_delayed_step_tail(after_clause.tokens());
     Ok(Some(EffectAst::Conditionals(
         ConditionalEffectAst::UnlessPays {
             effects,
@@ -992,13 +1005,7 @@ pub fn try_build_unless(
         )));
     }
     let after_words = after_clause.words().to_word_refs();
-    let before_delayed_step = crate::word_primitives::parse_sequence_start(
-        &after_words,
-        &["before"],
-    )
-    .is_some_and(|before| {
-        crate::slice_primitives::contains_any(&after_words[before + 1..], &["step", "upkeep"])
-    });
+    let before_delayed_step = before_delayed_step_tail(after_clause.tokens());
     let payment_shape = delayed_grammar::split_delayed_payment_action_shape(after_clause.tokens());
 
     if let Some((player, cost)) = parse_unless_sacrifice_or_pay_cost(after_clause)? {
@@ -1097,6 +1104,9 @@ pub fn try_build_unless(
                     )
                 };
                 cost.generic_reduction = reduction.generic_mana_total();
+                // The whole payment ("pay its mana cost reduced by {2}")
+                // read into the reduced dynamic cost.
+                crate::word_claims::claim_tokens(action_clause.tokens());
                 return Ok(Some(EffectAst::Conditionals(ConditionalEffectAst::UnlessPays {
                     effects,
                     player,
@@ -1388,6 +1398,15 @@ fn implicit_become_object_template_with_abilities(
     if choice || grants.is_empty() {
         return Ok(None);
     }
+    // The template read the singular stand-ins for the authored plural type
+    // nouns ("Food artifacts"); those authored nouns are what it read.
+    if let Some(with) = tokens.iter().position(|token| token.is_word("with")) {
+        for token in &tokens[..with] {
+            if token.as_word().and_then(singular).is_some() {
+                crate::word_claims::claim_tokens(std::slice::from_ref(token));
+            }
+        }
+    }
     let mut effect = EffectAst::subject_verb_become_object_template(
         shape.base_power_toughness.clone(),
         target.clone(),
@@ -1523,18 +1542,21 @@ pub fn parse_sentence_implicit_become_clause(
 
     let addition_tail_len = delayed_grammar::delayed_addition_other_types_suffix_len(&rest_words);
 
-    let body_words = if rest_words
+    let leading_article = rest_words
         .first()
         .copied()
-        .is_some_and(delayed_grammar::delayed_article_shape)
-    {
-        &rest_words[1..]
-    } else {
-        &rest_words[..]
-    };
+        .is_some_and(delayed_grammar::delayed_article_shape);
+    let body_words = if leading_article { &rest_words[1..] } else { &rest_words[..] };
     if body_words.is_empty() {
         return Ok(None);
     }
+    // The descriptor's article ("is an Angel"), claimed once any reading
+    // below commits. Each returning branch reads the descriptor itself.
+    let claim_article = || {
+        if leading_article {
+            crate::word_claims::claim_words(&rest_words[..1]);
+        }
+    };
 
     if let Ok((power, toughness)) = parse_pt_modifier_values(body_words[0])
         && body_words.len() > 1
@@ -1565,6 +1587,7 @@ pub fn parse_sentence_implicit_become_clause(
             if saw_subtype && !iter_contains(card_types.iter(), &CardType::Creature) {
                 card_types.insert(0, CardType::Creature);
             }
+            claim_article();
             return Ok(Some(vec![
                 EffectAst::subject_verb_become_base_pt_creature(
                     power,
@@ -1604,6 +1627,7 @@ pub fn parse_sentence_implicit_become_clause(
         if subtypes.is_empty() {
             return Ok(None);
         }
+        claim_article();
         return Ok(Some(vec![
             EffectAst::subject_verb_set_base_power_toughness(
                 power,
@@ -1642,6 +1666,7 @@ pub fn parse_sentence_implicit_become_clause(
         } else {
             EffectAst::subject_verb_set_card_types(target, card_types, duration)
         };
+        claim_article();
         return Ok(Some(vec![effect]));
     }
 
@@ -1667,11 +1692,13 @@ pub fn parse_sentence_implicit_become_clause(
         && !still_prefix
         && subtypes.iter().all(|subtype| subtype.is_creature_type())
     {
+        claim_article();
         return Ok(Some(vec![EffectAst::subject_verb_set_creature_subtypes_copular(
             target, subtypes, duration,
         )]));
     }
 
+    claim_article();
     Ok(Some(vec![EffectAst::subject_verb_add_subtypes(
         target, subtypes, duration,
     )]))
@@ -2284,6 +2311,9 @@ fn each_player_sacrifices_chosen_unless_pays_its_mana_cost(
         before_delayed_step: false,
     });
     let body = vec![choose, unless];
+    // The exact payment ("pay that creature's mana cost") read into the
+    // chosen creature's dynamic mana cost.
+    crate::word_claims::claim_tokens(action_clause.tokens());
     if already_in_player_loop {
         return Some(EffectAst::Sequence { effects: body });
     }

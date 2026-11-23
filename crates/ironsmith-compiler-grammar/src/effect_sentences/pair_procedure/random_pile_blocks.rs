@@ -42,8 +42,10 @@ fn reads_statements(sentences: &[SentenceInput], index: usize) -> bool {
 }
 
 pub(crate) fn read(sentences: &[SentenceInput], index: usize) -> Option<Vec<EffectAst>> {
-    reads_statements(sentences, index)
-        .then(|| vec![EffectAst::DeclareBlockersByRandomPilesThisTurn])
+    reads_statements(sentences, index).then(|| {
+        super::claim_sentences(&sentences[index..index + STATEMENTS.len()]);
+        vec![EffectAst::DeclareBlockersByRandomPilesThisTurn]
+    })
 }
 
 /// The same statements followed by the "(Piles can be empty.)" reminder
@@ -56,7 +58,9 @@ pub(crate) fn read_with_reminder(
     if crate::lexer::parser_token_word_refs(reminder.lowered()).as_slice() != REMINDER {
         return None;
     }
-    read(sentences, index)
+    let read = read(sentences, index)?;
+    super::claim_sentences([reminder]);
+    Some(read)
 }
 
 #[cfg(test)]

@@ -576,8 +576,10 @@ pub(super) fn read_statement(input: &Statement<'_>) -> ParseOutcome<RuleMatch<Ve
     // Equal readings from two rules are one reading, as the registry deduplicated.
     let mut distinct: Vec<RegistryCandidate<Vec<EffectAst>>> = Vec::new();
     for candidate in candidates {
-        if !distinct.iter().any(|kept| kept.value == candidate.value) {
-            distinct.push(candidate);
+        match distinct.iter_mut().find(|kept| kept.value == candidate.value) {
+            // Both rules read the same meaning; either one's words are read.
+            Some(kept) => kept.claims.extend(&candidate.claims),
+            None => distinct.push(candidate),
         }
     }
     resolve_registry_candidates(STATEMENT_REGISTRY, distinct, diagnostics)
@@ -672,6 +674,10 @@ fn read_damage_to_controller_of_last_damage_source(
         },
         tag.key.clone(),
     );
+    // The exact frame around the source filter: subject, verb, amount,
+    // "damage to the controller of the last", "that dealt damage to you this turn".
+    crate::word_claims::claim_tokens(&sentence[..source_start]);
+    crate::word_claims::claim_tokens(&sentence[source_start + source.len()..]);
     Ok(Some(vec![
         EffectAst::TagLastDamageSource(capture),
         EffectAst::subject_verb_damage(
@@ -766,6 +772,8 @@ fn read_for_as_long_as_source_remains_attached(
     if bound != 1 {
         return Ok(None);
     }
+    // The attachment duration, matched word for word.
+    crate::word_claims::claim_tokens(&sentence[..comma]);
     Ok(Some(effects))
 }
 
@@ -912,6 +920,8 @@ fn split_return_with_attached_auras(sentence: &[OwnedLexToken]) -> Option<Vec<Ow
         // "attached to another target permanent" loses its target in the
         // attachment reading; "attached to target other permanent" keeps
         // both the declared target and the not-this-source exclusion.
+        // "another" is re-expressed by the synthetic "other" below.
+        crate::word_claims::claim_tokens(&target[..1]);
         rewritten.push(target[1].clone());
         rewritten.push(crate::lexer::OwnedLexToken::word(
             "other",
@@ -1749,6 +1759,7 @@ pub(super) fn parse_unblock_sole_blocked_attackers_sentence(
             };
             effects.extend(block);
         }
+        crate::word_claims::claim_words(&words[..words.len() - rest.len()]);
         return Some(effects);
     }
     let rest = words.strip_prefix(&[
@@ -1770,6 +1781,8 @@ pub(super) fn parse_unblock_sole_blocked_attackers_sentence(
         .strip_prefix(&["this", "combat"][..])
         .unwrap_or(rest);
     (rest == ["become", "unblocked"]).then(|| {
+        // The whole sentence was read word for word above.
+        crate::word_claims::claim_words(&words);
         if source {
             vec![EffectAst::UnblockSoleBlockedAttackers(
                 ironsmith_core::UnblockSoleBlockedAttackersEffect::new(
@@ -1805,6 +1818,15 @@ fn read_optional_self_enter_tapped(input: &Statement<'_>) -> Option<Vec<EffectAs
     };
     if noun.is_empty() || noun.len() > 2 {
         return None;
+    }
+    // "this <permanent noun>": the source the entry program taps.
+    if let [noun] = noun
+        && matches!(
+            *noun,
+            "land" | "creature" | "artifact" | "enchantment" | "permanent" | "vehicle"
+        )
+    {
+        crate::word_claims::claim_words(&words);
     }
     let tap = EffectAst::subject_verb_tap(crate::cards::builders::TargetAst::Source(None));
     Some(vec![if optional {
@@ -1869,6 +1891,9 @@ pub(super) fn parse_block_attacker_of_choice_sentence(
         return Ok(None);
     };
     attackers.attacking = true;
+    // The frame around the attacker filter, read word for word above.
+    crate::word_claims::claim_words(&words[..words.len() - rest.len()]);
+    crate::word_claims::claim_words(&rest[filter_words.len()..]);
     Ok(Some(vec![EffectAst::BlockAttackerOfChoice {
         blocker,
         attackers,

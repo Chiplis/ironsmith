@@ -49,6 +49,8 @@ pub fn parse_activation_exile_filter_tokens(
     {
         let mut filter = parse_activation_exile_filter_tokens(&tokens[..base_len])?;
         filter.target_set_aggregate_constraint = Some(Box::new(constraint));
+        // The exact set qualifier read into the aggregate constraint.
+        crate::word_claims::claim_tokens(&tokens[base_len..]);
         return Ok(filter);
     }
     let base_len = crate::grammar::primitives::probe_all(

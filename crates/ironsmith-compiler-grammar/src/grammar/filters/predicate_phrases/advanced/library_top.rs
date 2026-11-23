@@ -10,6 +10,8 @@ pub(super) fn parse(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
         | ["that", "card", "is", "on", "top", "of", "your", "library"]
         | ["that", "card", "is", "top", "card", "of", "your", "library"]
     ) {
+        // An exact predicate (articles aside).
+        crate::word_claims::claim_tokens(tokens);
         return Some(PredicateAst::TaggedObjectIsTopOfLibrary {
             tag: crate::tag::CompilerReferenceTag::It.bind(),
             player: crate::cards::builders::PlayerAst::You,

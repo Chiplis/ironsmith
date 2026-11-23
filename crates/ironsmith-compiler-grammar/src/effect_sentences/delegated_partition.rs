@@ -12,6 +12,8 @@ pub(super) fn parse_source_exiled_delegated_partition_program(
     tokens: &[OwnedLexToken],
 ) -> Option<Vec<EffectAst>> {
     let shape = crate::grammar::effects::delegated_partition_shapes::parse_source_exiled_delegated_partition_shape(tokens)?;
+    // The shape matches every authored word of its fixed program.
+    crate::word_claims::claim_tokens(tokens);
     let pool_tag = crate::tag::CompilerReferenceTag::SourceExiled.bind();
     let subset_tag = crate::tag::CompilerDerivedTag::DelegatedSubset.key(&pool_tag);
     let choose_subset = EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects {
@@ -48,6 +50,8 @@ pub(super) fn parse_revealed_top_delegated_partition_program(
     tokens: &[OwnedLexToken],
 ) -> Option<Vec<EffectAst>> {
     let shape = crate::grammar::effects::delegated_partition_shapes::parse_revealed_top_delegated_partition_shape(tokens)?;
+    // The shape matches every authored word of its fixed program.
+    crate::word_claims::claim_tokens(tokens);
     let pool_count = crate::util::narrowed_i32(shape.pool_count)?;
     let pool_tag = crate::util::helper_tag_for_tokens(tokens, "delegated_collection_pool");
     let subset_tag = crate::tag::CompilerDerivedTag::DelegatedSubset.key(&pool_tag);
@@ -202,6 +206,13 @@ pub(super) fn parse_conditional_delegated_graveyard_partition_program(
         )],
         if_false: vec![choose_subset, move_remainder],
     });
+    // The four sentences were read word for word by the shape (the
+    // predicate claims its own words).
+    crate::word_claims::claim_tokens(sentences[0]);
+    crate::word_claims::claim_tokens(&condition[..1]);
+    crate::word_claims::claim_tokens(&condition[return_idx..]);
+    crate::word_claims::claim_tokens(sentences[2]);
+    crate::word_claims::claim_tokens(sentences[3]);
 
     Some(vec![pool, conditional])
 }

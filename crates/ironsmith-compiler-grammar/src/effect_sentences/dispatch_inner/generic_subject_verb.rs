@@ -1707,6 +1707,10 @@ fn parse_destroy_attached_object_then_source_damage_to_controller(
         return Ok(None);
     }
 
+    // The verb and the damage clause matched word for word (the attached
+    // object filter and the source reference read themselves).
+    crate::word_claims::claim_words(&destroy_words[..1]);
+    crate::word_claims::claim_words(suffix);
     let destroy = EffectAst::subject_verb_destroy(TargetAst::Object(filter, None, None));
     let damage = EffectAst::subject_verb_damage(
         Value::Fixed(amount),
@@ -2538,13 +2542,31 @@ fn consult_remainder_order_from_capture(
     let order_clause =
         matched.capture_clause_by_role(effect_grammar::EffectCaptureRole::Amount, clause)?;
     let order_clause = order_clause.trimmed();
-    if REST_BOTTOM_LIBRARY_RANDOM_ORDER_PATTERN.accepts_full(order_clause) {
-        Some(crate::cards::builders::LibraryBottomOrderAst::Random)
+    let order = if REST_BOTTOM_LIBRARY_RANDOM_ORDER_PATTERN.accepts_full(order_clause) {
+        crate::cards::builders::LibraryBottomOrderAst::Random
     } else if REST_BOTTOM_LIBRARY_ANY_ORDER_PATTERN.accepts_full(order_clause) {
-        Some(crate::cards::builders::LibraryBottomOrderAst::ChooserChooses)
+        crate::cards::builders::LibraryBottomOrderAst::ChooserChooses
     } else {
-        None
+        return None;
+    };
+    // The connectives between the pattern's literal words, read when they
+    // are exactly "on the bottom of <owner's> library in [a] ... order".
+    for (name, fillers) in [
+        ("before_bottom", &[&["on", "the"][..], &["on"], &["onto", "the"]][..]),
+        (
+            "before_library",
+            &[&["of", "your"][..], &["of", "their"], &["of", "its", "owner's"], &["of", "its", "owners"],
+                &["of", "that", "player's"], &["of", "that", "players"], &["of", "his", "or", "her"]][..],
+        ),
+        ("before_order", &[&["in", "a"][..], &["in"]][..]),
+    ] {
+        if let Some(filler) = matched.capture_clause(name, clause)
+            && fillers.contains(&crate::lexer::token_word_refs(filler.tokens()).as_slice())
+        {
+            crate::word_claims::claim_tokens(filler.tokens());
+        }
     }
+    Some(order)
 }
 
 fn parse_generic_each_player_exile_top_then_cast_any_number_subject_verb(
@@ -2597,9 +2619,19 @@ fn parse_generic_each_player_exile_top_then_cast_any_number_subject_verb(
     else {
         return Ok(None);
     };
+    // "from among those cards" / "from among them": the whole scope names the
+    // cards exiled by the loop above.
+    let scope_tokens = cast_scope_clause.trimmed().tokens();
     let casts_any_number_from_those_cards = FROM_THOSE_OR_THEM_SCOPE_PATTERN
         .locate_in(cast_scope_clause.trimmed())
-        .is_some();
+        .is_some()
+        && matches!(
+            crate::lexer::token_word_refs(scope_tokens).as_slice(),
+            ["from", "among", "those", "cards"] | ["from", "among", "them"]
+        );
+    if casts_any_number_from_those_cards {
+        crate::word_claims::claim_tokens(scope_tokens);
+    }
     let casts_any_number_from_nonland_exiled_this_way = FROM_NONLAND_EXILED_THIS_WAY_PATTERN
         .locate_in(cast_scope_clause.trimmed())
         .is_some();
@@ -2681,6 +2713,9 @@ fn parse_generic_meld_subject_verb(
             clause_display.trim()
         )));
     }
+    // "exile them, then meld them into <result>": the whole clause matched;
+    // the melded card's name is the result's identity.
+    crate::word_claims::claim_tokens(tokens);
     Ok(Some(EffectAst::subject_verb_meld(
         result_name,
         false,
@@ -3280,6 +3315,8 @@ pub fn parse_for_each_type_slot_choice_clause(
     if choices.len() < 2 {
         return Ok(None);
     }
+    // The choosing verb; the chooser before it is the slot chooser.
+    crate::word_claims::claim_tokens(&tokens[choose_idx..=choose_idx]);
     Ok(Some(choices))
 }
 

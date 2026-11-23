@@ -27,6 +27,8 @@ pub(super) fn parse_pronoun_attached_to_predicate(
     )) else {
         return Ok(None);
     };
+    // "it's attached to" / "it is attached to": the relation read above.
+    crate::word_claims::claim_tokens(&tokens[..object_token]);
     let filter = ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
         attached_to_object: Some(Box::new(attached_to)),
         ..Default::default()

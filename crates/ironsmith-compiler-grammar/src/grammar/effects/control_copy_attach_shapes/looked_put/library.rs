@@ -65,6 +65,28 @@ pub fn parse_revealed_remainder_shape(tokens: &[OwnedLexToken]) -> Option<Reveal
     } else {
         ironsmith_core::LibraryRemainderSurface::Rest
     };
+    // The moved collection, its "on the bottom of <owner's> library"
+    // destination and the order phrase, as read above.
+    if is_full_collection || is_you_revealed_collection {
+        let _ = crate::grammar::effects::sequence_pairs::read_sequence_phrase(
+            tokens,
+            &[
+                &["the", "cards", "you", "revealed", "this", "way"],
+                &["cards", "you", "revealed", "this", "way"],
+                &["all", "the", "revealed", "cards"],
+                &["all", "revealed", "cards"],
+                &["the", "revealed", "cards"],
+            ],
+        );
+    }
+    crate::grammar::effects::sequence_pairs::claim_bottom_of_library(tokens);
+    let _ = crate::grammar::effects::sequence_pairs::read_sequence_phrase(
+        tokens,
+        crate::grammar::effects::triple_sequence_shapes::RANDOM_ORDER,
+    ) || crate::grammar::effects::sequence_pairs::read_sequence_phrase(
+        tokens,
+        crate::grammar::effects::triple_sequence_shapes::ANY_ORDER,
+    );
     Some(RevealedRemainderShape {
         random_order: primitives::contains_word(tokens, "random"),
         exclude_current_reference: is_remainder,

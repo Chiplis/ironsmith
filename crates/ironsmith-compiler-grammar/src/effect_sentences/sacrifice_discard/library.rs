@@ -25,6 +25,8 @@ pub fn parse_discard(
             _ => None,
         };
         if let Some(chooser) = chooser {
+            // Matched word for word.
+            crate::word_claims::claim_tokens(tokens);
             let owner = discard_subject_owner_filter(subject).unwrap_or(PlayerFilter::You);
             let tag = crate::util::helper_tag_for_tokens(tokens, "chosen_discard");
             let mut pool = ObjectFilter::default().owned_by(owner);
@@ -79,6 +81,8 @@ pub fn parse_discard(
             && !spell_words.is_empty()
         {
             let spell = parse_target_phrase(&trimmed[trimmed.len() - spell_words.len()..])?;
+            // The same-name-as-spliced phrase, matched word for word.
+            crate::word_claims::claim_tokens(&trimmed[..trimmed.len() - spell_words.len()]);
             let tag = crate::util::helper_tag_for_tokens(tokens, "spliced_cards");
             let mut filter = ObjectFilter::default()
                 .match_tagged(tag.clone(), TaggedOpbjectRelation::SameNameAsTagged);
@@ -294,6 +298,8 @@ pub fn parse_discard(
         } else {
             match qualifier_shape {
                 sacrifice_discard_grammar::DiscardQualifierShape::ChosenColor => {
+                    // An exact chosen-color reference ("of that color").
+                    crate::word_claims::claim_tokens(&qualifier_tokens);
                     let mut filter = ObjectFilter::default();
                     filter.chosen_color = true;
                     filter
@@ -406,6 +412,8 @@ pub fn parse_discard(
                     Some(filter)
                 }
                 sacrifice_discard_grammar::DiscardTrailingShape::ChosenColor => {
+                    // An exact chosen-color reference ("of that color").
+                    crate::word_claims::claim_tokens(trailing_tokens);
                     let mut filter = ObjectFilter::default();
                     filter.chosen_color = true;
                     Some(filter)

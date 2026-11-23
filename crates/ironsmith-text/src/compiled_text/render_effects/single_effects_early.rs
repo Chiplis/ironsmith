@@ -1758,7 +1758,11 @@ pub(crate) fn describe_with_id_if_clause(
             "If you do".to_string()
         }
     } else if let Some(target) = excess_damage_condition_target_from_effect(&with_id.effect)
-        && matches!(if_effect.predicate, EffectPredicate::ExcessDamageDealt)
+        && matches!(
+            if_effect.predicate,
+            EffectPredicate::ExcessDamageDealt
+                | EffectPredicate::ExcessDamageDealtToObjectMatching(_)
+        )
     {
         format!("If excess damage was dealt to {target} this way")
     } else {
@@ -4435,6 +4439,7 @@ pub(crate) fn describe_with_id_then_reflexive_trigger(
                 "When you exile a nonland card this way".to_string()
             }
             EffectPredicate::ExcessDamageDealt
+            | EffectPredicate::ExcessDamageDealtToObjectMatching(_)
                 if excess_damage_condition_target_from_effect(&with_id.effect).is_some() =>
             {
                 let target = excess_damage_condition_target_from_effect(&with_id.effect)
@@ -5041,6 +5046,19 @@ pub(crate) fn describe_search_choose_for_each(
         describe_search_selection_from_filter_text(choose, &filter_text)
     } else {
         let mut count_text = describe_choice_count(&choose.count);
+        // "search your library for two basic land cards": a fixed authored
+        // count names how many to find; a hidden-zone search may still find
+        // fewer (CR 701.23d), so only an authored "exactly" says so.
+        if searched_library
+            && choose.count.max == Some(choose.count.min)
+            && choose.count.min > 1
+            && !choose.count.explicit_exactly
+            && !choose.count.dynamic_x
+            && !choose.count.random
+            && let Some(word) = number_word(choose.count.min as i32)
+        {
+            count_text = word;
+        }
         if count_text == "any number" {
             count_text = if is_same_name_search(&choose.filter)
                 && choose.search_mode == crate::effect::SearchSelectionMode::AllMatching

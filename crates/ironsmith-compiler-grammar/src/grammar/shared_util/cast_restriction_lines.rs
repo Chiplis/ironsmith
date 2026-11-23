@@ -50,6 +50,8 @@ fn named_permanent_restriction(words: &[&str]) -> Option<StaticAbility> {
     {
         return None;
     }
+    // The words between "named" and "are" are the name the restriction keeps.
+    crate::word_claims::claim_words(&words[4..words.len() - 4]);
     let card_name = title_case(&words[4..words.len() - 4]);
     Some(StaticAbility::this_spell_cast_restriction(
         Restriction::if_no_permanents_named_on_battlefield(&card_name),
@@ -77,6 +79,8 @@ fn control_quantity_restriction(words: &[&str]) -> Option<(Restriction, String)>
     let count_text = parsed.quantity_text();
     let filter_text = parsed.object_text();
     single_subtype(&parsed.filter)?;
+    // The "if" the condition reader was handed the words after.
+    crate::word_claims::claim_words(&words[..1]);
     Some((
         Restriction::only_if(ironsmith_core::Condition::ValueComparison {
             left: ironsmith_core::Value::Count(

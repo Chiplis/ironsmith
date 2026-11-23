@@ -133,6 +133,16 @@ pub(super) fn parse_ability_source_filter(tokens: &[OwnedLexToken]) -> Option<Ob
     {
         crate::word_claims::claim_tokens(&tokens[last..=last]);
     }
+    // "a source of the chosen type" (Eclipsed Realms): the same noun before
+    // the chosen-type qualifier the filter grammar reads.
+    let view = TokenWordView::new(tokens);
+    let words = view.word_refs();
+    if let Some(noun) = words.iter().position(|word| matches!(*word, "source" | "sources"))
+        && words[noun + 1..] == ["of", "the", "chosen", "type"]
+        && filter.chosen_creature_type
+    {
+        crate::word_claims::claim_word(words[noun]);
+    }
     Some(filter)
 }
 
@@ -200,6 +210,8 @@ pub(super) fn parse_special_spell_filter(tokens: &[OwnedLexToken]) -> Option<Obj
                 | ["spell" | "spells", "that's" | "thats" | "that", "one", "or", "more", "colors", "without", "x", "in", "its" | "their", "mana", "cost" | "costs"]
                 | ["spell" | "spells", "that", "is" | "are", "one", "or", "more", "colors", "without", "x", "in", "its" | "their", "mana", "cost" | "costs"]
         ) {
+            // Each exact shape reads the whole spec.
+            crate::word_claims::claim_tokens(tokens);
             let mut filter = ObjectFilter::default();
             filter.colors = Some(crate::color::Color::ALL.into_iter().collect());
             filter.no_x_in_cost = true;
@@ -224,6 +236,7 @@ pub(super) fn parse_special_spell_filter(tokens: &[OwnedLexToken]) -> Option<Obj
                 tail,
                 ["spells" | "spell", "with", "x", "in", "their" | "its", "mana", "costs" | "cost"]
             ) {
+                crate::word_claims::claim_tokens(tokens);
                 let base = card_type
                     .map(|card_type| ObjectFilter::default().with_type(card_type))
                     .unwrap_or_default();

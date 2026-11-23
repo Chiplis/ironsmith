@@ -2892,14 +2892,20 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 x_maximum,
                 independent_x_choice,
                 mana_cost_of,
-            }) => f
-                .debug_struct("PayMana")
-                .field("cost", cost)
-                .field("x_value", x_value)
-                .field("x_maximum", x_maximum)
-                .field("independent_x_choice", independent_x_choice)
-                .field("mana_cost_of", mana_cost_of)
-                .finish(),
+                instant_speed_window,
+            }) => {
+                let mut debug = f.debug_struct("PayMana");
+                debug
+                    .field("cost", cost)
+                    .field("x_value", x_value)
+                    .field("x_maximum", x_maximum)
+                    .field("independent_x_choice", independent_x_choice)
+                    .field("mana_cost_of", mana_cost_of);
+                if *instant_speed_window {
+                    debug.field("instant_speed_window", instant_speed_window);
+                }
+                debug.finish()
+            }
             Self::Mana(ManaActionAst::DoubleManaPool) => f.write_str("DoubleManaPool"),
             Self::Mana(ManaActionAst::EmptyManaPool) => f.write_str("EmptyManaPool"),
             Self::Mana(ManaActionAst::ActivateManaAbilityOfEachLand) => {

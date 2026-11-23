@@ -19,6 +19,7 @@ pub(super) fn parse(tokens: &[OwnedLexToken]) -> Result<Option<Vec<EffectAst>>, 
     }
     let mut sources = Vec::new();
     if crate::lexer::parser_token_word_refs(actors) == ["they"] {
+        crate::word_claims::claim_tokens(actors);
         sources.push(TargetAst::Tagged(
             crate::tag::CompilerReferenceTag::It.bind(),
             span_from_tokens(actors),

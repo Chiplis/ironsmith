@@ -133,11 +133,14 @@ pub fn parse_spells_cast_this_turn_value_words(words: &[&str]) -> Option<Value> 
 /// players can have counters too (CR 122.1), and the object-filter parser
 /// would otherwise drop the player half of the scope.
 pub fn counters_among_players_and_permanents_value(scope_words: &[&str]) -> Option<Value> {
-    matches!(
+    let matched = matches!(
         scope_words,
         ["players", "and", "permanents"] | ["permanents", "and", "players"]
-    )
-    .then(|| {
+    );
+    if matched {
+        crate::word_claims::claim_words(scope_words);
+    }
+    matched.then(|| {
         Value::Add(
             Box::new(Value::CountersOn(
                 Box::new(ChooseSpec::EachPlayer(crate::target::PlayerFilter::Any)),
@@ -270,14 +273,20 @@ pub fn parse_aggregate_scope_value_words(words: &[&str]) -> Option<Value> {
     {
         return Some(value);
     }
+    // The metric head ("card types among") is read with its scope.
+    let metric_words = &words[..words.len() - surface.scope_words.len()];
     if let Some(historical) = historical_aggregate_scope_value(surface.metric, surface.scope_words)
     {
+        if historical.is_some() {
+            crate::word_claims::claim_words(metric_words);
+        }
         return historical;
     }
     let filter = crate::grammar::primitives::probe_shape(parse_object_filter_words(
         surface.scope_words,
         false,
     ))?;
+    crate::word_claims::claim_words(metric_words);
     match surface.metric {
         AggregateValueMetric::BasicLandTypes => Some(Value::BasicLandTypesAmong(filter)),
         AggregateValueMetric::CardTypes => Some(Value::CardTypesAmong(filter)),

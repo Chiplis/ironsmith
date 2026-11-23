@@ -1203,8 +1203,8 @@ fn you_committed_crime_this_turn(words: &[&str]) -> Option<PredicateAst> {
 /// "if the player hasn't played the card" (Elkin Lair): the card exiled
 /// for that player's permission was not played, so it is still the same
 /// object in exile (playing it moves it out of exile, CR 400.7).
-fn player_hasnt_played_that_card(words: &[&str]) -> Option<PredicateAst> {
-    let words = words
+fn player_hasnt_played_that_card(all_words: &[&str]) -> Option<PredicateAst> {
+    let words = all_words
         .iter()
         .copied()
         .filter(|word| !matches!(*word, "the" | "that"))
@@ -1216,6 +1216,8 @@ fn player_hasnt_played_that_card(words: &[&str]) -> Option<PredicateAst> {
     ) {
         return None;
     }
+    // An exact predicate (articles aside).
+    crate::word_claims::claim_words(all_words);
     Some(PredicateAst::ItMatches(ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
         zone: Some(crate::zone::Zone::Exile),
         ..Default::default()
@@ -1752,6 +1754,7 @@ fn card_exiled_with_it(words: &[&str]) -> Option<PredicateAst> {
     let ["a", "card", "is", "exiled", "with", "it"] = words else {
         return None;
     };
+    crate::word_claims::claim_words(words);
     let exiled_with_source =
         ObjectFilter::tagged(crate::tag::CompilerReferenceTag::SourceExiled.bind())
             .in_zone(Zone::Exile);
@@ -1890,7 +1893,12 @@ fn named_action_count_comparison(tokens: &[OwnedLexToken]) -> Option<PredicateAs
         return None;
     }
     let (left, used) = crate::util::parse_value_expr_words(&words[..is_at])?;
-    if used != is_at || !matches!(left, Value::NamedActionCount { .. }) {
+    // "the number of other Caves you control plus the number of Cave cards
+    // in your graveyard is three or greater" (Cavernous Maw): a sum of
+    // object counts compares the same way.
+    let count_sum = matches!(&left, Value::Add(first, second)
+        if matches!(**first, Value::Count(_)) && matches!(**second, Value::Count(_)));
+    if used != is_at || !(matches!(left, Value::NamedActionCount { .. }) || count_sum) {
         return None;
     }
     let (operator, amount) = match &words[is_at + 1..] {

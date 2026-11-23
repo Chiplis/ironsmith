@@ -106,6 +106,8 @@ fn parse_only_typed_creatures_act_that_combat(tokens: &[OwnedLexToken]) -> Optio
     if card_type == crate::types::CardType::Creature {
         return None;
     }
+    // The whole sentence was read word for word above.
+    crate::word_claims::claim_tokens(body);
     let others = crate::target::ObjectFilter::creature().without_type(card_type);
     let restriction = if *action == "attack" {
         Restriction::attack(others)
@@ -200,6 +202,8 @@ fn parse_chosen_players_attack_each_other(tokens: &[OwnedLexToken]) -> Option<Ef
     ) {
         return None;
     }
+    // The requirement is exactly this shape.
+    crate::word_claims::claim_tokens(body);
     let duration = match duration {
         crate::grammar::leaf::LeafTurnDurationPhrase::ThisTurn
         | crate::grammar::leaf::LeafTurnDurationPhrase::UntilEndOfTurn => Until::EndOfTurn,
@@ -299,6 +303,9 @@ fn parse_during_target_players_next_turn(
         else {
             return Ok(None);
         };
+        // The attack verb and "if able" around the attacked permanents.
+        crate::word_claims::claim_tokens(&body[index..=index]);
+        crate::word_claims::claim_tokens(&body[body.len() - 2..]);
         attacked_permanents = Some(permanents);
         (index, false)
     };
@@ -419,6 +426,10 @@ fn parse_target_attacks_during_its_controllers_next_turn(
         };
         Restriction::must_attack_permanents(attackers, permanents)
     };
+    // "attack(s)" and the "during its controller's next turn if able" tail,
+    // read word for word above.
+    crate::word_claims::claim_tokens(&head[verb..=verb]);
+    crate::word_claims::claim_tokens(&body[during..]);
     Ok(Some(EffectAst::Sequence {
         effects: vec![
             EffectAst::subject_verb_target_only(target),
@@ -476,6 +487,8 @@ fn parse_during_that_players_next_turn_referenced_attack(
         ["and", "other", "creatures", "cant" | "can't" | "cannot", "attack"] => true,
         _ => return None,
     };
+    // The whole sentence was read word for word above.
+    crate::word_claims::claim_tokens(body);
     let referenced = |relation| {
         ObjectFilter::creature()
             .match_tagged(crate::tag::CompilerReferenceTag::It.bind(), relation)

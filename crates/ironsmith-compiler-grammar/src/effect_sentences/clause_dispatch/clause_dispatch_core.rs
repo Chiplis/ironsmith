@@ -49,6 +49,8 @@ fn parse_each_player_with_life_clause(
         ];
         rebuilt.extend_from_slice(&tokens[rest_start..]);
         let parsed = parse_effect_clause_unstacked(&rebuilt)?;
+        // The subject and its comparison qualifier, matched above.
+        crate::word_claims::claim_tokens(&tokens[..rest_start]);
         let predicate = crate::cards::builders::PredicateAst::ValueComparison {
             left: crate::effect::Value::CardsInHand(crate::target::PlayerFilter::IteratedPlayer),
             operator: crate::effect::ValueComparisonOperator::LessThan,
@@ -99,6 +101,8 @@ fn parse_each_player_with_life_clause(
     ];
     rebuilt.extend_from_slice(&tokens[rest_start..]);
     let parsed = parse_effect_clause_unstacked(&rebuilt)?;
+    // The subject and its life qualifier, read word by word above.
+    crate::word_claims::claim_tokens(&tokens[..rest_start]);
     let predicate = crate::cards::builders::PredicateAst::ValueComparison {
         left: crate::effect::Value::LifeTotal(crate::target::PlayerFilter::IteratedPlayer),
         operator,
@@ -142,6 +146,7 @@ fn parse_reduce_speed_clause(tokens: &[OwnedLexToken]) -> Option<EffectAst> {
     };
     let amount = crate::util::parse_number_word_u32(amount_word)
         .or_else(|| crate::util::decimal_count(amount_word))?;
+    crate::word_claims::claim_words(&words);
     Some(EffectAst::subject_verb_reduce_speed(
         player,
         crate::effect::Value::Fixed(i32::try_from(amount).ok()?),
@@ -178,6 +183,8 @@ pub(crate) fn parse_inline_loyalty_symbol_clause(tokens: &[OwnedLexToken]) -> Op
         _ => return None,
     };
     if amount <= 0 { return None; }
+    // The whole loyalty symbol is the instruction.
+    crate::word_claims::claim_tokens(tokens);
     let source = crate::cards::builders::TargetAst::Source(None);
     match positive {
         true => Some(EffectAst::subject_verb_put_counters(
@@ -227,6 +234,7 @@ pub(super) fn parse_effect_clause_unstacked(
         crate::lexer::token_word_refs(crate::util::trim_edge_punctuation_tokens(tokens)).as_slice(),
         ["choose", "a", "letter"] | ["you", "choose", "a", "letter"]
     ) {
+        crate::word_claims::claim_tokens(tokens);
         return Ok(EffectAst::subject_verb_choose_named_option(
             PlayerAst::You,
             ('A'..='Z').map(|letter| letter.to_string()).collect(),
@@ -238,6 +246,8 @@ pub(super) fn parse_effect_clause_unstacked(
         crate::lexer::token_word_refs(crate::util::trim_edge_punctuation_tokens(tokens)).as_slice(),
         ["claim", "the", "prize"] | ["you", "claim", "the", "prize"]
     ) {
+        // An exact keyword-action clause.
+        crate::word_claims::claim_tokens(tokens);
         return Ok(EffectAst::subject_verb_emit_keyword_action(
             crate::events::KeywordActionKind::ClaimAttractionPrize,
             1,
@@ -308,6 +318,8 @@ pub(super) fn parse_effect_clause_unstacked(
             == ["it", "came", "under", "your", "control", "this", "turn"]
     {
         let effect = parse_effect_clause_unstacked(&tokens[..unless])?;
+        // The exception clause is exactly this shape.
+        crate::word_claims::claim_tokens(&tokens[unless + 1..]);
         return Ok(EffectAst::Conditionals(
             crate::cards::builders::ConditionalEffectAst::TrailingUnless {
                 predicate: crate::cards::builders::PredicateAst::Source(
@@ -386,12 +398,19 @@ pub(super) fn parse_effect_clause_unstacked(
                 crate::tag::CompilerReferenceTag::It.bind(),
                 None,
             );
+            // Each arm below reads the whole clause.
+            let read_all = || crate::word_claims::claim_tokens(tokens);
             match tail {
-                [] => return Ok(EffectAst::subject_verb_goad(it)),
+                [] => {
+                    read_all();
+                    return Ok(EffectAst::subject_verb_goad(it));
+                }
                 ["for", "the", "rest", "of", "the" | "this", "game"] => {
+                    read_all();
                     return Ok(EffectAst::subject_verb_goad_for(it, Until::Forever));
                 }
                 ["for", "as", "long", "as", "they" | "that" | "its", .., "control" | "controls", "it"] => {
+                    read_all();
                     use ironsmith_core::{
                         ContinuousDurationObject as Object, ContinuousDurationPlayer as Player,
                         ContinuousDurationPredicate as Predicate,
@@ -490,12 +509,34 @@ pub(super) fn parse_effect_clause_unstacked(
     {
         subject_tokens_storage.pop();
     }
+    // "Also put a +1/+1 counter ..." (Beast Mode): a sentence-initial
+    // adverb before an imperative verb; it adds the action to the spell's
+    // others and names no subject.
+    if let [only] = subject_tokens_storage.as_slice()
+        && only.as_word() == Some("also")
+    {
+        crate::word_claims::claim_tokens(&subject_tokens_storage);
+    }
     let subject_tokens = subject_tokens_storage.as_slice();
     let rest = verb_shape.action_tokens;
     // Every reading below dispatches on this verb, so the clause reads the
     // verb word itself ("and draw a card", "then discard a card").
     if let Some(verb_token) = tokens.get(verb_shape.subject_tokens.len()) {
         crate::word_claims::claim_tokens(std::slice::from_ref(verb_token));
+    }
+    // "Lock or unlock a door of target Room" (Keys to the House): the
+    // leading "lock or" is the lock-or-unlock choice the unlock reader
+    // models for an unqualified door (CR 709.5c), not a subject.
+    if matches!(verb, Verb::Unlock)
+        && crate::lexer::token_word_refs(subject_tokens) == ["lock", "or"]
+        && crate::lexer::token_word_refs(rest).starts_with(&["a", "door", "of"])
+    {
+        crate::word_claims::claim_tokens(subject_tokens);
+    }
+    // "instead only you draw a card" (Kumena's Awakening): the exclusive
+    // subject is the one actor of the replacing instruction.
+    if crate::lexer::parser_token_word_refs(subject_tokens) == ["only", "you"] {
+        crate::word_claims::claim_tokens(subject_tokens);
     }
     parser_trace_stack("parse_effect_clause:verb-found", tokens);
     crate::parse_trace::event(format!(
@@ -1097,6 +1138,8 @@ pub(crate) fn parse_referenced_tokens_goaded_sentence(
         return None;
     }
     let duration = crate::grammar::effects::parse_source_lifetime_duration(tail)?;
+    // The definite subject and its "is/are goaded" passive.
+    crate::word_claims::claim_tokens(&tokens[..=goaded]);
     let it = crate::cards::builders::TargetAst::Tagged(
         crate::tag::CompilerReferenceTag::It.bind(),
         None,

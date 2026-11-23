@@ -215,6 +215,22 @@ fn parse_copy_retarget_lexed<'a>(input: &mut LexStream<'a>) -> WResult<CopyRetar
     }
     let has_target = marker_anywhere(tail, primitives::kw("target"));
     let has_targets = marker_anywhere(tail, primitives::kw("targets"));
+    // "[a] new target(s) for the|that|their copy|copies [they|you control]":
+    // the whole retarget object, read when the tail is exactly that phrase
+    // (the copy's controller chooses for their own copy).
+    {
+        let tail_words = parser_token_word_refs(trim_lexed_commas(tail));
+        let mut rest = tail_words.as_slice();
+        rest = rest.strip_prefix(&["a"][..]).unwrap_or(rest);
+        let exact = matches!(
+            rest,
+            ["new", "target" | "targets", "for", "the" | "that" | "their", "copy" | "copies", tail @ ..]
+                if matches!(tail, [] | ["they" | "you", "control"])
+        );
+        if exact {
+            crate::word_claims::claim_tokens(tail);
+        }
+    }
     while any::<_, ErrMode<ContextError>>.parse_next(input).is_ok() {}
     Ok(CopyRetargetShape {
         may_choose,

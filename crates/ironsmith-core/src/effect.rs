@@ -454,6 +454,11 @@ pub enum EffectPredicate {
     /// ... and you convert Megatron"): it assigned damage to a player,
     /// whether or not that damage was then prevented.
     ExcessDamageRedirected,
+    /// "When excess damage is dealt to the creature an opponent controls this
+    /// way" (Rhino's Rampage), "If excess damage was dealt to a permanent this
+    /// way" (Bottle-Cap Blast): excess damage (CR 120.4a) the antecedent
+    /// instruction dealt to a recipient object matching the filter. Appended.
+    ExcessDamageDealtToObjectMatching(ObjectFilter),
 }
 
 /// Authored grammatical subject for a prior-result predicate.

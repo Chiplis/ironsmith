@@ -2875,6 +2875,10 @@ pub(super) fn compile_subject_verb_late(
             x_maximum,
             independent_x_choice,
             mana_cost_of,
+            // The repeatable instant-speed window is realized at the statement
+            // (`fuse_repeatable_mana_payment_prevention_until_end_of_turn`);
+            // each use is this one payment.
+            instant_speed_window: _,
         }) => {
             let subject = resolve_subject_verb_subject(role, player, ctx, false, false, true)?;
             let x_value = x_value

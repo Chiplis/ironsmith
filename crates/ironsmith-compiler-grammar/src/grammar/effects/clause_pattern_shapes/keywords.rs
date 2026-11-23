@@ -177,18 +177,21 @@ where
 }
 
 fn parse_subtype<'a>(input: &mut LexStream<'a>) -> WResult<Subtype> {
-    primitives::word_parser_text
-        .verify_map(|word| {
-            parse_subtype_word(word).or_else(|| {
-                // The plural ("amass Zombies") names the same subtype; the
-                // whole plural word is read.
-                let subtype = crate::string_primitives::strip_suffix_char(word, 's')
-                    .and_then(parse_subtype_word)?;
-                crate::word_claims::claim_word(word);
-                Some(subtype)
-            })
-        })
-        .parse_next(input)
+    any.verify_map(|token: &'a crate::lexer::OwnedLexToken| {
+        use crate::lexer::TokenKind;
+        if !matches!(token.kind, TokenKind::Word | TokenKind::Number | TokenKind::Tilde) {
+            return None;
+        }
+        let word = token.parser_text();
+        // The plural ("amass Zombies") names the same subtype; the whole word
+        // is read either way.
+        let subtype = parse_subtype_word(word).or_else(|| {
+            crate::string_primitives::strip_suffix_char(word, 's').and_then(parse_subtype_word)
+        })?;
+        crate::word_claims::claim_tokens(std::slice::from_ref(token));
+        Some(subtype)
+    })
+    .parse_next(input)
 }
 
 fn parse_creature_subtype<'a>(input: &mut LexStream<'a>) -> WResult<Subtype> {

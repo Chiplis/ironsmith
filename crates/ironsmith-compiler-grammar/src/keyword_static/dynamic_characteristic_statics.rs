@@ -110,6 +110,9 @@ pub(super) fn parse_timed_source_pt(
     let value = primitives::parse_prefix(value, primitives::phrase(&["equal", "to"]))
         .map_or(value, |(_, tail)| tail);
     let value = state_value(value)?;
+    // The turn condition, the source subject and the axis phrase read above.
+    crate::word_claims::claim_tokens(&tokens[..comma]);
+    crate::word_claims::claim_tokens(source_tokens);
     // A definition conditional on the current turn is not a CDA (604.3).
     // It functions on the battlefield and uses layer 7b, even though its
     // authored wording omits the word "base".

@@ -39,6 +39,8 @@ pub(super) fn parse_each_quality_control_predicate(
         return Ok(None);
     }
     let mut predicates = Vec::new();
+    // The frame words read here; each object noun claims its own words.
+    let mut frame: Vec<&str> = words[..2].to_vec();
     let mut idx = 2usize;
     while idx < words.len() {
         if !matches!(words.get(idx), Some(&("a" | "an"))) {
@@ -71,6 +73,8 @@ pub(super) fn parse_each_quality_control_predicate(
             return Ok(None);
         };
         base.controller = Some(PlayerFilter::You);
+        frame.push(words[idx]);
+        frame.extend_from_slice(&words[of_idx..of_idx + consumed]);
         let leaves = match quality {
             EachQuality::BasicLandType => BASIC_LAND_TYPES
                 .iter()
@@ -92,6 +96,7 @@ pub(super) fn parse_each_quality_control_predicate(
             if words[idx] != "and" {
                 return Ok(None);
             }
+            frame.push(words[idx]);
             idx += 1;
             if idx == words.len() {
                 return Ok(None);
@@ -102,6 +107,7 @@ pub(super) fn parse_each_quality_control_predicate(
     let Some(first) = predicates.next() else {
         return Ok(None);
     };
+    crate::word_claims::claim_words(&frame);
     Ok(Some(predicates.fold(first, |left, right| {
         PredicateAst::And(Box::new(left), Box::new(right))
     })))

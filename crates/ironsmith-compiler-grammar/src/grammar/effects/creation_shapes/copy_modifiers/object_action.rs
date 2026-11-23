@@ -24,6 +24,8 @@ fn split_copy_name_exception<'a>(words: &[&'a str]) -> (Option<Vec<String>>, Vec
     if name_end == name_start {
         return (None, words.to_vec());
     }
+    // The name marker and the copy's new name, read here (CR 707.9b).
+    crate::word_claims::claim_words(&words[marker_start..name_end]);
     let name = words[name_start..name_end]
         .iter()
         .map(|word| (*word).to_string())
@@ -151,7 +153,14 @@ pub fn parse_copy_modifier_words(tail_words: &[&str]) -> Result<CopyModifierSpec
     if modifier_words.iter().any(|word| *word == "legendary")
         && !surface.has_phrase(CreationPhrase::NotLegendary)
     {
+        // "except it's legendary": the exception's supertype word.
+        if let Some(legendary) = modifier_words.iter().find(|word| **word == "legendary") {
+            crate::word_claims::claim_word(legendary);
+        }
         push_unique(&mut spec.added_supertypes, Supertype::Legendary);
+        if let Some(at) = modifier_words.iter().position(|word| *word == "legendary") {
+            crate::word_claims::claim_words(&modifier_words[at..=at]);
+        }
     }
 
     if surface.has(CreationWordClass::LoseVerb) && surface.has(CreationWordClass::Soulbond) {
@@ -200,12 +209,37 @@ pub fn parse_copy_modifier_words(tail_words: &[&str]) -> Result<CopyModifierSpec
                 start -= 1;
             }
             crate::word_claims::claim_words(&modifier_words[start..location + phrase.len()]);
+            // "except it isn't legendary if the spell is legendary" (Double
+            // Major): removing a supertype the copy lacks changes nothing, so
+            // the condition restates the removal.
+            let end = location + phrase.len();
+            if let Some(condition @ ["if", "the", "spell" | "copy" | "token" | "creature" | "permanent", "is", "legendary"]) =
+                modifier_words.get(end..end + 5)
+            {
+                crate::word_claims::claim_words(condition);
+            }
         }
     }
-    spec.set_base_power_toughness = modifier_words
+    let pt_index = modifier_words
         .iter()
-        .filter_map(|word| parse_unsigned_pt_word(word))
-        .next();
+        .position(|word| parse_unsigned_pt_word(word).is_some());
+    spec.set_base_power_toughness = pt_index.and_then(|index| parse_unsigned_pt_word(modifier_words[index]));
+    if let Some(index) = pt_index {
+        // "except it's 1/1", "except the token is 1/1": the P/T word and the
+        // copula subject (with an optional article) it completes.
+        let mut start = index;
+        if start > 0 && matches!(modifier_words[start - 1], "a" | "an") {
+            start -= 1;
+        }
+        match &modifier_words[..start] {
+            [.., "the" | "that" | "those", "token" | "tokens" | "copy" | "copies", "is" | "are"] => start -= 3,
+            [.., "it", "is"] | [.., "they", "are"] | [.., "it", "s"]
+            | [.., "token" | "tokens" | "copy" | "copies", "is" | "are"] => start -= 2,
+            [.., "its" | "it's" | "it’s" | "theyre" | "they're" | "they’re"] => start -= 1,
+            _ => start = index,
+        }
+        crate::word_claims::claim_words(&modifier_words[start..=index]);
+    }
     let power_is_source_total = contains_words(
         modifier_words,
         &[
@@ -244,6 +278,17 @@ pub fn parse_copy_modifier_words(tail_words: &[&str]) -> Result<CopyModifierSpec
         ));
     }
     spec.set_base_power_toughness_to_source_totals = power_is_source_total;
+    if power_is_source_total {
+        // "its power is equal to the total power of those creatures, its
+        // toughness is equal to the total toughness of those creatures"
+        // (Benthic Anomaly): both stat phrases set the copy's base P/T.
+        for stat in ["power", "toughness"] {
+            let phrase = ["its", stat, "is", "equal", "to", "the", "total", stat, "of", "those", "creatures"];
+            if let Some(start) = modifier_words.windows(phrase.len()).position(|window| window == phrase) {
+                crate::word_claims::claim_words(&modifier_words[start..start + phrase.len()]);
+            }
+        }
+    }
 
     spec.starting_loyalty = crate::slice_primitives::find_window_by(modifier_words, 4, |words| {
         crate::word_primitives::parse_sequence_complete(&words[..3], &["starting", "loyalty", "is"])
@@ -304,6 +349,13 @@ pub fn parse_copy_modifier_words(tail_words: &[&str]) -> Result<CopyModifierSpec
             push_unique(&mut spec.granted_abilities, ability);
             // The grant verb (or `with`), the keyword and its connective.
             crate::word_claims::claim_words(&modifier_words[grant_idx..=grant_idx]);
+            // "the token has flying": the copy subject of the grant verb.
+            let subject_len = match &modifier_words[..grant_idx] {
+                [.., "the" | "that" | "those" | "this", "token" | "tokens" | "copy" | "copies"] => 2,
+                [.., "it" | "they" | "token" | "tokens" | "copy" | "copies"] => 1,
+                _ => 0,
+            };
+            crate::word_claims::claim_words(&modifier_words[grant_idx - subject_len..grant_idx]);
             if let Some(and_idx) = pending_and.take() {
                 crate::word_claims::claim_words(&list[and_idx..=and_idx]);
             }
@@ -311,11 +363,14 @@ pub fn parse_copy_modifier_words(tail_words: &[&str]) -> Result<CopyModifierSpec
             idx += used;
         }
     }
-    if let Some(amount) =
+    if let Some((start, amount)) =
         crate::slice_primitives::find_window_by(modifier_words, 2, |pair| pair[0] == "toxic")
-            .and_then(|start| modifier_words.get(start..start + 2))
-            .and_then(|pair| crate::util::decimal_count(pair[1]))
+            .and_then(|start| Some((start, modifier_words.get(start..start + 2)?)))
+            .and_then(|(start, pair)| Some((start, crate::util::decimal_count(pair[1])?)))
     {
+        // "[has] toxic N": the keyword, its amount and an adjacent grant verb.
+        let verb = start > 0 && matches!(modifier_words[start - 1], "has" | "have" | "with");
+        crate::word_claims::claim_words(&modifier_words[start - usize::from(verb)..start + 2]);
         push_unique(
             &mut spec.granted_abilities,
             StaticAbility::keyword_marker(format!("toxic {amount}")),
@@ -361,6 +416,9 @@ pub fn parse_copy_modifier_words(tail_words: &[&str]) -> Result<CopyModifierSpec
         for word in &modifier_words[..addition] {
             if CreationWords::new(&[*word]).first_is(CreationWordClass::Article)
                 || matches!(*word, "its" | "it" | "is" | "s" | "it's" | "it’s" | "they" | "are" | "re" | "theyre" | "they're" | "they’re")
+                // "except the copy is an artifact ..." (Tawnos): the copy
+                // subject of the copula.
+                || matches!(*word, "copy" | "copies" | "token" | "tokens")
             {
                 crate::word_claims::claim_word(word);
             }

@@ -181,6 +181,16 @@ pub fn parse_card_type_iteration_shape(
     {
         return None;
     }
+    // "... from among the revealed cards into your hand": the destination
+    // through its hand noun (the card phrase is read by the prefix test).
+    let action_tail = &second[action_tail_start..];
+    if let Some(hand) = crate::word_claims::probe_only(|| {
+        action_tail.iter().rposition(|token| token.is_word("hand"))
+    }) && let Some(into) = crate::word_claims::probe_only(|| {
+        action_tail[..hand].iter().rposition(|token| token.is_word("into"))
+    }) {
+        crate::word_claims::claim_tokens(&action_tail[into..=hand]);
+    }
     if !kind {
         return Some(CardTypeIterationShape::All);
     }

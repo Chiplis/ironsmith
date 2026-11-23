@@ -303,9 +303,14 @@ fn parse_except_wall_blockers<'a>(input: &mut LexStream<'a>) -> WResult<Blocking
 }
 
 fn parse_color_set<'a>(input: &mut LexStream<'a>) -> WResult<ColorSet> {
-    let word = primitives::word_parser_text.parse_next(input)?;
-    leaf::parse_leaf_color_complete(word)
-        .map_err(|_| primitives::backtrack_err("blocker color", "Magic color word"))
+    let token: &'a OwnedLexToken = winnow::token::any.parse_next(input)?;
+    let mut one = LexStream::new(std::slice::from_ref(token));
+    let word = primitives::word_parser_text.parse_next(&mut one)?;
+    let colors = leaf::parse_leaf_color_complete(word)
+        .map_err(|_| primitives::backtrack_err("blocker color", "Magic color word"))?;
+    // The color word was read as the blocker color.
+    crate::word_claims::claim_tokens(std::slice::from_ref(token));
+    Ok(colors)
 }
 
 fn parse_creature_noun<'a>(input: &mut LexStream<'a>) -> WResult<()> {

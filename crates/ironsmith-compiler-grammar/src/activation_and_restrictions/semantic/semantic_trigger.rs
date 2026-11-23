@@ -695,6 +695,7 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
                 .ok_or_else(|| CardTextError::ParseError("missing attacking source".to_string()))?;
             let source_tokens = strip_leading_articles(&tokens[..attacking_token_idx]);
             let source_filter = parse_object_filter_lexed(&source_tokens, false)?;
+            crate::word_claims::claim_word(words[attacking_idx]);
             return Ok(TriggerSpec::AbilityTriggered {
                 another: false,
                 source_filter: Some(source_filter),
@@ -733,6 +734,7 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
             let source_tokens = strip_leading_articles(&tokens[..entering_token_idx]);
             let mut source_filter = parse_object_filter_lexed(&source_tokens, false)?;
             source_filter.controller = Some(PlayerFilter::Opponent);
+            crate::word_claims::claim_word(words[entering_idx]);
             return Ok(TriggerSpec::AbilityTriggered {
                 another: false,
                 source_filter: Some(source_filter),
@@ -942,7 +944,9 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
                         .map(|name| (start, name))
                 });
                 let filter_tokens = if using_teamwork {
-                    &filter_tokens[..filter_tokens.len().saturating_sub(2)]
+                    let split = filter_tokens.len().saturating_sub(2);
+                    crate::word_claims::claim_tokens(&filter_tokens[split..]);
+                    &filter_tokens[..split]
                 } else if let Some((start, _)) = &using_custom {
                     crate::word_claims::claim_tokens(&filter_tokens[*start..]);
                     &filter_tokens[..*start]
@@ -1787,6 +1791,8 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
                     });
                 }
                 if let Some(left) = combined {
+                    // The keyword-action arms, their separators and the "or".
+                    crate::word_claims::claim_tokens(&tokens[start..=or_idx]);
                     return Ok(TriggerSpec::Either(Box::new(left), Box::new(last_trigger)));
                 }
             }
@@ -2064,6 +2070,11 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
     }
 
     if trigger_pattern_accepts(&words, YOU_CAST_THIS_SPELL_TRIGGER_PATTERN) {
+        // "you cast this spell[ from ...]": the exact caster and event words.
+        if words.starts_with(&["you", "cast", "this", "spell"]) {
+            let spell_end = trigger_word_token_start(tokens, 4).unwrap_or(tokens.len());
+            crate::word_claims::claim_tokens(&tokens[..spell_end]);
+        }
         // "When you cast this spell from your hand" (Banish into Fable) and
         // "from anywhere other than exile" (Rory Williams) qualify the cast
         // event by the spell's origin zone.
@@ -2196,6 +2207,11 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
                 parse_shuffle_trigger_subject(&subject_words)
         {
             crate::word_claims::claim_tokens(&tokens[shuffle_idx..=shuffle_idx]);
+            // "a spell or ability causes its controller to": the cause
+            // subject, matched word for word.
+            if caused_by_effect {
+                crate::word_claims::claim_tokens(subject_tokens);
+            }
             return Ok(TriggerSpec::PlayerShufflesLibrary {
                 player,
                 caused_by_effect,
@@ -2439,6 +2455,7 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
             &words[..words.len() - 2],
         )?
     {
+        crate::word_claims::claim_words(&words[words.len() - 2..]);
         return Ok(TriggerSpec::AbilityActivated {
             activator: PlayerFilter::Any,
             filter,
@@ -3021,7 +3038,20 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
             && let Some((source_filter, mut other_filter)) =
                 parse_source_or_another_trigger_subject_filters(subject_tokens)
         {
+            // "<source> and/or one or more other <filter>": the connective,
+            // the batched quantifier and the other-than-source marker.
+            if let Some(start) = trigger_word_token_start(subject_tokens, shape.connector_word) {
+                let end = trigger_word_token_start(subject_tokens, shape.other_word + 1)
+                    .unwrap_or(subject_tokens.len());
+                crate::word_claims::claim_tokens(&subject_tokens[start..end]);
+            }
             other_filter.set_union_connective(crate::filter::ObjectFilterUnionConnective::AndOr);
+            // The "and/or" connective and "other" read into the source-or-
+            // other union.
+            crate::word_claims::claim_words(
+                &subject_words[shape.connector_word..shape.connector_word + shape.connector_words],
+            );
+            crate::word_claims::claim_word(subject_words[shape.other_word]);
             let cause_filter = if contains_window(&words, &["without", "being", "played"]) {
                 Some(crate::events::cause::CauseFilter::not_type(
                     crate::events::cause::CauseType::SpecialAction,
@@ -4680,6 +4710,8 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
         return Ok(trigger);
     }
     if words == ["you", "choose", "a", "creature", "as", "your", "ring", "bearer"] {
+        // An exact trigger surface.
+        crate::word_claims::claim_tokens(tokens);
         return Ok(TriggerSpec::RingBearerChosen(PlayerFilter::You));
     }
     if let Some(trigger) = control_transitions::parse_control_transition_trigger(tokens)? { return Ok(trigger); }
@@ -4710,6 +4742,7 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
             _ => None,
         });
         if let Some((source_kind, source_controller)) = source {
+            crate::word_claims::claim_words(&words);
             return Ok(TriggerSpec::PlayerBecomesTargeted { player: PlayerFilter::You, source_controller, source_kind });
         }
     }
@@ -4771,6 +4804,7 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
         words.as_slice(),
         ["a", "player", "chooses", "one", "or", "more", "targets"]
     ) {
+        crate::word_claims::claim_words(&words);
         return Ok(TriggerSpec::PlayerOrObjectBecomesTargetedBySourceController {
             player: PlayerFilter::Any,
             object: ObjectFilter::default(),
@@ -4801,6 +4835,7 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
     }
 
     if words.as_slice() == ["a", "spell", "or", "ability", "is", "put", "onto", "the", "stack"] {
+        crate::word_claims::claim_words(&words);
         return Ok(TriggerSpec::StackObjectAdded);
     }
 
@@ -4820,6 +4855,8 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
             let start = trigger_word_token_start(tokens, 3).unwrap_or(tokens.len());
             let end = trigger_word_token_start(tokens, index).unwrap_or(tokens.len());
             let object = parse_object_filter_lexed(&tokens[start..end], false)?;
+            crate::word_claims::claim_words(&words[..3]);
+            crate::word_claims::claim_words(&words[index..]);
             return Ok(TriggerSpec::PlayerOrObjectBecomesTargetedBySourceController {
                 player: PlayerFilter::excluding(PlayerFilter::Any, PlayerFilter::Any),
                 object,
@@ -4862,6 +4899,8 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
                     words.join(" ")
                 ))
             })?;
+            // "a player or": the player half of the participant union.
+            crate::word_claims::claim_words(&subject_words[..3]);
             return Ok(
                 TriggerSpec::PlayerOrObjectBecomesTargetedBySourceController {
                     player: PlayerFilter::Any,
@@ -5322,6 +5361,8 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
                 parse_filter_comparison_tokens("damage amount", &amount_words, &words)?
             && let Some((operator, threshold)) = damage_amount_comparison_operator(&amount)
         {
+            // The damage noun the threshold measures.
+            crate::word_claims::claim_tokens(&tokens[damage_idx..=damage_idx]);
             return Ok(TriggerSpec::ConditionQualified {
                 trigger: Box::new(TriggerSpec::ThisDealsDamage),
                 condition: crate::cards::builders::PredicateAst::ValueComparison {
@@ -5665,6 +5706,8 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
                     &tokens[draw_token_idx + 1..], false,
                 )
             {
+                // The draw verb; the drawn-card filter read the rest.
+                crate::word_claims::claim_words(&words[draw_word_idx..=draw_word_idx]);
                 return Ok(TriggerSpec::ConditionQualified {
                     trigger: Box::new(TriggerSpec::PlayerDrawsCard(player)),
                     condition: crate::cards::builders::PredicateAst::TaggedMatches(
@@ -5763,14 +5806,19 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
         let tail_view = ActivationRestrictionCompatWords::new(&tail_tokens);
         let tail_words = tail_view.to_word_refs();
         let from_source = trigger_pattern_accepts(&tail_words, THIS_WAY_REVEAL_TAIL_PATTERN);
+        let mut this_way_tokens = Vec::new();
         if from_source {
             let cutoff = trigger_word_token_start(&tail_tokens, tail_words.len().saturating_sub(2))
                 .unwrap_or(tail_tokens.len());
+            this_way_tokens = tail_tokens[cutoff..].to_vec();
             tail_tokens = trim_commas(&tail_tokens[..cutoff]);
         }
         if !tail_tokens.is_empty()
             && let Ok(mut filter) = parse_object_filter_lexed(&tail_tokens, false)
         {
+            // The reveal verb and its "this way" result tail.
+            crate::word_claims::claim_words(&words[reveal_word_idx..=reveal_word_idx]);
+            crate::word_claims::claim_tokens(&this_way_tokens);
             filter.zone = None;
             return Ok(TriggerSpec::PlayerRevealsCard {
                 player,
@@ -6071,6 +6119,7 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
         "color",
     ] = words.as_slice()
     {
+        crate::word_claims::claim_words(&words);
         return Ok(TriggerSpec::ConditionQualified {
             trigger: Box::new(TriggerSpec::PlayerAddsManaFromSource {
                 player: PlayerFilter::You,
@@ -6087,6 +6136,7 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
     if let [subject @ .., "solve" | "solves", "a", "case"] = words.as_slice()
         && let Some(player) = parse_trigger_subject_player_filter(subject)
     {
+        crate::word_claims::claim_words(&words[subject.len()..]);
         return Ok(TriggerSpec::KeywordAction {
             action: crate::events::KeywordActionKind::SolveCase,
             player,
@@ -6463,6 +6513,10 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
                         words.join(" ")
                     ))
                 })?;
+                // "becomes blocked by" and "with lesser power" were matched;
+                // each filter read itself.
+                crate::word_claims::claim_tokens(&tokens[subject_end..blocker_start]);
+                crate::word_claims::claim_tokens(&tokens[relative_tail_token..]);
                 return Ok(TriggerSpec::BecomesBlockedByObjectWithLesserPower { blocked, blocker });
             }
         }
@@ -6486,6 +6540,10 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
                             words.join(" ")
                         ))
                     })?;
+                // The block verb and "with lesser power" were matched; each
+                // filter read itself.
+                crate::word_claims::claim_tokens(&tokens[subject_end..blocked_start]);
+                crate::word_claims::claim_tokens(&tokens[relative_tail_token..]);
                 return Ok(TriggerSpec::BlocksObjectWithLesserPower { blocker, blocked });
             }
         }
@@ -6773,6 +6831,9 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
         if matches!(subject_words.first(), Some(&"this") | Some(&"it"))
             && let Some((count, filter)) = parse_attacks_player_who_controls_at_least_tail(tail)
         {
+            // "attacks a player who controls <n> or more lands", matched word
+            // for word (the subject read by its own reader).
+            crate::word_claims::claim_words(&words[attacks_word_idx..]);
             return Ok(TriggerSpec::ThisAttacksPlayerWhoControlsAtLeast { count, filter });
         }
     }
@@ -7371,10 +7432,18 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
             claim_step_phrase(words, &[&["upkeeps"], &["upkeep"]]);
             let upkeep =
                 TriggerSpec::BeginningOfUpkeep(parse_possessive_clause_player_filter(words));
+            // The ordinal (and "each turn") qualifying which upkeep, read as
+            // the condition below.
+            let claim_qualifier = |phrase: &[&str], qualifier: std::ops::Range<usize>| {
+                if let Some(at) = words.windows(phrase.len()).position(|window| window == phrase) {
+                    crate::word_claims::claim_words(&words[at + qualifier.start..at + qualifier.end]);
+                }
+            };
             // "at the beginning of enchanted player's first upkeep each turn"
             // (Paradox Haze): additional upkeep steps don't trigger it.
             if crate::word_primitives::sequence_occurs(words, &["first", "upkeep", "each", "turn"])
             {
+                claim_qualifier(&["first", "upkeep", "each", "turn"], 0..4);
                 Ok(TriggerSpec::ConditionQualified {
                     trigger: Box::new(upkeep),
                     condition: crate::cards::builders::PredicateAst::FirstUpkeepStepOfTurn,
@@ -7385,6 +7454,7 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
                 // "at the beginning of your first upkeep": the upkeep step of
                 // your first turn of the game, never a later or extra one.
                 use crate::cards::builders::PredicateAst;
+                claim_qualifier(&["your", "first", "upkeep"], 1..2);
                 Ok(TriggerSpec::ConditionQualified {
                     trigger: Box::new(upkeep),
                     condition: PredicateAst::And(
@@ -7400,6 +7470,7 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
         _ if trigger_pattern_accepts(words, BEGINNING_DRAW_STEP_TRIGGER_PATTERN) => {
             claim_definite_beginning(words);
             claim_step_phrase(words, &[&["draw", "steps"], &["draw", "step"]]);
+            claim_draw_step_possessor(words);
             Ok(TriggerSpec::BeginningOfDrawStep(parse_possessive_clause_player_filter(words)))
         }
         _ if trigger_pattern_accepts(words, BEGINNING_FIRST_MAIN_PHASE_TRIGGER_PATTERN) => {
@@ -7522,6 +7593,32 @@ fn claim_step_phrase(words: &[&str], phrases: &[&[&str]]) {
             crate::word_claims::claim_words(&words[start..start + phrase.len()]);
             return;
         }
+    }
+}
+
+/// "[the] beginning of each of your draw steps": the possessor between the
+/// beginning and the step names whose draw step it is.
+fn claim_draw_step_possessor(words: &[&str]) {
+    let Some(of) = words.iter().position(|word| *word == "of") else {
+        return;
+    };
+    let Some(draw) = words.iter().position(|word| *word == "draw") else {
+        return;
+    };
+    if draw <= of + 1 {
+        return;
+    }
+    let possessor = &words[of + 1..draw];
+    if matches!(
+        possessor,
+        ["your"]
+            | ["each", "of", "your"]
+            | ["each"]
+            | ["each", "player's" | "players" | "opponent's" | "opponents"]
+            | ["that", "player's" | "players"]
+            | ["enchanted", "player's" | "players"]
+    ) {
+        crate::word_claims::claim_words(possessor);
     }
 }
 

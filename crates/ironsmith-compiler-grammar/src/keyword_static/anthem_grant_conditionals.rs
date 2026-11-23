@@ -81,6 +81,8 @@ fn parse_attached_subject_controller_condition(
         Value::LifeTotal(PlayerFilter::IteratedPlayer) => Value::LifeTotal(controller),
         _ => return Ok(None),
     };
+    // "its controller", which the synthetic "that player" above stood for.
+    crate::word_claims::claim_tokens(&tokens[..=controller_idx]);
     Ok(Some(PredicateAst::ValueComparison {
         left,
         operator,
@@ -889,7 +891,11 @@ pub fn parse_matching_are_goaded_line(
             )
             .is_some()
         {
-            parse_object_filter(&subject[..with], false)?.with_power_less_than_source()
+            let filter =
+                parse_object_filter(&subject[..with], false)?.with_power_less_than_source();
+            // "with power less than <this source>'s power", read above.
+            crate::word_claims::claim_tokens(&subject[with..]);
+            filter
         } else {
             crate::grammar::filters::parse_object_filter_with_grammar_entrypoint_lexed(
                 subject, false,
@@ -899,6 +905,7 @@ pub fn parse_matching_are_goaded_line(
         crate::grammar::filters::parse_object_filter_with_grammar_entrypoint_lexed(subject, false)?
     };
     filter.zone = Some(Zone::Battlefield);
+    crate::word_claims::claim_tokens(&tokens[are..]);
     Ok(Some(
         crate::model::CompilerStaticAbilityCore::goad_matching(filter).into(),
     ))
@@ -2066,6 +2073,7 @@ fn parse_heterogeneous_granted_tail_remaining(
             crate::lexer::token_word_refs(&segment).as_slice(),
             ["lose" | "loses", "all", "other", "abilities"]
         ) {
+            crate::word_claims::claim_tokens(&segment);
             parsed.removes_all_other_abilities = true;
             continue;
         }
@@ -2331,7 +2339,7 @@ fn is_can_block_shadow_as_though_no_shadow_clause(tokens: &[OwnedLexToken]) -> b
     // "as though it had shadow" (the blocker) both grant exactly the
     // permission to block shadow creatures; neither form lets the blocker
     // lose the ability to block creatures without shadow.
-    matches!(
+    let matched = matches!(
         trim_edge_punctuation(tokens)
             .iter()
             .filter_map(|token| token.as_word().map(|_| token.parser_text()))
@@ -2352,7 +2360,12 @@ fn is_can_block_shadow_as_though_no_shadow_clause(tokens: &[OwnedLexToken]) -> b
         ] | [
             "can", "block", "creatures", "with", "shadow", "as", "though", "it", "had", "shadow"
         ]
-    )
+    );
+    // Both callers keep the permission when the whole clause matched.
+    if matched {
+        crate::word_claims::claim_tokens(tokens);
+    }
+    matched
 }
 
 /// Parse an attached-creature characteristic line whose final coordinated
@@ -2915,13 +2928,23 @@ fn lower_atomic_anthem_predicate(
             if let Some(condition) = &clause.condition { ability = ability.with_condition(condition.clone()); }
             return Some(ability.into());
         }
-        S::CantAttack => StaticAbility::cant_attack(),
-        S::MustBeBlocked => StaticAbility::restriction(
-            crate::effect::Restriction::must_be_blocked(ObjectFilter::source()),
-            "This creature must be blocked if able",
-        ),
+        S::CantAttack => {
+            crate::word_claims::claim_tokens(tokens);
+            StaticAbility::cant_attack()
+        }
+        S::MustBeBlocked => {
+            // The segment is exactly this requirement.
+            crate::word_claims::claim_tokens(tokens);
+            StaticAbility::restriction(
+                crate::effect::Restriction::must_be_blocked(ObjectFilter::source()),
+                "This creature must be blocked if able",
+            )
+        }
         S::MustBeBlockedBy { blocker_tokens } => {
             let blockers = parse_object_filter(blocker_tokens, false).ok()?;
+            // "must be blocked by a/an <blockers> if able": the frame around
+            // the blocker filter.
+            crate::object_filters::claim_outside(tokens, blocker_tokens);
             if !quoted {
                 return Some(filtered_block_requirement_for_subject(clause, blockers));
             }
@@ -2930,17 +2953,24 @@ fn lower_atomic_anthem_predicate(
                 format!("This creature must be blocked by a {} if able", crate::lexer::render_token_slice(blocker_tokens)),
             )
         },
-        S::AllMustBlock => StaticAbility::restriction(
-            crate::effect::Restriction::must_block_specific_attacker(
-                ObjectFilter::creature(),
-                ObjectFilter::source(),
-            ),
-            "All creatures able to block this creature do so",
-        ),
+        S::AllMustBlock => {
+            crate::word_claims::claim_tokens(tokens);
+            StaticAbility::restriction(
+                crate::effect::Restriction::must_block_specific_attacker(
+                    ObjectFilter::creature(),
+                    ObjectFilter::source(),
+                ),
+                "All creatures able to block this creature do so",
+            )
+        }
         S::AssignUsingToughness => {
+            crate::word_claims::claim_tokens(tokens);
             StaticAbility::this_creature_assigns_combat_damage_using_toughness()
         }
-        S::Goaded => return Some(goad_for_anthem_subject(clause)),
+        S::Goaded => {
+            crate::word_claims::claim_tokens(tokens);
+            return Some(goad_for_anthem_subject(clause));
+        }
         _ => return None,
     };
     Some(grant_for_anthem_subject(clause, ability))
@@ -4137,6 +4167,8 @@ pub fn parse_as_long_as_source_is_a_land_line(
         return Ok(None);
     }
     let condition = parse_static_condition_clause(&condition_tokens)?;
+    // "it's a land": the whole consequence matched above.
+    crate::word_claims::claim_tokens(&rest[comma + 1..]);
     Ok(Some(StaticAbilityAst::ConditionalStaticAbility {
         ability: Box::new(StaticAbilityAst::Static(StaticAbility::set_card_types(
             ObjectFilter::source(),

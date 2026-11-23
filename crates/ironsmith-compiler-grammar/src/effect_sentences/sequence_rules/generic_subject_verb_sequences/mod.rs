@@ -220,6 +220,36 @@ pub fn parse_each_player_shuffle_reveal_then_put_revealed_types_bottom(
     {
         return Ok(None);
     }
+    // Both sentences' fixed words around the two filters, when they say
+    // exactly that (Warp World).
+    {
+        fn words_of(tokens: &[crate::lexer::OwnedLexToken]) -> Vec<&str> {
+            crate::lexer::parser_token_word_refs(tokens)
+        }
+        let first = words_of(sentences[sentence_idx].lowered());
+        let second_tokens = sentences[sentence_idx + 1].lowered();
+        let second = words_of(second_tokens);
+        let f1 = words_of(shape.battlefield_filter_tokens);
+        let f2 = shape.extra_filter_tokens.map(words_of).unwrap_or_default();
+        let mut expected: Vec<&str> = vec!["each", "player", "puts", "all"];
+        expected.extend(&f1);
+        expected.extend(["revealed", "this", "way", "onto", "the", "battlefield", "then", "does", "the", "same", "for"]);
+        expected.extend(&f2);
+        expected.extend([
+            "then", "puts", "all", "cards", "revealed", "this", "way", "that", "werent", "put",
+            "onto", "the", "battlefield", "on", "the", "bottom", "of", "their", "library",
+        ]);
+        let first_exact = first.as_slice()
+            == [
+                "each", "player", "shuffles", "all", "permanents", "they", "own", "into", "their",
+                "library", "then", "reveals", "that", "many", "cards", "from", "the", "top", "of",
+                "their", "library",
+            ];
+        if !f2.is_empty() && second == expected && first_exact {
+            crate::word_claims::claim_tokens(sentences[sentence_idx].lowered());
+            crate::word_claims::claim_tokens(second_tokens);
+        }
+    }
     let revealed_tag = crate::tag::CompilerReferenceTag::EachPlayerRevealedThisWay.bind();
     let mut shuffled_filter = ObjectFilter::permanent_card();
     shuffled_filter.zone = Some(Zone::Battlefield);

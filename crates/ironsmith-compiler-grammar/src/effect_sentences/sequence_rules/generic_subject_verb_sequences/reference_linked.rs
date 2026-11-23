@@ -395,6 +395,10 @@ pub fn parse_participant_secret_object_choice_then_reveal_and_sacrifice(
     {
         return Ok(None);
     }
+    if second_words.len() == sacrifice_idx + 3 {
+        // "... that player sacrifices those <chosen objects>", matched exactly.
+        crate::word_claims::claim_tokens(second_tokens);
+    }
 
     let tag = helper_tag_for_tokens(first_tokens, "secret_choices");
     let mut sacrifice_filter = filter.clone();
@@ -510,6 +514,21 @@ pub fn parse_for_each_color_counter_choice_then_distinct_count(
         return Ok(None);
     }
     let consequence_effects = effect_sentences::parse_effect_sentences_lexed(&consequence)?;
+    // The per-color placement's fixed words, and the gate's when it
+    // restates them ("put +1/+1 counters on five Dragons this way").
+    crate::word_claims::claim_words(&words[..3]);
+    crate::word_claims::claim_words(&words[words.len() - 3..]);
+    crate::word_claims::claim_words(&body_words[..1]);
+    crate::word_claims::claim_words(&body_words[on..on + 2]);
+    let counter_word = body_words.get(on.saturating_sub(2)).copied();
+    let recipient_noun = body_words.get(on + 2).copied();
+    if let ([counter, "counters"], [noun]) =
+        (&second_words[3..second_on], &second_words[second_on + 2..this_way])
+        && Some(*counter) == counter_word
+        && recipient_noun.is_some_and(|recipient| noun.starts_with(recipient))
+    {
+        crate::word_claims::claim_words(&second_words[..this_way + 2]);
+    }
 
     let colors = [
         ("white", crate::color::ColorSet::WHITE),
@@ -611,6 +630,9 @@ pub fn parse_each_player_rolls_then_highest_result_attack_restriction(
         },
         _ => return Ok(None),
     };
+    // Both sentences matched word for word above.
+    crate::word_claims::claim_tokens(&first_tokens);
+    crate::word_claims::claim_tokens(&second_tokens);
     let tag = helper_tag_for_tokens(first.lowered(), "highest_roll_players");
     Ok(Some(vec![
         EffectAst::RollDieKeepHighestPlayers {
@@ -675,6 +697,9 @@ pub fn parse_token_copy_of_chosen_card_with_x_mana_value(
     if filter.exiled_with_cards_named.is_none() {
         return Ok(None);
     }
+    // The copy head and the X binding, matched word for word.
+    crate::word_claims::claim_tokens(&first_tokens[..filter_start]);
+    crate::word_claims::claim_tokens(&second_tokens);
     filter.mana_value = Some(crate::filter::Comparison::EqualExpr(Box::new(Value::X)));
     let copy = crate::lexer::synthetic_word_tokens(["create", "a", "token", "that's", "a", "copy", "of", "it"]);
     let mut effects = vec![EffectAst::ObjectChoices(ObjectChoiceEffectAst::ChooseObjects {
@@ -743,6 +768,10 @@ pub fn parse_each_player_secret_own_and_other_creature_then_destroy(
     let third_words = words_of(third);
     if third_words.as_slice() != ["destroy", "each", noun, "chosen", "this", "way"] {
         return Ok(None);
+    }
+    // All three sentences were matched word for word.
+    for sentence in [first, second, third] {
+        crate::word_claims::claim_tokens(sentence.lowered());
     }
     let own_tag = helper_tag_for_tokens(first.lowered(), "secret_own_choice");
     let other_tag = helper_tag_for_tokens(first.lowered(), "secret_other_choice");
@@ -1076,10 +1105,14 @@ pub fn parse_directional_adjacent_player_control_all(
     else {
         return Ok(None);
     };
-    let object_tokens = trim_commas(&gain_tokens[object_range]);
+    let object_tokens = trim_commas(&gain_tokens[object_range.clone()]);
     let Ok(filter) = parse_object_filter_lexed(&object_tokens, false) else {
         return Ok(None);
     };
+    // The choice and the frame around the object filter, read word for word.
+    crate::word_claims::claim_tokens(choice.lowered());
+    crate::word_claims::claim_tokens(&gain_tokens[..object_range.start]);
+    crate::word_claims::claim_tokens(&gain_tokens[object_range.end..]);
     Ok(Some(vec![
         EffectAst::subject_verb_choose_named_option(
             PlayerAst::You,
@@ -1131,9 +1164,13 @@ pub fn parse_fixed_direction_adjacent_player_control(
     let Some(object_range) = view.token_span_for_words(PREFIX.len() + 1, object_end) else {
         return Ok(None);
     };
-    let Ok(filter) = parse_object_filter_lexed(&trim_commas(&tokens[object_range]), false) else {
+    let Ok(filter) = parse_object_filter_lexed(&trim_commas(&tokens[object_range.clone()]), false) else {
         return Ok(None);
     };
+    // The frame around the object filter (its article, the choice and the
+    // neighbour), read word for word above.
+    crate::word_claims::claim_tokens(&tokens[..object_range.start]);
+    crate::word_claims::claim_tokens(&tokens[object_range.end..]);
     Ok(Some(EffectAst::DirectionalAdjacentPlayerControl {
         filter,
         left_option: "left".to_string(),
@@ -1779,6 +1816,10 @@ pub fn parse_choose_same_controller_targets_then_sacrifice_one_return_other(
     let other_counter = if returns_other { None } else { put_counter_on_other_counter_type(third) };
     if !returns_other && other_counter.is_none() {
         return Ok(None);
+    }
+    if other_counter.is_some() {
+        // "put a <kind> counter on the other", matched word for word.
+        crate::word_claims::claim_tokens(third);
     }
 
     let mut other_filter = ObjectFilter::tagged(target_set_tag);

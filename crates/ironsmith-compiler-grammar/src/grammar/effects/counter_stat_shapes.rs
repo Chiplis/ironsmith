@@ -287,12 +287,15 @@ pub fn parse_reveal_reference(tokens: &[OwnedLexToken]) -> Option<RevealReferenc
         &["the", "chosen", "cards"],
     ];
     if parse_exact(&words, TAGGED).is_some() {
+        crate::word_claims::claim_words(&words);
         return Some(RevealReferenceShape::Tagged);
     }
     if let ["the" | "that", descriptor, "card"] = words.as_slice()
         && (crate::util::parse_card_type(descriptor).is_some()
             || crate::util::parse_subtype_word(descriptor).is_some())
     {
+        // "the Aura card": the typed anaphor, read whole.
+        crate::word_claims::claim_words(&words);
         return Some(RevealReferenceShape::Tagged);
     }
     if find_all_words(&words, &["from", "among"]).is_some()

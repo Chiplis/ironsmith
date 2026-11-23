@@ -66,11 +66,12 @@ pub(crate) fn read(sentences: &[&[OwnedLexToken]]) -> Result<Option<Vec<EffectAs
     if exiling_actor(&parser_token_word_refs(exile)).is_none() {
         return Ok(None);
     }
-    let Some((actor, free)) =
-        other_pool_cast(&parser_token_word_refs(crate::util::trim_edge_punctuation_tokens(cast)))
-    else {
+    let cast_words = parser_token_word_refs(crate::util::trim_edge_punctuation_tokens(cast));
+    let Some((actor, free)) = other_pool_cast(&cast_words) else {
         return Ok(None);
     };
+    // The cast sentence was matched word for word.
+    crate::word_claims::claim_words(&cast_words);
     let mut exile_effects = super::parse_effect_chain(exile)?;
     let [exile_effect] = exile_effects.as_mut_slice() else {
         return Ok(None);

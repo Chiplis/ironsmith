@@ -234,6 +234,8 @@ fn next_cast_spell_or_x_cost_ability_trigger_from_core(
     }
     let mut ability_filter = ObjectFilter::default();
     ability_filter.has_x_in_cost = true;
+    // "or activate an ability with {X} in its activation cost": the ability arm.
+    crate::word_claims::claim_tokens(&tokens[or_idx..]);
     Some(TriggerSpec::Either(
         Box::new(spell),
         Box::new(TriggerSpec::AbilityActivated {
@@ -594,6 +596,8 @@ pub fn parse_next_activation_with_mana_spent_delayed_sentence(
         },
         None => activated,
     };
+    // The trigger head before the comma was matched word for word above.
+    crate::word_claims::claim_tokens(&trimmed[..comma]);
     Ok(Some(vec![EffectAst::Delayed(DelayedEffectAst::DelayedTriggerThisTurn {
         trigger,
         effects: delayed_effects,

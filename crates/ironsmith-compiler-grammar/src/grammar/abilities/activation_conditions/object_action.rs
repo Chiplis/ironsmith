@@ -46,6 +46,9 @@ pub(super) fn parse_controlled_creature_power_condition(
     // "a creature with power 4 or greater": the "with" joining the creature
     // to its power comparison (a matching word test reads it).
     let _ = tokens.iter().any(|token| token.is_word("with"));
+    // The compared characteristic: the tail the comparison reads is a
+    // rewritten copy, so the authored "power" is claimed here.
+    let _ = tokens.iter().any(|token| token.is_word("power"));
     Some(PredicateAst::YouControl(
         ObjectFilter::creature().with_power(comparison),
     ))

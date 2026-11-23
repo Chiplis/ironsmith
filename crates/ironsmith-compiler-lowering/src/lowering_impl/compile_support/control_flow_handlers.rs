@@ -1124,6 +1124,9 @@ pub fn effect_predicate_from_if_result(predicate: IfResultPredicate) -> EffectPr
         IfResultPredicate::ExcessDamageDealtToCreature => {
             EffectPredicate::ExcessDamageDealtToCreature
         }
+        IfResultPredicate::ExcessDamageDealtToObjectMatching(filter) => {
+            EffectPredicate::ExcessDamageDealtToObjectMatching(filter)
+        }
         IfResultPredicate::DealtDamageToPlayer => EffectPredicate::DealtDamageToPlayer,
         IfResultPredicate::ExcessDamageRedirected => EffectPredicate::ExcessDamageRedirected,
         IfResultPredicate::AffectedObjectMatchesCardType { card_type, negated } => {

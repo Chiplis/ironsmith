@@ -85,6 +85,10 @@ pub(crate) fn read(sentences: &[&[OwnedLexToken]]) -> Result<Option<Vec<EffectAs
     let Some((guesser, compared)) = compared_value(guess) else {
         return Ok(None);
     };
+    // Every statement was read word for word above.
+    for sentence in [choose, guess, wrong].into_iter().chain(fallback) {
+        crate::word_claims::claim_tokens(sentence);
+    }
     let chosen = crate::util::helper_tag_for_tokens(choose, "guessed_card");
     let mut hand_card = ObjectFilter::default().in_zone(Zone::Hand);
     hand_card.owner = Some(PlayerFilter::You);

@@ -140,6 +140,8 @@ pub(super) fn read(
     let Some((count, filters)) = read_look_and_reveal(look.lowered())? else {
         return Ok(None);
     };
+    // Both statements were read word for word above.
+    super::claim_sentences([look, dispose]);
     let looked = helper_tag_for_tokens(look.lowered(), "each_player_looked");
     let chosen = helper_tag_for_tokens(dispose.lowered(), "each_player_revealed");
     let mut effects = vec![EffectAst::subject_verb_player_looks_at_own_top_cards(

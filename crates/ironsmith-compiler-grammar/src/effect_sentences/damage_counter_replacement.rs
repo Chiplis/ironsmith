@@ -85,6 +85,8 @@ pub(crate) fn parse(tokens: &[OwnedLexToken]) -> Result<Option<EffectAst>, CardT
     else {
         return Ok(None);
     };
+    // The counter kind was read from lowercase copies; claim its tokens.
+    let counter_tokens = &tokens[words[pos].0..=words[pos + counter_offset].0];
     pos += counter_offset + 1;
     let Some(object_start) = eat(&words, pos, &[&["from"]]) else {
         return Ok(None);
@@ -99,6 +101,7 @@ pub(crate) fn parse(tokens: &[OwnedLexToken]) -> Result<Option<EffectAst>, CardT
         &tokens[object_words[0].0..*instead_index],
     );
     let object = crate::util::parse_target_phrase(object_tokens)?;
+    crate::word_claims::claim_tokens(counter_tokens);
     Ok(Some(EffectAst::RegisterDamageCounterReplacement {
         player: PlayerFilter::You,
         counter_type,

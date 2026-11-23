@@ -328,7 +328,7 @@ pub fn parse_token_definition_shape_tokens(
             snow: reads("snow"),
             colorless: reads("colorless"),
             colors: token_colors(&words),
-            equipment_rules: equipment::parse_equipment_rules_tokens(&legacy_tokens),
+            equipment_rules: equipment::parse_equipment_rules_tokens(&legacy_tokens, named_card.as_deref()),
             token_rules,
             leaves_damage_any_target: leaves_damage,
             keywords: token_keywords(&outer_words),

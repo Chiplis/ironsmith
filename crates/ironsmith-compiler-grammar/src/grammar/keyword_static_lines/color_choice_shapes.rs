@@ -50,6 +50,17 @@ pub fn parse_source_is_chosen_color_tokens(
 }
 
 fn parse_pregame_choose_color_lexed<'a>(input: &mut LexStream<'a>) -> WResult<()> {
+    // "If <this card> is your commander, choose a color before the game
+    // begins." The commander condition is read; the source reference itself
+    // is claimed by preprocessing.
+    opt((
+        primitives::kw("if"),
+        repeat_till::<_, _, (), _, _, _, _>(1.., any.void(), peek(primitives::kw("is"))),
+        primitives::kw("is"),
+        primitives::phrase(&["your", "commander"]),
+        opt(primitives::comma()),
+    ))
+    .parse_next(input)?;
     repeat_till::<_, _, (), _, _, _, _>(0.., any.void(), peek(primitives::kw("choose")))
         .void()
         .parse_next(input)?;

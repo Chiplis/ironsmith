@@ -10,7 +10,7 @@ pub(super) fn pre_rule_exile_this_way_followup(
         return Ok(None);
     }
 
-    let Some((_before, after)) =
+    let Some((before, after)) =
         grammar::split_lexed_once_on_delimiter(sentence_tokens, TokenKind::Comma)
     else {
         return Err(CardTextError::ParseError(format!(
@@ -19,6 +19,11 @@ pub(super) fn pre_rule_exile_this_way_followup(
         )));
     };
 
+    // "If a card is put into exile this way": the result gate the prefix
+    // test matched.
+    if LexedClause::new(before).word_refs().len() <= 9 {
+        crate::word_claims::claim_tokens(before);
+    }
     let mut plan = SentenceParsePlan::new(trim_commas(after).to_vec());
     plan.wrap_if_result = Some(IfResultPredicate::Did);
     Ok(Some(PreParseFollowupResult::Plan(plan)))

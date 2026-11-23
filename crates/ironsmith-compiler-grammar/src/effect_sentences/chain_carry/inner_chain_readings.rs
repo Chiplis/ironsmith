@@ -299,8 +299,10 @@ pub(super) fn read(input: &InnerChain<'_>) -> ParseOutcome<RuleMatch<Vec<EffectA
     // Equal readings from two rules are one reading.
     let mut distinct: Vec<RegistryCandidate<Vec<EffectAst>>> = Vec::new();
     for candidate in candidates {
-        if !distinct.iter().any(|kept| kept.value == candidate.value) {
-            distinct.push(candidate);
+        match distinct.iter_mut().find(|kept| kept.value == candidate.value) {
+            // Both rules read the same meaning; either one's words are read.
+            Some(kept) => kept.claims.extend(&candidate.claims),
+            None => distinct.push(candidate),
         }
     }
     if distinct.len() > 1 {
@@ -703,9 +705,19 @@ fn read_source_exiled_bottom_random(
                 token.is_word("put") || token.is_word("puts")
             })
             .unwrap_or(0);
+            // "Then they put all cards exiled with ...": the authored
+            // putting player, the trigger's player.
+            let subject_words = crate::lexer::parser_token_word_refs(&action_tokens[..verb_index]);
+            let subject = match subject_words.as_slice() {
+                ["they"] | ["that", "player"] => {
+                    crate::word_claims::claim_tokens(&action_tokens[..verb_index]);
+                    Some(crate::host::SubjectAst::Player(crate::cards::builders::PlayerAst::That))
+                }
+                _ => None,
+            };
             let effect = super::super::verb_handlers::parse_put_into_hand(
                 &action_tokens[verb_index..],
-                None,
+                subject,
             )?
             .with_exiled_with_source_surface(Some(surface));
             return Ok(Some(vec![effect]));
@@ -814,6 +826,8 @@ fn empty_handed_participant_as_conditional_loop(
     if tokens[..rest_word].iter().any(|token| token.as_word().is_none()) {
         return None;
     }
+    // The quantified subject and its hand-size qualifier, replaced below.
+    crate::word_claims::claim_tokens(&tokens[..rest_word]);
     let mut body = crate::lexer::synthetic_word_tokens(["that", "player"]);
     body.extend_from_slice(&tokens[rest_word..]);
     Some((opponents, body))

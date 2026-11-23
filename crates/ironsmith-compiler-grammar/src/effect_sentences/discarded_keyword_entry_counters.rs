@@ -102,6 +102,12 @@ pub(super) fn bind_discarded_keyword_entry_counter(
     let Some(tag) = discarded_tag(effects, sentence) else {
         return false;
     };
+    // "a card discarded this way has <keyword>": the condition, whose
+    // keyword is re-read above as a synthetic filter.
+    let trimmed = crate::util::trim_edge_punctuation_tokens(sentence);
+    if let Some(if_idx) = trimmed.iter().position(|token| token.is_word("if")) {
+        crate::word_claims::claim_tokens(&trimmed[if_idx..]);
+    }
     effects.push(EffectAst::Conditionals(ConditionalEffectAst::Conditional {
         predicate: PredicateAst::TaggedMatches(tag, has_keyword),
         if_true: vec![EffectAst::subject_verb_put_counters(

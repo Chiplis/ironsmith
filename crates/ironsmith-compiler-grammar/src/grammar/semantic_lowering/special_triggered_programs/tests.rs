@@ -28,12 +28,6 @@ fn parses_all_special_triggered_programs() {
     );
     assert_eq!(
         parse(
-            "At the beginning of each player's upkeep, that player chooses target player who controls more creatures than they do. Reveal cards from the top of their library until they reveal a creature card. That player puts that card onto the battlefield."
-        ),
-        Some(SpecialTriggeredProgram::OpponentCreatureMajorityConsult)
-    );
-    assert_eq!(
-        parse(
             "At the beginning of each player's upkeep, that player chooses target player who controls more creatures than they do and is their opponent. The first player may reveal cards from the top of their library until they reveal a creature card. If the first player does, that player puts that card onto the battlefield and all other cards revealed this way into their graveyard."
         ),
         Some(SpecialTriggeredProgram::OpponentCreatureMajorityConsult)
@@ -52,7 +46,7 @@ fn parses_all_special_triggered_programs() {
     );
     assert_eq!(
         parse(
-            "At the beginning of each player's upkeep, that player chooses target player whose graveyard has fewer creature cards than their graveyard. Return a creature card from their graveyard to their hand."
+            "At the beginning of each player's upkeep, that player chooses target player whose graveyard has fewer creature cards in it than their graveyard does and is their opponent. The first player may return a creature card from their graveyard to their hand."
         ),
         Some(SpecialTriggeredProgram::OpponentGraveyardMinorityReturn)
     );

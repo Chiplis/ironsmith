@@ -164,6 +164,11 @@ fn parse_borrowed_static_variant_chain(
         .trim_end_matches('.')
         .to_string();
     let trailing = oracle_list(phrases.get(1..)?)?;
+    // Every sentence's condition was parsed to the common filter and its
+    // consequence to a borrowed keyword, with all other words identical.
+    for sentence in sentences {
+        crate::word_claims::claim_tokens(sentence);
+    }
     let display = format!("{first_sentence}. The same is true for {trailing}.");
     Some(vec![StaticAbilityAst::Static(
         StaticAbility::copy_static_ability_variants(

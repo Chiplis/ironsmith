@@ -131,6 +131,36 @@ pub fn split_search_named_item_filters_lexed(
     }))
 }
 
+/// "Count the colors of the sacrificed creature, then search your library
+/// for a creature card that's exactly that many colors plus one" (Evolving
+/// Door): counting performs no action. The search's "that many colors" reads
+/// the counted object's colors through its "it" reference, so the counting
+/// prelude is read here, exactly, and only before that search phrase.
+pub fn search_library_counted_colors_prelude_lexed(
+    subject_tokens: &[OwnedLexToken],
+    search_tokens: &[OwnedLexToken],
+) -> bool {
+    let words = parser_token_word_refs(subject_tokens);
+    let Some(object) = words
+        .strip_prefix(&["count", "the", "colors", "of"][..])
+        .and_then(|rest| rest.strip_suffix(&["then"][..]))
+    else {
+        return false;
+    };
+    if !matches!(object, ["the", "sacrificed", _] | ["that", _] | ["it"]) {
+        return false;
+    }
+    let search_words = parser_token_word_refs(search_tokens);
+    if !search_words
+        .windows(3)
+        .any(|window| window == ["that", "many", "colors"])
+    {
+        return false;
+    }
+    crate::word_claims::claim_tokens(subject_tokens);
+    true
+}
+
 pub fn parse_search_library_leading_effect_prelude_lexed<'a>(
     subject_tokens: &'a [OwnedLexToken],
     subject_starts_effect_lexed: fn(&[OwnedLexToken]) -> bool,
@@ -206,6 +236,19 @@ pub fn search_library_put_position_from_top_words(words: &[&str]) -> Option<Valu
                 .iter()
                 .any(|word| matches!(*word, "put" | "puts"))
         {
+            // "<ordinal> from the top": the library position.
+            crate::word_claims::claim_words(&words[idx..idx + used + FROM_THE_TOP_PREFIX.len()]);
+            // "put that card <ordinal> ...": the found card the put moves.
+            let head = &words[..idx];
+            for reference in [&["that", "card"][..], &["the", "card"], &["it"]] {
+                if let Some(verb) = head.len().checked_sub(reference.len() + 1)
+                    && head.ends_with(reference)
+                    && matches!(head[verb], "put" | "puts")
+                {
+                    crate::word_claims::claim_words(&head[verb..]);
+                    break;
+                }
+            }
             return Some(Value::Fixed(position as i32));
         }
         idx += 1;

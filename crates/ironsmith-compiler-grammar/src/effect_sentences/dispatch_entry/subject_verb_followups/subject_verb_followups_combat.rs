@@ -54,6 +54,10 @@ pub(super) fn pre_rule_damage_amount_replacement(
     // names a fresh object.
     let definite_previous_source =
         shape.definite_source && matches!(&source, TargetAst::Object(_, Some(_), _));
+    // The definite description is read as that prior target.
+    if definite_previous_source {
+        crate::word_claims::claim_tokens(shape.source_tokens);
+    }
     if !shape.repeats_source
         && !definite_previous_source
         && !matches!(&source, TargetAst::Source(_))
@@ -289,7 +293,19 @@ pub(super) fn consult_match_quality_predicate(
     {
         return None;
     }
+    // "the revealed land card": the descriptors restate the card type the
+    // reveal stopped on, so each must read as a type word.
+    let descriptors_read = tokens[3..verb - 1].iter().all(|token| {
+        token.as_word().is_some_and(|word| {
+            crate::util::parse_card_type(word).is_some()
+                || crate::util::parse_subtype_word(word).is_some()
+        })
+    });
+    if !descriptors_read {
+        return None;
+    }
     let match_tag = last_reveal_consult_match_tag(effects)?;
+    crate::word_claims::claim_tokens(&tokens[3..verb - 1]);
     let mut rewritten = vec![
         tokens[0].clone(),
         OwnedLexToken::word("it", tokens[1].span),
@@ -463,6 +479,11 @@ pub(super) fn pre_rule_damage_recipient_choice_instead(
     if have + 2 >= words.len() - TAIL.len() || have == filter_start {
         return Ok(None);
     }
+    // The named damage source is this spell itself, the previous
+    // instruction's source checked below.
+    if !crate::util::is_source_reference_words(&words[have + 2..words.len() - TAIL.len()]) {
+        return Ok(None);
+    }
     let Some(previous) = state.effects.last() else {
         return Ok(None);
     };
@@ -530,6 +551,13 @@ pub(super) fn pre_rule_damage_recipient_choice_instead(
         if_false: vec![original],
     }));
     *state.carried_context = None;
+    // Everything outside the chosen-creature filter matched exactly above.
+    if let Some(head) = view.token_span_for_words(0, filter_start) {
+        crate::word_claims::claim_tokens(&tokens[head]);
+    }
+    if let Some(tail) = view.token_span_for_words(have, words.len()) {
+        crate::word_claims::claim_tokens(&tokens[tail]);
+    }
     Ok(Some(PreParseFollowupResult::Handled {
         consumed_sentences: 1,
         route: Some("subject-verb verb=Deal subject=source recognizer=damage-recipient-choice-instead"),

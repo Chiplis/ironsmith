@@ -393,6 +393,23 @@ pub fn parse_leaf_conditional_duration_prefix_tokens<'a>(
     if conditional_duration_kind_body(prefix) != Some(duration) {
         return None;
     }
+    // "[for] as long as <this source> remains on the battlefield / tapped":
+    // the exact source-remains condition is read whole.
+    let prefix_words = super::super::super::lexer::parser_token_word_refs(prefix);
+    let after_as = match prefix_words.as_slice() {
+        ["for", "as", "long", "as", rest @ ..] | ["as", "long", "as", rest @ ..] => rest,
+        _ => &[][..],
+    };
+    let source_words = match (duration, after_as) {
+        (LeafConditionalDurationKind::SourceRemainsOnBattlefield, [source @ .., "remains", "on", "the", "battlefield"])
+        | (LeafConditionalDurationKind::SourceRemainsTapped, [source @ .., "remains", "tapped"]) => Some(source),
+        _ => None,
+    };
+    if source_words.is_some_and(|source| {
+        super::source_references::parse_leaf_this_source_reference_words(source).is_some()
+    }) {
+        ironsmith_compiler_syntax::word_claims::claim_tokens(prefix);
+    }
     let rest = tokens.get(condition_end..)?;
     Some(LeafDurationPrefix { duration, rest })
 }

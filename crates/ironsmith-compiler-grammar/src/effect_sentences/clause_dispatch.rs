@@ -1272,6 +1272,13 @@ pub(crate) fn parse_get_pump_clause_with_bound_values(
                 .filter_map(OwnedLexToken::as_word)
                 .any(|word| word == "those")
         {
+            // "Each of those creatures": the chosen creatures, read as the
+            // iterated tagged set. Claimed only when the subject is exactly that.
+            if crate::lexer::parser_token_word_refs(subject_shape.subject_tokens)
+                == ["each", "of", "those", "creatures"]
+            {
+                crate::word_claims::claim_tokens(subject_shape.subject_tokens);
+            }
             return Ok(Some(EffectAst::ForEach(ForEachEffectAst::ForEachTagged {
                 tag: crate::tag::CompilerReferenceTag::It.bind(),
                 effects: vec![EffectAst::subject_verb_pump_for_each(

@@ -26,6 +26,7 @@ pub(super) fn parse(tokens: &[OwnedLexToken]) -> Result<Option<EffectAst>, CardT
     if !names_source {
         return Ok(None);
     }
+    crate::word_claims::claim_tokens(tokens);
     Ok(Some(EffectAst::RerollStoredDieResults(
         ironsmith_core::RerollStoredDieResultsEffect::new(crate::target::PlayerFilter::You),
     )))

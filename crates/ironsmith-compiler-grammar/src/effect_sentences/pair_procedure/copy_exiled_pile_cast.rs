@@ -67,6 +67,10 @@ pub(super) fn read(
         return Ok(None);
     };
     filter.zone = Some(Zone::Exile);
+    // The procedure committed: the copier frame before the filter and the
+    // whole cast sentence were matched word for word.
+    crate::word_claims::claim_tokens(&tokens[..filter_start]);
+    claim_sentences([second]);
     Ok(Some(vec![EffectAst::ForEach(ForEachEffectAst::ForEachObject {
         filter,
         effects: vec![EffectAst::Permissions(PermissionEffectAst::MayByPlayer {

@@ -365,6 +365,7 @@ pub fn parse_attach(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextError
                 // "attach a Curse attached to you to one of your opponents"
                 // (Lynde, Cheerful Tormentor): an untargeted opponent chosen
                 // as the effect resolves.
+                crate::word_claims::claim_tokens(target_tokens);
                 TargetAst::Player(crate::target::PlayerFilter::Opponent, None)
             } else if let Some(player) = match crate::lexer::token_word_refs(target_tokens).as_slice() {
                 ["an", "opponent", "of", "your", "choice"] | ["opponent", "of", "your", "choice"] => {
@@ -1037,10 +1038,13 @@ fn parse_divided_damage_equal_to_amount(
         )));
     }
     let target = parse_divided_damage_target(shape.target_tokens)?;
-    let chooser = if crate::word_primitives::sequence_occurs(
-        &crate::lexer::token_word_refs(shape.target_tokens),
-        &["as", "its", "controller", "chooses"],
-    ) {
+    let chooser_phrase = crate::grammar::primitives::find_prefix(shape.target_tokens, || {
+        crate::grammar::primitives::phrase(&["as", "its", "controller", "chooses"])
+    });
+    let chooser = if let Some((start, _, rest)) = chooser_phrase {
+        // "as its controller chooses": the target's controller divides it.
+        let end = shape.target_tokens.len() - rest.len();
+        crate::word_claims::claim_tokens(&shape.target_tokens[start..end]);
         PlayerFilter::ControllerOf(crate::target::ObjectRef::Target)
     } else {
         PlayerFilter::You

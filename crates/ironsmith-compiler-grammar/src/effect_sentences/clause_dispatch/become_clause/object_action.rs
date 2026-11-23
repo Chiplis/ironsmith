@@ -426,6 +426,10 @@ pub fn parse_become_clause(
                 ))
             })?;
         claim_life_total_noun(subject_tokens);
+        // "up to one target player's", when it is the whole possessor.
+        if raw_subject_words.len() == 7 && raw_subject_words[5..] == ["life", "total"] {
+            crate::word_claims::claim_words(&raw_subject_words[..5]);
+        }
         return Ok(EffectAst::Sequence {
             effects: vec![
                 EffectAst::subject_verb_target_only(TargetAst::WithCount(
@@ -585,6 +589,7 @@ pub fn parse_become_clause(
     // decision (a chosen color or the color of mana just added). Reference
     // resolution binds the producer; an unbound reading fails in lowering.
     if become_words == ["that", "color"] {
+        crate::word_claims::claim_tokens(become_body_tokens);
         return Ok(EffectAst::subject_verb_become_that_color(target, duration));
     }
 
@@ -663,6 +668,20 @@ pub fn parse_become_clause(
             let retain_source_colors = copy_exception
                 .as_ref()
                 .is_some_and(|exception| exception.retain_source_colors);
+            // "becomes a copy of <source>": the verb and the copy head before
+            // the source the target reader read.
+            if let Some(source_first) = source_tokens.first()
+                && let Some(source_at) =
+                    rest_tokens.iter().position(|token| token.span == source_first.span)
+                && let Some(verb_at) = rest_tokens[..source_at]
+                    .iter()
+                    .rposition(|token| matches!(token.parser_text(), "becomes" | "become"))
+                && crate::lexer::parser_token_word_refs(&rest_tokens[verb_at + 1..source_at])
+                    .as_slice()
+                    == ["a", "copy", "of"]
+            {
+                crate::word_claims::claim_tokens(&rest_tokens[verb_at..source_at]);
+            }
             return Ok(EffectAst::subject_verb_become_copy(
                 target,
                 source,
@@ -925,6 +944,8 @@ pub fn parse_become_clause(
                         .collect::<Option<Vec<_>>>()
                     && !subtypes.is_empty()
                 {
+                    // The whole suffix is the subtype removal read above.
+                    crate::word_claims::claim_tokens(suffix_tokens);
                     removed_subtypes = subtypes;
                     suffix_tokens = &[];
                 }

@@ -1292,6 +1292,10 @@ fn parse_filtered_graveyard_cast_additional_cost_permission(
     let Some(costs) = parse_graveyard_cast_additional_cost_tokens(cost_tokens)? else {
         return Ok(None);
     };
+    // The frame around the subject and the cost, matched word for word.
+    crate::word_claims::claim_words(&words[..3]);
+    crate::word_claims::claim_words(&words[from..from + 4]);
+    crate::word_claims::claim_words(&words[cost_end..]);
     Ok(Some(PermissionClauseSpec::GrantBySpec {
         player: PlayerAst::You,
         spec: crate::model::CompilerGrantSpecCore::new(
@@ -1357,6 +1361,8 @@ fn parse_this_turn_exiled_counter_card_play(tokens: &[OwnedLexToken]) -> Option<
     }
     let counter_tokens = &tokens[HEAD.len() + 1..tokens.len() - TAIL.len()];
     let counter_type = crate::grammar::filters::parse_counter_type_from_tokens(counter_tokens)?;
+    // The fixed head and tail around the counter kind, matched above.
+    crate::word_claims::claim_tokens(tokens);
     let filter = ObjectFilter::default()
         .in_zone(Zone::Exile)
         .with_counter_type(counter_type);
@@ -1492,6 +1498,8 @@ pub fn parse_permission_clause_spec_lexed(
             if let Some(mut filter) =
                 permission_subject_facts::parse_permission_subject_filter_tokens(condition_tokens)?
             {
+                // "if it's" / "if it is": the condition's subject and copula.
+                crate::word_claims::claim_tokens(&tail[..skip.saturating_sub(1)]);
                 filter.zone = None;
                 return Ok(Some(PermissionClauseSpec::Tagged {
                     tag: target.tag,
@@ -2006,6 +2014,7 @@ pub fn parse_permission_clause_spec_lexed(
                 "a", "card", "you", "own", "from", "outside", "the", "game", "this", "turn",
             ]
     {
+        crate::word_claims::claim_tokens(rest_tokens);
         return Ok(Some(PermissionClauseSpec::GrantBySpec {
             player,
             spec: crate::model::CompilerGrantSpecCore::new(
@@ -2623,6 +2632,7 @@ fn parse_cast_with_tagged_mana_value_limit_clause_impl(
             "cost"
         ]
     ) {
+        crate::word_claims::claim_tokens(rest_tokens);
         let mut filter = ObjectFilter::nonland()
             .owned_by(crate::target::PlayerFilter::You)
             .match_tagged(
@@ -2813,6 +2823,10 @@ fn parse_mandatory_tagged_free_cast(tokens: &[OwnedLexToken]) -> Option<EffectAs
         [] if !requires_if_able => {}
         _ => return None,
     }
+    // The lead and the free-cast tail, matched word for word; the target
+    // reads its own.
+    crate::word_claims::claim_tokens(&trimmed[..lead_len]);
+    crate::word_claims::claim_words(&rest_words);
     Some(EffectAst::subject_verb_cast_tagged(
         crate::tag::TagRef::of(target.tag),
         player,
@@ -2990,6 +3004,7 @@ pub fn parse_cast_or_play_tagged_clause(
             "exiled", "this", "way", "without", "paying", "their", "mana", "costs"
         ]
     ) {
+        crate::word_claims::claim_tokens(tokens);
         let filter = ObjectFilter::default().in_zone(Zone::Exile).match_tagged(
             crate::tag::CompilerReferenceTag::It.bind(),
             TaggedOpbjectRelation::IsTaggedObject,
@@ -3769,7 +3784,12 @@ pub fn parse_forage_cast_permission(
                 Value::Fixed(1),
             ),
         );
+        // The rider's fixed words; the counter type reads its own.
+        crate::word_claims::claim_words(&rider[..head.len()]);
+        crate::word_claims::claim_words(&words[words.len() - 2..]);
     }
+    // The permission matched word for word.
+    crate::word_claims::claim_words(&words[..prefix.len()]);
     Ok(Some(EffectAst::subject_verb_grant_by_spec(
         spec,
         PlayerAst::You,
@@ -3838,6 +3858,7 @@ pub(crate) fn parse_independent_recent_graveyard_permissions(
     {
         return None;
     }
+    crate::word_claims::claim_tokens(&tokens);
     Some(
         [true, false]
             .into_iter()

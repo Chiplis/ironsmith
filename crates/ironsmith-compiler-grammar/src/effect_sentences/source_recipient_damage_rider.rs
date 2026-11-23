@@ -58,6 +58,9 @@ fn rider(sentence: &[OwnedLexToken]) -> Result<Option<Restriction>, CardTextErro
     }
     let mut sources = ObjectFilter::source();
     sources.source_surface = crate::util::source_reference_surface_for_words(subject);
+    // Every word outside the recipient filter matched an exact slot above.
+    crate::word_claims::claim_tokens(&header[..header.len() - recipient_count]);
+    crate::word_claims::claim_tokens(&sentence[comma + 1..]);
     Ok(Some(Restriction::PreventDamageFromTo {
         sources,
         recipients,

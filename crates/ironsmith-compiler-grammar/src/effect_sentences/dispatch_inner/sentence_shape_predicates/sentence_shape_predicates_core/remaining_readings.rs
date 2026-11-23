@@ -274,8 +274,10 @@ pub(super) fn read(input: &RemainingSentence<'_>) -> ParseOutcome<RuleMatch<Vec<
     // Equal readings from two rules are one reading.
     let mut distinct: Vec<RegistryCandidate<Vec<EffectAst>>> = Vec::new();
     for candidate in candidates {
-        if !distinct.iter().any(|kept| kept.value == candidate.value) {
-            distinct.push(candidate);
+        match distinct.iter_mut().find(|kept| kept.value == candidate.value) {
+            // Both rules read the same meaning; either one's words are read.
+            Some(kept) => kept.claims.extend(&candidate.claims),
+            None => distinct.push(candidate),
         }
     }
     if distinct.len() > 1 {
@@ -476,6 +478,8 @@ fn read_for_each_counter_removed_unless_pays(
     let Some(effects) = parse_sentence_unless_pays(body)? else {
         return Ok(None);
     };
+    // "for each [<type>] counter removed this way", read word for word above.
+    crate::word_claims::claim_tokens(head_tokens);
     let count = crate::effect::Value::PendingPriorEffectMetric(
         ironsmith_core::PriorEffectMetricQuery::new(
             ironsmith_core::EffectMetricSource::Outcome,
@@ -769,6 +773,7 @@ fn read_create_token_copy_exception(
             }),
         ) = super::super::super::parse_create(tokens, None)
     {
+        crate::effect_sentences::chain_carry::claim_copy_card_type_restatement(tokens, &effect);
         return Ok(Some(vec![effect]));
     }
     Ok(None)

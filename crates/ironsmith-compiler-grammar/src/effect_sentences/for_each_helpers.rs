@@ -466,6 +466,8 @@ pub fn parse_has_base_power_toughness_clause(
     }
     let target_words = crate::lexer::token_word_refs(target_tokens);
     let target = if crate::util::source_reference_surface_for_possessive_words(&target_words).is_some() {
+        // "this creature's base power ...": the possessive names the source.
+        crate::word_claims::claim_tokens(target_tokens);
         TargetAst::Source(None)
     } else { parse_target_phrase(target_tokens)? };
     if lose_all_abilities && shape.where_x_tokens.is_none() {
@@ -527,6 +529,9 @@ pub fn parse_get_for_each_count_value(
             .count()
             == 1
     {
+        // "for each supertype, card type, and subtype it has".
+        let words = crate::lexer::token_word_refs(crate::util::trim_edge_punctuation_tokens(tokens));
+        crate::word_claims::claim_words(&words[words.len() - 9..]);
         return Ok(Some(
             Value::TypeCountOf(Box::new(crate::target::ChooseSpec::Tagged(
                 crate::tag::CompilerReferenceTag::It.bind().into(),
@@ -549,6 +554,7 @@ pub fn parse_get_for_each_count_value(
             .is_some_and(|inner| inner.eq_ignore_ascii_case("e"))
             && crate::lexer::token_word_refs(&rest[1..]) == ["paid", "this", "way"]
         {
+            crate::word_claims::claim_tokens(&rest[1..]);
             return Ok(Some(
                 Value::PendingPriorEffectMetric(
                     ironsmith_core::PriorEffectMetricQuery::new(
@@ -565,7 +571,8 @@ pub fn parse_get_for_each_count_value(
     // Mana symbols name the actual symbols paid, not an object-filter count.
     // Keep the disjunction as a set so each spent unit is counted once.
     {
-        let mut rest = crate::util::trim_edge_punctuation_tokens(tokens);
+        let trimmed = crate::util::trim_edge_punctuation_tokens(tokens);
+        let mut rest = trimmed;
         if rest.len() >= 2 && rest[0].is_word("for") && rest[1].is_word("each") {
             rest = &rest[2..];
         }
@@ -591,6 +598,9 @@ pub fn parse_get_for_each_count_value(
                 expect_symbol = !expect_symbol;
             }
             if valid && !expect_symbol {
+                // Every word was walked: optional "for each", the symbol
+                // disjunction, and "spent this way".
+                crate::word_claims::claim_tokens(trimmed);
                 return Ok(Some(Value::EventValue(crate::effect::EventValueSpec::ManaSpentOnKeyword { colors })
                     .with_surface_hint(ValueSurfaceHint::ForEach)));
             }
@@ -1244,6 +1254,8 @@ fn parse_power_toughness_difference_binding(binding_tokens: &[OwnedLexToken]) ->
         ),
         _ => return None,
     };
+    // Every word of the binding matched an exact slot above.
+    crate::word_claims::claim_tokens(binding_tokens);
     Some(Value::absolute_difference(left, right).with_surface_hint(ValueSurfaceHint::Difference))
 }
 

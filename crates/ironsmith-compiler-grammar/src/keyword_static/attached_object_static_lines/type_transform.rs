@@ -123,10 +123,12 @@ pub fn parse_attached_type_transform_line(
                 Some(index) => trim_commas(&split.keyword_tokens[..index]),
                 None => split.keyword_tokens.to_vec(),
             };
-            if goaded_index.is_some() {
+            if let Some(index) = goaded_index {
                 if keyword_tokens.is_empty() {
                     return Ok(None);
                 }
+                // "and is goaded": the goad state read into the display below.
+                crate::word_claims::claim_tokens(&split.keyword_tokens[index..index + 3]);
                 goaded_display = Some(format!(
                     "{} is goaded",
                     capitalize_display_subject(subject_text)

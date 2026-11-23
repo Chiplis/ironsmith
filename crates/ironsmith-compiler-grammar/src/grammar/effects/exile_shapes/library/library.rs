@@ -145,6 +145,8 @@ fn parse_exile_dynamic_top_library_count_shape(
         // library of the clause's own player, the one just shuffled.
         let bare_top = TokenWordView::new(trim_commas(after_from)).word_refs();
         if matches!(bare_top.as_slice(), ["the", "top"] | ["top"]) {
+            // The bare position names the clause player's own library.
+            crate::word_claims::claim_tokens(after_from);
             return Some(ExileLibraryCardsShape {
                 player: ExileLibraryPlayerShape::Player(default_player),
                 count: Value::EventValue(EventValueSpec::Amount),
@@ -201,6 +203,8 @@ pub fn parse_exile_top_library_shape(
             ))),
             _ => return None,
         };
+        // "the top half of <owner> library[, rounded up|down]", word for word.
+        crate::word_claims::claim_tokens(tokens);
         return Some(ExileLibraryCardsShape {
             player: ExileLibraryPlayerShape::Player(player),
             count,

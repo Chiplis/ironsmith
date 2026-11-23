@@ -516,6 +516,15 @@ fn parse_there_are_filtered_cards(input: &mut LexStream<'_>) -> WResult<ParsedRe
     primitives::phrase(&["there", "are"]).parse_next(input)?;
     let count = parse_minimum_count_lexed.parse_next(input)?;
     let tokens = take_remaining_tokens(input)?;
+    // "four or more card types among cards in your graveyard" (delirium)
+    // counts distinct card types, not cards; the static condition reader
+    // owns that aggregate.
+    if crate::lexer::parser_token_word_refs(tokens)
+        .get(..2)
+        .is_some_and(|head| matches!(head, ["card", "type" | "types"]))
+    {
+        return Err(primitives::backtrack_err("zone card count", "a card noun, not card types"));
+    }
     if !tokens
         .iter()
         .any(|token| token.is_word("card") || token.is_word("cards"))

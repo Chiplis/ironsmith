@@ -242,6 +242,9 @@ pub fn parse_spell_or_activated_ability_x_cost_trigger_tokens<'a>(
     {
         return None;
     }
+    // The trigger head, the "{X}" condition and its pip were matched whole.
+    crate::word_claims::claim_tokens(head);
+    crate::word_claims::claim_tokens(condition);
     Some(SpellOrActivatedAbilityXCostTrigger { effect_tokens })
 }
 

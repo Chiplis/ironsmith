@@ -1611,9 +1611,13 @@ fn parse_if_source_is_color_lexed<'a>(input: &mut LexStream<'a>) -> WResult<Colo
         primitives::phrase(&["that", "creature", "is"]).value(()),
     ))
     .parse_next(input)?;
-    let color = primitives::word_parser_text.parse_next(input)?;
-    leaf::parse_leaf_color_complete(color)
-        .map_err(|_| primitives::backtrack_err("color", "Magic color word"))
+    let token: &'a OwnedLexToken = any.parse_next(input)?;
+    let color = token
+        .as_word()
+        .and_then(|_| leaf::parse_leaf_color_complete(token.parser_text()).ok())
+        .ok_or_else(|| primitives::backtrack_err("color", "Magic color word"))?;
+    crate::word_claims::claim_tokens(std::slice::from_ref(token));
+    Ok(color)
 }
 
 fn parse_source_counter_head_lexed<'a>(input: &mut LexStream<'a>) -> WResult<&'a str> {

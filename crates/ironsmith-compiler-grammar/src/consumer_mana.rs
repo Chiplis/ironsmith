@@ -16,7 +16,10 @@ pub(crate) fn source_spending_rule(
     } else {
         body.strip_suffix(&["to", "cast", "this", "spell"])?
     };
-    Some(ManaSpendingRestriction::ProducedBy(mana_producer_filter(producer)?))
+    let rule = ManaSpendingRestriction::ProducedBy(mana_producer_filter(producer)?);
+    // The fixed frame around the producer words is read word for word.
+    crate::word_claims::claim_words(&words);
+    Some(rule)
 }
 
 /// The producer a "mana produced by <producers>" rule names: optional
@@ -162,11 +165,14 @@ pub(crate) fn spell_source_spending_ability(
 /// the whole cost must be paid without spending mana (convoke, delve).
 pub(crate) fn no_mana_spending_rule(tokens: &[OwnedLexToken]) -> Option<ManaSpendingRestriction> {
     let words = TokenWordView::new(tokens).word_refs();
-    matches!(
+    let matched = matches!(
         words.as_slice(),
         ["you", "can't" | "cant" | "cannot", "spend", "mana", "to", "cast", "this", "spell"]
-    )
-    .then_some(ManaSpendingRestriction::NoMana)
+    );
+    if matched {
+        crate::word_claims::claim_words(&words);
+    }
+    matched.then_some(ManaSpendingRestriction::NoMana)
 }
 
 /// "For each mana in this ability's activation cost, you may tap an untapped

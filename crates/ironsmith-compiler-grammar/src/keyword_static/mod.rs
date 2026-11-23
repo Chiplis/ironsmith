@@ -2282,11 +2282,13 @@ fn recognize_static_ability_ast_line_registry(
                 // Multiple grammars may prove the same typed static fact.
                 // Exact AST and loss-report equality is an explicit semantic
                 // equivalence policy; different results remain ambiguous.
-                if !candidates
-                    .iter()
-                    .any(|existing: &RegistryCandidate<_>| existing.value == candidate.value)
+                match candidates
+                    .iter_mut()
+                    .find(|existing: &&mut RegistryCandidate<_>| existing.value == candidate.value)
                 {
-                    candidates.push(candidate);
+                    // An equal reading: either reader's words are read.
+                    Some(existing) => existing.claims.extend(&candidate.claims),
+                    None => candidates.push(candidate),
                 }
             }
             ParseOutcome::NoMatch => {}
@@ -2340,6 +2342,11 @@ fn parse_count_as_card_named_for_spell_effect_line(tokens: &[OwnedLexToken])
     let shape = early_static_facts::parse_count_as_card_named_shape_words(&words)?;
     let spell_name_words = words.get(shape.spell_name_words)?;
     let counted_name_words = words.get(shape.counted_name_words)?;
+    // The shape reads the whole line, both names included, when the spell
+    // phrase follows the graveyard condition directly.
+    if words.get(7) == Some(&"effects") {
+        crate::word_claims::claim_tokens(tokens);
+    }
 
     Some(StaticAbility::count_as_card_named_for_spell_effect(
         title_case_count_as_card_name(spell_name_words),
@@ -2414,6 +2421,10 @@ fn parse_source_has_full_text_of_top_graveyard_card_line(
         }
         _ => return Ok(None),
     }
+    // The condition and the full-text grant (with its "and has the text"
+    // join), matched word for word; the quoted ability reads its own.
+    crate::word_claims::claim_tokens(split.condition_tokens);
+    crate::word_claims::claim_tokens(&remainder[..first_quote.unwrap_or(remainder.len())]);
     let mut filter = ObjectFilter::default();
     filter.card_types.push(card_type);
     filter.zone = Some(Zone::Graveyard);
@@ -2480,6 +2491,8 @@ fn parse_source_characteristics_of_last_exiled_creature_card_line(
         }
         _ => return None,
     };
+    // Every word was matched above.
+    crate::word_claims::claim_words(&words);
 
     let mut filter = ObjectFilter::default();
     filter.card_types.push(CardType::Creature);
@@ -2754,6 +2767,8 @@ fn parse_static_ability_ast_line_lexed_unbound(
         if let Some(abilities) = parse_filtered_dynamic_equipment(tokens)? { return Ok(Some(abilities)); }
     }
     if words.as_slice() == ["if", "a", "source", "controlled", "by", "one", "of", "the", "chosen", "players", "would", "deal", "damage", "to", "the", "other", "chosen", "player", "or", "a", "permanent", "that", "player", "controls", "that", "source", "deals", "double", "that", "damage", "to", "that", "player", "or", "permanent", "instead"] {
+        // Matched word for word above.
+        crate::word_claims::claim_tokens(tokens);
         return Ok(Some(vec![StaticAbilityAst::Static(StaticAbility::damage_between_chosen_players(
             2, crate::lexer::render_token_slice(tokens),
         ))]));
@@ -2761,8 +2776,14 @@ fn parse_static_ability_ast_line_lexed_unbound(
     if let Some(verb) = words.iter().position(|word| *word == "reveals")
         && words[verb + 1..] == ["each", "card", "they", "draw"]
         && let Some(range) = view.token_span_for_words(0, verb)
-        && let crate::cards::builders::TargetAst::Player(player, _) = crate::util::parse_target_phrase(&tokens[range])?
+        && let crate::cards::builders::TargetAst::Player(player, _) = crate::util::parse_target_phrase(&tokens[range.clone()])?
     {
+        // The subject was read as a player target and "reveals each card
+        // they draw" was matched word for word above.
+        crate::word_claims::claim_tokens(&tokens[range]);
+        if let Some(tail) = view.token_span_for_words(verb, words.len()) {
+            crate::word_claims::claim_tokens(&tokens[tail]);
+        }
         return Ok(Some(vec![StaticAbilityAst::Static(StaticAbility::reveal_cards_drawn(
             player, crate::lexer::render_token_slice(tokens),
         ))]));
@@ -2997,6 +3018,8 @@ fn parse_attached_takes_source_chosen_name_and_type_line(
             let mut line = if index == 0 {
                 clause
             } else if clause.first().is_some_and(|token| token.is_word("it")) {
+                // "it" names the attached subject.
+                crate::word_claims::claim_tokens(&clause[..1]);
                 let mut line = subject.to_vec();
                 line.extend_from_slice(&clause[1..]);
                 line
@@ -3015,6 +3038,9 @@ fn parse_attached_takes_source_chosen_name_and_type_line(
             out.extend(abilities);
         }
     }
+    // ", and its name and creature type are the last chosen name and
+    // creature type", matched exactly.
+    crate::word_claims::claim_tokens(&body[head.len()..]);
     out.push(StaticAbilityAst::Static(
         crate::model::CompilerStaticAbilityCore::attached_has_source_chosen_name_and_creature_type(),
     ));
@@ -3102,6 +3128,8 @@ fn parse_base_pt_and_lose_all_creature_types_line(
     }
     let subject = parse_anthem_subject_with_attached_fallback(shape.subject_tokens, None)?;
     let filter = anthem_subject_filter(&subject);
+    // "and lose all creature types", read word for word above.
+    crate::word_claims::claim_tokens(&tokens[and_token..]);
     Ok(Some(vec![
         StaticAbility::set_base_power_toughness(filter.clone(), shape.power, shape.toughness)
             .into(),
@@ -3136,6 +3164,7 @@ fn parse_bestow_lure_source_or_enchanted_line(
     if !matches_shape {
         return None;
     }
+    crate::word_claims::claim_words(&words);
     let source_display = "All creatures able to block this creature do so".to_string();
     let enchanted_display = "All creatures able to block enchanted creature do so".to_string();
     Some(vec![
@@ -3207,6 +3236,9 @@ fn parse_source_has_unless_status_line(
     let condition = if let [first, second] = states.as_slice() {
         let first = parse_static_condition_clause(&crate::lexer::synthetic_word_tokens(["it's", *first]))?;
         let second = parse_static_condition_clause(&crate::lexer::synthetic_word_tokens(["it's", *second]))?;
+        // The synthetic "it's <state>" pair stands for the authored "it's
+        // <state> or <state>", matched whole above.
+        crate::word_claims::claim_tokens(tail);
         PredicateAst::Or(Box::new(first), Box::new(second))
     } else {
         parse_static_condition_clause(tail)?
@@ -3244,6 +3276,7 @@ fn parse_heal_before_damage_to_source_line(tokens: &[OwnedLexToken]) -> Option<S
     let ["him" | "her" | "it" | "them", "is", "healed"] = rest else {
         return None;
     };
+    crate::word_claims::claim_words(&words);
     Some(StaticAbility::heal_damage_before_damage_to_self(
         display_text_for_tokens(tokens, true),
     ))
@@ -3803,6 +3836,7 @@ fn parse_players_cant_cast_spells_sharing_last_spell_color_line(
     ) {
         return Ok(None);
     }
+    crate::word_claims::claim_words(&words);
     let spells = ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
         shares_color_with_last_spell_cast_this_turn: true,
         ..ironsmith_core::filter_model::ObjectFilterFields::from(ObjectFilter::default())
@@ -3940,6 +3974,7 @@ fn parse_each_opponent_who_did_this_turn_cant_line(
         ["cast", "spells"] => crate::effect::Restriction::cast_spells(players),
         _ => return Ok(None),
     };
+    crate::word_claims::claim_words(&words);
     Ok(Some(StaticAbility::restriction(
         restriction,
         crate::lexer::render_token_slice(&clean).trim().to_string(),
@@ -3964,6 +3999,8 @@ fn parse_spells_and_lands_with_chosen_names_cant_line(
     ) {
         return Ok(None);
     }
+    // An exact whole-line shape.
+    crate::word_claims::claim_tokens(&clean);
     let display = crate::lexer::render_token_slice(&clean).trim().to_string();
     let named = ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
         name: Some("{chosen name}".to_string()),
@@ -4037,6 +4074,7 @@ fn parse_each_opponent_controls_more_cant_line(
             || (*spell_type == "sorcery" && compared_type == CardType::Sorcery) => false,
         _ => return Ok(None),
     };
+    let mut read_sentences = vec![first];
     if let Some(second) = sentences.next() {
         let words = crate::lexer::token_word_refs(second);
         let ["the", "same", "is", "true", "for", rest @ ..] = words.as_slice() else {
@@ -4051,10 +4089,13 @@ fn parse_each_opponent_controls_more_cant_line(
             };
             types.push(card_type);
         }
+        read_sentences.push(second);
     }
     if sentences.next().is_some() || (plays_lands && types.len() > 1) {
         return Ok(None);
     }
+    // Both sentences were matched word for word.
+    read_sentences.into_iter().for_each(crate::word_claims::claim_tokens);
     let display = crate::lexer::render_token_slice(&clean).trim().to_string();
     let abilities = types
         .into_iter()
@@ -4160,6 +4201,8 @@ fn parse_cant_play_lands_if_source_cast_this_turn_line(
         ] => *noun,
         _ => return None,
     };
+    // The exact line reads every word.
+    crate::word_claims::claim_tokens(&clean);
     let surface = ironsmith_core::SourceReferenceSurface::ThisPermanentType(noun.to_string());
     let cast_this_turn = PredicateAst::And(
         Box::new(PredicateAst::TurnHistory(
@@ -4276,6 +4319,8 @@ fn parse_isnt_card_type_and_is_static_line(
     if rest.is_empty() {
         return Ok(None);
     }
+    // The removed card type, read from the token's text above.
+    crate::word_claims::claim_tokens(std::slice::from_ref(type_word));
     let mut abilities = vec![StaticAbilityAst::Static(StaticAbility::new(
         crate::model::CompilerRemoveCardTypesForFilter::new(filter, vec![card_type]),
     ))];
@@ -4420,6 +4465,10 @@ pub(super) fn parse_as_long_as_attached_otherwise_source_keyword_line(
     if true_abilities.is_empty() || false_abilities.is_empty() {
         return Ok(None);
     }
+    // The "it" naming the attached creature and "otherwise this Aura has",
+    // read word for word above.
+    crate::word_claims::claim_tokens(&true_body[..1]);
+    crate::word_claims::claim_tokens(&second[..=has_idx]);
     let mut abilities = Vec::with_capacity(true_abilities.len() + false_abilities.len());
     for ability in true_abilities {
         abilities.push(add_static_ability_ast_condition(ability, condition.clone())?);
@@ -5100,6 +5149,8 @@ fn parse_counters_remain_across_zone_changes_line(
     let mut idx = marker + MOVE_TO_OTHER_ZONE.len();
     while idx < words.len() {
         if matches!(words[idx], "a" | "an" | "the" | "players" | "and" | "or") {
+            // The destination list's articles, possessive and connectives.
+            crate::word_claims::claim_word(words[idx]);
             idx += 1;
             continue;
         }
@@ -5567,6 +5618,8 @@ pub fn parse_pregame_exile_drafted_cards_line(
     if !tail_matches {
         return Ok(None);
     }
+    // Every word was matched above.
+    crate::word_claims::claim_words(&words);
     Ok(Some(StaticAbility::pregame_action(
         crate::static_abilities::PregameActionKind::ExileDraftedCardsBeforeShuffle(
             crate::static_abilities::PregameExileDraftedCardsSpec {
@@ -6064,6 +6117,8 @@ pub fn parse_static_text_marker_line(tokens: &[OwnedLexToken]) -> Option<StaticA
         return Some(marker.clone());
     }
     if is_source_unblockable_unless_all_defenders_block_line(tokens) {
+        // The source subject and the exact restriction were matched.
+        crate::word_claims::claim_tokens(tokens);
         return Some(StaticAbility::cant_be_blocked_unless_all_defending_creatures_block());
     }
     let words = crate::lexer::token_word_refs(tokens);
@@ -6093,6 +6148,7 @@ pub fn parse_static_text_marker_line(tokens: &[OwnedLexToken]) -> Option<StaticA
             "permanents",
         ]
     {
+        crate::word_claims::claim_words(&words);
         return Some(StaticAbility::restriction(
             crate::effect::Restriction::BeSacrificedByCause {
                 filter: ObjectFilter::permanent().you_control(),
@@ -6261,6 +6317,7 @@ pub fn parse_static_text_marker_line(tokens: &[OwnedLexToken]) -> Option<StaticA
                     .take(subject.len())
                     .all(|token| token.slice.chars().next().is_some_and(char::is_uppercase)))
         {
+            crate::word_claims::claim_words(&words);
             return Some(StaticAbility::source_loyalty_abilities_twice_each_turn());
         }
         // "Each opponent must attack you or a planeswalker you control with
@@ -6272,6 +6329,7 @@ pub fn parse_static_text_marker_line(tokens: &[OwnedLexToken]) -> Option<StaticA
                 "able",
             ]
         {
+            crate::word_claims::claim_words(&words);
             return Some(StaticAbility::opponents_attack_you_with_at_least_one_creature());
         }
         // "Each opponent must attack with at least one creature each combat
@@ -6282,6 +6340,7 @@ pub fn parse_static_text_marker_line(tokens: &[OwnedLexToken]) -> Option<StaticA
                 "each", "combat", "if", "able",
             ]
         {
+            crate::word_claims::claim_words(&words);
             return Some(StaticAbility::opponents_attack_with_at_least_one_creature());
         }
         // "Each power-up ability of permanents you control can be activated
@@ -6296,6 +6355,7 @@ pub fn parse_static_text_marker_line(tokens: &[OwnedLexToken]) -> Option<StaticA
                 "be", "activated", "an", "additional", "time"
             ]
         ) {
+            crate::word_claims::claim_words(&words);
             return Some(StaticAbility::power_up_abilities_additional_time());
         }
     }
@@ -6308,6 +6368,7 @@ pub fn parse_static_text_marker_line(tokens: &[OwnedLexToken]) -> Option<StaticA
             "that", "much", "life",
         ]
     {
+        crate::word_claims::claim_tokens(crate::util::trim_edge_punctuation_tokens(tokens));
         return Some(StaticAbility::lose_life_for_unspent_mana());
     }
 
@@ -6549,6 +6610,8 @@ pub fn parse_must_attack_draft_noted_players_line(
         })
         .flatten();
     let name = literal.unwrap_or_else(|| name.join(" "));
+    // The whole line matched: fixed head, noted card name and fixed tail.
+    crate::word_claims::claim_tokens(trimmed);
     Ok(Some(StaticAbility::must_attack_draft_noted_players(name)))
 }
 
@@ -6610,6 +6673,7 @@ pub fn parse_if_controller_would_counter_exile_and_play_line(
         "cast" => false,
         _ => return Ok(None),
     };
+    crate::word_claims::claim_words(&words);
     let mut display = crate::lexer::render_token_slice(tokens).trim().to_string();
     display.push('.');
     Ok(Some(StaticAbility::controller_counter_exile_permission(
@@ -6691,6 +6755,8 @@ pub fn parse_choose_basic_land_type_as_enters_line(
             _ => None,
         }
     {
+        // The whole choice, matched word for word.
+        crate::word_claims::claim_tokens(tail_tokens);
         return Ok(Some(StaticAbility::choose_basic_land_types_as_enters(
             format!("As {display_subject} enters, choose {number} basic land types."),
             count,
@@ -6740,6 +6806,8 @@ pub fn parse_first_chosen_land_type_becomes_second_line(
     if !filter.card_types.contains(&CardType::Land) {
         return Ok(None);
     }
+    // "of the first chosen type are the second chosen type", matched exactly.
+    crate::word_claims::claim_tokens(&tokens[subject_end..]);
     let subject = words[..subject_words].join(" ");
     let mut chars = subject.chars();
     let subject = match chars.next() {
@@ -6826,6 +6894,8 @@ pub fn parse_choose_card_name_as_enters_line(
             "than", "a", "basic", "land", "card", "name",
         ]
     {
+        // The whole choice, matched word for word.
+        crate::word_claims::claim_tokens(tail_tokens);
         return Ok(Some(
             StaticAbility::you_and_an_opponent_choose_nonbasic_card_names_as_enters(format!(
                 "As {display_subject} enters, you and an opponent each choose a card name other than a basic land card name."
@@ -6925,6 +6995,9 @@ pub fn parse_as_long_as_chosen_type_untap_step_line(
     }
     let condition_tokens = &tokens[3..comma];
     let condition = parse_static_condition_clause(condition_tokens)?;
+    // "as long as" and the untap-step rule were read word for word above.
+    crate::word_claims::claim_tokens(&tokens[..3]);
+    crate::word_claims::claim_tokens(body);
     Ok(Some(
         StaticAbility::untap_step_chosen_card_type_only(
             PlayerFilter::Any,
@@ -6948,6 +7021,7 @@ pub fn parse_gain_life_rather_than_radiation_loss_line(
     {
         return Ok(None);
     }
+    crate::word_claims::claim_tokens(tokens);
     Ok(Some(StaticAbility::restriction(
         crate::effect::Restriction::radiation_gains_life(PlayerFilter::You),
         "You gain life rather than lose life from radiation".to_string(),
@@ -7123,6 +7197,8 @@ pub fn parse_choose_color_creature_type_pairs_as_enters_line(
         [head @ .., last] => format!("{}, or {last}", head.join(", ")),
         _ => return Ok(None),
     };
+    // "choose <color> <type>, ..., or <color> <type>", read whole above.
+    crate::word_claims::claim_tokens(tail_tokens);
     Ok(Some(StaticAbility::choose_named_option_as_enters(
         options,
         format!("As {display_subject} enters, choose {display_options}."),
@@ -7267,6 +7343,10 @@ fn parse_enters_attached_to_chosen_host_line(
         return Ok(None);
     };
     filter.zone = Some(Zone::Battlefield);
+    // The exact frame words compared above: "it could be attached to" and
+    // "if you do, it enters attached to that <noun>".
+    crate::word_claims::claim_tokens(&choice[it_idx..]);
+    crate::word_claims::claim_tokens(entry);
     let rendered = crate::lexer::render_token_slice(crate::util::trim_edge_punctuation_tokens(
         tail_tokens,
     ))
@@ -8055,16 +8135,18 @@ pub(crate) fn damage_addition_parts_from_shape(
         };
         value
     } else {
-        let words = parser_token_word_refs(spec.delta_tokens);
-        let words = words
+        let all_words = parser_token_word_refs(spec.delta_tokens);
+        let words = all_words
             .strip_prefix(&["an", "amount", "of", "damage", "equal", "to"])
-            .unwrap_or(&words);
+            .unwrap_or(&all_words);
         let Some((value, used)) = parse_value_expr_words(words) else {
             return Ok(None);
         };
         if used != words.len() {
             return Ok(None);
         }
+        // "an amount of damage equal to": the added amount's frame.
+        crate::word_claims::claim_words(&all_words[..all_words.len() - words.len()]);
         value
     };
     crate::word_claims::claim_tokens(repeated_recipient_tokens);
@@ -8827,6 +8909,10 @@ pub fn parse_enter_as_copy_as_enters_line(
                 let words = words.iter().map(String::as_str).collect::<Vec<_>>();
                 matches!(words.as_slice(), ["if", "this", "creature", "was", "embalmed", "the", "token", "has", "no", "mana", "cost", "its", "white", "and", "its", "a", "zombie", "in", "addition", "to", "its", "other", "types"])
             }) {
+                // The complete embalm exception was matched word for word.
+                if let Some(tokens) = exception_tokens {
+                    crate::word_claims::claim_tokens(tokens);
+                }
                 copy_followups.push(ironsmith_core::EnterAsCopyFollowup::RetainEmbalmCharacteristics);
                 None
             } else { exception_tokens };
@@ -9114,6 +9200,9 @@ pub fn parse_enter_as_copy_as_enters_line(
                                 additional_counters_source_filter = Some(filter.clone());
                                 added_abilities_source_filter = Some(filter);
                                 let has_index = entry.iter().position(|token| token.is_word("has")).ok_or_else(|| CardTextError::ParseError("missing conditional copy ability".into()))?;
+                                // "it's a <type>, it enters with N additional <counter>
+                                // counters on it and has": matched word for word above.
+                                crate::word_claims::claim_tokens(&entry[..=has_index]);
                                 added_abilities = parse_added_copy_abilities(&entry[has_index + 1..], &clause_words)?;
                             }
                             keyword_static_lines::CopyCharacteristicRemainder::PowerToughnessFromSource => {
@@ -9218,6 +9307,7 @@ pub fn parse_choose_color_as_enters_line(
             _ => None,
         }
     {
+        crate::word_claims::claim_tokens(tail_tokens);
         let display = format!(
             "As {display_subject} enters, choose {} colors.",
             tail_words[1]
@@ -9339,6 +9429,7 @@ pub fn parse_choose_color_as_becomes_attached_line(
             "choose", "a", "creature", "card", "name", "and", "a", "creature", "type",
         ]
     {
+        crate::word_claims::claim_tokens(fact.choice_tokens);
         let display = render_token_slice(tokens).replacen(parsed_subject, display_subject, 1);
         return Ok(Some(
             StaticAbility::choose_creature_card_name_and_type_as_becomes_attached(display),
@@ -9349,6 +9440,8 @@ pub fn parse_choose_color_as_becomes_attached_line(
     if let ["choose", "an", "exiled", "creature", "card", "used", "to", "craft", "this", _] =
         word_refs.as_slice()
     {
+        // The choice tail, matched word for word ("this <source>").
+        crate::word_claims::claim_tokens(fact.choice_tokens);
         let display = render_token_slice(tokens)
             .replacen(parsed_subject, display_subject, 1)
             .replacen("craft this equipment", "craft this Equipment", 1);
@@ -9399,6 +9492,8 @@ pub fn parse_note_mana_value_of_cards_put_into_exile_line(
             | ["note", "the", "mana", "value", "of", "each", "card", "as", "it", "is", "put", "into", "exile"]
     )
     .then(|| {
+        // An exact whole-line shape.
+        crate::word_claims::claim_tokens(tokens);
         StaticAbility::keyword_marker("Note the mana value of each card as it's put into exile.")
     })
 }
@@ -9574,13 +9669,7 @@ fn claim_characteristic_pt_subject_and_copula(tokens: &[OwnedLexToken]) {
         return;
     };
     let subject = &words[..pt];
-    let source_possessive = match subject {
-        ["its" | "thiss" | "this's"] => true,
-        ["this", noun] => noun.ends_with("'s") || noun.ends_with('s'),
-        ["this", noun, "s"] => !noun.is_empty(),
-        _ => false,
-    };
-    if source_possessive {
+    if is_source_possessive_subject(subject) {
         crate::word_claims::claim_words(subject);
     }
     if matches!(
@@ -9595,6 +9684,17 @@ fn claim_characteristic_pt_subject_and_copula(tokens: &[OwnedLexToken]) {
 /// equal to ...": the authored proper-name possessive subject the reading
 /// takes as the source (`ValueSurfaceHint::SourceNameSubject`). Read only
 /// when that named-subject surface holds.
+/// "its" / "this creature's": the source's own possessive as the subject of
+/// a characteristic axis.
+fn is_source_possessive_subject(subject: &[&str]) -> bool {
+    match subject {
+        ["its" | "thiss" | "this's"] => true,
+        ["this", noun] => noun.ends_with("'s") || noun.ends_with('s'),
+        ["this", noun, "s"] => !noun.is_empty(),
+        _ => false,
+    }
+}
+
 fn claim_characteristic_pt_named_subject(tokens: &[OwnedLexToken]) {
     if !characteristic_pt_uses_named_subject_surface(tokens) {
         return;
@@ -9763,6 +9863,12 @@ pub fn parse_characteristic_defining_pt_line(
         return Ok(None);
     }
     claim_characteristic_pt_named_subject(tokens);
+    if let Some(&(first_axis, _)) = axis_head_word_ranges.first()
+        && let Some(subject_end) = static_keyword_shapes::parse_word_token_offset(tokens, first_axis)
+        && is_source_possessive_subject(&parser_token_word_refs(&tokens[..subject_end]))
+    {
+        crate::word_claims::claim_tokens(&tokens[..subject_end]);
+    }
     for (start, end) in axis_head_word_ranges {
         if let Some(start) = static_keyword_shapes::parse_word_token_offset(tokens, start) {
             let end = static_keyword_shapes::parse_word_token_offset(tokens, end)
@@ -9789,9 +9895,11 @@ fn parse_characteristic_defining_relative_value(
     // names the same object set as the previous axis.
     match (words.as_slice(), base.unhinted()) {
         (["their", "total", "toughness"], Value::TotalPower(filter)) => {
+            crate::word_claims::claim_words(&words);
             return Some(Value::TotalToughness(filter.clone()));
         }
         (["their", "total", "power"], Value::TotalToughness(filter)) => {
+            crate::word_claims::claim_words(&words);
             return Some(Value::TotalPower(filter.clone()));
         }
         (
@@ -9801,6 +9909,7 @@ fn parse_characteristic_defining_relative_value(
                 metric: ironsmith_core::EffectMetric::TotalPower,
             },
         ) => {
+            crate::word_claims::claim_words(&words);
             return Some(Value::PendingEffectMetric {
                 source: *source,
                 metric: ironsmith_core::EffectMetric::TotalToughness,
@@ -9813,6 +9922,7 @@ fn parse_characteristic_defining_relative_value(
                 metric: ironsmith_core::EffectMetric::TotalToughness,
             },
         ) => {
+            crate::word_claims::claim_words(&words);
             return Some(Value::PendingEffectMetric {
                 source: *source,
                 metric: ironsmith_core::EffectMetric::TotalPower,
@@ -9823,6 +9933,7 @@ fn parse_characteristic_defining_relative_value(
     if words.len() == 4 && words[1..] == ["minus", "that", "number"] {
         if let Some((constant, used)) = crate::util::parse_number(tokens) {
             if used == 1 {
+                crate::word_claims::claim_words(&words);
                 return Some(Value::Add(Box::new(Value::Fixed(i32::try_from(constant).ok()?)),
                     Box::new(Value::Scaled(Box::new(base.clone()), -1))));
             }
@@ -9894,9 +10005,11 @@ fn parse_characteristic_defining_stat_value(tokens: &[OwnedLexToken]) -> Option<
         ["the", "life", "paid", "as", "it", "entered"]
         | ["the", "life", "paid", "as", "this", "creature", "entered"])
     {
+        crate::word_claims::claim_tokens(trimmed);
         return Some(Value::SourceChosenNumber { if_unset: Some(0), pair: None });
     }
     if words.word_refs().as_slice() == ["the", "last", "chosen", "number"] {
+        crate::word_claims::claim_tokens(trimmed);
         return Some(Value::SourceChosenNumber { if_unset: Some(0), pair: None });
     }
     // "power is equal to the total power of the exiled cards" (Sutured
@@ -9913,6 +10026,7 @@ fn parse_characteristic_defining_stat_value(tokens: &[OwnedLexToken]) -> Option<
             tag: crate::tag::CompilerReferenceTag::SourceExiled.key(),
             relation: crate::target::TaggedOpbjectRelation::IsTaggedObject,
         });
+        crate::word_claims::claim_tokens(trimmed);
         return Some(if *axis == "power" {
             Value::TotalPower(filter)
         } else {
@@ -9926,6 +10040,8 @@ fn parse_characteristic_defining_stat_value(tokens: &[OwnedLexToken]) -> Option<
         words.word_refs().as_slice(),
         ["the", "greatest", "number", "noted", "for", "it" | "this" | "him" | "her", "this", "turn"]
     ) {
+        // An exact value phrase.
+        crate::word_claims::claim_tokens(trimmed);
         return Some(Value::GreatestManaValueExiledThisTurnSinceSourceEntered);
     }
     if let Some(kind) = keyword_static_lines::parse_characteristic_source_value_tokens(trimmed) {
@@ -10030,6 +10146,10 @@ pub fn parse_characteristic_defining_pt_value(tokens: &[OwnedLexToken]) -> Optio
     values.push(parse_characteristic_defining_pt_term(
         clause.from_word(start_word_idx)?.tokens(),
     )?);
+    // Every "plus" joins two terms read above.
+    for token in tokens.iter().filter(|token| token.as_word() == Some("plus")) {
+        crate::word_claims::claim_tokens(std::slice::from_ref(token));
+    }
 
     let mut iter = values.into_iter();
     let mut acc = iter.next()?;
@@ -10192,6 +10312,7 @@ pub fn parse_zero_loyalty_state_based_exception_line(
             "loyalty",
         ]
     {
+        crate::word_claims::claim_words(&words);
         return Ok(Some(
             StaticAbility::planeswalkers_you_control_dont_die_at_zero_loyalty(),
         ));
@@ -10326,6 +10447,8 @@ pub fn parse_spell_additional_life_cost_per_target_line(
     let Some(amount) = spell_additional_life_cost_per_target_amount(tokens) else {
         return Ok(None);
     };
+    // The whole eleven-word sentence was matched word for word.
+    crate::word_claims::claim_tokens(tokens);
     Ok(Some(StaticAbility::additional_life_cost_per_target(amount)))
 }
 
@@ -10371,6 +10494,22 @@ pub fn parse_if_this_spell_costs_less_to_cast_line_lexed(
     if remaining_words == ["less", "to", "cast"] {
         crate::word_claims::claim_tokens(remaining_tokens);
     }
+    // "If your life total is less than your starting life total, this spell
+    // costs {X} less to cast, where X is the difference" (Shadow of
+    // Mortality): X is the starting life total minus the life total.
+    let amount_value = if matches!(amount_value, Value::X)
+        && parsed_mana_cost.is_none()
+        && condition == crate::static_abilities::ThisSpellCostCondition::LifeTotalLessThanStarting
+        && remaining_words == ["less", "to", "cast", "where", "x", "is", "the", "difference"]
+    {
+        crate::word_claims::claim_tokens(remaining_tokens);
+        Value::Add(
+            Box::new(Value::StartingLifeTotal(PlayerFilter::You)),
+            Box::new(Value::Scaled(Box::new(Value::LifeTotal(PlayerFilter::You)), -1)),
+        )
+    } else {
+        amount_value
+    };
 
     if let Some((reduction, _)) = parsed_mana_cost {
         return Ok(Some(StaticAbility::new(
@@ -10728,6 +10867,11 @@ pub fn parse_trailing_this_spell_cost_condition(
             clause_words.join(" ")
         )));
     };
+    // The "if" introducing the condition, by position: a copied clause
+    // (the second half of Assassin's Ink) reads it from its own tokens.
+    if let Some(if_token_idx) = static_keyword_shapes::parse_word_token_offset(remaining_tokens, if_idx) {
+        crate::word_claims::claim_tokens(&remaining_tokens[if_token_idx..condition_token_idx]);
+    }
     Ok(Some(condition))
 }
 
@@ -10932,9 +11076,17 @@ fn parse_filtered_dynamic_equipment(tokens: &[OwnedLexToken]) -> Result<Option<V
 
     // Both the price and the stat expression read the recipient's own live
     // mana value; neither reads the enchantment that owns this outer rule.
+    // "is an Equipment with equip {X} and": the granted type and keyword.
+    let middle = crate::lexer::parser_token_word_refs(&tokens[is..quote]);
+    if !matches!(middle.as_slice(), ["is", "an", "equipment", "with", "equip", "x", "and"]) {
+        return Ok(None);
+    }
     let mut subject = &tokens[..is];
     if subject.first().is_some_and(|token| token.is_any_word(&["each", "all"])) { subject = &subject[1..]; }
     let filter = parse_object_filter_lexed(subject, false)?;
+    crate::word_claims::claim_words(&middle);
+    crate::word_claims::claim_words(&rhs);
+    crate::word_claims::claim_tokens(&tokens[quote + 1..quote + 4]);
     let source_value = Value::ManaValueOf(Box::new(crate::target::ChooseSpec::Source));
     let target_filter = ObjectFilter::creature().controlled_by(PlayerFilter::You);
     let target = crate::cards::builders::TargetAst::Object(target_filter.clone(), Some(crate::util::span_from_tokens(tokens).unwrap_or(crate::cards::builders::TextSpan::synthetic())), None);
@@ -10969,6 +11121,9 @@ pub(crate) fn parse_untapped_attachment_control_protection(tokens: &[OwnedLexTok
     if words.get(cant + 1..) != Some(&["be", "enchanted", "they", "have", "indestructible", "and", "other", "players", "cant", "gain", "control", "of", "them", "this", "effect", "doesnt", "remove", "auras", "already", "attached", "to", "those", "artifacts"][..]) { return Ok(None); }
     let Some(range) = view.token_span_for_words(7, cant) else { return Ok(None); };
     let filter = parse_object_filter_lexed(&tokens[range], false)?;
+    // The fixed condition and rule words matched above; the filter read the rest.
+    crate::word_claims::claim_words(&words[..7]);
+    crate::word_claims::claim_words(&words[cant..]);
     let condition = PredicateAst::Source(SourcePredicateAst::SourceIsUntapped);
     let rules = [
         crate::effect::Restriction::be_attached_by_new(filter.clone(), ObjectFilter::default().with_subtype(crate::types::Subtype::Aura)),

@@ -76,6 +76,9 @@ pub(super) fn parse(tokens: &[OwnedLexToken]) -> Result<Option<EffectAst>, CardT
     // [that would be dealt to and dealt by] ... [would deal]") is this shape.
     crate::word_claims::claim_words(&words[start..source_start]);
     crate::word_claims::claim_words(&words[source_end..end]);
+    // The duration read above, before or after the body.
+    crate::word_claims::claim_words(&words[..start]);
+    crate::word_claims::claim_words(&words[end..]);
     Ok(Some(if bidirectional {
         EffectAst::subject_verb_prevent_all_damage_to_and_by_target(target, duration)
     } else {

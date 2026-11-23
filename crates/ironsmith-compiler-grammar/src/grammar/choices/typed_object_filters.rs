@@ -65,7 +65,10 @@ fn parse_typed_choice_filter_words(
     if let Some(base) = words.strip_suffix(&["of", "that", "color"])
         .or_else(|| words.strip_suffix(&["of", "the", "chosen", "color"]))
     {
+        // The chosen-color suffix (and a bare card noun) read here.
+        crate::word_claims::claim_words(&words[base.len()..]);
         let mut filter = if matches!(base, ["card"] | ["cards"]) {
+            crate::word_claims::claim_words(base);
             ObjectFilter::default()
         } else {
             parse_typed_choice_filter_words(base)?
@@ -119,6 +122,8 @@ fn parse_choice_source_filter_words(
     if controller.is_some() {
         filter.controller = controller;
     }
+    // The noun and its controller tail matched exactly above.
+    crate::word_claims::claim_words(&words[noun..]);
     filter.any_of = vec![
         ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
             zone: Some(Zone::Battlefield),
@@ -173,17 +178,22 @@ fn authored_choice_filter_tokens(
         .filter(|piece| piece.span.end > piece.span.start)
         .collect::<Vec<_>>();
     let mut used = vec![false; pieces.len()];
+    // Words keep their authored order, so a word maps to the first unused
+    // piece after the previous word's piece ("you choose a creature you
+    // control": the filter's "you" is the second one, not the chooser); a
+    // reordered word falls back to the first unused piece anywhere.
+    let mut cursor = 0usize;
     filter_words
         .iter()
         .map(|word| {
-            let found = pieces
-                .iter()
-                .enumerate()
-                .find(|(index, piece)| !used[*index] && piece.text == *word)
-                .map(|(index, piece)| (index, piece.span));
+            let found = (cursor..pieces.len())
+                .chain(0..cursor)
+                .find(|&index| !used[index] && pieces[index].text == *word)
+                .map(|index| (index, pieces[index].span));
             match found {
                 Some((index, span)) => {
                     used[index] = true;
+                    cursor = cursor.max(index + 1);
                     OwnedLexToken::word(word.clone(), span)
                 }
                 None => OwnedLexToken::synthetic_word(word.clone()),
@@ -225,12 +235,18 @@ pub fn parse_typed_choice_object_clause_tokens(
         let words: Vec<&OwnedLexToken> =
             tokens.iter().filter(|token| token.as_word().is_some()).collect();
         let texts: Vec<&str> = words.iter().map(|token| token.parser_text()).collect();
-        let tail = match texts.as_slice() {
+        // A trailing count ("from it for each card discarded this way") is
+        // stripped before the container suffix; it reads its own words.
+        let end = match texts.as_slice() {
+            [.., "for", "each", "card" | "cards", "discarded", "this", "way"] => texts.len() - 6,
+            _ => texts.len(),
+        };
+        let tail = match &texts[..end] {
             [.., "from", "there", "in"] | [.., "from", "among", "them"] => 3,
             [.., "from" | "in", "it" | "them"] => 2,
             _ => 0,
         };
-        for token in &words[words.len() - tail..] {
+        for token in &words[end - tail..end] {
             crate::word_claims::claim_tokens(std::slice::from_ref(*token));
         }
     }

@@ -47,6 +47,8 @@ pub(super) fn pre_rule_token_followups(
         let mut marked_effects = state.effects.to_vec();
         if mark_every_created_token_for_next_end_step_sacrifice(&mut marked_effects) > 1 {
             *state.effects = marked_effects;
+            // Matched word for word above (articles aside).
+            crate::word_claims::claim_tokens(sentence_tokens);
             return Ok(Some(PreParseFollowupResult::Handled {
                 consumed_sentences: 1,
                 route: Some(

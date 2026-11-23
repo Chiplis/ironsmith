@@ -168,13 +168,16 @@ fn parse_half_quantified_life(tokens: &[OwnedLexToken]) -> Option<Value> {
     let (base, used) = parse_value(base_tokens)?;
     if used != base_tokens.len() { return None; }
     let tail = crate::lexer::token_word_refs(&tokens[life + 1..]);
-    match tail.as_slice() {
-        ["rounded", "down"] => Some(Value::HalfRoundedDown(Box::new(base))),
-        ["rounded", "up"] => Some(Value::HalfRoundedDown(Box::new(Value::Add(
+    let value = match tail.as_slice() {
+        ["rounded", "down"] => Value::HalfRoundedDown(Box::new(base)),
+        ["rounded", "up"] => Value::HalfRoundedDown(Box::new(Value::Add(
             Box::new(base), Box::new(Value::Fixed(1)),
-        )))),
-        _ => None,
-    }
+        ))),
+        _ => return None,
+    };
+    // The rounding after the life noun is the half's rounding.
+    crate::word_claims::claim_tokens(&tokens[life + 1..]);
+    Some(value)
 }
 
 pub fn parse_lose_life(
@@ -365,6 +368,7 @@ pub fn parse_gain_life(
         crate::lexer::token_word_refs(tokens).as_slice(),
         ["life", "equal", "to", "the", "life", "you", "lost", "when", "it" | "this", "entered"]
     ) {
+        crate::word_claims::claim_tokens(tokens);
         return Ok(subject_verb_player_resource_effect(
             SubjectVerbRoleAst::AffectedPlayer,
             player,
@@ -810,6 +814,10 @@ fn parse_exiled_with_source_move_surface_inner(
             &target_words[exiled..],
             |word| *word == "with",
         )?;
+        if with_offset == 1 {
+            // "exiled with <source>": the source-exile relation.
+            crate::word_claims::claim_words(&target_words[exiled..=exiled + 1]);
+        }
         let source_words = &target_words[exiled + with_offset + 1..];
         let source_words = crate::slice_primitives::strip_suffix(
             source_words,

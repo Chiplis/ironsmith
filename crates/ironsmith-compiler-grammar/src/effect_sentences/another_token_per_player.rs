@@ -34,7 +34,9 @@ fn poison_threshold(sentence: &[OwnedLexToken]) -> Option<u32> {
     else {
         return None;
     };
-    crate::util::parse_number_word_u32(count).or_else(|| count.parse::<u32>().ok())
+    let threshold = crate::util::parse_number_word_u32(count).or_else(|| count.parse::<u32>().ok())?;
+    crate::word_claims::claim_tokens(sentence);
+    Some(threshold)
 }
 
 pub(crate) fn read(

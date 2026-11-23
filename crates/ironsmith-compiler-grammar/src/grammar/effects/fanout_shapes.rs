@@ -426,6 +426,15 @@ pub fn parse_same_name_fanout_shape(tokens: &[OwnedLexToken]) -> Option<SameName
         if !contains_word(destination, "hand") && !contains_word(destination, "hands") {
             return None;
         }
+        // "to <the owners'> hand(s)": a returned permanent always goes to its
+        // owner's hand (CR 400.3), so the possessor is what the move does.
+        if matches!(
+            crate::lexer::parser_token_word_refs(destination).as_slice(),
+            ["their" | "its", "owners" | "owner's" | "owners'" | "owner", "hand" | "hands"]
+                | ["your", "hand"]
+        ) {
+            crate::word_claims::claim_tokens(&after_other[to_idx..]);
+        }
         trimmed(&after_other[..to_idx])
     } else {
         trimmed(after_other)

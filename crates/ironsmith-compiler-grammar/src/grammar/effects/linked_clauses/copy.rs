@@ -59,6 +59,7 @@ const COULD_TARGET: &[&[&str]] = &[
     &["that", "spell", "could", "target"],
     &["that", "ability", "could", "target"],
     &["that", "spell", "or", "ability", "could", "target"],
+    &["the", "spell", "or", "ability", "could", "target"],
     &["the", "spell", "could", "target"],
     &["the", "ability", "could", "target"],
     &["it", "could", "target"],
@@ -94,6 +95,11 @@ fn candidate_suffix_start(tokens: &[OwnedLexToken]) -> usize {
 
 pub fn parse_copy_candidate_shape(tokens: &[OwnedLexToken]) -> Option<CopyCandidateShape> {
     let end = candidate_suffix_start(tokens);
+    // "<that|the> spell [or ability] could target": the exact suffix naming
+    // what the candidates are legal targets of.
+    if end < tokens.len() {
+        crate::word_claims::claim_tokens(&tokens[end..]);
+    }
     let mut start = 0usize;
     let mut input = LexStream::new(&tokens[..end]);
     let exclude_current_targets = if sequence_any_phrase(&[&["other"], &["another"]])

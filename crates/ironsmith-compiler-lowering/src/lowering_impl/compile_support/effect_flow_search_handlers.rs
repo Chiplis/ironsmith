@@ -852,6 +852,7 @@ fn compound_optional_payment_actions(effects: &[EffectAst]) -> Option<Vec<Effect
                 x_maximum: None,
                 independent_x_choice: false,
                 mana_cost_of: None,
+                instant_speed_window: false,
             }),
         }),
         EffectAst::SubjectVerb(SubjectVerbEffectAst {

@@ -346,6 +346,7 @@ pub fn normalize_activate_only_restriction(
     if matches!(
         timing,
         ActivationTiming::AnyPlayerDuringTheirTurnBeforeEndStep
+            | ActivationTiming::AnyPlayerDuringTheirTurn
             | ActivationTiming::AnyTimeByEnchantedCreatureController
             | ActivationTiming::AnyTimeByOpponents
             | ActivationTiming::AnyTimeBySourceOwner

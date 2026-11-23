@@ -461,9 +461,14 @@ pub fn parse_exile_to_countered_exile_instead_of_graveyard_spec_lexed(
     tokens: &[OwnedLexToken],
 ) -> Option<ExileToCounteredExileInsteadOfGraveyardSpec> {
     let (_, remainder) = primitives::parse_prefix(tokens, primitives::kw("if"))?;
-    let (_, spec) = primitives::split_lexed_once_before_suffix(remainder, 1, || {
+    let (subject, spec) = primitives::split_lexed_once_before_suffix(remainder, 1, || {
         parse_exile_to_countered_exile_instead_of_graveyard_suffix
     })?;
+    // The replacement watches every card: only "a card" is this reading.
+    if crate::lexer::parser_token_word_refs(subject) != ["a", "card"] {
+        return None;
+    }
+    crate::word_claims::claim_tokens(subject);
     Some(spec)
 }
 
@@ -728,11 +733,26 @@ pub fn is_draw_replace_exile_top_face_down_line_lexed(tokens: &[OwnedLexToken]) 
         return false;
     }
 
-    contains_token_word(tokens, "exile")
-        && contains_token_word_sequence(tokens, &["top", "card"])
-        && contains_token_word(tokens, "library")
-        && contains_token_word_sequence(tokens, &["face", "down"])
-        && contains_token_word(tokens, "instead")
+    // "If you would draw a card, exile the top card of your library face
+    // down instead." (Asmodeus the Archfiend): the whole fixed sentence.
+    let matched = primitives::parse_all(
+        tokens,
+        (
+            primitives::phrase(&["if", "you", "would", "draw", "a", "card"]),
+            opt(primitives::comma()),
+            primitives::phrase(&[
+                "exile", "the", "top", "card", "of", "your", "library", "face", "down", "instead",
+            ]),
+            opt(primitives::period()),
+        )
+            .void(),
+        "draw-replace-exile-top-face-down",
+    )
+    .is_ok();
+    if matched {
+        crate::word_claims::claim_tokens(tokens);
+    }
+    matched
 }
 
 pub fn is_effect_discard_to_library_replacement_line_lexed(tokens: &[OwnedLexToken]) -> bool {
@@ -1212,11 +1232,16 @@ pub fn is_you_assign_combat_damage_of_creatures_attacking_you_line_lexed(
         "blocking",
         "it",
     ];
-    words.len() == EXPECTED.len()
+    let matched = words.len() == EXPECTED.len()
         && words
             .iter()
             .zip(EXPECTED.iter())
-            .all(|(actual, expected)| actual.eq_ignore_ascii_case(expected))
+            .all(|(actual, expected)| actual.eq_ignore_ascii_case(expected));
+    // The whole line matched word for word.
+    if matched {
+        crate::word_claims::claim_tokens(tokens);
+    }
+    matched
 }
 
 pub fn is_lethal_damage_to_creatures_you_control_uses_power_line_lexed(
@@ -1688,13 +1713,18 @@ pub fn is_may_divide_combat_damage_among_defending_player_and_creatures_line_lex
         | ["you", "may", "assign", "this", "creatures", rest @ ..] => rest,
         _ => return false,
     };
-    matches!(
+    let matched = matches!(
         rest,
         [
             "combat", "damage", "divided", "as", "you", "choose", "among", "defending", "player",
             "and", "or", "any", "number", "of", "creatures", "they", "control"
         ]
-    )
+    );
+    // The whole line matched word for word (through the split copy above).
+    if matched {
+        crate::word_claims::claim_tokens(tokens);
+    }
+    matched
 }
 
 fn parse_source_doesnt_untap_during_your_untap_step_prefix<'a>(

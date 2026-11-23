@@ -42,10 +42,12 @@ fn parse_create_value_binding(tokens: &[OwnedLexToken]) -> Result<Option<Value>,
         let mut candidates = Vec::new();
         for (id, (value, claims)) in values {
             let Some(value) = value else { continue };
-            if candidates
-                .iter()
-                .any(|candidate: &RegistryCandidate<Value>| candidate.value == value)
+            if let Some(kept) = candidates
+                .iter_mut()
+                .find(|candidate: &&mut RegistryCandidate<Value>| candidate.value == value)
             {
+                // An equal reading: either reader's words are read.
+                kept.claims.extend(&claims);
                 continue;
             }
             candidates.push(
@@ -471,8 +473,28 @@ fn quoted_copy_sacrifice_ability_surface(
             } else {
                 TokenCopySacrificeSubjectSurface::Token
             };
+            if is_exact_end_step_self_sacrifice(&words) {
+                crate::word_claims::claim_tokens(body);
+            }
             Some(TokenCopySacrificeAbilitySurface { end_step, subject })
         })
+}
+
+/// "At the beginning of the|your [next] end step, sacrifice this
+/// token|permanent." is exactly the delayed self-sacrifice the surface
+/// records; any other wording keeps its words for the general readers.
+fn is_exact_end_step_self_sacrifice(words: &[&str]) -> bool {
+    let Some(rest) = words.strip_prefix(&["at", "the", "beginning", "of"][..]) else {
+        return false;
+    };
+    let Some(rest) = rest.strip_prefix(&["the"][..]).or_else(|| rest.strip_prefix(&["your"][..])) else {
+        return false;
+    };
+    let rest = rest.strip_prefix(&["next"][..]).unwrap_or(rest);
+    matches!(
+        rest,
+        ["end", "step", "sacrifice", "this", "token" | "permanent"]
+    )
 }
 
 fn append_inline_token_embedded_rule(
@@ -697,7 +719,11 @@ fn parse_inline_token_granted_abilities_owned(
     // clause; merging all complete-clause reminder facts would also leak
     // keywords from nested tokens inside quotes onto the outer token.
     let rule_source = token_definition_grammar::token_definition_rule_tokens(tokens);
-    let complete_reminder = token_definition_grammar::parse_token_reminder_facts_tokens(&rule_source);
+    let token_name = token_definition_grammar::token_definition_name(tokens);
+    let complete_reminder = token_definition_grammar::parse_named_token_reminder_facts_tokens(
+        &rule_source,
+        token_name.as_deref(),
+    );
     token_definition_grammar::merge_authored_token_equipment_facts(
         definition,
         &complete_reminder,
@@ -719,7 +745,10 @@ fn parse_inline_token_granted_abilities_owned(
                 _ => None,
             })
             .flatten();
-        let reminder = token_definition_grammar::parse_token_reminder_facts_tokens(rule_tokens);
+        let reminder = token_definition_grammar::parse_named_token_reminder_facts_tokens(
+            rule_tokens,
+            token_name.as_deref(),
+        );
         let reminder = reminder.without_rule_effect_keywords();
         let conflicting_combat_restriction =
             match (&*definition, reminder.creature_combat_restriction()) {
@@ -1510,6 +1539,8 @@ fn parse_create_choice_of_options(
         let effect = parse_create(segment, None)?;
         options.push((display, Box::new(effect)));
     }
+    // "your choice of": the option list's head.
+    crate::word_claims::claim_tokens(&tokens[..consumed]);
     Ok(Some(EffectAst::subject_verb(
         SubjectVerbRoleAst::Actor,
         PlayerAst::Implicit,
@@ -1889,6 +1920,7 @@ pub fn parse_create(
                 crate::util::trim_edge_punctuation_tokens(&tokens[..index]),
                 subject,
             )?;
+            crate::word_claims::claim_tokens(&tokens[index..]);
             let surface = ironsmith_core::PriorEffectResultSurface::new(
                 ironsmith_core::PriorEffectAction::Revealed,
                 ObjectFilter::default(),
@@ -2269,23 +2301,61 @@ pub fn parse_create(
             for ability in parse_inline_copy_granted_abilities(&tail_tokens) {
                 merge_inline_copy_granted_ability(&mut granted_abilities, ability);
             }
+            // "except their power is half that creature's power and their
+            // toughness is half that creature's toughness" (Saw in Half),
+            // read as one exact exception.
             let half_pt = tail_surface.has(CreateWord::Half)
                 && tail_surface.has(CreateWord::Power)
-                && tail_surface.has(CreateWord::Toughness);
+                && tail_surface.has(CreateWord::Toughness)
+                && {
+                    fn is(token: &OwnedLexToken, words: &[&str]) -> bool {
+                        token.as_word().is_some_and(|word| words.contains(&word))
+                    }
+                    const PATTERN: [&[&str]; 15] = [
+                        &["their", "its"], &["power"], &["is"], &["half"], &["that"],
+                        &["creature's", "creatures"], &["power"], &["and"], &["their", "its"],
+                        &["toughness"], &["is"], &["half"], &["that"],
+                        &["creature's", "creatures"], &["toughness"],
+                    ];
+                    let word_tokens: Vec<&OwnedLexToken> =
+                        tail_tokens.iter().filter(|token| token.as_word().is_some()).collect();
+                    let exception = word_tokens.windows(PATTERN.len()).find(|window| {
+                        window
+                            .iter()
+                            .zip(PATTERN.iter())
+                            .all(|(token, words)| is(token, words))
+                    });
+                    if let Some(window) = exception {
+                        for token in window {
+                            crate::word_claims::claim_tokens(std::slice::from_ref(*token));
+                        }
+                    }
+                    exception.is_some()
+                };
             let has_haste = tail_surface.has_phrase(CreatePhrase::HasteGrant)
                 || tail_surface.has(CreateWord::Haste);
             // "..., except it has haste" / "except they have flying": the
             // exception's subject is the copy, and its haste is read into the
             // inline haste grant below.
+            // "except the token has ..." (Mythos of Illuna) names the same
+            // subject through the created token.
             crate::word_claims::claim_tokens(crate::word_claims::probe_only(|| {
                 let except_idx = tail_tokens.iter().position(|token| token.is_word("except"))?;
-                (tail_tokens
-                    .get(except_idx + 1)
-                    .is_some_and(|token| token.is_any_word(&["it", "they"]))
-                    && tail_tokens
-                        .get(except_idx + 2)
-                        .is_some_and(|token| token.is_any_word(&["has", "have"])))
-                .then(|| &tail_tokens[except_idx + 1..except_idx + 3])
+                let subject = except_idx + 1;
+                let subject_len = match (tail_tokens.get(subject), tail_tokens.get(subject + 1)) {
+                    (Some(it), _) if it.is_any_word(&["it", "they"]) => 1,
+                    (Some(the), Some(noun))
+                        if the.is_word("the")
+                            && noun.is_any_word(&["token", "tokens", "copy", "copies"]) =>
+                    {
+                        2
+                    }
+                    _ => return None,
+                };
+                tail_tokens
+                    .get(subject + subject_len)
+                    .is_some_and(|token| token.is_any_word(&["has", "have"]))
+                    .then(|| &tail_tokens[subject..subject + subject_len + 1])
             }).unwrap_or_default());
             if has_haste {
                 // Each "haste" of the exception is the inline haste grant.
@@ -2625,6 +2695,13 @@ pub fn parse_create(
                 clause_words.join(" ")
             )));
         };
+        // "that is every basic land type": the relative clause read here.
+        const EVERY_BASIC: [&str; 6] = ["that", "is", "every", "basic", "land", "type"];
+        if let Some(at) = tail_tokens.windows(6).position(|window| {
+            window.iter().zip(EVERY_BASIC).all(|(token, word)| token.parser_text() == word)
+        }) {
+            crate::word_claims::claim_tokens(&tail_tokens[at..at + 6]);
+        }
         land.subtypes = vec![
             crate::types::Subtype::Plains,
             crate::types::Subtype::Island,
@@ -2867,18 +2944,28 @@ pub fn parse_create(
     // (Furygale Flocking): a this-turn attack requirement on each token.
     let must_attack_player_this_turn = modifier_tail_words
         .windows(7)
-        .find_map(|window| match window {
+        .enumerate()
+        .find_map(|(at, window)| match window {
             ["that", "attack", "that", "opponent", "this", "turn", "if"] => {
-                Some(PlayerAst::Defending)
+                Some((at, PlayerAst::Defending))
             }
-            ["that", "attack", "that", "player", "this", "turn", "if"] => Some(PlayerAst::That),
-            ["that", "attack", "you", "this", "turn", "if", "able"] => Some(PlayerAst::You),
+            ["that", "attack", "that", "player", "this", "turn", "if"] => {
+                Some((at, PlayerAst::That))
+            }
+            ["that", "attack", "you", "this", "turn", "if", "able"] => Some((at, PlayerAst::You)),
             _ => None,
         })
         .filter(|_| {
             modifier_tail_words
                 .word_windows(2)
                 .any(|pair| pair == ["if", "able"])
+        })
+        .map(|(at, player)| {
+            // The requirement clause through its "if able".
+            let end = at + 7 + usize::from(modifier_tail_words[at + 6] == "if");
+            let end = end.min(modifier_tail_words.len());
+            crate::word_claims::claim_words(&modifier_tail_words[at..end]);
+            player
         });
     let (sacrifice_at_next_end_step, exile_at_next_end_step, next_end_step_player) =
         parse_next_end_step_token_delay_flags(&modifier_tail_words);
@@ -2916,7 +3003,13 @@ pub fn parse_create(
                 // (Adeline): the controller picks among that player and
                 // their planeswalkers (CR 508.4).
                 attack_target_includes_planeswalkers: attack_target_player.is_some()
-                    && modifier_surface.has_phrase(CreatePhrase::AttackTarget),
+                    && modifier_surface.phrase_match(CreatePhrase::AttackTarget).is_some_and(
+                        |(at, len)| {
+                            // "that player or a planeswalker they control".
+                            crate::word_claims::claim_words(&modifier_tail_words[at..at + len]);
+                            true
+                        },
+                    ),
                 must_attack_player_this_turn,
             },
             exile_at_end_of_combat: false,
@@ -3377,6 +3470,8 @@ fn named_permanent_reference_target(tokens: &[OwnedLexToken]) -> Option<TargetAs
     }
     let mut filter = ObjectFilter::default().in_zone(crate::Zone::Battlefield);
     filter.name = Some(name);
+    // The proper name read whole as the named permanent.
+    crate::word_claims::claim_tokens(tokens);
     Some(TargetAst::Object(filter, None, None))
 }
 

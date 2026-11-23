@@ -127,6 +127,8 @@ fn quantity(tokens: &[OwnedLexToken]) -> Option<Quantity> {
         | ["those", "stickers", "total", "toughness"]
         | ["those", "stickers", "s", "total", "toughness"])
     {
+        // The whole sticker-total phrase matched above.
+        crate::word_claims::claim_words(&words);
         return Some(Quantity {
             power: Value::StickerCharacteristicTotal { filter: ObjectFilter::permanent().controlled_by(crate::PlayerFilter::You),
                 toughness: words.iter().any(|word| *word == "toughness") },
@@ -232,6 +234,8 @@ fn quantity(tokens: &[OwnedLexToken]) -> Option<Quantity> {
         } else {
             return None;
         };
+    let reference_start = reference_range.start;
+    let reference_end = reference_range.end;
     let mut reference = rest[reference_range].to_vec();
     if possessive {
         normalize_possessive(&mut reference);
@@ -271,6 +275,24 @@ fn quantity(tokens: &[OwnedLexToken]) -> Option<Quantity> {
                     ),
                 ),
             );
+            // "[N plus] the <axis> of that <noun> [minus|plus N]": the
+            // characteristic frame, the demonstrative and the fixed offset.
+            if possessive {
+                crate::word_claims::claim_tokens(&rest[reference_end..]);
+            } else {
+                crate::word_claims::claim_tokens(&rest[..reference_start]);
+            }
+            crate::word_claims::claim_tokens(&reference);
+            if fixed_prefix.is_some() {
+                crate::word_claims::claim_tokens(&tokens[..2]);
+            }
+            if fixed_suffix.is_some() {
+                let view = TokenWordView::new(tokens);
+                let count = view.word_refs().len();
+                if let Some(range) = view.token_span_for_words(count - 2, count) {
+                    crate::word_claims::claim_tokens(&tokens[range]);
+                }
+            }
             Some(if axes == Axes::Toughness {
                 Value::ToughnessOf(spec)
             } else {
@@ -284,6 +306,21 @@ fn quantity(tokens: &[OwnedLexToken]) -> Option<Quantity> {
         });
     }
     let declared_reference = Some(parse_target_phrase(&reference).ok()?);
+    // "[N plus] the <axes> of <target> [minus|plus N]": the characteristic
+    // frame and the fixed offset around the declared target.
+    if !possessive {
+        crate::word_claims::claim_tokens(&rest[..reference_start]);
+    }
+    if fixed_prefix.is_some() {
+        crate::word_claims::claim_tokens(&tokens[..2]);
+    }
+    if fixed_suffix.is_some() {
+        let view = TokenWordView::new(tokens);
+        let count = view.word_refs().len();
+        if let Some(range) = view.token_span_for_words(count - 2, count) {
+            crate::word_claims::claim_tokens(&tokens[range]);
+        }
+    }
     let spec = Box::new(ChooseSpec::Tagged(
         crate::tag::CompilerReferenceTag::It.key(),
     ));

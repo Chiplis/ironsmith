@@ -22,6 +22,8 @@ pub(crate) fn read(sentences: &[SentenceInput], index: usize) -> Option<Vec<Effe
         if owned.owner != Some(PlayerFilter::IteratedPlayer) { return None; }
         owned.owner = Some(controller);
     }
+    crate::word_claims::claim_words(&first);
+    crate::word_claims::claim_words(&second[..second.len() - tail.len()]);
     Some(vec![EffectAst::subject_verb(
         SubjectVerbRoleAst::AffectedPlayer,
         PlayerAst::You,

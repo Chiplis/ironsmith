@@ -600,11 +600,14 @@ fn tagged_filter_after_action(tokens: &[OwnedLexToken]) -> Option<&[OwnedLexToke
     // "who shuffled a nontoken creature into their library this way": the
     // destination names where the action put the object, not which objects
     // qualify.
-    if let Some(into) = filter
-        .iter()
-        .position(|token| token.is_word("into") || token.is_word("onto"))
-        && into > 0
+    if let Some(into) = crate::word_claims::probe_only(|| {
+        filter
+            .iter()
+            .position(|token| token.is_word("into") || token.is_word("onto"))
+    }) && into > 0
     {
+        // The restated destination is read here.
+        crate::word_claims::claim_tokens(&filter[into..]);
         filter = trim(&filter[..into]);
     }
     // "who discarded their hand this way" (Snort): the act is the player's

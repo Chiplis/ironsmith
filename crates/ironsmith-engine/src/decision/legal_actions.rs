@@ -2687,6 +2687,9 @@ pub(crate) fn activation_timing_allows(
         crate::ability::ActivationTiming::AnyPlayerDuringTheirTurnBeforeEndStep => {
             game.is_active_player(controller) && game.turn.phase != Phase::Ending
         }
+        crate::ability::ActivationTiming::AnyPlayerDuringTheirTurn => {
+            game.is_active_player(controller)
+        }
         // "Only your opponents may activate this ability": the activating
         // player must be an opponent of the source's current controller.
         // "Only this creature's owner may activate this ability".
@@ -2782,6 +2785,20 @@ pub(crate) fn activation_step_window_allows(
         ActivationTiming::DuringEndOfCombatStep => {
             game.turn.phase == Phase::Combat && game.turn.step == Some(Step::EndCombat)
         }
+        ActivationTiming::DuringCombatAfterBlockersDeclared => {
+            game.turn.phase == Phase::Combat
+                && matches!(
+                    game.turn.step,
+                    Some(Step::DeclareBlockers | Step::CombatDamage | Step::EndCombat)
+                )
+        }
+        ActivationTiming::DuringOpponentsTurnBeforeAttackersDeclared => {
+            !game.is_active_player(controller)
+                && turn_is_before_first_combat_step(game, Step::DeclareAttackers)
+        }
+        // Step order 0 is the beginning of combat step, so no combat step
+        // precedes it: only the beginning phase and precombat main phase.
+        ActivationTiming::BeforeCombat => turn_is_before_first_combat_step(game, Step::BeginCombat),
         _ => true,
     }
 }

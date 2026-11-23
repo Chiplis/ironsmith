@@ -219,9 +219,12 @@ fn parse_pregame_intro_lexed<'a>(input: &mut LexStream<'a>) -> WResult<()> {
     )
     .take()
     .parse_next(input)?;
-    // "with it on the battlefield": the card the intro named.
+    // "with it on the battlefield": the card the intro named ("him"/"her"
+    // for a named character, Quicksilver).
     let object_words = crate::lexer::token_word_refs(object);
-    if object_words == ["it"] || crate::util::is_source_reference_words(&object_words) {
+    if matches!(object_words.as_slice(), ["it" | "him" | "her"])
+        || crate::util::is_source_reference_words(&object_words)
+    {
         crate::word_claims::claim_tokens(object);
     }
     primitives::phrase(&["on", "the", "battlefield"])

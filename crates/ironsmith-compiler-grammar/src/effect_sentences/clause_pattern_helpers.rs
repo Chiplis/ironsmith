@@ -497,6 +497,7 @@ pub fn parse_copy_spell_clause(
                     "missing object filter after 'counter among' in copy clause".to_string(),
                 ));
             }
+            crate::word_claims::claim_word(words[among]);
             return Ok(Value::DistinctCounterTypesAmong(parse_object_filter(
                 filter_tokens.tokens(),
                 false,
@@ -549,6 +550,8 @@ pub fn parse_copy_spell_clause(
         let Some(mut effect) = parse_copy_spell_clause(&stripped)? else {
             return Ok(None);
         };
+        // The leading "<player> may" this wrapper keeps.
+        crate::word_claims::claim_tokens(&tokens[..tokens.len().saturating_sub(stripped.len())]);
         super::chain_carry::bind_implicit_player_context(&mut effect, player);
         return Ok(Some(EffectAst::Permissions(
             PermissionEffectAst::MayByPlayer {
@@ -1005,6 +1008,17 @@ fn strip_copy_count_suffix(tokens: &[OwnedLexToken]) -> (&[OwnedLexToken], Optio
             &tokens[..tokens.len().saturating_sub(1)],
             Some(Value::Fixed(2)),
         );
+    }
+    // "copy that spell an additional time" (Howl of the Horde): one copy
+    // beyond whatever else copies it.
+    if let [.., an, additional, time] = tokens
+        && an.as_word() == Some("an")
+        && additional.as_word() == Some("additional")
+        && time.as_word() == Some("time")
+    {
+        let count_start = tokens.len() - 3;
+        crate::word_claims::claim_tokens(&tokens[count_start..]);
+        return (&tokens[..count_start], Some(Value::Fixed(1)));
     }
     if tokens.len() >= 2
         && (token_slice_last_is(tokens, "time") || token_slice_last_is(tokens, "times"))
@@ -2317,6 +2331,8 @@ pub fn parse_redirect_next_damage_sentence(
                 if crate::util::is_source_reference_words(&left_words) && right_words == ["you"]
                     || left_words == ["you"] && crate::util::is_source_reference_words(&right_words)
                 {
+                    // Both arms and their connective matched exactly.
+                    crate::word_claims::claim_tokens(target_tokens);
                     Some(TargetAst::ObjectOrPlayer(ObjectFilter::source(), PlayerFilter::You, None))
                 } else {
                     Some(parse_target_phrase(target_tokens)?)
@@ -3416,6 +3432,8 @@ pub fn parse_keyword_mechanic_clause(
             )?)
         }
         clause_shapes::KeywordMechanicShape::Meld { result_name_tokens } => {
+            // The melded card's name is the result's identity.
+            crate::word_claims::claim_tokens(result_name_tokens);
             let result_name = crate::lexer::token_word_refs(result_name_tokens).join(" ");
             EffectAst::subject_verb_meld(result_name, false, false)
         }

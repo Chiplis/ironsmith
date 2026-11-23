@@ -11,6 +11,21 @@ pub(super) fn parse_predicate_control_duration(tokens: &[OwnedLexToken]) -> Opti
     }
 
     if has_all_words(tokens, &["power", "less", "equal", "tapped"]) {
+        // "for as long as this creature remains tapped and that creature's
+        // power remains less than or equal to this creature's power" (Old
+        // Man of the Sea): claimed only when the duration is exactly this.
+        let rendered = crate::lexer::render_token_slice(trim_lexed_commas(tokens))
+            .to_ascii_lowercase()
+            .replace(['\'', '\u{2019}'], "");
+        if rendered.split_whitespace().collect::<Vec<_>>()
+            == [
+                "for", "as", "long", "as", "this", "creature", "remains", "tapped", "and", "that",
+                "creatures", "power", "remains", "less", "than", "or", "equal", "to", "this",
+                "creatures", "power",
+            ]
+        {
+            crate::word_claims::claim_tokens(tokens);
+        }
         return Some(Until::ForAsLongAs(Predicate::all([
             Predicate::ObjectTapped(ObjectRef::Source),
             Predicate::ObjectPowerAtMostObject {
@@ -23,6 +38,13 @@ pub(super) fn parse_predicate_control_duration(tokens: &[OwnedLexToken]) -> Opti
         // "for as long as that Aura is attached to it" (Eriette): the Aura is
         // the attachment participant of the attachment trigger; its ordinary
         // triggering demonstrative is the recipient ("that permanent").
+        // Claimed only when the duration is exactly this phrase.
+        if matches!(
+            crate::lexer::parser_token_word_refs(trim_lexed_commas(tokens)).as_slice(),
+            ["for", "as", "long", "as", "that", "aura", "is", "attached", "to", "it"]
+        ) {
+            crate::word_claims::claim_tokens(tokens);
+        }
         return Some(Until::ForAsLongAs(Predicate::ObjectAttachedTo {
             attachment: ObjectRef::Tagged(ironsmith_core::tag::TagKey::from(
                 ironsmith_core::tag::TRIGGER_ATTACHMENT_TAG,
@@ -31,16 +53,38 @@ pub(super) fn parse_predicate_control_duration(tokens: &[OwnedLexToken]) -> Opti
         }));
     }
     if primitives::contains_word(tokens, "enchanted") {
+        // Read as written only when the duration is exactly this phrase; the
+        // presence test above is looser than the reading.
+        if matches!(
+            crate::lexer::parser_token_word_refs(trim_lexed_commas(tokens)).as_slice(),
+            ["for", "as", "long", "as", "that", "creature" | "permanent", "is", "enchanted"]
+                | ["for", "as", "long", "as", "it", "is", "enchanted"]
+        ) {
+            crate::word_claims::claim_tokens(tokens);
+        }
         return Some(Until::ForAsLongAs(Predicate::ObjectIsEnchanted(
             ObjectRef::AffectedObject,
         )));
     }
     if primitives::contains_word(tokens, "monarch") {
+        // Claimed only when the duration is exactly this phrase (Garland).
+        if matches!(
+            crate::lexer::parser_token_word_refs(trim_lexed_commas(tokens)).as_slice(),
+            ["for", "as", "long", "as", "theyre" | "they're", "the", "monarch"]
+                | ["for", "as", "long", "as", "they", "are", "the", "monarch"]
+        ) {
+            crate::word_claims::claim_tokens(tokens);
+        }
         return Some(Until::ForAsLongAs(Predicate::PlayerIsMonarch(
             PlayerRef::ControllerOf(ObjectRef::AffectedObject),
         )));
     }
     if let Some(counter_type) = counter_duration_type(tokens) {
+        // "for as long as it has a shield counter on it" (Shield Broker):
+        // claimed only when the duration is exactly that phrase.
+        if is_exact_counter_duration(tokens) {
+            crate::word_claims::claim_tokens(tokens);
+        }
         return Some(Until::ForAsLongAs(Predicate::affected_object_has_counter(
             counter_type,
         )));
@@ -51,6 +95,27 @@ pub(super) fn parse_predicate_control_duration(tokens: &[OwnedLexToken]) -> Opti
         )));
     }
     None
+}
+
+/// "for as long as <it | that creature | that permanent> has [a | an] <counter
+/// type> counter on it", the whole duration.
+fn is_exact_counter_duration(tokens: &[OwnedLexToken]) -> bool {
+    let words = crate::lexer::parser_token_word_refs(trim_lexed_commas(tokens));
+    let Some(rest) = words.strip_prefix(&["for", "as", "long", "as"][..]) else {
+        return false;
+    };
+    let Some(rest) = [&["it"][..], &["that", "creature"], &["that", "permanent"]]
+        .iter()
+        .find_map(|subject| rest.strip_prefix(*subject))
+    else {
+        return false;
+    };
+    let Some(rest) = rest.strip_prefix(&["has"][..]) else {
+        return false;
+    };
+    let rest = rest.strip_prefix(&["a"][..]).or_else(|| rest.strip_prefix(&["an"][..])).unwrap_or(rest);
+    // The counter type between them is the counter reader's.
+    rest.len() >= 4 && rest.ends_with(&["counter", "on", "it"])
 }
 
 /// A complete source-lifetime predicate. Keep this distinct from the one-shot

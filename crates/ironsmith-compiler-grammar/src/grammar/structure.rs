@@ -766,7 +766,12 @@ pub(crate) fn is_source_controlled_by_non_owner_condition(tokens: &[OwnedLexToke
         crate::util::is_source_reference_words(words)
             || crate::util::source_reference_surface_for_words(words).is_some()
     };
-    names_source(&source_words) && (object == ["it"] || names_source(object))
+    let matched = names_source(&source_words) && (object == ["it"] || names_source(object));
+    if matched {
+        // The whole condition matched word for word above.
+        crate::word_claims::claim_tokens(tokens);
+    }
+    matched
 }
 
 pub(crate) fn parse_modeled_predicate(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
@@ -1243,6 +1248,10 @@ pub fn split_if_clause_lexed(
                 );
             filter.match_current_state = true;
             filter.set_prior_effect_action_surface(Some(ironsmith_core::PriorEffectAction::Chosen));
+            // "if one or more of the chosen" and "are still on the
+            // battlefield": the live existence gate over the chosen objects.
+            crate::word_claims::claim_tokens(&predicate[..PREFIX.len()]);
+            crate::word_claims::claim_tokens(&predicate[predicate.len() - SUFFIX.len()..]);
             let count = Value::Count(filter);
             let mut effects = parse_effects(&tokens[comma + 1..])?;
             fn bind_search_count(effects: &mut [EffectAst], count: &Value) {
@@ -1655,6 +1664,8 @@ fn parse_player_counter_difference_effect(
     {
         return None;
     }
+    // The whole effect is the phrase compared above.
+    crate::word_claims::claim_words(&words);
     let difference = Value::Add(
         Box::new(Value::Fixed(*threshold)),
         Box::new(Value::Scaled(
@@ -1711,6 +1722,7 @@ fn parse_cards_in_hand_difference_draw_effect(
         PlayerAst::You | PlayerAst::Implicit => PlayerFilter::You,
         _ => return None,
     };
+    crate::word_claims::claim_words(&effect_words);
     let threshold = (*count as i32) + 1;
     let difference = Value::Add(
         Box::new(Value::Fixed(threshold)),

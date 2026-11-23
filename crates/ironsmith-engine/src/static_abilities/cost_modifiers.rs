@@ -811,6 +811,21 @@ fn describe_cost_modifier_amount(amount: &Value) -> (String, Option<String>) {
         }
         Value::Fixed(n) => (format!("{{{n}}}"), None),
         Value::X => ("{X}".to_string(), None),
+        // "where X is the difference" (Shadow of Mortality): the starting
+        // life total minus the life total.
+        Value::Add(starting, current)
+            if matches!(**starting, Value::StartingLifeTotal(PlayerFilter::You))
+                && matches!(&**current, Value::Scaled(life, -1)
+                    if matches!(**life, Value::LifeTotal(PlayerFilter::You))) =>
+        {
+            (
+                "{X}".to_string(),
+                Some(
+                    "where X is the difference between your starting life total and your life total"
+                        .to_string(),
+                ),
+            )
+        }
         Value::PlayerCounters(player, counter) => {
             let subject = player.description();
             let verb = if *player == PlayerFilter::You {

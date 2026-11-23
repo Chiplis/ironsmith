@@ -105,10 +105,13 @@ fn parse_source_card_revealed_until_owners_next_turn(words: &[&str]) -> Option<V
 pub(super) fn parse(tokens: &[OwnedLexToken]) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     let tokens = crate::util::trim_edge_punctuation_tokens(tokens);
     let words = crate::lexer::parser_token_word_refs(tokens);
+    // Each reading below matches the whole sentence word for word.
     if let Some(effects) = parse_lockout_with_hand_reveal(&words) {
+        crate::word_claims::claim_words(&words);
         return Ok(Some(effects));
     }
     if let Some(effects) = parse_source_card_revealed_until_owners_next_turn(&words) {
+        crate::word_claims::claim_words(&words);
         return Ok(Some(effects));
     }
     // The whole bundle shares one authored turn bound.
@@ -167,6 +170,7 @@ pub(super) fn parse(tokens: &[OwnedLexToken]) -> Result<Option<Vec<EffectAst>>, 
         PlayerAst::You,
         crate::grant::GrantDuration::UntilEndOfTurn,
     );
+    crate::word_claims::claim_words(&words);
     Ok(Some(vec![restriction, grant]))
 }
 

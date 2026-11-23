@@ -857,6 +857,9 @@ pub enum Subtype {
     // Creature type (Cloak and Phaser's Romulan tokens); appended to
     // preserve serialized variant ordinals.
     Romulan,
+    // Creature type (Rise from the Nether's Mindless-One tokens); appended
+    // to preserve serialized variant ordinals.
+    MindlessOne,
 }
 
 impl Subtype {
@@ -1221,6 +1224,7 @@ impl Subtype {
             Subtype::Q,
             Subtype::Ferengi,
             Subtype::Romulan,
+            Subtype::MindlessOne,
             // A current creature type (CR 205.3m) missing from the family
             // list. Hound, Viashino and Rukh are retired (now Dog, Lizard and
             // Bird) and stay out.
@@ -1584,6 +1588,7 @@ impl Subtype {
             Subtype::PowerPlant => "Power-Plant".to_string(),
             Subtype::Shiar => "Shi'ar".to_string(),
             Subtype::ElAurian => "El-Aurian".to_string(),
+            Subtype::MindlessOne => "Mindless-One".to_string(),
             Subtype::BolassMeditationRealm => "Bolas's Meditation Realm".to_string(),
             Subtype::OutsideMuttersSpiral => "Outside Mutter's Spiral".to_string(),
             Subtype::SerrasRealm => "Serra's Realm".to_string(),

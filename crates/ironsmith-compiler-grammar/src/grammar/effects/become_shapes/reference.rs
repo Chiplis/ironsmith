@@ -140,6 +140,20 @@ pub fn parse_filtered_object_animation_tokens(
         return None;
     }
     let subject_token_end = word_view.token_index_after_words(subject_word_end)?;
+    // The copula, the descriptor's article and the "with" introducing its
+    // base size, read with the descriptor.
+    let copula_len = if words[copula_word] == "it" { 2 } else { 1 };
+    crate::word_claims::claim_words(&words[copula_word..copula_word + copula_len]);
+    let body_start = copula_word + copula_len;
+    if matches!(words.get(body_start), Some(&"a" | &"an")) {
+        crate::word_claims::claim_words(&words[body_start..=body_start]);
+    }
+    if let Some(with) = words[body_start..]
+        .windows(5)
+        .position(|window| window == ["with", "base", "power", "and", "toughness"])
+    {
+        crate::word_claims::claim_words(&words[body_start + with..=body_start + with]);
+    }
 
     Some(FilteredObjectAnimationShape {
         subject_tokens: &tokens[..subject_token_end],
@@ -261,6 +275,10 @@ fn split_animation_tail_words<'a, 'b>(
             {
                 return None;
             }
+            // The listed card types and creature types are lost with the
+            // other abilities: the animation sets its types exactly (CR
+            // 205.1a), so the list restates that.
+            crate::word_claims::claim_words(remainder);
             tail.loses_all_other_abilities = true;
             break;
         }

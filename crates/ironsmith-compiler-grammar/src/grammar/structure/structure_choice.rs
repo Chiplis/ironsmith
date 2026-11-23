@@ -37,12 +37,25 @@ pub fn split_trailing_modal_gate_clause<'a>(
     }
 
     let predicate = parse_if_result_predicate(predicate_tokens)?;
+    let remove_mode_only =
+        primitives::parse_prefix(predicate_tokens, parse_remove_mode_only_prefix).is_some();
+    // "When you remove a counter this way" (Immard, the Stormcleaver): the
+    // gate is the removal branch of the preceding put-or-remove choice, which
+    // lowering merges the modes into; the whole removal result is read here.
+    if remove_mode_only
+        && matches!(
+            crate::lexer::parser_token_word_refs(predicate_tokens).as_slice(),
+            ["you" | "they", "remove" | "removed", "a" | "one", "counter", "this", "way"]
+                | ["you" | "they", "remove" | "removed", "one", "or", "more", "counters", "this", "way"]
+        )
+    {
+        crate::word_claims::claim_tokens(predicate_tokens);
+    }
 
     Some(TrailingModalGateSpec {
         prefix_tokens: &tokens[..prefix_end],
         predicate,
-        remove_mode_only: primitives::parse_prefix(predicate_tokens, parse_remove_mode_only_prefix)
-            .is_some(),
+        remove_mode_only,
         reflexive,
     })
 }

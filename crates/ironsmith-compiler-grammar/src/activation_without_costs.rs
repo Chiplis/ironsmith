@@ -43,7 +43,8 @@ fn parse_cast_or_activation(tokens:&[OwnedLexToken])->Result<Option<EffectAst>,C
  let mut separators=Vec::new();
  for (index,token) in tokens.iter().enumerate(){
   if token.kind==crate::lexer::TokenKind::Quote{quoted=!quoted;}
-  else if !quoted && token.is_word("or") && tokens.get(index+1).is_some_and(|next|next.is_word("activate")){separators.push(index);}
+  // Detection only: the separator is claimed once both arms parse.
+  else if !quoted && crate::word_claims::probe_only(||token.is_word("or") && tokens.get(index+1).is_some_and(|next|next.is_word("activate"))){separators.push(index);}
  }
  if quoted || separators.len()!=1{return Ok(None);}
  let separator=separators[0];

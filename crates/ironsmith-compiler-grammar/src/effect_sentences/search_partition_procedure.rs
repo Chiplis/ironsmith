@@ -182,6 +182,14 @@ struct CountedBattlefieldPart {
     predicate: Option<crate::cards::builders::PredicateAst>,
 }
 
+/// The words of a counted part before its trailing "if" clause.
+fn counted_part_body(tokens: &[OwnedLexToken]) -> &[OwnedLexToken] {
+    match crate::grammar::structure::split_trailing_if_clause_lexed(tokens) {
+        Some(spec) => trim(spec.leading_tokens),
+        None => tokens,
+    }
+}
+
 fn counted_battlefield_part(sentence: &SentenceInput) -> Option<CountedBattlefieldPart> {
     let tokens = trim(sentence.lexed());
     let (body, predicate) = match crate::grammar::structure::split_trailing_if_clause_lexed(tokens) {
@@ -297,6 +305,9 @@ fn open_counted_battlefield_partition(
     ];
     let mut taken: Vec<crate::tag::TagRef> = Vec::new();
     for (index, (sentence, part)) in parts.into_iter().enumerate() {
+        // The part's body was compared word by word (on a lowercased copy)
+        // and read in full; the group is committed here.
+        crate::word_claims::claim_tokens(counted_part_body(trim(sentence.lexed())));
         let tag = crate::tag::TagRef::of(helper_tag_for_tokens(
             sentence.lowered(),
             &format!("searched_partition_part_{index}"),

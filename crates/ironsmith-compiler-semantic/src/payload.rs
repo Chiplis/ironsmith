@@ -784,4 +784,8 @@ pub enum IfResultPredicate {
     /// The prior exact instruction had no eligible choice; not a declined action.
     ChoiceUnavailable,
     NamedActionCompleted { label:String },
+    /// "When excess damage is dealt to the creature an opponent controls this
+    /// way": excess damage dealt to a recipient object matching the filter.
+    /// Appended.
+    ExcessDamageDealtToObjectMatching(crate::filter::ObjectFilter),
 }

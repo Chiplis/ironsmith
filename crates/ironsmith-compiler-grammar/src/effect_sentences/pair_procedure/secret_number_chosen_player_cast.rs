@@ -92,6 +92,17 @@ pub(super) fn read(
         return Ok(None);
     }
 
+    // Every sentence was matched word for word; the fifth after its source
+    // reference.
+    for (index, sentence) in group.iter().enumerate() {
+        let tokens = sentence.lowered();
+        let start = if index == 4 {
+            crate::lexer::TokenWordView::new(tokens).map_word_to_token_start(deals).unwrap_or(0)
+        } else {
+            0
+        };
+        crate::word_claims::claim_tokens(&tokens[start..]);
+    }
     let exiled_tag = helper_tag_for_tokens(group[0].lowered(), "exiled");
     let chosen_player_tag = helper_tag_for_tokens(group[3].lowered(), "chosen_player");
     let put_tag = helper_tag_for_tokens(group[5].lowered(), "put_into_hand");

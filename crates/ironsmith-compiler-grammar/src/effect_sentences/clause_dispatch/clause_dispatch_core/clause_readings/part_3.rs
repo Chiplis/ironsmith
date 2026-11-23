@@ -126,6 +126,8 @@ pub(super) fn read_choose_creature_type(
                         .contains(subtype)
                 })
             {
+                // Every word was read: the secret choice and each option.
+                crate::word_claims::claim_tokens(tokens);
                 return Ok(Some(EffectAst::subject_verb_choose_subtype_options(
                     PlayerAst::You,
                     subtypes,

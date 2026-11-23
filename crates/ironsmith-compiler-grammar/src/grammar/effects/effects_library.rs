@@ -83,11 +83,21 @@ pub fn parse_search_library_sentence_with_grammar_entrypoint_lexed(
         return Ok(None);
     }
 
-    let subject_prelude = parse_search_library_leading_effect_prelude_lexed(
+    let subject_prelude = if search_library_counted_colors_prelude_lexed(
         head_split.subject_tokens,
-        subject_starts_effect_lexed,
-        parse_leading_effects_lexed,
-    )?;
+        head_split.search_tokens,
+    ) {
+        SearchLibraryLeadingPrelude {
+            subject_tokens: &[],
+            leading_effects: Vec::new(),
+        }
+    } else {
+        parse_search_library_leading_effect_prelude_lexed(
+            head_split.subject_tokens,
+            subject_starts_effect_lexed,
+            parse_leading_effects_lexed,
+        )?
+    };
     let subject_tokens = subject_prelude.subject_tokens;
     let sentence_has_direct_may = head_split.sentence_has_direct_may;
     let trailing_that_player_shuffle = has_trailing_that_player_shuffle(tokens);

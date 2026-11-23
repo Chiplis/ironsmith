@@ -103,6 +103,7 @@ pub(crate) fn bind(effects: &mut Vec<EffectAst>, sentence: &[OwnedLexToken]) -> 
         // "If two or more creatures a player controls are tied for greatest,
         // that player chooses one." (Tariff): the preceding per-player
         // instruction already has that player choose exactly one.
+        crate::word_claims::claim_tokens(sentence);
         return true;
     }
     let Some((axis, greatest, noun)) = tie_axis(sentence) else {
@@ -170,6 +171,8 @@ pub(crate) fn bind(effects: &mut Vec<EffectAst>, sentence: &[OwnedLexToken]) -> 
     *effects.last_mut().expect("previous action checked") = EffectAst::Sequence {
         effects: vec![choose, action],
     };
+    // `tie_axis` matched the whole sentence.
+    crate::word_claims::claim_tokens(sentence);
     true
 }
 

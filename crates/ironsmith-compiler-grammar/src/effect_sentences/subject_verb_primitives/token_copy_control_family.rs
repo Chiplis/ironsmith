@@ -547,6 +547,8 @@ pub fn parse_sentence_each_opponent_draws_then_you_draw_per_opponent(
     else {
         return Ok(None);
     };
+    // An exact sentence.
+    crate::word_claims::claim_tokens(clause.tokens());
     let opponent_draw = EffectAst::subject_verb(
         crate::cards::builders::SubjectVerbRoleAst::AffectedPlayer,
         PlayerAst::That,
@@ -739,8 +741,12 @@ pub fn parse_exile_source_with_counters_sentence(
                 return Ok(None);
             }
             let it = TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.bind(), clause.span());
+            let exiled = parse_target_phrase(target_tokens)?;
+            // "with a number of <kind> counters on it equal to its mana
+            // value" matched word for word above.
+            crate::word_claims::claim_tokens(&tokens[with_at..]);
             return Ok(Some(vec![
-                EffectAst::subject_verb_exile(parse_target_phrase(target_tokens)?, false),
+                EffectAst::subject_verb_exile(exiled, false),
                 EffectAst::subject_verb_put_counters(
                     counter_type,
                     Value::ManaValueOf(Box::new(crate::target::ChooseSpec::Tagged(

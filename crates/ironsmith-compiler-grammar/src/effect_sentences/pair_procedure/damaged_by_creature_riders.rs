@@ -91,6 +91,7 @@ pub(super) fn read(
     if !is_cant_be_regenerated_rider(&first_words) || !is_exile_instead_rider(&second_words) {
         return Ok(None);
     }
+    super::claim_sentences([first, second]);
     // Both riders are turn-scoped effects of the resolving ability about
     // creatures the referenced creature deals damage to this turn. They are
     // not abilities of that creature: they keep applying after it leaves the

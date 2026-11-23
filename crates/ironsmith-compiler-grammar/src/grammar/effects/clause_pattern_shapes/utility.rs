@@ -305,6 +305,16 @@ fn zone_markers<'a>(input: &mut LexStream<'a>) -> WResult<()> {
             ));
         }
     }
+    // "in exile, in your hand, in your graveyard, and on the battlefield":
+    // the four zones the predicate lists, when written exactly so.
+    if crate::lexer::token_word_refs(remaining)
+        == [
+            "exile", "in", "your", "hand", "in", "your", "graveyard", "and", "on", "the",
+            "battlefield",
+        ]
+    {
+        crate::word_claims::claim_tokens(remaining);
+    }
     while any::<_, ErrMode<ContextError>>.parse_next(input).is_ok() {}
     Ok(())
 }
@@ -344,6 +354,8 @@ fn parse_win_game_lexed<'a>(input: &mut LexStream<'a>) -> WResult<WinGameShape<'
             .parse_next(&mut named_probe)?;
         primitives::kw("in").parse_next(&mut named_probe)?;
         zone_markers.parse_next(&mut named_probe)?;
+        // The named card the predicate looks for.
+        crate::word_claims::claim_tokens(name_tokens);
         *input = named_probe;
         return Ok(WinGameShape::NamedZones { name_tokens });
     }

@@ -208,6 +208,8 @@ pub(super) fn read_library_placement_destination(
         && let ["all", "but", kept, "of", "them"] = crate::lexer::token_word_refs(shape.target_tokens).as_slice()
         && let Some(kept) = crate::util::parse_number_word_u32(kept)
     {
+        // "all but <n> of them": the subset complement compared above.
+        crate::word_claims::claim_tokens(shape.target_tokens);
         // Keep the chosen subset in place and move its complement. Capturing
         // the pool first prevents the keep choice from replacing its antecedent.
         let pool = crate::util::helper_tag_for_tokens(tokens, "remainder_pool");
@@ -257,7 +259,33 @@ pub(super) fn read_library_placement_destination(
             result_conjunction: false,
         }));
     }
-    if let Some(shape) = cca_shapes::parse_library_placement_destination_shape(tokens) {
+    if let Some(mut shape) = cca_shapes::parse_library_placement_destination_shape(tokens) {
+        // "Put target creature on top of its owner's library, then fateseal
+        // 2." (Spin into Myth): a ", then <instruction>" after the library
+        // placement is its own instruction, not part of the destination.
+        let mut followup = Vec::new();
+        if let Some(then_idx) = shape
+            .destination_tokens
+            .windows(2)
+            .position(|pair| pair[0].is_comma() && pair[1].is_word("then"))
+            && then_idx + 2 < shape.destination_tokens.len()
+        {
+            let (parsed, claims) = crate::word_claims::scoped(|| {
+                crate::effect_sentences::parse_effect_sentence_lexed(
+                    &shape.destination_tokens[then_idx + 2..],
+                )
+            });
+            if let Ok(parsed) = parsed
+                && !parsed.is_empty()
+            {
+                crate::word_claims::adopt(&claims);
+                crate::word_claims::claim_tokens(
+                    &shape.destination_tokens[then_idx + 1..then_idx + 2],
+                );
+                followup = parsed;
+                shape.destination_tokens = &shape.destination_tokens[..then_idx];
+            }
+        }
         let (target_tokens, source_top_only) = strip_source_top_only_prefix(shape.target_tokens);
         // "put one of those cards back on top of your library" (Devourer of
         // Destiny): "back" restates the origin, not the moved object.
@@ -299,24 +327,26 @@ pub(super) fn read_library_placement_destination(
                 None,
             )
         };
-        return Ok(Some(
-            effect
-                .with_source_top_only(source_top_only)
-                .with_library_order(order, player)
-                .with_destination_player_surface(cca_shapes::parse_destination_player(
-                    shape.destination_tokens,
-                ))
-                .with_destination_player_reference_surface(
-                    cca_shapes::parse_destination_player_reference_surface(
-                        shape.destination_tokens,
-                    ),
-                )
-                .with_exiled_with_source_surface(exiled_with_source_surface.clone())
-                .with_move_to_zone_actor_surface(player)
-                .with_move_to_zone_plural_surface_if(
-                    cca_shapes::is_plural_tagged_object_reference(target_tokens),
-                ),
-        ));
+        let effect = effect
+            .with_source_top_only(source_top_only)
+            .with_library_order(order, player)
+            .with_destination_player_surface(cca_shapes::parse_destination_player(
+                shape.destination_tokens,
+            ))
+            .with_destination_player_reference_surface(
+                cca_shapes::parse_destination_player_reference_surface(shape.destination_tokens),
+            )
+            .with_exiled_with_source_surface(exiled_with_source_surface.clone())
+            .with_move_to_zone_actor_surface(player)
+            .with_move_to_zone_plural_surface_if(
+                cca_shapes::is_plural_tagged_object_reference(target_tokens),
+            );
+        if followup.is_empty() {
+            return Ok(Some(effect));
+        }
+        let mut effects = vec![effect];
+        effects.extend(followup);
+        return Ok(Some(EffectAst::Sequence { effects }));
     }
     Ok(None)
 }
@@ -425,6 +455,7 @@ pub(super) fn read_into_destination(
                         | ["the", "top", "card", "of", "the", "exiled", "pile"]
                 )
             {
+                crate::word_claims::claim_tokens(shape.target_tokens);
                 let target = TargetAst::WithCount(
                     Box::new(TargetAst::Tagged(
                         crate::tag::CompilerReferenceTag::SourceExiled.bind(),
@@ -610,6 +641,8 @@ pub(super) fn read_into_destination(
                     ["that", "many", "cards", "from", "the", "top", "of", "your", "library"]
                 )
             {
+                // The selection phrase compared word for word above.
+                crate::word_claims::claim_tokens(shape.target_tokens);
                 let filter = ObjectFilter::default()
                     .in_zone(Zone::Library)
                     .owned_by(PlayerFilter::You);

@@ -69,6 +69,8 @@ pub(super) fn parse(tokens: &[OwnedLexToken]) -> Option<ManaUsageRestriction> {
     if !extended_action {
         return None;
     }
+    // Every arm matched its words exactly: the whole sentence was read.
+    crate::word_claims::claim_tokens(tokens);
     Some(ManaUsageRestriction::PaymentTransaction {
         restriction: Some(if predicates.len() == 1 {
             predicates.remove(0)

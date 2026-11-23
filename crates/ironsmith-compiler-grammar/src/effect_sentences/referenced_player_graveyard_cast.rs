@@ -36,6 +36,8 @@ fn parse_other_players_graveyards(tokens: &[OwnedLexToken]) -> Option<EffectAst>
     {
         return None;
     }
+    // Matched word for word (the possessive through its tokens).
+    crate::word_claims::claim_tokens(tokens);
     let lands = crate::target::ObjectFilter::default().with_type(crate::types::CardType::Land);
     let mut spells = crate::target::ObjectFilter::default();
     spells.excluded_card_types.push(crate::types::CardType::Land);
@@ -78,6 +80,7 @@ fn parse_referenced_player_hand(tokens: &[OwnedLexToken]) -> Option<EffectAst> {
     if rest != ["hand", "this", "turn"] {
         return None;
     }
+    crate::word_claims::claim_tokens(tokens);
     let lands = crate::target::ObjectFilter::default().with_type(crate::types::CardType::Land);
     let mut spells = crate::target::ObjectFilter::default();
     spells.excluded_card_types.push(crate::types::CardType::Land);

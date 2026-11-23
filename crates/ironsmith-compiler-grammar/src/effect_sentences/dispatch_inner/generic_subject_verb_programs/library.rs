@@ -123,6 +123,19 @@ pub fn parse_generic_top_cards_exile_counted_face_down_rest_bottom_subject_verb(
         return None;
     };
 
+    // "look at" before the viewed cards the look reader reads, and the
+    // remainder when it is exactly "put the rest on the bottom of <owner's>
+    // library [in a random | any order]".
+    let look_words = look_clause.word_refs();
+    if look_words.starts_with(&["look", "at"]) {
+        crate::word_claims::claim_words(&look_words[..2]);
+    }
+    let remainder_words = remainder_clause.word_refs();
+    if let Some(put) = remainder_words.iter().position(|word| *word == "put")
+        && exact_rest_on_bottom_words(&remainder_words[put..])
+    {
+        crate::word_claims::claim_words(&remainder_words[put..]);
+    }
     let looked_tag = crate::util::helper_tag_for_tokens(tokens, "looked");
     let exiled_tag = crate::tag::CompilerReferenceTag::It.bind();
     let mut choice_filter = ObjectFilter::tagged(looked_tag.clone());
@@ -157,4 +170,24 @@ pub fn parse_generic_top_cards_exile_counted_face_down_rest_bottom_subject_verb(
         ),
     );
     Some(effects)
+}
+
+/// "put the rest on the bottom of <owner's> library [in a random | any
+/// order]", word for word.
+pub(crate) fn exact_rest_on_bottom_words(words: &[&str]) -> bool {
+    let rest = match words {
+        ["put", "the", "rest" | "other", "on", "the", "bottom", "of", rest @ ..]
+        | ["put", "the", "rest" | "other", "on", "bottom", "of", rest @ ..] => rest,
+        _ => return false,
+    };
+    let order = match rest {
+        ["your" | "their" | "that", "library", order @ ..]
+        | ["that", "player's" | "players", "library", order @ ..]
+        | ["its", "owner's" | "owners", "library", order @ ..] => order,
+        _ => return false,
+    };
+    matches!(
+        order,
+        [] | ["in", "a", "random", "order"] | ["in", "random", "order"] | ["in", "any", "order"]
+    )
 }

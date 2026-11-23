@@ -102,6 +102,27 @@ fn parse_cross_zone_target_swap(
         return Ok(None);
     }
     second_filter.owner = Some(PlayerFilter::TargetPlayerOrControllerOfTarget);
+    // The swap restates the two targets' nouns ("sacrifices the artifact and
+    // returns the artifact card"); when it does, it reads every word.
+    let restated = swap_words[SWAP_HEAD.len()..]
+        .windows(3)
+        .position(|window| window == ["and", "returns", "the"])
+        .is_some_and(|and| {
+            let first_words = crate::lexer::parser_token_word_refs(&declare[1..and_idx]);
+            let second_words = crate::lexer::parser_token_word_refs(&declare[and_idx + 1..]);
+            let tail = &swap_words[SWAP_HEAD.len()..];
+            let permanent = &tail[..and];
+            let card = tail.get(and + 3..tail.len().saturating_sub(3)).unwrap_or_default();
+            !permanent.is_empty()
+                && !card.is_empty()
+                && permanent.iter().all(|word| first_words.contains(word))
+                && card.iter().all(|word| second_words.contains(word))
+        });
+    if restated {
+        crate::word_claims::claim_tokens(swap);
+        crate::word_claims::claim_tokens(&declare[..1]);
+        crate::word_claims::claim_tokens(&declare[and_idx..and_idx + 1]);
+    }
     let first_tag = crate::util::helper_tag_for_tokens(declare, "swap_permanent_target");
     let second_tag = crate::util::helper_tag_for_tokens(declare, "swap_card_target");
     let declare_target = |target: TargetAst, tag: &TagKey| EffectAst::TagAffected {

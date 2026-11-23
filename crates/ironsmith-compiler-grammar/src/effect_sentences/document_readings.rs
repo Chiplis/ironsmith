@@ -396,8 +396,10 @@ pub(super) fn read_document(document: &Document<'_>) -> ParseOutcome<RuleMatch<V
     // Equal readings from two rules are one reading, as the registry deduplicated.
     let mut distinct: Vec<RegistryCandidate<Vec<EffectAst>>> = Vec::new();
     for candidate in candidates {
-        if !distinct.iter().any(|kept| kept.value == candidate.value) {
-            distinct.push(candidate);
+        match distinct.iter_mut().find(|kept| kept.value == candidate.value) {
+            // Both rules read the same meaning; either one's words are read.
+            Some(kept) => kept.claims.extend(&candidate.claims),
+            None => distinct.push(candidate),
         }
     }
     resolve_registry_candidates(DOCUMENT_REGISTRY, distinct, diagnostics)
@@ -1526,6 +1528,10 @@ fn read_each_opponent_attacking_that_player_does_the_same(
         subject_verb.subject.player = crate::cards::builders::PlayerAst::That;
         repeated.push(EffectAst::SubjectVerb(subject_verb));
     }
+    // The relational subject, and "does the same" when it replays the
+    // first sentence.
+    let read = if tail == ["does", "the", "same"] { second_words.len() } else { 5 };
+    crate::word_claims::claim_words(&second_words[..read]);
     let mut out = effects;
     out.push(EffectAst::ForEach(ForEachEffectAst::ForEachPlayersFiltered {
         sequential: false,

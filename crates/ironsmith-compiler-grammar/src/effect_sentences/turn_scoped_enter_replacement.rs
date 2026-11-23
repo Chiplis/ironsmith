@@ -57,7 +57,10 @@ fn parse_enter_from_zone_shuffle(words: &[&str]) -> Option<EffectAst> {
 
 pub(crate) fn parse(tokens: &[OwnedLexToken]) -> Option<EffectAst> {
     let words = crate::lexer::parser_token_word_refs(tokens);
+    // Both readings match every word of the sentence exactly, so a success
+    // has read all of `tokens`.
     if let Some(effect) = parse_enter_from_zone_shuffle(&words) {
+        crate::word_claims::claim_tokens(tokens);
         return Some(effect);
     }
     let rest = words.strip_prefix(&["until", "end", "of", "turn", "if", "a"][..])?;
@@ -91,6 +94,7 @@ pub(crate) fn parse(tokens: &[OwnedLexToken]) -> Option<EffectAst> {
             })
             .collect();
     }
+    crate::word_claims::claim_tokens(tokens);
     Some(EffectAst::subject_verb_register_future_zone_replacement(
         filter,
         None,

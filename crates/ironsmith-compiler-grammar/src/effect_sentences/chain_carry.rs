@@ -85,7 +85,11 @@ fn has_any_number_of_times_suffix(tokens: &[OwnedLexToken]) -> bool {
 }
 
 /// "pay {G} up to three times": the bound and the instruction before it.
-fn split_up_to_times_suffix(tokens: &[OwnedLexToken]) -> Option<(u32, &[OwnedLexToken])> {
+/// The third element is the "up to N times" tail, for the caller to claim
+/// once it keeps the reading.
+fn split_up_to_times_suffix(
+    tokens: &[OwnedLexToken],
+) -> Option<(u32, &[OwnedLexToken], &[OwnedLexToken])> {
     let trimmed = trim_lexed_commas(tokens);
     let words = crate::lexer::parser_token_word_refs(trimmed);
     let [.., "up", "to", count, "times"] = words.as_slice() else {
@@ -93,7 +97,7 @@ fn split_up_to_times_suffix(tokens: &[OwnedLexToken]) -> Option<(u32, &[OwnedLex
     };
     let max = crate::util::parse_number_word_u32(count).filter(|max| *max >= 2)?;
     let up_index = trimmed.iter().rposition(|token| token.is_word("up"))?;
-    (up_index > 0).then(|| (max, &trimmed[..up_index]))
+    (up_index > 0).then(|| (max, &trimmed[..up_index], &trimmed[up_index..]))
 }
 
 fn is_repeatable_optional_payment(effects: &[EffectAst]) -> bool {
@@ -432,6 +436,9 @@ pub(super) fn parse_optional_other_player_token_copy(tokens: &[OwnedLexToken]) -
     }
     drop(bind_copy);
     if !found { return Ok(None); }
+    // "you may have target player other than its controller": the optional
+    // delegation and its controller-excluding player target.
+    crate::word_claims::claim_tokens(&tokens[..start]);
     let entering_controller = PlayerFilter::ControllerOf(crate::filter::ObjectRef::tagged(
         crate::tag::CompilerReferenceTag::Triggering.bind()));
     let target = TargetAst::Player(PlayerFilter::excluding(PlayerFilter::Any, entering_controller),
@@ -747,14 +754,54 @@ fn parse_atomic_token_copy_exception(
     }
 
     let effect = super::creation_handlers::parse_create(tokens, None)?;
-    Ok(matches!(
+    let is_copy = matches!(
         &effect,
         EffectAst::SubjectVerb(SubjectVerbEffectAst {
             action: SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenCopy { .. }),
             ..
         })
-    )
-    .then_some(effect))
+    );
+    if is_copy {
+        claim_copy_card_type_restatement(tokens, &effect);
+    }
+    Ok(is_copy.then_some(effect))
+}
+
+/// Only a copy whose exception sets its card types replaces the copied
+/// ones, which is what "loses all other card types" restates.
+pub(crate) fn claim_copy_card_type_restatement(tokens: &[OwnedLexToken], effect: &EffectAst) {
+    if matches!(
+        effect,
+        EffectAst::SubjectVerb(SubjectVerbEffectAst {
+            action: SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenCopy {
+                set_card_types: Some(_),
+                ..
+            }),
+            ..
+        })
+    ) {
+        claim_loses_all_other_card_types(tokens);
+    }
+}
+
+/// "... except it's an enchantment and [it] loses all other card types": the
+/// restatement that the set card type replaces the copied ones.
+fn claim_loses_all_other_card_types(tokens: &[OwnedLexToken]) {
+    const TAIL: &[&str] = &["loses", "all", "other", "card", "types"];
+    let Some(at) = tokens
+        .windows(TAIL.len())
+        .position(|window| window.iter().zip(TAIL).all(|(token, word)| token.parser_text() == *word))
+    else {
+        return;
+    };
+    let mut start = at;
+    if start > 0 && tokens[start - 1].parser_text() == "it" {
+        start -= 1;
+    }
+    if start > 0 && tokens[start - 1].parser_text() == "and" {
+        start -= 1;
+    }
+    crate::word_claims::claim_tokens(&tokens[start..at + TAIL.len()]);
 }
 
 pub(crate) fn parse_simple_that_creature_owner_library_placement(
@@ -778,6 +825,10 @@ pub(crate) fn parse_simple_that_creature_owner_library_placement(
         return None;
     }
 
+    // "put that creature on top of its owner's library": the whole fixed
+    // placement, both its object and its destination.
+    crate::word_claims::claim_tokens(shape.target_tokens);
+    crate::word_claims::claim_tokens(shape.destination_tokens);
     let mut filter = ObjectFilter::tagged(crate::tag::CompilerReferenceTag::It.bind());
     filter.card_types.push(CardType::Creature);
     filter.set_explicit_card_type_noun(Some(CardType::Creature));
@@ -2038,12 +2089,15 @@ fn parse_effect_chain_inner_lexed_unstacked(
     // "or" has no verb of its own, so it never coordinates a second action.
     let sacrifices_object_union = {
         let words = crate::lexer::token_word_refs(effect_chain_tokens);
-        let or_positions = effect_chain_tokens
-            .iter()
-            .enumerate()
-            .filter(|(_, token)| token.is_word("or"))
-            .map(|(index, _)| index)
-            .collect::<Vec<_>>();
+        // Detection only: locating the connective reads nothing.
+        let or_positions = crate::word_claims::probe_only(|| {
+            effect_chain_tokens
+                .iter()
+                .enumerate()
+                .filter(|(_, token)| token.is_word("or"))
+                .map(|(index, _)| index)
+                .collect::<Vec<_>>()
+        });
         if words
             .iter()
             .any(|word| matches!(*word, "sacrifice" | "sacrifices"))
@@ -4066,6 +4120,8 @@ pub fn bind_each_card_exiled_this_way_gains_suspend(
             effects: body.clone(),
         }));
     }
+    // Every word of the sentence is in the vocabulary checked above.
+    crate::word_claims::claim_tokens(tokens);
     true
 }
 
@@ -4158,6 +4214,9 @@ pub fn parse_target_player_does_the_same(
     let Some(effects) = rebind_you_actor_to_iterated_player(previous) else {
         return Ok(None);
     };
+    // "[Then] ... does the same": the repeated program, rebound to the player.
+    crate::word_claims::claim_tokens(&tokens[..subject_start]);
+    crate::word_claims::claim_tokens(&tokens[subject_end..]);
     Ok(Some(EffectAst::ForEach(ForEachEffectAst::ForEachTargetPlayers {
         count: ChoiceCount::exactly(1),
         filter,
@@ -4244,6 +4303,8 @@ pub fn bind_put_both_cards_onto_battlefield(
             SubjectVerbActionAst::Library(crate::cards::builders::LibraryActionAst::ShuffleLibrary),
         ));
     }
+    // The sentence matched one of the exact shapes above.
+    crate::word_claims::claim_tokens(tokens);
     true
 }
 
@@ -4382,6 +4443,10 @@ pub fn bind_return_entry_tapped_if(
         return false;
     }
     *tapped_if = Some(filter);
+    // "If a <filter> enters this way, it enters tapped": the conditional
+    // entry status read word for word (the filter read its own words).
+    crate::word_claims::claim_tokens(&tokens[..2]);
+    crate::word_claims::claim_tokens(&tokens[enters..]);
     true
 }
 

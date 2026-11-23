@@ -460,6 +460,8 @@ pub fn parse_exile_counted_target_players_graveyards(
     tokens: &[OwnedLexToken],
 ) -> Option<EffectAst> {
     let count = exile_clause_readings::counted_target_players_graveyards(tokens)?;
+    // The count and "target players' graveyards": the whole clause.
+    crate::word_claims::claim_tokens(tokens);
     let mut filter = ObjectFilter::default().in_zone(Zone::Graveyard);
     filter.owner = Some(PlayerFilter::IteratedPlayer);
     Some(EffectAst::ForEach(ForEachEffectAst::ForEachTargetPlayers {
@@ -784,6 +786,7 @@ fn parse_exile_inner(
         let tail = crate::lexer::token_word_refs(&tokens[equal..]);
         if tail.as_slice() == ["equal", "to", "the", "difference"] {
             let mut target = parse_target_phrase(&tokens[..equal])?;
+            crate::word_claims::claim_tokens(&tokens[equal..]);
             apply_exile_subject_hand_owner_context(&mut target, subject.clone());
             return Ok(with_exile_actor(
                 EffectAst::subject_verb_exile(
@@ -817,7 +820,10 @@ fn parse_exile_inner(
             words.extend_from_slice(owner);
             words.push("hand");
             let rewritten = crate::lexer::synthetic_word_tokens(words);
-            return parse_exile(&rewritten, subject);
+            let parsed = parse_exile(&rewritten, subject)?;
+            // The whole-hand phrase is restated by the synthetic rewrite.
+            crate::word_claims::claim_tokens(tokens);
+            return Ok(parsed);
         }
     }
     // "Exile an instant or sorcery card from each graveyard" (Summon: Esper
@@ -835,6 +841,8 @@ fn parse_exile_inner(
                 "from", "that", "player's", "graveyard",
             ]));
             let inner = parse_exile(&rewritten, None)?;
+            // "from each graveyard" is the per-player loop around the rewrite.
+            crate::word_claims::claim_tokens(&tokens[from_index..]);
             return Ok(EffectAst::ForEach(ForEachEffectAst::ForEachPlayer {
                 effects: vec![inner],
             }));
@@ -858,6 +866,7 @@ fn parse_exile_inner(
                 effect: Box::new(parse_exile(&rewritten, None)?),
                 tag: helper_tag_for_tokens(tokens, "exiled"),
             };
+            crate::word_claims::claim_tokens(&tokens[from_index..]);
             return Ok(EffectAst::ForEach(ForEachEffectAst::ForEachOpponent {
                 effects: vec![inner],
             }));
@@ -1269,6 +1278,11 @@ fn parse_except_then_additional_exile_all_filter(
     }
     base.characteristic_relations.extend(inverse_relations);
     apply_exile_subject_owner_context(&mut base, subject);
+    // "except those that share ...": the pronoun names the base filter the
+    // inverse relation lands on.
+    if exception_tokens.first().is_some_and(|token| token.as_word() == Some("those")) {
+        crate::word_claims::claim_tokens(&exception_tokens[..1]);
+    }
 
     let mut branches = vec![base];
     for segment in additional_segments {
@@ -1379,6 +1393,7 @@ pub fn parse_exile_all_and_all_graveyards(
         return Ok(None);
     }
     // Every card in every graveyard, as "Exile all graveyards" reads.
+    crate::word_claims::claim_tokens(&filter_tokens[and_idx..]);
     let graveyards = ObjectFilter::default().in_zone(Zone::Graveyard);
     Ok(Some(EffectAst::Sequence {
         effects: vec![

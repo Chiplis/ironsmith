@@ -70,6 +70,7 @@ fn library_player(
             ["each", "of", "those", "opponents" | "opponents'" | "players" | "players'", "libraries"]
         )
     {
+        crate::word_claims::claim_tokens(tokens);
         return Some(ExileLibraryPlayerShape::EachOfThosePlayers);
     }
     let owner = parse_exile_library_owner_shape(tokens, default_player)?;

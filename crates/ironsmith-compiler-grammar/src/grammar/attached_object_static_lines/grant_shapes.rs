@@ -163,9 +163,14 @@ pub fn parse_attached_gets_and_activation_restriction_tokens(
     if trim_lexed_commas(tokens.get(get_token + 1..and_token)?).len() != 1 {
         return None;
     }
-    let tail = super::super::super::lexer::parser_token_word_refs(tokens.get(and_token + 1..)?);
-    (tail == ["its", "activated", "abilities", "cant", "be", "activated"])
-        .then_some((subject, get_token, and_token))
+    let tail_tokens = tokens.get(and_token + 1..)?;
+    let tail = super::super::super::lexer::parser_token_word_refs(tail_tokens);
+    if tail != ["its", "activated", "abilities", "cant", "be", "activated"] {
+        return None;
+    }
+    // The activation ban, read word for word.
+    crate::word_claims::claim_tokens(tail_tokens);
+    Some((subject, get_token, and_token))
 }
 
 pub fn parse_attached_gets_and_negated_restriction_tokens(

@@ -551,6 +551,8 @@ fn parse_shared_head_counter_choice_types<'a>(
     if counter_types.len() < 2 {
         return Err(fail());
     }
+    // Every descriptor word named a counter kind or separated two.
+    crate::word_claims::claim_tokens(descriptor);
     Ok(counter_types)
 }
 

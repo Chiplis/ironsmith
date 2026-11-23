@@ -297,6 +297,15 @@ pub fn parse_subject_words(words: &[&str]) -> SubjectAst {
     ) {
         return SubjectAst::Player(PlayerAst::That);
     }
+    // "Those players each discard ..." (Skull Rend): the players the
+    // preceding instruction named, each acting.
+    if matches!(
+        slice,
+        ["those", "players" | "opponents"] | ["those", "players" | "opponents", "each"]
+    ) {
+        crate::word_claims::claim_words(slice);
+        return SubjectAst::Player(PlayerAst::That);
+    }
     if prefix_one_of(
         slice,
         &[
@@ -404,6 +413,10 @@ pub fn parse_subject_words(words: &[&str]) -> SubjectAst {
         && permission_shapes::suffix_words(slice, &["owner"])
         && !suffix_one_of(slice, &[&["its", "owner"], &["their", "owner"]])
     {
+        // "this artifact's owner": the source's possessive, read whole.
+        if slice.len() == 3 {
+            crate::word_claims::claim_words(slice);
+        }
         return SubjectAst::Player(PlayerAst::SourceOwner);
     }
     // Named possessives are normalized into parser words such as
@@ -427,8 +440,18 @@ pub fn parse_subject_words(words: &[&str]) -> SubjectAst {
     {
         return SubjectAst::Player(PlayerAst::ItsOwner);
     }
+    // "this Aura deals ...": a whole source reference names the source.
+    if crate::util::is_source_reference_words(slice) {
+        crate::word_claims::claim_words(slice);
+        return SubjectAst::This;
+    }
     if prefix_one_of(slice, &[&["this"], &["thiss"]]) {
         return SubjectAst::This;
+    }
+    // A bare pronoun subject ("it", or a character's "she"/"her" in
+    // "you may have her deal ...") is the source.
+    if matches!(slice, ["it" | "he" | "she" | "him" | "her"]) {
+        crate::word_claims::claim_words(slice);
     }
     SubjectAst::This
 }

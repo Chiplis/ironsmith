@@ -148,11 +148,16 @@ fn is_still_subtyped_land_followup(tokens: &[OwnedLexToken]) -> bool {
     let Some((last, subtypes)) = rest.split_last() else {
         return false;
     };
-    *last == "land"
+    let read = *last == "land"
         && !subtypes.is_empty()
         && subtypes.iter().all(|word| {
             crate::util::parse_subtype_word(word).is_some_and(|subtype| subtype.is_land_subtype())
-        })
+        });
+    if read {
+        // The whole sentence is the retention it restates.
+        crate::word_claims::claim_words(&words);
+    }
+    read
 }
 
 /// "It's still a Cave land." with exactly one restated land subtype.
@@ -192,7 +197,10 @@ pub fn parse_still_card_type_followup(tokens: &[OwnedLexToken]) -> Option<crate:
     if !matches!(*article, "a" | "an") {
         return None;
     }
-    leaf::parse_leaf_card_type_complete(card_type).ok()
+    let card_type = leaf::parse_leaf_card_type_complete(card_type).ok()?;
+    // The whole sentence restates the retained card type.
+    crate::word_claims::claim_words(&words);
+    Some(card_type)
 }
 
 pub fn is_destroy_those_creatures_followup(tokens: &[OwnedLexToken]) -> bool {

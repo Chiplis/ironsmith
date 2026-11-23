@@ -131,7 +131,14 @@ fn extra_instruction(
     while rest.first().is_some_and(|token| token.is_comma()) {
         rest = &rest[1..];
     }
+    // The paid-count head and "<verb> another target <filter>", matched
+    // word for word against the base instruction.
+    let claim_head = || {
+        crate::word_claims::claim_tokens(&tokens[..comma]);
+        crate::word_claims::claim_tokens(&body[..filter_end]);
+    };
     if rest.is_empty() {
+        claim_head();
         return Ok(Some((count, Vec::new())));
     }
     if !rest[0].is_word("and") {
@@ -145,6 +152,7 @@ fn extra_instruction(
     if effects.is_empty() {
         return Ok(None);
     }
+    claim_head();
     Ok(Some((count, effects)))
 }
 

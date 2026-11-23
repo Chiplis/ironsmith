@@ -42,6 +42,7 @@ fn object_subject(header: &[OwnedLexToken], subject: &[&str]) -> Option<ObjectFi
     // permanent and not a token. The wildcard's default filter is otherwise
     // indistinguishable from an unrecognized description below.
     if matches!(subject, ["a", "card"] | ["card"]) {
+        crate::word_claims::claim_words(subject);
         let mut filter = ObjectFilter::default();
         filter.physical_card = true;
         return Some(filter);
@@ -65,12 +66,14 @@ fn words_of(tokens: &[OwnedLexToken]) -> Vec<&str> {
 
 /// The players an event subject names.
 fn player_subject(words: &[&str]) -> Option<PlayerFilter> {
-    match words {
-        ["you"] => Some(PlayerFilter::You),
-        ["a", "player"] => Some(PlayerFilter::Any),
-        ["an", "opponent"] => Some(PlayerFilter::Opponent),
-        _ => None,
-    }
+    let player = match words {
+        ["you"] => PlayerFilter::You,
+        ["a", "player"] => PlayerFilter::Any,
+        ["an", "opponent"] => PlayerFilter::Opponent,
+        _ => return None,
+    };
+    crate::word_claims::claim_words(words);
+    Some(player)
 }
 
 /// The source of the ability ("this creature", a normalized self-name).
@@ -106,6 +109,7 @@ fn replaced_event(header: &[OwnedLexToken]) -> Option<ReplacedEventSpec> {
             let claim_head = || crate::word_claims::claim_words(&rest[..would + 4]);
             if let Some(player) = player_subject(recipient) {
                 claim_head();
+                crate::word_claims::claim_words(recipient);
                 return Some(ReplacedEventSpec::DamageToPlayer {
                     player,
                     source_filter: None,
@@ -154,6 +158,8 @@ fn replaced_event(header: &[OwnedLexToken]) -> Option<ReplacedEventSpec> {
                     filter
                 }
             };
+            // "would deal [combat] damage to <player>".
+            claim_predicate();
             Some(ReplacedEventSpec::DamageToPlayer {
                 player,
                 source_filter: Some(source_filter),
@@ -164,10 +170,13 @@ fn replaced_event(header: &[OwnedLexToken]) -> Option<ReplacedEventSpec> {
         // draw instruction.
         ["draw", count, "or", "more", "cards"] => {
             let minimum = crate::util::parse_number_word_u32(count)?;
-            (minimum >= 2).then_some(ReplacedEventSpec::DrawInstruction {
-                player: player_subject(subject)?,
-                minimum,
-            })
+            let player = player_subject(subject)?;
+            if minimum < 2 {
+                return None;
+            }
+            crate::word_claims::claim_words(subject);
+            claim_predicate();
+            Some(ReplacedEventSpec::DrawInstruction { player, minimum })
         }
         // "If a permanent with a wind counter on it would untap during its
         // controller's untap step" (CR 502.3).
@@ -178,10 +187,9 @@ fn replaced_event(header: &[OwnedLexToken]) -> Option<ReplacedEventSpec> {
                 | ["during", "your", "untap", "step"] => true,
                 _ => return None,
             };
-            Some(ReplacedEventSpec::Untap {
-                object: object_subject(header, subject)?,
-                during_controllers_untap_step,
-            })
+            let object = object_subject(header, subject)?;
+            claim_predicate();
+            Some(ReplacedEventSpec::Untap { object, during_controllers_untap_step })
         }
         // "If an opponent would gain life".
         ["gain", "life"] => {
@@ -220,13 +228,19 @@ fn replaced_event(header: &[OwnedLexToken]) -> Option<ReplacedEventSpec> {
             Some(ReplacedEventSpec::LifeLoss { player })
         }
         ["pay", "life", "while", "your", "library", "has", "at", "least", "that", "many", "cards", "in", "it"]
-            if subject == ["you"] => Some(ReplacedEventSpec::LifePayment {
+            if subject == ["you"] =>
+        {
+            crate::word_claims::claim_words(rest);
+            Some(ReplacedEventSpec::LifePayment {
                 player: PlayerFilter::You,
                 require_library_capacity: true,
-            }),
-        ["pay", "life"] => Some(ReplacedEventSpec::LifePayment {
-            player: player_subject(subject)?, require_library_capacity: false,
-        }),
+            })
+        }
+        ["pay", "life"] => {
+            let player = player_subject(subject)?;
+            crate::word_claims::claim_words(rest);
+            Some(ReplacedEventSpec::LifePayment { player, require_library_capacity: false })
+        }
         // "If an opponent would put a land onto the battlefield" (Land
         // Equilibrium): a matching object's entry for that player. The
         // putting player is read as the entering card's owner; "that player"
@@ -249,6 +263,9 @@ fn replaced_event(header: &[OwnedLexToken]) -> Option<ReplacedEventSpec> {
             // battlefield zone from the noun would never match an entering
             // object.
             filter.zone = None;
+            // "would put" and "onto the battlefield" around the object.
+            crate::word_claims::claim_words(&rest[would..would + 2]);
+            crate::word_claims::claim_words(&rest[rest.len() - 3..]);
             Some(ReplacedEventSpec::ZoneChange {
                 object: filter,
                 from: None,
@@ -346,6 +363,7 @@ fn replaced_event(header: &[OwnedLexToken]) -> Option<ReplacedEventSpec> {
             };
             let mut object = object_subject(header, subject)?;
             object.owner = Some(owner);
+            claim_predicate();
             Some(ReplacedEventSpec::ZoneChange {
                 object,
                 from: None,
@@ -386,6 +404,9 @@ fn rewrite_passive_zone_change_body(body: &mut Vec<OwnedLexToken>) {
         rest.splice(index..index + 2, ["its", "owner's"]).for_each(drop);
     }
     rewritten.extend(rest);
+    // The rewrite carries every authored word into its active reading (the
+    // rest verbatim), which the body parse then reads.
+    crate::word_claims::claim_tokens(body);
     let trailing_period = body.last().is_some_and(|token| token.is_period());
     *body = crate::lexer::synthetic_word_tokens(rewritten.iter().copied());
     if trailing_period {
@@ -466,6 +487,9 @@ fn parse_did_not_transform_this_way_program(
         if_true: otherwise,
         if_false: Vec::new(),
     }));
+    // "[Then] if <this source> didn't transform this way,": the gate read
+    // above (its words were compared as rebuilt text).
+    crate::word_claims::claim_tokens(&second[..comma]);
     Some(effects)
 }
 
@@ -491,6 +515,9 @@ fn strip_relative_control_qualifier(
     if filter == ObjectFilter::default() || filter.source {
         return None;
     }
+    // "who controls at least as many" and "as you do" around the noun.
+    crate::word_claims::claim_words(&words[who..noun_start]);
+    crate::word_claims::claim_words(&words[noun_start + noun_len..noun_start + noun_len + 3]);
     let mut stripped = header[..who].to_vec();
     stripped.extend_from_slice(header.get(noun_start + noun_len + 3..)?);
     let theirs = filter.clone().controlled_by(PlayerFilter::IteratedPlayer);

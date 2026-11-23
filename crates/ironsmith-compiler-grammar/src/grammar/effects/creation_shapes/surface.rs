@@ -536,6 +536,15 @@ impl<'a> CreationWords<'a> {
         self.phrase_location(phrase).is_some()
     }
 
+    /// Where the earliest alternative of `phrase` occurs, and its length.
+    pub fn phrase_match(self, phrase: CreationPhrase) -> Option<(usize, usize)> {
+        phrase
+            .alternatives()
+            .iter()
+            .filter_map(|expected| phrase_anywhere(self.words, expected).map(|at| (at, expected.len())))
+            .min()
+    }
+
     pub fn phrase_location(self, phrase: CreationPhrase) -> Option<usize> {
         phrase
             .alternatives()

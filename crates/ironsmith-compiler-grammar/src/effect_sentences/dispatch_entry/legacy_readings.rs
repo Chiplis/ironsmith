@@ -328,8 +328,10 @@ pub(super) fn read(input: &LegacyDocument<'_>) -> ParseOutcome<RuleMatch<Vec<Eff
     // Equal readings from two rules are one reading.
     let mut distinct: Vec<RegistryCandidate<Vec<EffectAst>>> = Vec::new();
     for candidate in candidates {
-        if !distinct.iter().any(|kept| kept.value == candidate.value) {
-            distinct.push(candidate);
+        match distinct.iter_mut().find(|kept| kept.value == candidate.value) {
+            // Both rules read the same meaning; either one's words are read.
+            Some(kept) => kept.claims.extend(&candidate.claims),
+            None => distinct.push(candidate),
         }
     }
     let outcome = resolve_registry_candidates(REGISTRY, distinct, diagnostics);
@@ -657,6 +659,9 @@ fn leading_duration_with_recurring_delayed_trigger(
     if effects.is_empty() {
         return Ok(None);
     }
+    // ", and at the beginning of each of your <steps>": matched word for word
+    // above; the synthetic "your <step>" trigger line carries no authored spans.
+    crate::word_claims::claim_tokens(&tokens[split + 1..split + 2 + trigger_comma]);
     effects.push(EffectAst::Delayed(DelayedEffectAst::DelayedTriggerForDuration {
         trigger,
         effects: delayed_effects,
@@ -876,6 +881,12 @@ fn rest_of_game_delayed_trigger(
     if effects.is_empty() {
         return Ok(None);
     }
+    // The trigger was read from a rebuilt "your <step>" header whose words
+    // carry one span; the authored "each of your <steps>" header is what it
+    // read.
+    if trigger_words.starts_with(&["at", "the", "beginning", "of", "each", "of", "your"]) {
+        crate::word_claims::claim_tokens(trigger_tokens);
+    }
     Ok(Some(EffectAst::Delayed(DelayedEffectAst::DelayedTriggerForDuration {
         trigger,
         effects,
@@ -981,6 +992,10 @@ fn read_conditional_sentence_family(
                 prefix.trailing_tokens,
             )?
     {
+        // The result prefix's leading "if".
+        if let Some(head) = tokens.first().filter(|token| token.is_word("if")) {
+            crate::word_claims::claim_tokens(std::slice::from_ref(head));
+        }
         return Ok(Some(vec![EffectAst::Conditionals(
             crate::cards::builders::ConditionalEffectAst::IfResult {
                 predicate: prefix.predicate,
@@ -1145,6 +1160,8 @@ pub(crate) fn parse_owned_exile_free_cast(tokens: &[OwnedLexToken]) -> Option<Ve
     if rest != FREE_WORDS || (!owned && counter_type.is_none()) {
         return None;
     }
+    // Every word of the sentence was matched above.
+    crate::word_claims::claim_words(&source_words);
     let tag = crate::tag::CompilerReferenceTag::ChosenCounteredExileSpell.bind();
     let mut filter = ObjectFilter::default().in_zone(Zone::Exile);
     if owned {

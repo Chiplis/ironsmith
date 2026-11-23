@@ -275,6 +275,8 @@ pub fn parse_roll(
         crate::lexer::token_word_refs(tokens).as_slice(),
         ["to", "visit", "your" | "their", "attractions"]
     ) {
+        // An exact roll object.
+        crate::word_claims::claim_tokens(tokens);
         return Ok(EffectAst::subject_verb_roll_to_visit_attractions(player));
     }
     // "Roll the planar die." (CR 901.9): the Planechase die, not a numbered
@@ -283,6 +285,8 @@ pub fn parse_roll(
         crate::lexer::token_word_refs(tokens).as_slice(),
         ["the", "planar", "die"]
     ) {
+        // An exact roll object.
+        crate::word_claims::claim_tokens(tokens);
         return Ok(EffectAst::subject_verb_roll_planar_die(player));
     }
     // "You may roll again." (Delina, Wild Mage): another performance of the
@@ -293,6 +297,8 @@ pub fn parse_roll(
         ["again"]
     ) && matches!(player, PlayerAst::Implicit | PlayerAst::You)
     {
+        // An exact roll object.
+        crate::word_claims::claim_tokens(tokens);
         return Ok(EffectAst::ForEach(
             crate::cards::builders::ForEachEffectAst::RepeatThisProcess,
         ));
@@ -311,6 +317,7 @@ pub fn parse_roll(
                 | ["and", "store", "those", "results", "on", "this", "creature" | "permanent"]
         )
     {
+        crate::word_claims::claim_tokens(&tokens[used + dice.consumed..]);
         return Ok(EffectAst::RollAndStoreDieResults(
             ironsmith_core::RollAndStoreDieResultsEffect::new(
                 PlayerFilter::You,
@@ -344,6 +351,7 @@ pub fn parse_roll(
     // "roll a six-sided die twice" (Vedalken Squirrel-Whacker): two rolls
     // read back as "the first result" and "the second result".
     if crate::lexer::token_word_refs(tail).as_slice() == ["twice"] {
+        crate::word_claims::claim_tokens(tail);
         return Ok(EffectAst::subject_verb_roll_die_repeatedly_in_order_with_surface(
             player,
             2,
@@ -372,6 +380,8 @@ pub fn parse_roll(
         "roll",
     ] = crate::lexer::token_word_refs(tail).as_slice()
     {
+        // An exact per-defender roll tail.
+        crate::word_claims::claim_tokens(tail);
         return Ok(EffectAst::subject_verb_roll_dice_highest_with_surface(
             player,
             Value::PlayersBeingAttacked,
@@ -399,6 +409,8 @@ pub fn parse_roll(
         if used != value_tokens.len() {
             return Err(CardTextError::ParseError("unconsumed die-result arithmetic tokens".into()));
         }
+        // "and add|subtract": the result arithmetic.
+        crate::word_claims::claim_tokens(&tail[..2]);
         Some(if operation.is_word("add") {
             ironsmith_core::effect::DieResultModifier::Add(value)
         } else {
@@ -457,7 +469,12 @@ fn parse_roll_plus_dice_per_mana_spent(
     if additional_shape.sides != shape.sides {
         return Ok(None);
     }
-    let source_filter = parse_object_filter(&tail[filter_span], false)?;
+    let source_filter = parse_object_filter(&tail[filter_span.clone()], false)?;
+    // "plus an additional <die> for each mana from" and "spent to activate
+    // this ability" around the filter, matched word for word above (the
+    // additional die is read through its copy).
+    crate::word_claims::claim_tokens(&tail[..filter_span.start]);
+    crate::word_claims::claim_tokens(&tail[filter_span.end..]);
     let roll = EffectAst::subject_verb_roll_die_with_surface(player, shape.sides, shape.surface.clone());
     Ok(Some(EffectAst::Sequence {
         effects: vec![
@@ -521,6 +538,13 @@ fn parse_named_player_counter_count(
         grammar::find_prefix(tokens, || grammar::phrase(&["for", "each"]))
         && let Some(count) = parse_get_for_each_count_value(&tokens[for_each_idx..])?
     {
+        // "an <kind> counter for each ...": one counter per counted object.
+        if let [article, _, counter] = crate::lexer::parser_token_word_refs(&tokens[..for_each_idx]).as_slice()
+            && matches!(*article, "a" | "an" | "one")
+            && *counter == "counter"
+        {
+            crate::word_claims::claim_tokens(&tokens[..1]);
+        }
         return Ok(count);
     }
     if matches!(
@@ -700,6 +724,8 @@ pub fn parse_get(
         };
         if count_is_complete && let Some(holder) = no_rad_counters_holder {
             let count = parse_named_player_counter_count(&tokens[..rad_idx + 2], &clause_words)?;
+            // The trailing condition, read word for word above.
+            crate::word_claims::claim_tokens(tail);
             return Ok(EffectAst::Conditionals(
                 crate::cards::builders::ConditionalEffectAst::Conditional {
                     predicate: crate::cards::builders::PredicateAst::Not(Box::new(crate::cards::builders::PredicateAst::Player(
@@ -937,6 +963,7 @@ pub(crate) fn parse_additional_step_tail(
     let count = if count_tokens.len() == 1
         && count_tokens[0].as_word().is_some_and(|word| matches!(word, "a" | "an"))
     {
+        crate::word_claims::claim_tokens(count_tokens);
         Value::Fixed(1)
     } else {
         let (value, used) = parse_value(count_tokens)?;
@@ -945,6 +972,8 @@ pub(crate) fn parse_additional_step_tail(
         }
         value
     };
+    // "additional <step> step(s) after this <step|phase>", matched above.
+    crate::word_claims::claim_tokens(&tokens[additional..]);
     Some((count, step, anchor))
 }
 
@@ -964,6 +993,7 @@ pub(crate) fn parse_there_is_additional_step_sentence(
         words.as_slice(),
         ["an", "additional", "beginning", "phase", "after", "this", "phase"]
     ) {
+        crate::word_claims::claim_tokens(tokens);
         return Some(EffectAst::subject_verb_additional_phases(vec![
             crate::effects::AdditionalPhase::Beginning,
         ]));

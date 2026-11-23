@@ -269,6 +269,29 @@ pub fn parse_static_special_line_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<StaticSpecialLineShape> {
     let words = parser_token_word_refs(tokens);
+    let shape = parse_static_special_line_words(tokens, &words)?;
+    // These shapes are complete fixed lines, matched word for word.
+    if matches!(
+        shape,
+        StaticSpecialLineShape::BlackManaMayBePaidWithLife
+            | StaticSpecialLineShape::BoastTwice
+            | StaticSpecialLineShape::LoyaltyTwice
+            | StaticSpecialLineShape::EquipAtInstantSpeed
+            | StaticSpecialLineShape::EquipAtInstantSpeedDuringYourTurn
+            | StaticSpecialLineShape::HiddenAgenda
+            | StaticSpecialLineShape::DoubleAgenda
+            | StaticSpecialLineShape::StartingPlayer
+    ) {
+        crate::word_claims::claim_words(&words);
+    }
+    Some(shape)
+}
+
+fn parse_static_special_line_words(
+    tokens: &[OwnedLexToken],
+    words: &[&str],
+) -> Option<StaticSpecialLineShape> {
+    let words = words.to_vec();
     if is_black_mana_life_payment(&words) {
         Some(StaticSpecialLineShape::BlackManaMayBePaidWithLife)
     } else if is_boast_twice(&words) {
@@ -374,6 +397,7 @@ pub fn parse_additional_land_play_count_tokens(tokens: &[OwnedLexToken]) -> Opti
         words.get(3..)?,
         &["any", "number", "of", "lands", "on", "each", "of", "your", "turns"],
     ) {
+        crate::word_claims::claim_words(&words);
         return Some(u32::MAX);
     }
     let (number, used) = leaf::parse_leaf_number_prefix_words(words.get(3..)?)?.into_fixed()?;
@@ -385,6 +409,8 @@ pub fn parse_additional_land_play_count_tokens(tokens: &[OwnedLexToken]) -> Opti
         tail,
         &["additional", "lands", "on", "each", "of", "your", "turns"],
     ) {
+        // The line matched word for word.
+        crate::word_claims::claim_words(&words);
         Some(number)
     } else {
         None

@@ -1179,6 +1179,11 @@ pub fn resolve_condition_from_predicate(
                     resolve_non_target_player_filter(*player, &refs)?,
                 )
             }
+            TurnHistoryPredicateAst::PlayerHasBegunExtraTurnThisGame(player) => {
+                ironsmith_core::TurnHistoryCondition::PlayerHasBegunExtraTurnThisGame(
+                    resolve_non_target_player_filter(*player, &refs)?,
+                )
+            }
             TurnHistoryPredicateAst::TriggeringPlayersTurn { definite_player } => {
                 ironsmith_core::TurnHistoryCondition::TriggeringPlayersTurn {
                     definite_player: *definite_player,

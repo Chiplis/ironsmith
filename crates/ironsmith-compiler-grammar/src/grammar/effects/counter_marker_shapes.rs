@@ -757,7 +757,7 @@ fn additional_descriptor_on_tagged<'a>(
 }
 
 fn entry_object_kind<'a>(input: &mut LexStream<'a>) -> WResult<ObjectFilter> {
-    primitives::word_parser_text
+    let (filter, taken) = primitives::word_parser_text
         .verify_map(|word| {
             parse_card_type(word)
                 .map(|kind| ObjectFilter::default().with_type(kind))
@@ -766,7 +766,11 @@ fn entry_object_kind<'a>(input: &mut LexStream<'a>) -> WResult<ObjectFilter> {
                         .map(|kind| ObjectFilter::default().with_subtype(kind))
                 })
         })
-        .parse_next(input)
+        .with_taken()
+        .parse_next(input)?;
+    // The kind word read above ("if it's a Spacecraft").
+    crate::word_claims::claim_tokens(taken);
+    Ok(filter)
 }
 
 fn supported_enters_predicate<'a>(input: &mut LexStream<'a>) -> WResult<ObjectFilter> {

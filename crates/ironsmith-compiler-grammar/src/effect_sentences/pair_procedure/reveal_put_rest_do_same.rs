@@ -92,6 +92,9 @@ pub(super) fn read_opening(
     let filter_start = start + 10;
     let filter_tokens = &tokens[filter_start..filter_start + filter_words.len()];
     let filter = crate::object_filters::parse_object_filter(filter_tokens, false)?;
+    // The words around the filter were matched exactly above.
+    crate::word_claims::claim_tokens(&tokens[..filter_start]);
+    crate::word_claims::claim_tokens(&tokens[filter_start + filter_words.len()..]);
     Ok(Some(RevealPutRest {
         player,
         count,
@@ -110,19 +113,27 @@ fn read_do_the_same(tokens: &[OwnedLexToken]) -> Option<u32> {
     else {
         return None;
     };
-    crate::util::parse_number_word_u32(count)
+    let count = crate::util::parse_number_word_u32(count)?;
+    // An exact sentence.
+    crate::word_claims::claim_tokens(&tokens);
+    Some(count)
 }
 
 fn is_two_arrivals_fight(tokens: &[OwnedLexToken]) -> bool {
     let tokens = word_tokens(tokens);
     let words = tokens.iter().filter_map(OwnedLexToken::as_word).collect::<Vec<_>>();
-    matches!(
+    let matched = matches!(
         words.as_slice(),
         [
             "if", "two", "creatures", "are", "put", "onto", "the", "battlefield", "this", "way",
             "those", "creatures", "fight", "each", "other",
         ]
-    )
+    );
+    if matched {
+        // An exact sentence.
+        crate::word_claims::claim_tokens(&tokens);
+    }
+    matched
 }
 
 /// One participant's reveal, choice, put, and graveyard remainder; returns

@@ -327,6 +327,7 @@ pub fn parse_effect_with_verb(
                 words.as_slice(),
                 ["a", "mana", "ability", "of", "each", "land", "they" | "you", "control"]
             ) {
+                crate::word_claims::claim_tokens(tokens);
                 Ok(EffectAst::subject_verb_activate_mana_ability_of_each_land(
                     extract_subject_player(subject).unwrap_or(PlayerAst::Implicit),
                 ))
@@ -395,6 +396,8 @@ fn parse_unlock_room_door(
             .map(|idx| idx + 1)
             .unwrap_or(tokens.len());
         let target = crate::util::parse_target_phrase(&tokens[skip..])?;
+        // "[a] [locked] door of", read word for word above.
+        crate::word_claims::claim_tokens(&tokens[..skip]);
         return Ok(EffectAst::subject_verb(
             crate::cards::builders::SubjectVerbRoleAst::Actor,
             extract_subject_player(subject).unwrap_or(PlayerAst::You),
@@ -432,6 +435,7 @@ fn parse_note(
     subject: Option<SubjectAst>,
 ) -> Result<EffectAst, CardTextError> {
     if crate::lexer::parser_token_word_refs(tokens) == ["the", "type", "and", "amount", "of", "mana", "spent", "to", "pay", "this", "activation", "cost"] {
+        crate::word_claims::claim_tokens(tokens);
         return Ok(EffectAst::NoteActivationManaPayment);
     }
 
@@ -460,6 +464,22 @@ fn parse_note(
             .all(|word| matches!(*word, "hasn't" | "hasnt" | "has" | "not" | "n't"))
         && noted_at + 3 < rest.len()
     {
+        // The note frame through "been noted for"; the source naming follows.
+        let frame = words.len() - rest.len() + noted_at + 3;
+        crate::word_claims::claim_words(&words[..frame]);
+        // The noted set lives on the ability's source, so a proper name after
+        // "for" ("for Volo's Journal", the token's own name inside its own
+        // ability, CR 201.5) or a source reference names that source.
+        let view = crate::lexer::TokenWordView::new(tokens);
+        if let Some(name_start) = view.token_index_after_words(frame) {
+            let name_tokens = &tokens[name_start..];
+            let proper_name = name_tokens.iter().filter(|token| token.as_word().is_some()).all(|token| {
+                token.literal_surface().chars().next().is_some_and(char::is_uppercase)
+            });
+            if proper_name || crate::util::is_source_reference_words(&words[frame..]) {
+                crate::word_claims::claim_tokens(name_tokens);
+            }
+        }
         return Ok(EffectAst::NoteTriggeringCreatureType);
     }
     // "Note a creature type that hasn't been noted for this Saga" (Long
@@ -475,6 +495,11 @@ fn parse_note(
             .all(|word| matches!(*word, "hasn't" | "hasnt" | "has" | "not" | "n't"))
         && noted_at + 3 < rest.len()
     {
+        let frame = words.len() - rest.len() + noted_at + 3;
+        crate::word_claims::claim_words(&words[..frame]);
+        if crate::util::is_source_reference_words(&words[frame..]) {
+            crate::word_claims::claim_words(&words[frame..]);
+        }
         return Ok(EffectAst::subject_verb_note_unnoted_creature_type(PlayerAst::You));
     }
     // "note the number and kind of counters that were on that creature"
@@ -508,6 +533,8 @@ fn parse_note(
         }
         if let Some(object_start) = object_start {
             let object = parse_target_phrase(&trim_commas(&tokens[object_start..]))?;
+            // "the number and kind of counters that were on", word for word.
+            crate::word_claims::claim_tokens(&tokens[..object_start]);
             return Ok(EffectAst::NoteCounters {
                 object,
                 tag: crate::util::noted_counters_tag(),
@@ -559,6 +586,7 @@ fn parse_proliferate(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextErro
         if let Some((count, used)) = parse_value(&value_tokens)
             && used == value_tokens.len()
         {
+            crate::word_claims::claim_tokens(&tokens[..6]);
             return Ok(EffectAst::subject_verb_proliferate(count));
         }
     }
@@ -620,6 +648,8 @@ fn parse_look_at_each_face_down_permanent(tokens: &[OwnedLexToken]) -> Option<Ob
     {
         return None;
     }
+    // "at each"/"at all": the filter read the rest.
+    crate::word_claims::claim_tokens(&trimmed[..2]);
     Some(filter.in_zone(Zone::Battlefield))
 }
 
@@ -639,6 +669,7 @@ pub fn parse_look(
     ) {
         // "the exiled cards" names the cards this ability exiled, not the
         // most recent object antecedent (the cards just put into hand).
+        crate::word_claims::claim_tokens(tokens);
         let mut exiled = ObjectFilter::tagged(crate::tag::CompilerReferenceTag::It.bind())
             .in_zone(Zone::Exile);
         exiled.set_prior_effect_action_surface(Some(ironsmith_core::PriorEffectAction::Exiled));
@@ -945,6 +976,7 @@ pub fn parse_reorder(
     if crate::lexer::token_word_refs(crate::util::trim_edge_punctuation_tokens(&rest))
         == ["at", "random"]
     {
+        crate::word_claims::claim_tokens(&rest);
         return Ok(EffectAst::subject_verb_reorder_graveyard_at_random(owner.player));
     }
 
@@ -1009,9 +1041,13 @@ fn parse_shuffle_zone_list_into_library(
             ["their" | "your", "graveyard"] | ["graveyard"] => {
                 ObjectFilter::default().in_zone(Zone::Graveyard).owned_by(owner.clone())
             }
-            ["all", "permanents", "they" | "you", "own"] => ObjectFilter::default()
-                .in_zone(Zone::Battlefield)
-                .owned_by(owner.clone()),
+            ["all", "permanents", "they" | "you", "own"] => {
+                // Every permanent the shuffling player owns, read whole.
+                crate::word_claims::claim_tokens(item);
+                ObjectFilter::default()
+                    .in_zone(Zone::Battlefield)
+                    .owned_by(owner.clone())
+            }
             _ => {
                 // Each arm is an ordinary, complete zone-qualified filter.
                 // Its owner is the actor whose library is the destination.
@@ -1501,7 +1537,11 @@ fn may_assign_as_unblocked_body(tokens: &[crate::lexer::OwnedLexToken]) -> Optio
             "blocked",
         ]
     )
-    .then_some(duration)
+    .then(|| {
+        // The body (with its duration) matched word for word.
+        crate::word_claims::claim_tokens(tokens);
+        duration
+    })
 }
 
 /// Assimilating a card: it is put onto the battlefield under your control

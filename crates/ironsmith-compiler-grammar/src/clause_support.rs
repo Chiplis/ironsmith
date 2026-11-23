@@ -74,6 +74,8 @@ fn state_trigger_controllers_sacrifice_them(
     if filter.zone.is_some_and(|zone| zone != Zone::Battlefield) {
         return None;
     }
+    // The exact effect sentence matched above.
+    crate::word_claims::claim_tokens(effects_tokens);
     let mut owned = filter;
     owned.zone = Some(Zone::Battlefield);
     let owned = owned.controlled_by(PlayerFilter::IteratedPlayer);
@@ -686,6 +688,27 @@ pub fn parse_protection_chain(tokens: &[OwnedLexToken]) -> Option<Vec<KeywordAct
                 }
             }
         }?;
+        // "from <quality>": the words the classifier matched. A quality read
+        // as an object filter (or comparison, or counter) claims its own
+        // words; only its fixed lead-in is claimed here.
+        let view = TokenWordView::new(tokens);
+        let token_at = |word: usize| view.token_start_indices().get(word).copied();
+        let read_end = match target.kind {
+            ProtectionTargetKind::EachManaValueAmong { filter_word_first }
+            | ProtectionTargetKind::EachColorAmong { filter_word_first } => token_at(filter_word_first),
+            ProtectionTargetKind::ManaValue { comparison_word_first } => {
+                token_at(comparison_word_first)
+            }
+            ProtectionTargetKind::PermanentWithCounter { counter_word_first } => {
+                token_at(counter_word_first)
+            }
+            ProtectionTargetKind::Named if target.target_word_end > target.target_word + 1 => {
+                Some(target.target_token_first)
+            }
+            _ => Some(target.target_token_end),
+        }
+        .unwrap_or(target.target_token_first);
+        crate::word_claims::claim_tokens(&tokens[target.target_token_first - 1..read_end]);
         crate::slice_primitives::push_unique(&mut actions, action);
     }
 
@@ -2258,6 +2281,8 @@ fn rewrite_non_owner_controller_player_tokens(tokens: &[OwnedLexToken]) -> Vec<O
             && tokens.get(idx + 1).is_some_and(|token| token.is_word("player"))
         {
             out.push(OwnedLexToken::word("you", tokens[idx].span));
+            // "that/the player" is read here as "you".
+            crate::word_claims::claim_tokens(&tokens[idx..idx + 2]);
             idx += 2;
             if let Some(next) = tokens.get(idx).and_then(|token| token.as_word()) {
                 let fixed = match next {
@@ -2268,6 +2293,10 @@ fn rewrite_non_owner_controller_player_tokens(tokens: &[OwnedLexToken]) -> Vec<O
                     _ => None,
                 };
                 if let Some(fixed) = fixed {
+                    // The shorter re-inflected copy's piece span no longer
+                    // covers the authored word, so its reader's claim cannot
+                    // reach it: the verb is claimed here.
+                    crate::word_claims::claim_tokens(std::slice::from_ref(&tokens[idx]));
                     out.push(OwnedLexToken::word(fixed, tokens[idx].span));
                     idx += 1;
                 }

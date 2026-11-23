@@ -39,7 +39,8 @@ pub(super) fn parse(tokens: &[OwnedLexToken]) -> Result<Option<Vec<EffectAst>>, 
     let mut rewritten = words_at_source(&["if", "it's", "a", "land", "card", "or", "a", "nonland", "card"]);
     // Retain the original qualifier tokens, including quantities and spans.
     let view = crate::lexer::TokenWordView::new(tokens);
-    if let Some(range) = view.token_span_for_words(15, 15 + qualifier.len()) {
+    let qualifier_range = view.token_span_for_words(15, 15 + qualifier.len());
+    if let Some(range) = qualifier_range.clone() {
         rewritten.extend_from_slice(&tokens[range]);
     }
     rewritten.push(OwnedLexToken::comma(span));
@@ -48,6 +49,17 @@ pub(super) fn parse(tokens: &[OwnedLexToken]) -> Result<Option<Vec<EffectAst>>, 
         rewritten.extend(words_at_source(&["without", "paying", "its", "mana", "cost"]));
     }
     let gated = crate::clause_support::parse_effect_sentences_lexed(&rewritten)?;
+    // The frame around the qualifier was read word for word above; the
+    // qualifier is the rewritten sentence's.
+    if !gated.is_empty() {
+        match qualifier_range {
+            Some(range) => {
+                crate::word_claims::claim_tokens(&tokens[..range.start]);
+                crate::word_claims::claim_tokens(&tokens[range.end..]);
+            }
+            None => crate::word_claims::claim_tokens(tokens),
+        }
+    }
     // CR 601.3e: the qualifier constrains the spell being cast (the face put
     // on the stack: an Adventure, a split half, a modal back face), not the
     // card. Read the qualifier through the gated sentence, then offer the one

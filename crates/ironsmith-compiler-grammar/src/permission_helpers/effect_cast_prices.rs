@@ -13,7 +13,10 @@ fn price(tokens: &[OwnedLexToken]) -> Result<Option<ironsmith_core::TotalCost<cr
         ["paying" | "pay", "life", "equal", "to", "its", "mana", "value"]
         | ["paying" | "pay", "life", "equal", "to", "the", "spells", "mana", "value"]
         | ["paying" | "pay", "life", "equal", "to", "that", "spells", "mana", "value"])
-    { return Ok(Some(mana_value_life_price())); }
+    {
+        crate::word_claims::claim_words(&words);
+        return Ok(Some(mana_value_life_price()));
+    }
     let Some(head) = words.first() else { return Ok(None); };
     // "by waterbending {X}" (CR 702.185): a generic or X price with the
     // waterbend obligation (artifacts and creatures may be tapped for it).
@@ -37,6 +40,7 @@ fn price(tokens: &[OwnedLexToken]) -> Result<Option<ironsmith_core::TotalCost<cr
         if mana.pips().is_empty() || mana.pips().iter().any(|pip| !matches!(pip.as_slice(),
             [crate::mana::ManaSymbol::Generic(_) | crate::mana::ManaSymbol::X]))
         { return Ok(None); }
+        crate::word_claims::claim_tokens(&tokens[..1]);
         return Ok(Some(ironsmith_core::TotalCost::from_cost(crate::model::CompilerCost::Mana(
             mana.clone().with_waterbend()))));
     }
@@ -50,7 +54,12 @@ fn price(tokens: &[OwnedLexToken]) -> Result<Option<ironsmith_core::TotalCost<cr
     };
     let mut payment = crate::lexer::synthetic_word_tokens([normalized]);
     payment.extend_from_slice(&tokens[1..]);
-    crate::activation_and_restrictions::keyword_action_costs::parse_payment_clause_as_total_cost(&payment)
+    let cost = crate::activation_and_restrictions::keyword_action_costs::parse_payment_clause_as_total_cost(&payment)?;
+    // The gerund the synthetic verb stands for.
+    if cost.is_some() {
+        crate::word_claims::claim_tokens(&tokens[..1]);
+    }
+    Ok(cost)
 }
 
 pub(crate) fn replacement_price_suffix(tokens: &[OwnedLexToken]) -> Result<Option<(&[OwnedLexToken], ironsmith_core::TotalCost<crate::model::CompilerCost>)>, CardTextError> {
@@ -64,7 +73,11 @@ pub(crate) fn replacement_price_suffix(tokens: &[OwnedLexToken]) -> Result<Optio
     if !matches!(ending.as_slice(), ["paying" | "pay", "its", "mana", "cost"] | ["its", "mana", "cost"]) {
         return Ok(None);
     }
-    Ok(price(&tail[..replacement])?.map(|price| (&tokens[..by], price)))
+    let price = price(&tail[..replacement])?;
+    if price.is_some() {
+        crate::word_claims::claim_words(&ending);
+    }
+    Ok(price.map(|price| (&tokens[..by], price)))
 }
 
 pub(crate) fn attach_price(effect: &mut EffectAst, price: &ironsmith_core::TotalCost<crate::model::CompilerCost>) -> usize {
@@ -213,9 +226,11 @@ pub(crate) fn parse_control_source_priced_permission(
     }
     let mut body = trim_lexed_commas(&rest[may + 3..]);
     let mut x_is_mana_value = false;
+    let mut read_tails: Vec<&[OwnedLexToken]> = Vec::new();
     if let Some(where_index) = body.iter().rposition(|token| token.is_word("where"))
         && token_word_refs(&body[where_index..]) == ["where", "x", "is", "its", "mana", "value"]
     {
+        read_tails.push(&body[where_index..]);
         body = trim_lexed_commas(&body[..where_index]);
         x_is_mana_value = true;
     }
@@ -233,6 +248,7 @@ pub(crate) fn parse_control_source_priced_permission(
     if granted.len() > 3
         && token_word_refs(&granted[granted.len() - 3..]) == ["during", "your", "turn"]
     {
+        read_tails.push(&granted[granted.len() - 3..]);
         granted = trim_lexed_commas(&granted[..granted.len() - 3]);
         during_your_turns = true;
     }
@@ -273,5 +289,7 @@ pub(crate) fn parse_control_source_priced_permission(
         *alternative_cost = Some(price);
         *alternative_cost_x_is_mana_value = x_is_mana_value;
     }
+    // The "where X is its mana value" and "during your turn" tails read above.
+    read_tails.into_iter().for_each(crate::word_claims::claim_tokens);
     Ok(Some(effect))
 }

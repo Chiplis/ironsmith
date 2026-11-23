@@ -1351,6 +1351,10 @@ pub struct TurnStore {
     /// they answer "dealt combat damage since your last turn".
     last_completed_turn_by_player: im::HashMap<PlayerId, u32>,
     player_last_dealt_combat_damage_turn: im::HashMap<PlayerId, u32>,
+    /// Players who have begun an extra turn this game ("haven't begun an
+    /// extra turn this game", H.M.S. Bounty). Every player of a shared team
+    /// turn begins it.
+    players_who_began_extra_turn: im::HashSet<PlayerId>,
     /// Frozen LKI and bounded "last turn" windows for departed players.
     departed_player_history: im::HashMap<PlayerId, DepartedPlayerHistory>,
     /// True while `leave_game` is running (CR 800.4c exile is deferred to it).

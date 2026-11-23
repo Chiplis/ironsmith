@@ -128,23 +128,27 @@ pub fn parse_shared_random_action_list(
     }
     // Arms are separated by commas and a list-final "or"; the "or" inside
     // "one or more" belongs to its arm.
-    let mut segments = Vec::new();
-    let mut start = 0;
-    for (index, token) in tokens.iter().enumerate() {
-        let inner_or = token.is_word("or")
-            && index > 0
-            && tokens[index - 1].is_word("one")
-            && tokens.get(index + 1).is_some_and(|next| next.is_word("more"));
-        if token.is_comma() || (token.is_word("or") && !inner_or) {
-            if start < index {
-                segments.push(start..index);
+    // Locating the arm separators reads nothing yet.
+    let segments = crate::word_claims::probe_only(|| {
+        let mut segments = Vec::new();
+        let mut start = 0;
+        for (index, token) in tokens.iter().enumerate() {
+            let inner_or = token.is_word("or")
+                && index > 0
+                && tokens[index - 1].is_word("one")
+                && tokens.get(index + 1).is_some_and(|next| next.is_word("more"));
+            if token.is_comma() || (token.is_word("or") && !inner_or) {
+                if start < index {
+                    segments.push(start..index);
+                }
+                start = index + 1;
             }
-            start = index + 1;
         }
-    }
-    if start < tokens.len() {
-        segments.push(start..tokens.len());
-    }
+        if start < tokens.len() {
+            segments.push(start..tokens.len());
+        }
+        segments
+    });
     if segments.len() < 2 {
         return None;
     }

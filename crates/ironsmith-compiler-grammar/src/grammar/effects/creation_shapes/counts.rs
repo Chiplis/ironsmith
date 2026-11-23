@@ -226,6 +226,16 @@ pub fn parse_creation_for_each_dynamic_count_tokens(tokens: &[OwnedLexToken]) ->
                 .with_surface_hint(ValueSurfaceHint::ForEach),
             );
         }
+        // "card exiled from their hand this way", matched whole.
+        if let Some(len) = CreationPhrase::GraveyardOrHandThisWay
+            .alternatives()
+            .iter()
+            .filter(|expected| words.starts_with(expected) && expected.contains(&"hand"))
+            .map(|expected| expected.len())
+            .max()
+        {
+            crate::word_claims::claim_words(&words[..len]);
+        }
         let mut filter = ObjectFilter::default().in_zone(Zone::Hand);
         filter.owner = Some(PlayerFilter::IteratedPlayer);
         filter
@@ -266,6 +276,18 @@ pub fn parse_creation_for_each_dynamic_count_tokens(tokens: &[OwnedLexToken]) ->
                 Value::SpellsCastThisTurn(player).with_surface_hint(ValueSurfaceHint::ForEach),
             );
         }
+    }
+    // "for each color of mana spent to cast this spell": the whole count
+    // phrase, nothing after it.
+    if CreationPhrase::ColorsOfMana
+        .alternatives()
+        .iter()
+        .any(|expected| words.as_slice() == *expected)
+    {
+        crate::word_claims::claim_tokens(tokens);
+        return Some(
+            Value::ColorsOfManaSpentToCastThisSpell.with_surface_hint(ValueSurfaceHint::ForEach),
+        );
     }
     if surface.starts(CreationPhrase::ColorsOfMana) {
         return Some(
@@ -349,9 +371,19 @@ pub fn parse_investigate_for_each_count_tokens(
                 tag: (crate::tag::CompilerReferenceTag::It.bind()).into(),
                 relation: crate::filter::TaggedOpbjectRelation::IsTaggedObject,
             });
+        // "exiled this way": the tagged exile the count reads.
+        if words.get(exiled..exiled + 3) == Some(&["exiled", "this", "way"][..]) {
+            crate::word_claims::claim_words(&words[exiled..exiled + 3]);
+        }
         return Ok(Value::Count(filter).with_surface_hint(ValueSurfaceHint::ForEach));
     }
     if surface.has_phrase(CreationPhrase::ThisWay) {
+        // "card discarded this way": one per card the prior event moved.
+        if let ["card" | "cards", "discarded" | "sacrificed" | "milled" | "exiled", "this", "way"] =
+            words.as_slice()
+        {
+            crate::word_claims::claim_words(&words);
+        }
         return Ok(
             Value::EventValue(EventValueSpec::Amount).with_surface_hint(ValueSurfaceHint::ForEach)
         );

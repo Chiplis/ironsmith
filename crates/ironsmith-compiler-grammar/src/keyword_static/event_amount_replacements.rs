@@ -540,6 +540,12 @@ pub fn parse_damage_removes_all_counters_line(
     if object == ObjectFilter::default() {
         return Ok(None);
     }
+    // The fixed event and replacement words around the recipient.
+    crate::word_claims::claim_tokens(&body_tokens[..start]);
+    crate::word_claims::claim_tokens(&body_tokens[end..]);
+    if recipient.len() < end - start {
+        crate::word_claims::claim_tokens(&body_tokens[start..start + 1]);
+    }
     let ability = StaticAbility::event_amount_replacement(
         AmountEventSpec::DamageRemovesAllCounters {
             object,

@@ -43,6 +43,8 @@ fn parse_source_assigns_as_though_power_positive_line(
     {
         return None;
     }
+    // The whole rule matched (the source subject included).
+    crate::word_claims::claim_tokens(&tokens);
     Some(vec![StaticAbilityAst::Static(StaticAbility::keyword_marker(
         ASSIGNS_AS_THOUGH_POWER_POSITIVE_MARKER,
     ))])
@@ -71,6 +73,8 @@ fn parse_station_using_toughness_line(
     }
     let subject_tokens = trim_commas(&tokens[..verb]);
     let subject = parse_anthem_subject_with_attached_fallback(&subject_tokens, None)?;
+    // The station rule matched word for word.
+    crate::word_claims::claim_tokens(&tokens[verb..]);
     let marker = StaticAbility::keyword_marker(STATIONS_USING_TOUGHNESS_MARKER);
     let ability = match subject {
         AnthemSubjectAst::Source => StaticAbilityAst::Static(marker),
@@ -270,6 +274,8 @@ pub(super) fn attached_axis_condition(tokens: &[OwnedLexToken]) -> Option<Predic
         }
         _ => return None,
     };
+    // The condition is exactly this shape.
+    crate::word_claims::claim_tokens(tokens);
     Some(PredicateAst::AttachedToSourceMatches(
         ObjectFilter::creature().with_power_toughness_relation(relation),
     ))

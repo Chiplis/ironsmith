@@ -967,6 +967,9 @@ pub(super) fn run_station_threshold_line_family(
     {
         let start = shape.body_tokens.iter().position(|token| token.span.start == label.remainder_start)
             .unwrap_or(0);
+        // A flavor label naming the threshold's ability ("Multivector
+        // Assault Mode —"): presentation only, read here.
+        crate::word_claims::claim_tokens(&shape.body_tokens[..start]);
         &shape.body_tokens[start..]
     } else {
         shape.body_tokens
@@ -2676,10 +2679,14 @@ pub(super) fn run_static_line_family(
         return ParseOutcome::NoMatch;
     }
     match recognize_static_line(ctx.line) {
-        Ok(Some(static_line)) => line_family_match(
-            ctx,
-            LineDispatchResult::single(RecognizedLine::Static(static_line), ctx.idx + 1),
-        ),
+        Ok(Some(static_line)) => {
+            // "The Will of the Hive Mind — ...": a leading flavor label.
+            claim_presentation_only_label(ctx.preprocessed, ctx.idx, ctx.line);
+            line_family_match(
+                ctx,
+                LineDispatchResult::single(RecognizedLine::Static(static_line), ctx.idx + 1),
+            )
+        }
         Ok(None) => ParseOutcome::NoMatch,
         Err(err)
             if looks_like_statement_line_lexed(ctx.line)

@@ -32,6 +32,8 @@ pub(super) fn parse_value_expr_term_words(words: &[&str]) -> Option<(Value, usiz
     if words.get(draft_offset..draft_offset + draft_prefix.len()) == Some(draft_prefix)
         && words.len() > draft_offset + draft_prefix.len()
     {
+        // The prefix and the card name the value is keyed on.
+        crate::word_claims::claim_words(words);
         return Some((Value::DraftNotedHighestNumber {
             card_name: words[draft_offset + draft_prefix.len()..].join(" "),
         }, words.len()));
@@ -44,6 +46,8 @@ pub(super) fn parse_value_expr_term_words(words: &[&str]) -> Option<(Value, usiz
         &["the", "greatest", "number", "of", "stored", "results", "on", "this", "creature", "of", "the", "same", "value"][..],
     ] {
         if words.starts_with(surface) {
+            // Exactly the matched surface is read.
+            crate::word_claims::claim_words(&words[..surface.len()]);
             return Some((Value::GreatestEqualStoredDieResultsOnSource, surface.len()));
         }
     }
@@ -56,19 +60,22 @@ pub(super) fn parse_value_expr_term_words(words: &[&str]) -> Option<(Value, usiz
     if let Some(quantity) = capped_damage_quantities::parse(words) {
         return Some(quantity);
     }
-    if let Some(quantity) = extrema_quantities::parse(words) {
-        return Some(quantity);
-    }
-    if let Some(quantity) = referenced_object_quantities::parse(words) {
-        return Some(quantity);
-    }
-    if let Some(quantity) = scalar_counter_quantities::parse(words) {
-        return Some(quantity);
-    }
-    if let Some(quantity) = opponent_history_quantities::parse(words) {
-        return Some(quantity);
+    // Each quantity reader below matches its surface word for word and
+    // reports exactly the words it walked.
+    for reader in [
+        extrema_quantities::parse as fn(&[&str]) -> Option<(Value, usize)>,
+        referenced_object_quantities::parse,
+        scalar_counter_quantities::parse,
+        opponent_history_quantities::parse,
+    ] {
+        if let Some(quantity) = reader(words) {
+            crate::word_claims::claim_words(&words[..quantity.1.min(words.len())]);
+            return Some(quantity);
+        }
     }
     if let Some(quantity) = damage_history_quantities::parse(words) {
+        // The history reader reports exactly the words it walked.
+        crate::word_claims::claim_words(&words[..quantity.1]);
         return Some(quantity);
     }
     let offset = usize::from(words.first() == Some(&"the"));
@@ -76,6 +83,7 @@ pub(super) fn parse_value_expr_term_words(words: &[&str]) -> Option<(Value, usiz
         || words == ["that", "number"] || words == ["the", "number"]
     {
         let demonstrative = words == ["that", "number"] || words == ["the", "number"];
+        crate::word_claims::claim_words(&words[..if demonstrative { 2 } else { offset + 2 }]);
         let chosen = Value::PendingPriorEffectMetric(
             ironsmith_core::PriorEffectMetricQuery::new(
                 ironsmith_core::EffectMetricSource::Outcome,
@@ -100,6 +108,8 @@ pub(super) fn parse_value_expr_term_words(words: &[&str]) -> Option<(Value, usiz
             .chars()
             .all(|character| character.is_alphabetic() || character == '-')
     {
+        // "[the] number of <option> votes".
+        crate::word_claims::claim_words(&words[..offset + 4]);
         return Some((Value::VoteCount((*option).to_string()), offset + 4));
     }
     if let Some(quantity) = parse_life_total_quantity_words(words) {
@@ -139,6 +149,8 @@ pub(super) fn parse_value_expr_term_words(words: &[&str]) -> Option<(Value, usiz
             "spell" | "creature" | "artifact" | "enchantment" | "permanent"
         )
     }) {
+        // The source noun after "this".
+        crate::word_claims::claim_word(words[offset + 7]);
         return Some((Value::ManaSpentToCastThisSpell, offset + 8));
     }
     // A proper source name normalizes to the bare source pronoun. Leave
@@ -158,6 +170,7 @@ pub(super) fn parse_value_expr_term_words(words: &[&str]) -> Option<(Value, usiz
         .get(offset + 6)
         .is_some_and(|word| matches!(*word, "her" | "him"))
     {
+        crate::word_claims::claim_word(words[offset + 6]);
         return Some((Value::ManaSpentToCastThisSpell, offset + 7));
     }
     if let Some(devotion) = parse_devotion_value_words(words) {
@@ -997,6 +1010,8 @@ pub(super) fn parse_value_expr_term_words(words: &[&str]) -> Option<(Value, usiz
                 &tokens,
             )
         {
+            // The aggregate read through synthetic copies of these words.
+            crate::word_claims::claim_words(&words[..end]);
             return Some((value.without_surface_hint(ValueSurfaceHint::EqualTo), end));
         }
     }
@@ -1090,6 +1105,8 @@ pub(super) fn parse_number_of_value(words: &[&str]) -> Option<(Value, usize)> {
         let reference = words.get(reference_start..reference_end)?;
         let surface = source_reference_surface_for_words(reference)
             .or_else(|| this_source_surface_for_words(reference))?;
+        // "<letter>'s in name stickers on <source>", read word for word.
+        crate::word_claims::claim_words(&words[idx..reference_end]);
         return Some((
             Value::NameStickerCharacterCountOnSource {
                 character: character.chars().next()?.to_ascii_lowercase(),
@@ -1154,6 +1171,7 @@ pub(super) fn parse_number_of_value(words: &[&str]) -> Option<(Value, usize)> {
         // antecedent (an exiled target, a triggering attacker); reference
         // resolution falls back to the source when nothing else is bound.
         if parsed_counter_type.is_none() && reference == ["it"] {
+            crate::word_claims::claim_words(&words[counter_idx + 1..reference_end]);
             return Some((
                 Value::CountersOn(
                     Box::new(ChooseSpec::Tagged(
@@ -1185,9 +1203,11 @@ pub(super) fn parse_number_of_value(words: &[&str]) -> Option<(Value, usize)> {
                     None,
                 ),
             };
+            crate::word_claims::claim_words(&words[counter_idx + 1..reference_end]);
             return Some((value, reference_end));
         }
         if let Some(surface) = source_reference_surface_for_words(reference) {
+            crate::word_claims::claim_words(&words[counter_idx + 1..reference_end]);
             return Some((
                 Value::CountersOn(
                     Box::new(source_choose_spec_for_surface(surface)),
@@ -1204,6 +1224,7 @@ pub(super) fn parse_number_of_value(words: &[&str]) -> Option<(Value, usize)> {
             && reference[2] == "from"
             && is_tagged_counter_reference(&reference[..2])
         {
+            crate::word_claims::claim_words(&words[counter_idx + 1..reference_start + 2]);
             return Some((
                 Value::CountersOn(
                     Box::new(ChooseSpec::Tagged(
@@ -1215,6 +1236,7 @@ pub(super) fn parse_number_of_value(words: &[&str]) -> Option<(Value, usize)> {
             ));
         }
         if is_tagged_counter_reference(reference) {
+            crate::word_claims::claim_words(&words[counter_idx + 1..reference_end]);
             return Some((
                 Value::CountersOn(
                     Box::new(ChooseSpec::Tagged(
@@ -1229,6 +1251,7 @@ pub(super) fn parse_number_of_value(words: &[&str]) -> Option<(Value, usize)> {
         // (Archery Training's "arrow counters on Archery Training"): the
         // granting permanent, not every permanent.
         if reference == crate::preprocess::GRANTING_SOURCE_SURFACE_WORDS {
+            crate::word_claims::claim_words(&words[counter_idx + 1..reference_end]);
             return Some((
                 Value::CountersOn(
                     Box::new(ChooseSpec::Tagged(
@@ -1259,6 +1282,8 @@ pub(super) fn parse_number_of_value(words: &[&str]) -> Option<(Value, usize)> {
     let filter_words_end = if filter_end - filter_start > AS_YOU_CAST_TAIL.len()
         && words[filter_end - AS_YOU_CAST_TAIL.len()..filter_end] == *AS_YOU_CAST_TAIL
     {
+        // The timing tail is read here: the count is taken as the spell is cast.
+        crate::word_claims::claim_words(&words[filter_end - AS_YOU_CAST_TAIL.len()..filter_end]);
         filter_end - AS_YOU_CAST_TAIL.len()
     } else {
         filter_end

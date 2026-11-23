@@ -697,6 +697,13 @@ pub fn parse_subject_cant_be_blocked_unless_attacking_owner_line(
         .map(Ok)
         .unwrap_or_else(|| parse_anthem_subject(subject_tokens))?;
     let unblockable = StaticAbility::cant_be_blocked_unless_attacking_owner_or_owners_permanent();
+    // The "can't be blocked unless ..." rule, read word for word above.
+    let word_count = crate::lexer::parser_token_word_refs(tokens).len();
+    if let Some(rule) =
+        crate::lexer::TokenWordView::new(tokens).token_span_for_words(subject_len, word_count)
+    {
+        crate::word_claims::claim_tokens(&tokens[rule]);
+    }
     Ok(Some(match subject {
         AnthemSubjectAst::Source => StaticAbilityAst::Static(unblockable),
         AnthemSubjectAst::Filter(filter) => StaticAbilityAst::GrantStaticAbility {
@@ -1721,6 +1728,12 @@ pub fn parse_granted_keyword_static_line(
                 },
             }).collect::<Vec<_>>();
             let clause = fixed_anthem_clause(subject, 0, 0, condition);
+            // "and must be blocked [by a | an <blocker>] if able", read word
+            // for word above (the blocker filter is its own reading).
+            crate::word_claims::claim_tokens(&trimmed[split..split + 4]);
+            let blocker_words = if words == ["if", "able"] { 0..0 } else { 2..tail.len() - 2 };
+            crate::word_claims::claim_tokens(&tail[..blocker_words.start]);
+            crate::word_claims::claim_tokens(&tail[blocker_words.end.max(blocker_words.start)..]);
             grants.push(match requirement {
                 crate::effect::Restriction::MustBeBlockedBy { blockers, .. } =>
                     filtered_block_requirement_for_subject(&clause, blockers),
@@ -2789,6 +2802,10 @@ pub fn parse_lose_all_abilities_and_transform_base_pt_line(
         .name_words
         .as_ref()
         .map(|range| {
+            // "named <name>": the marker and the name set below.
+            if let Some(named) = words.get(range.start.saturating_sub(1)..range.end) {
+                crate::word_claims::claim_words(named);
+            }
             words
                 .get(range.clone())
                 .map(title_case_words)
@@ -3775,6 +3792,9 @@ fn source_and_condition_counted_subject(
     {
         return None;
     }
+    // "<source> and those creatures": the conjunction and the plural
+    // back-reference to the condition's counted objects.
+    crate::word_claims::claim_tokens(&subject_tokens[and_idx..]);
     let mut those = counted.clone();
     those.set_plural_pronoun_reference_surface(true);
     let mut subject = ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
@@ -4224,6 +4244,7 @@ pub fn parse_static_condition_clause(
         // per-color control conjunction as "a creature of each color"
         // (Coalition Victory). One multicolored permanent may satisfy
         // several leaves, exactly as the colors-among count would.
+        crate::word_claims::claim_words(&clause_words);
         let base = ObjectFilter::permanent().controlled_by(PlayerFilter::You);
         let mut leaves = [
             crate::color::ColorSet::WHITE,
@@ -5233,6 +5254,8 @@ fn subject_all_share_a_color_condition(
     if subject.zone.is_none() {
         subject = subject.in_zone(crate::zone::Zone::Battlefield);
     }
+    // The condition is exactly this shape.
+    crate::word_claims::claim_tokens(&condition_tokens);
     let display = "they all share a color".to_string();
     [
         crate::color::Color::White,
@@ -7275,6 +7298,9 @@ pub fn parse_filtered_land_reset_and_grant_line(
         StaticAbility::remove_all_abilities(filter).into(),
     ];
     abilities.extend(grants);
+    // The marker ("lose all land types and abilities, and they gain") read
+    // into the type reset, the ability loss and the grant.
+    crate::word_claims::claim_tokens(&tokens[subject_end..grant_start]);
     Ok(Some(abilities))
 }
 

@@ -989,6 +989,7 @@ pub(super) fn pre_rule_tap_as_it_phases_in_followup(
     if !state.effects.last_mut().is_some_and(mark) {
         return Ok(None);
     }
+    crate::word_claims::claim_tokens(sentence_tokens);
     Ok(Some(PreParseFollowupResult::Handled {
         consumed_sentences: 1,
         route: None,
@@ -1106,6 +1107,8 @@ pub(super) fn pre_rule_after_second_main_additional_phases_followup(
     if !head_ok {
         return Ok(None);
     }
+    // The whole sentence was read word for word above.
+    crate::word_claims::claim_tokens(sentence_tokens);
     let mut phase_program = vec![EffectAst::subject_verb_additional_phases(vec![
         crate::effects::AdditionalPhase::Combat,
         crate::effects::AdditionalPhase::Main,
@@ -1131,6 +1134,8 @@ pub(super) fn pre_rule_after_second_main_additional_phases_followup(
                 until_end_of_combat: false,
                 attach_to_previous_ability: false,
             }));
+            // "At the beginning of that combat", read above.
+            crate::word_claims::claim_tokens(&next_tokens[..start]);
             consumed = 2;
         }
     }
@@ -1240,6 +1245,8 @@ pub(super) fn pre_rule_after_first_combat_additional_combat_followup(
     if !head_ok {
         return Ok(None);
     }
+    // The whole sentence was read word for word above.
+    crate::word_claims::claim_tokens(sentence_tokens);
     let mut phase_program = vec![EffectAst::subject_verb_additional_phases(vec![
         crate::effects::AdditionalPhase::Combat,
     ])];
@@ -1264,6 +1271,8 @@ pub(super) fn pre_rule_after_first_combat_additional_combat_followup(
                 until_end_of_combat: false,
                 attach_to_previous_ability: false,
             }));
+            // "At the beginning of that combat", read above.
+            crate::word_claims::claim_tokens(&next_tokens[..start]);
             consumed = 2;
         }
     }

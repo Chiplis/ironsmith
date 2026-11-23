@@ -397,13 +397,16 @@ fn spell_filter(
     // zone from the parsed subject; the runtime's temporary-spell matcher
     // compares such filters against the authoritative cast-origin snapshot.
     // Subjects with no origin clause still match the spell on the stack.
-    if crate::word_primitives::sequence_occurs(&subject_words, &["from", "your", "hand"]) {
+    // The origin phrase is read (and claimed) by the sequence matcher.
+    if crate::word_primitives::parse_sequence_start(&subject_words, &["from", "your", "hand"]).is_some() {
         filter.zone = Some(Zone::Hand);
         filter.owner = Some(PlayerFilter::You);
-    } else if crate::word_primitives::sequence_occurs(
+    } else if crate::word_primitives::parse_sequence_start(
         &subject_words,
         &["from", "your", "graveyard"],
-    ) {
+    )
+    .is_some()
+    {
         filter.zone = Some(Zone::Graveyard);
         filter.owner = Some(PlayerFilter::You);
     } else if filter.zone.is_none() {
@@ -430,6 +433,15 @@ pub fn parse_next_spell_grant_tokens(
     let mut filters = vec![spell_filter(&first_subject, raw.cast_by.clone())?];
     if let Some(second_subject) = raw.second_subject {
         filters.push(spell_filter(second_subject, raw.cast_by)?);
+    }
+    if raw.ability == NextSpellGrantAbilitySurface::PlayTiming {
+        // "the next creature card you play": a play names a card, which the
+        // spell filter (its noun is "spell") leaves to this reading.
+        for token in raw.first_subject {
+            if matches!(token.as_word(), Some("card" | "cards")) {
+                crate::word_claims::claim_tokens(std::slice::from_ref(token));
+            }
+        }
     }
     if matches!(raw.ability, NextSpellGrantAbilitySurface::CastTiming | NextSpellGrantAbilitySurface::PlayTiming) {
         for filter in &mut filters {

@@ -40,6 +40,8 @@ pub(super) fn parse_player_chooses_sentence(
         ["that", "player", "chooses", "a", "number"] => PlayerAst::That,
         _ => return Ok(None),
     };
+    // The whole sentence matched one of the shapes above.
+    crate::word_claims::claim_tokens(tokens);
     Ok(Some(vec![EffectAst::subject_verb(
         SubjectVerbRoleAst::Chooser,
         chooser,

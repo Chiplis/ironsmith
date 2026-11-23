@@ -588,7 +588,13 @@ fn parse_enters_with_distinct_counter_kinds(
         }
         counter_types.push(counter_type);
     }
-    (counter_types.len() > kinds as usize).then_some((counter_types, kinds))
+    if counter_types.len() <= kinds as usize {
+        return None;
+    }
+    // "your choice of <n> different counters on it from among": the fixed
+    // head matched above (the list items were read by the counter reader).
+    crate::word_claims::claim_words(&words[..10]);
+    Some((counter_types, kinds))
 }
 
 fn parse_enters_with_counter_conjunction_tail_tokens(
@@ -1045,6 +1051,8 @@ fn parse_enters_with_counter_equal_to_value_clause(tokens: &[OwnedLexToken]) -> 
         if let Some((fixed, used)) = parse_number(fixed_tokens)
             && used == fixed_tokens.len()
         {
+            // "<N> minus X": the subtraction and its X operand.
+            crate::word_claims::claim_tokens(&value_body[value_body.len() - 2..]);
             return Some(
                 Value::Add(
                     Box::new(Value::Fixed(fixed as i32)),
@@ -1106,6 +1114,16 @@ fn parse_equal_to_greatest_cards_drawn_this_turn_value(tokens: &[OwnedLexToken])
 mod where_x_binding_readings;
 
 pub fn parse_value_binding_clause(tokens: &[OwnedLexToken]) -> Option<Value> {
+    let value = parse_value_binding_clause_inner(tokens)?;
+    // "where X is ...": the binding head every reading below starts from.
+    let words = crate::lexer::parser_token_word_refs(tokens);
+    if words.starts_with(&["where", "x", "is"]) {
+        crate::word_claims::claim_words(&words[..3]);
+    }
+    Some(value)
+}
+
+fn parse_value_binding_clause_inner(tokens: &[OwnedLexToken]) -> Option<Value> {
     // Cost modifiers and effect sentences share the same typed tap-cost
     // characteristic clause, rather than maintaining separate surface lists.
     if let Some(shape @ crate::grammar::effects::sentence_predicate_shapes::WhereXValueShape::TapCostPower) =
@@ -1135,6 +1153,7 @@ pub fn parse_value_binding_clause(tokens: &[OwnedLexToken]) -> Option<Value> {
     if matches!(words.get(3..),
         Some(["the", "life", "paid", "as", "this", "artifact" | "creature" | "permanent", "entered"])
         | Some(["the", "life", "paid", "as", "it", "entered"])) {
+        crate::word_claims::claim_words(&words[3..]);
         return Some(Value::SourceChosenNumber { if_unset: Some(0), pair: None });
     }
     // "the greatest number of stored results on it of the same value"
@@ -1142,6 +1161,7 @@ pub fn parse_value_binding_clause(tokens: &[OwnedLexToken]) -> Option<Value> {
     if matches!(words.get(3..),
         Some(["the", "greatest", "number", "of", "stored", "results", "on", "it" | "this", "of", "the", "same", "value"])
         | Some(["the", "greatest", "number", "of", "stored", "results", "on", "this", "creature", "of", "the", "same", "value"])) {
+        crate::word_claims::claim_words(&words[3..]);
         return Some(Value::GreatestEqualStoredDieResultsOnSource);
     }
     // "... as you activate this ability": an activation-time sampling clause
@@ -1207,6 +1227,8 @@ fn parse_investigate_participant_binding(tokens: &[OwnedLexToken]) -> Option<Val
         .or_else(|| value_words.strip_prefix(&["1", "plus"]))
         .map_or((0, value_words), |rest| (1, rest));
     if value_words == ["the", "number", "of", "opponents", "who", "investigated", "this", "way"] {
+        // The whole binding clause matched word for word.
+        crate::word_claims::claim_tokens(tokens);
         let metric = Value::PendingPriorEffectMetric(
             ironsmith_core::PriorEffectMetricQuery::new(
                 ironsmith_core::EffectMetricSource::Outcome,
@@ -1329,6 +1351,7 @@ fn parse_enters_with_returned_cost_mana_value(tail: &[OwnedLexToken]) -> Option<
     if !matches!(noun, "creature" | "permanent" | "card") {
         return None;
     }
+    crate::word_claims::claim_tokens(tail);
     let tag = crate::tag::CompilerCostObjectTag::ReturnToHand.key(0);
     Some(Value::ManaValueOf(Box::new(ChooseSpec::Tagged(tag.into()))))
 }
@@ -1822,6 +1845,8 @@ pub fn parse_where_x_is_number_of_filter_value(tokens: &[OwnedLexToken]) -> Opti
         ["the", "number", "of", "opponents" | "players", "being", "attacked"]
             | ["the", "number", "of", "opponents" | "players", "youre" | "you're", "attacking"]
     ) {
+        // The whole value phrase is the one compared above.
+        crate::word_claims::claim_words(&words);
         return Some(Value::PlayersBeingAttacked);
     }
     // "where X is the number of opponents who voted for a choice you
@@ -1841,6 +1866,8 @@ pub fn parse_where_x_is_number_of_filter_value(tokens: &[OwnedLexToken]) -> Opti
             _ => None,
         };
         if let Some(tag) = tag {
+            // Compared on a joined copy; the words themselves are these.
+            crate::word_claims::claim_words(&words);
             return Some(Value::CountPlayers(PlayerFilter::TaggedPlayer(tag.bind().into())));
         }
     }
@@ -2338,6 +2365,11 @@ pub fn parse_x_at_most_enters_tapped_line(
     if !etb_grammar::etb_tokens_have_tapped_marker(entry_clause.tail_tokens) {
         return Ok(None);
     }
+    // "it" / "this creature": the entering subject is the source itself.
+    let subject_words = crate::lexer::token_word_refs(entry_clause.filter_tokens);
+    if subject_words == ["it"] || crate::util::is_source_reference_words(&subject_words) {
+        crate::word_claims::claim_tokens(entry_clause.filter_tokens);
+    }
 
     // The authored leading "If X is N or less" is the negation of the
     // executable "unless X is N+1 or more" gate; keep its surface.
@@ -2418,6 +2450,8 @@ pub(crate) fn parse_behold_or_enters_tapped_line(tokens: &[OwnedLexToken]) -> Op
         return None;
     };
     let subtype = crate::util::parse_subtype_flexible(subtype_word)?;
+    // Both sentences were matched word for word above.
+    crate::word_claims::claim_words(&behold_words);
     let mut in_hand = ObjectFilter::default();
     in_hand.subtypes.push(subtype);
     let mut controlled = ObjectFilter::default().in_zone(Zone::Battlefield);
@@ -2517,6 +2551,15 @@ pub fn parse_reveal_from_hand_or_enters_tapped_line(
         condition = parsed_condition;
     }
 
+    // "This land enters tapped unless": the entry the condition gates.
+    if let Some(at) = tokens.windows(5).position(|window| {
+        window
+            .iter()
+            .map(|token| token.as_word())
+            .eq(["this", "land", "enters", "tapped", "unless"].map(Some))
+    }) {
+        crate::word_claims::claim_tokens(&tokens[at..at + 5]);
+    }
     parser_trace("parse_static:land-reveal-or-enter-tapped:matched", tokens);
     Ok(Some(StaticAbility::enters_tapped_unless_condition(
         condition,
@@ -3246,7 +3289,16 @@ pub fn parse_conditional_enters_tapped_unless_line(
         clause_words: &clause_words,
     };
     match enters_tapped_unless_readings::read(&input) {
-        ParseOutcome::Match(matched) => return Ok(Some(matched.value.value)),
+        ParseOutcome::Match(matched) => {
+            // The entering subject: this source ("This land enters tapped").
+            if let Some(enters) = clause_words.iter().position(|word| *word == "enters")
+                && enters > 0
+                && crate::util::is_source_reference_words(&clause_words[..enters])
+            {
+                crate::word_claims::claim_words(&clause_words[..enters]);
+            }
+            return Ok(Some(matched.value.value));
+        }
         ParseOutcome::NoMatch => {}
         ParseOutcome::Error(diagnostic) => return Err(diagnostic.into_card_text_error()),
     }
@@ -3563,19 +3615,40 @@ pub fn parse_enters_with_additional_counter_for_filter_line(
     {
         let value_start = equal_idx + 2;
         let value_tokens = trim_commas(base_tokens.get(value_start..).unwrap_or_default());
-        parse_value(&value_tokens)
+        let value = parse_value(&value_tokens)
             .map(|(value, _)| value)
             .or_else(|| {
                 let words = crate::lexer::parser_token_word_refs(&value_tokens);
-                (words.len() >= 2).then(|| match words.last().copied() {
+                let value = (words.len() >= 2).then(|| match words.last().copied() {
                     Some("power") => Some(Value::SourcePower),
                     Some("toughness") => Some(Value::SourceToughness),
                     Some("value") if words.get(words.len().saturating_sub(2)) == Some(&"mana") => {
                         Some(Value::ManaValueOf(Box::new(ChooseSpec::Source)))
                     }
                     _ => None,
-                })?
-            })
+                })??;
+                // "<this source>'s power|toughness|mana value": the
+                // possessor names the source the value reads.
+                let stat_len = if words.last() == Some(&"value") { 2 } else { 1 };
+                if crate::util::source_reference_surface_for_possessive_words(
+                    &words[..words.len() - stat_len],
+                )
+                .is_some()
+                {
+                    crate::word_claims::claim_words(&words);
+                }
+                Some(value)
+            });
+        if value.is_some() {
+            // "[a number of additional ...] equal to": the count's frame.
+            crate::word_claims::claim_tokens(&base_tokens[equal_idx..value_start.min(base_tokens.len())]);
+            if let Some(lead) = additional_idx.checked_sub(3).and_then(|start| base_tokens.get(start..additional_idx))
+                && parser_token_word_refs(lead) == ["a", "number", "of"]
+            {
+                crate::word_claims::claim_tokens(lead);
+            }
+        }
+        value
             .ok_or_else(|| {
                 CardTextError::ParseError(format!(
                     "unsupported ETB counter count value (clause: '{}')",
@@ -3653,6 +3726,15 @@ pub fn parse_enters_with_additional_counter_for_filter_line(
             ),
             "entering counter recipient",
         );
+        // "... counters on it equal to <value>": the recipient before the
+        // count's "equal to" phrase.
+        if let [on, it, equal, ..] = recipient.as_slice()
+            && etb_token_word_is(on, "on")
+            && etb_token_word_is_any(it, &["it", "them"])
+            && etb_token_word_is(equal, ETB_EQUAL_WORD)
+        {
+            crate::word_claims::claim_tokens(&recipient[..2]);
+        }
     }
 
     let mut added_subtypes = Vec::new();
@@ -3722,6 +3804,9 @@ fn parse_filtered_enters_with_counter_line(tokens: &[OwnedLexToken]) -> Option<S
     // `with` and the count are single word tokens; the counter phrase follows.
     let counter_type = parse_counter_type_from_tokens(tail.get(2..)?)?;
     let filter = parse_enters_with_counter_object_filter_tokens(&subject_tokens)?;
+    // The entry verb, "with <count>" and "on them|it" matched above.
+    crate::word_claims::claim_tokens(&tokens[enter_idx..enter_idx + 3]);
+    crate::word_claims::claim_tokens(&tail[tail.len() - 2..]);
     Some(StaticAbility::enters_with_counters_and_subtypes_for_filter(
         filter,
         counter_type,
@@ -4301,6 +4386,10 @@ pub fn parse_as_enters_coin_flip_characteristics_line(
     let ([heads], [tails]) = (heads.as_slice(), tails.as_slice()) else {
         return Ok(None);
     };
+    // The flip and both face branches, matched word for word.
+    crate::word_claims::claim_words(&clause_words[..enters + 4]);
+    crate::word_claims::claim_words(&rest[..heads_start]);
+    crate::word_claims::claim_words(&rest[tails_if..tails_if + tails_start]);
     let subject_text = subject.join(" ");
     let display = format!(
         "As {subject_text} enters, flip a coin. If the coin comes up heads, {subject_text} enters as {}. If it comes up tails, {subject_text} enters as {}",
@@ -4377,6 +4466,8 @@ pub fn parse_as_enters_or_turns_face_up_pt_choice_line(
         ))
     })?;
 
+    // The choice's connective between the two characteristics.
+    crate::word_claims::claim_words(&choice_words[1..2]);
     let subject = subject_clause.text();
     let display = format!(
         "As {subject} enters or is turned face up, it becomes your choice of {}/{} or {}/{}",
@@ -4396,11 +4487,16 @@ fn parse_pt_choice_characteristic_options(
 ) -> Result<Vec<PowerToughnessChoiceOption>, CardTextError> {
     let mut options = Vec::new();
     let mut idx = 0usize;
+    // The list's connectives and articles, read as each option is split off.
+    let mut frame: Vec<&str> = Vec::new();
     while idx < words.len() {
+        let option_start = idx;
         if words[idx] == "or" {
+            frame.push(words[idx]);
             idx += 1;
         }
         if matches!(words.get(idx).copied(), Some("a" | "an")) {
+            frame.push(words[idx]);
             idx += 1;
         }
         let Some(pt_word) = words.get(idx).copied() else {
@@ -4440,9 +4536,12 @@ fn parse_pt_choice_characteristic_options(
                 "unsupported power/toughness choice descriptor after '{pt_word}'"
             )));
         }
+        // "or a 5/2 creature": the separator, article, P/T and types read above.
+        crate::word_claims::claim_words(&words[option_start..idx]);
 
         let mut abilities = Vec::new();
         if words.get(idx).copied() == Some("with") {
+            frame.push(words[idx]);
             idx += 1;
             let ability_start = idx;
             while idx < words.len()
@@ -4457,6 +4556,7 @@ fn parse_pt_choice_characteristic_options(
             let ability_words = words[ability_start..idx]
                 .strip_suffix(&["in", "addition", "to", "its", "other", "types"])
                 .unwrap_or(&words[ability_start..idx]);
+            frame.extend_from_slice(&words[ability_start + ability_words.len()..idx]);
             abilities = parse_pt_choice_keyword_abilities(ability_words, clause_words)?;
         }
 
@@ -4466,6 +4566,7 @@ fn parse_pt_choice_characteristic_options(
             added_subtypes,
         });
     }
+    crate::word_claims::claim_words(&frame);
 
     Ok(options)
 }

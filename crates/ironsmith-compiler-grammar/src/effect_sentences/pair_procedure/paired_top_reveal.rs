@@ -60,6 +60,7 @@ pub(super) fn read(
     {
         return Ok(None);
     }
+    super::claim_sentences([reveal, loss, keep]);
     let yours = helper_tag_for_tokens(reveal.lowered(), "paired_reveal_yours");
     let theirs = helper_tag_for_tokens(reveal.lowered(), "paired_reveal_theirs");
     let mana_value_of = |tag: &crate::tag::TagRef| {

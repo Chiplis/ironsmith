@@ -603,7 +603,11 @@ fn redeal_and_reflect_tail<'a>(input: &mut LexStream<'a>) -> WResult<()> {
         primitives::phrase(&["deals", "that", "much", "damage", "to", "that"]),
     )?;
     primitives::phrase(&["deals", "that", "much", "damage", "to", "that"]).parse_next(input)?;
-    tokens_before(input, primitives::sentence_end())?;
+    alt((
+        primitives::phrase(&["source's", "controller"]),
+        primitives::phrase(&["sources", "controller"]),
+    ))
+    .parse_next(input)?;
     primitives::sentence_end().parse_next(input)?;
     Ok(())
 }

@@ -155,9 +155,15 @@ fn choice_count_value(
     clause_words: &[&str],
 ) -> Result<Option<Value>, CardTextError> {
     match count_source {
-        Some(ChoiceObjectCountSource::CardsDiscardedThisWay) => Ok(Some(Value::Count(
-            ObjectFilter::tagged(crate::tag::CompilerReferenceTag::It.bind()),
-        ))),
+        Some(ChoiceObjectCountSource::CardsDiscardedThisWay) => {
+            // "for each card discarded this way", stripped from word copies.
+            if let [.., "for", "each", "card" | "cards", "discarded", "this", "way"] = clause_words {
+                crate::word_claims::claim_words(&clause_words[clause_words.len() - 6..]);
+            }
+            Ok(Some(Value::Count(ObjectFilter::tagged(
+                crate::tag::CompilerReferenceTag::It.bind(),
+            ))))
+        }
         Some(ChoiceObjectCountSource::ThatMany) => Ok(Some(Value::EventValue(
             crate::effect::EventValueSpec::Amount,
         ))),
@@ -177,6 +183,8 @@ fn choice_count_value(
                     clause_words.join(" ")
                 )));
             }
+            // The count was read on owned copies of the clause's words.
+            crate::word_claims::claim_copied_words(clause_words, &count_words);
             Ok(Some(value.with_surface_hint(
                 ironsmith_core::ValueSurfaceHint::ForEach,
             )))
@@ -807,6 +815,9 @@ pub fn parse_hand_choice_then_shuffle_remainder(
         || !filter.card_types.is_empty()
         || !words.word_windows(4).any(|words| matches!(words, ["card" | "cards", "in" | "from", word, "hand"] if *word == possessive))
     { return Ok(None); }
+    // "then shuffle(s) the rest into <their|your> library", matched whole.
+    crate::word_claims::claim_tokens(&tokens[then..=then]);
+    crate::word_claims::claim_tokens(&second);
     let tag = crate::util::helper_tag_for_tokens(tokens, "kept_hand_cards");
     let mut remainder = filter.clone().not_tagged(tag.clone());
     remainder.owner = Some(owner);
@@ -898,6 +909,8 @@ pub fn parse_coordinated_object_and_player_choice(
     // "choose a color and an opponent" (Call to Arms): a color choice and a
     // player choice, each its own result producer.
     if crate::lexer::token_word_refs(&tokens[prefix..*separator]) == ["a", "color"] {
+        // "a color and": the color choice and its separator.
+        crate::word_claims::claim_tokens(&tokens[prefix..=*separator]);
         return Ok(Some(vec![
             EffectAst::subject_verb(
                 crate::cards::builders::SubjectVerbRoleAst::Chooser,

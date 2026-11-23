@@ -385,6 +385,21 @@ pub fn is_consult_move_all_to_graveyard_shape(tokens: &[OwnedLexToken]) -> bool 
     )
 }
 
+/// "... and all other cards revealed this way into your graveyard": the
+/// remainder clause of a consult disposition, when written exactly so.
+const OTHERS_INTO_GRAVEYARD: &[&[&str]] = &[
+    &["and", "all", "other", "cards", "revealed", "this", "way", "into", "your", "graveyard"],
+    &["and", "all", "other", "cards", "revealed", "this", "way", "into", "their", "graveyard"],
+    &["and", "puts", "all", "other", "cards", "revealed", "this", "way", "into", "their", "graveyard"],
+    &["and", "the", "rest", "into", "your", "graveyard"],
+    &["and", "the", "rest", "into", "their", "graveyard"],
+];
+
+/// Claim the exact remainder-to-graveyard clause a consult reading honours.
+pub fn read_consult_others_graveyard_tail(tokens: &[OwnedLexToken]) {
+    let _ = super::read_sequence_phrase(tokens, OTHERS_INTO_GRAVEYARD);
+}
+
 pub fn is_consult_hand_others_graveyard_shape(tokens: &[OwnedLexToken]) -> bool {
     starts_sequence(tokens, HAND_PREFIXES)
         && (contains_sequence_phrase(tokens, &[&["other", "cards"]])

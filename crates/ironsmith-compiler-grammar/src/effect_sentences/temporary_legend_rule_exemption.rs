@@ -31,6 +31,7 @@ pub(crate) fn parse(tokens: &[OwnedLexToken]) -> Option<EffectAst> {
         ["this", "turn"] | ["until", "end", "of", "turn"] => Until::EndOfTurn,
         _ => return None,
     };
+    crate::word_claims::claim_words(&words);
     let mut exempt = if scope == "creatures" {
         ObjectFilter::creature()
     } else {

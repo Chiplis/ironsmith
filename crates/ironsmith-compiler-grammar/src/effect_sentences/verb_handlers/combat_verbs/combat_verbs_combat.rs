@@ -146,6 +146,12 @@ pub(super) fn parse_divided_damage_target(
             CardTextError::ParseError(message)
         },
     )?;
+    // A bare "them" is the anaphor read by both branches below.
+    if let [them] = shape.target_tokens
+        && them.is_word("them")
+    {
+        crate::word_claims::claim_tokens(shape.target_tokens);
+    }
     if shape.repeats_antecedent
         && (shape.target_tokens.first().is_some_and(|token| token.as_word() == Some("them"))
             || (shape.target_tokens.first().is_some_and(|token| token.as_word() == Some("those"))
@@ -154,6 +160,21 @@ pub(super) fn parse_divided_damage_target(
         // A repeating anaphor imports the antecedent's whole target spec,
         // including its player domain. The self-replacement rewrite retains
         // the same announced targets and changes only the divided amount.
+        // The anaphor phrase ("them", "those permanents and/or players") is
+        // read as that reference.
+        fn is_anaphor_word(token: &OwnedLexToken) -> bool {
+            const WORDS: [&str; 13] = [
+                "them", "those", "permanents", "players", "creatures", "planeswalkers",
+                "battles", "and/or", "and", "or", "player", "permanent", "creature",
+            ];
+            token.as_word().is_some_and(|word| WORDS.contains(&word))
+        }
+        let anaphor_len = shape
+            .target_tokens
+            .iter()
+            .take_while(|token| is_anaphor_word(token))
+            .count();
+        crate::word_claims::claim_tokens(&shape.target_tokens[..anaphor_len]);
         return Ok(TargetAst::Tagged(
             crate::tag::CompilerReferenceTag::It.bind(),
             span_from_tokens(shape.target_tokens),
@@ -186,6 +207,8 @@ pub(super) fn parse_divided_damage_target(
             )));
         }
         let mut filter = parse_object_filter(&shape.target_tokens[1..], false)?;
+        // "those" binds the filter to the antecedent set below.
+        crate::word_claims::claim_tokens(&shape.target_tokens[..1]);
         if filter.zone.is_none() {
             filter.zone = Some(Zone::Battlefield);
         }
@@ -406,7 +429,18 @@ pub fn parse_deal_damage_with_amount(
                     .any(|token| matches!(token.as_word(), Some("player" | "players")))
             {
                 // A mixed object/player antecedent set: the self-replacement
-                // rewrite substitutes the antecedent's whole target spec.
+                // rewrite substitutes the antecedent's whole target spec. The
+                // anaphor ("those permanents and/or players") names that set.
+                fn is_antecedent_word(token: &OwnedLexToken) -> bool {
+                    const WORDS: [&str; 11] = [
+                        "those", "permanents", "players", "creatures", "planeswalkers",
+                        "battles", "and/or", "and", "or", "permanent", "player",
+                    ];
+                    token.as_word().is_some_and(|word| WORDS.contains(&word))
+                }
+                if target_tokens.iter().all(|token| token.as_word().is_none() || is_antecedent_word(token)) {
+                    crate::word_claims::claim_tokens(target_tokens);
+                }
                 TargetAst::Tagged(
                     crate::tag::CompilerReferenceTag::It.bind(),
                     span_from_tokens(target_tokens),
@@ -441,6 +475,9 @@ pub fn parse_deal_damage_with_amount(
                 && crate::lexer::parser_token_word_refs(predicate_tokens)
                     .ends_with(&["discarded", "their", "hand", "this", "way"])
             {
+                // "who discarded their hand this way": the accepted wheel.
+                let words = crate::lexer::parser_token_word_refs(predicate_tokens);
+                crate::word_claims::claim_words(&words[words.len() - 5..]);
                 IfResultPredicate::AcceptedChoice
             } else {
                 IfResultPredicate::Did

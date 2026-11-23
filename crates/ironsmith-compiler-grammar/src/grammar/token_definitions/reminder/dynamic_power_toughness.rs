@@ -117,6 +117,7 @@ fn parse_dynamic_rhs(words: &[&str]) -> Option<Value> {
         words,
         &["the", "total", "power", "of", "those", "creatures"],
     ) {
+        crate::word_claims::claim_words(words);
         let filter = ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
             card_types: vec![CardType::Creature],
             ..Default::default()
@@ -151,6 +152,8 @@ pub(super) fn parse_dynamic_power_toughness(words: &[&str]) -> Option<(Value, Va
         ],
     ) {
         let value = parse_dynamic_rhs(rhs)?;
+        // The fixed "with base power and toughness each equal to" head.
+        crate::word_claims::claim_words(&words[..words.len() - rhs.len()]);
         return Some((value.clone(), value));
     }
 
@@ -171,6 +174,8 @@ pub(super) fn parse_dynamic_power_toughness(words: &[&str]) -> Option<(Value, Va
         {
             toughness = Value::ToughnessOf(power_source.clone());
         }
+        // "with power equal to <x> and toughness equal to <y>", read above.
+        crate::word_claims::claim_words(&words[start..]);
         return Some((power, toughness));
     }
 
@@ -188,6 +193,8 @@ pub(super) fn parse_dynamic_power_toughness(words: &[&str]) -> Option<(Value, Va
         ],
     ) {
         let value = parse_dynamic_rhs(rhs)?;
+        // The fixed "with base power and toughness each equal to" head.
+        crate::word_claims::claim_words(&words[..words.len() - rhs.len()]);
         return Some((value.clone(), value));
     }
 
@@ -213,6 +220,8 @@ pub(super) fn parse_dynamic_power_toughness(words: &[&str]) -> Option<(Value, Va
     } else {
         parse_dynamic_rhs(toughness_rhs)?
     };
+    // "its power is equal to <x> and its toughness is equal to <y>".
+    crate::word_claims::claim_words(words);
     Some((power, toughness))
 }
 
@@ -268,7 +277,32 @@ fn parse_named_source_counter_dynamic_power_toughness(
         Box::new(crate::util::source_choose_spec_for_surface(surface)),
         Some(counter_type),
     );
+    claim_normalized_stat_sentence(tokens, words);
     Some((value.clone(), value))
+}
+
+/// Claim the authored words behind `words`, a [`normalized_reminder_words`]
+/// reading of the end of `tokens` that matched in full: the suffix after the
+/// subject, and the subject it normalized ("its", "this token's"), with an
+/// "It has" / "They have" lead-in.
+fn claim_normalized_stat_sentence(tokens: &[OwnedLexToken], words: &[&str]) {
+    let raw = parser_token_word_refs(tokens);
+    let Some(tail_len) = words.len().checked_sub(1) else {
+        return;
+    };
+    let Some(mut start) = raw.len().checked_sub(tail_len) else {
+        return;
+    };
+    let subject_len = match raw.get(..start) {
+        Some([.., "its"]) => 1,
+        Some([.., "this" | "thiss", "tokens" | "token"]) => 2,
+        _ => return,
+    };
+    start -= subject_len;
+    if let Some([.., "it", "has"] | [.., "they", "have"]) = raw.get(..start) {
+        start -= 2;
+    }
+    crate::word_claims::claim_words(&raw[start..]);
 }
 
 /// The named-source reading on its own, for the static-ability line parser:

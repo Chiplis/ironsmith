@@ -63,6 +63,7 @@ pub use lines::{
     parse_statement_token_groups_to_chunks, parse_static_line, rewrite_modal_to_parsed_item,
     spell_or_activated_ability_x_cost_trigger_spec,
 };
+pub(crate) use lines::reads_per_die_result_ability_table;
 #[cfg(any(test, feature = "test-support"))]
 pub use lines::{
     normalize_exert_followup_source_reference_tokens, parse_keyword_line_for_test,

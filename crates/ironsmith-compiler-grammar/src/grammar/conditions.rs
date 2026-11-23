@@ -220,6 +220,8 @@ pub fn parse_removed_from_draft_condition(
     if with_cards_named.is_empty() {
         return None;
     }
+    // The card group's name, carried verbatim.
+    crate::word_claims::claim_tokens(name_tokens);
     Some(RemovedFromDraftConditionAst {
         player: PlayerAst::You,
         filter,
@@ -1250,8 +1252,10 @@ fn parse_object_descriptor_clause(clause: LexedClause<'_>) -> Option<ObjectDescr
         .void(),
     )?;
     if let [descriptor] = tokens {
-        if let Some(descriptor) = descriptor.as_word().and_then(parse_object_descriptor_word) {
-            return Some(descriptor);
+        if let Some(parsed) = descriptor.as_word().and_then(parse_object_descriptor_word) {
+            // The one descriptor word ("is a creature") is the descriptor.
+            crate::word_claims::claim_tokens(tokens);
+            return Some(parsed);
         }
     }
     crate::grammar::primitives::probe_shape(parse_object_filter_with_grammar_entrypoint(
@@ -1366,8 +1370,10 @@ pub fn parse_player_has_quantity_object_condition(
         return None;
     }
     // "[target player has] exactly 10 life": the quantity and the counted
-    // object phrase this condition compares.
+    // object phrase this condition compares, and the player subject read
+    // whole above ("its controller").
     crate::word_claims::claim_tokens(relation.tail_clause.tokens());
+    crate::word_claims::claim_tokens(relation.subject_clause.tokens());
     Some(PlayerHasQuantityObjectConditionAst { player, comparison })
 }
 
@@ -1428,6 +1434,7 @@ fn parse_player_life_relation_shape(
         ["that", "opponent", "has", "more", "life", "than", "another", "of", "your", "opponents"]
             | ["that", "opponent", "has", "more", "life", "than", "another", "opponent"]
     ) {
+        crate::word_claims::claim_words(&words);
         return Some(PlayerLifeRelationConditionAst {
             player: PlayerFilter::Defending,
             relation: PlayerLifeRelationAst::HasMoreLifeThanAnotherOpponent,
@@ -1968,8 +1975,14 @@ fn lower_player_status_subject_reference(reference: LeafPlayerReference) -> Opti
 
 fn parse_player_has_quantity_subject_clause(clause: LexedClause<'_>) -> Option<PlayerAst> {
     match crate::lexer::token_word_refs(clause.tokens()).as_slice() {
-        ["its", "controller"] => return Some(PlayerAst::ItsController),
-        ["its", "owner"] => return Some(PlayerAst::ItsOwner),
+        ["its", "controller"] => {
+            crate::word_claims::claim_tokens(clause.tokens());
+            return Some(PlayerAst::ItsController);
+        }
+        ["its", "owner"] => {
+            crate::word_claims::claim_tokens(clause.tokens());
+            return Some(PlayerAst::ItsOwner);
+        }
         _ => {}
     }
 
@@ -1997,6 +2010,7 @@ fn parse_life_relation_player_subject_clause(clause: LexedClause<'_>) -> Option<
         ["that", "player", "or", "that", "planeswalker's" | "planeswalkers", "controller"]
             | ["that", "player", "or", "that", "planeswalker", "s", "controller"]
     ) {
+        crate::word_claims::claim_tokens(clause.tokens());
         return Some(PlayerFilter::TargetPlayerOrControllerOfTarget);
     }
     let reference = parse_leaf_player_reference_tokens(

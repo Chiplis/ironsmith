@@ -177,10 +177,14 @@ fn parse_atoms<'a, 'p>(
     input: &mut WordSliceInput<'a>,
     captures: &mut Vec<WinnowSequenceCapture<'p>>,
 ) -> WResult<()> {
+    // The phrase an "until <phrase>" capture stopped at: a word-count capture
+    // right after it that takes exactly that phrase reads it literally.
+    let mut delimiter: Option<&[&str]> = None;
     for atom in atoms {
         // Literal atoms read the words they match; captures are read by
         // their own readers.
         let before = *input;
+        let stopped_at = delimiter.take();
         let literal_read = |input: &WordSliceInput<'a>| {
             crate::word_claims::claim_words(&before[..before.len() - input.len()]);
         };
@@ -224,6 +228,19 @@ fn parse_atoms<'a, 'p>(
             WinnowAtom::RoleCapture(name, role, kind) => {
                 parse_capture(name, Some(role), kind, full_word_count, input, captures)?;
             }
+        }
+        match *atom {
+            WinnowAtom::Capture(_, kind) | WinnowAtom::RoleCapture(_, _, kind) => match kind {
+                WinnowCaptureKind::UntilPhrase(expected)
+                | WinnowCaptureKind::UntilLastPhrase(expected) => delimiter = Some(expected),
+                WinnowCaptureKind::WordCount(_)
+                    if stopped_at.is_some_and(|phrase| before[..before.len() - input.len()] == *phrase) =>
+                {
+                    literal_read(input);
+                }
+                _ => {}
+            },
+            _ => {}
         }
     }
     Ok(())

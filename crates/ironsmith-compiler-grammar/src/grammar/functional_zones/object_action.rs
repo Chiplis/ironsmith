@@ -5,9 +5,13 @@ pub fn parse_source_command_or_battlefield_condition_tokens(tokens: &[OwnedLexTo
     if !tokens.iter().all(|token| token.as_word().is_some()) { return false; }
     let words = crate::lexer::parser_token_word_refs(tokens);
     let Some(is) = words.iter().position(|word| *word == "is") else { return false; };
-    words.first() == Some(&"this")
+    let matched = words.first() == Some(&"this")
         && crate::util::is_source_reference_words(&words[..is])
-        && words[is + 1..] == ["in", "the", "command", "zone", "or", "on", "the", "battlefield"]
+        && words[is + 1..] == ["in", "the", "command", "zone", "or", "on", "the", "battlefield"];
+    if matched {
+        crate::word_claims::claim_words(&words);
+    }
+    matched
 }
 
 pub fn parse_static_functional_zones_tokens(tokens: &[OwnedLexToken]) -> Option<Vec<Zone>> {

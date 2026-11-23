@@ -137,10 +137,16 @@ fn limited_requirement_target_restriction(
     } else {
         return Ok(None);
     };
+    let scope_start = scope_range.start;
+    let scope_end = scope_range.end;
     let scope = parse_object_filter(&tokens[scope_range], false)?;
     if scope.subtypes.is_empty() && scope.card_types.is_empty() {
         return Ok(None);
     }
+    // The frame before the scope and, for "spells that can target only X or
+    // of abilities that can target only X", the second arm restating it.
+    crate::word_claims::claim_words(&words[..scope_start]);
+    crate::word_claims::claim_words(&words[scope_end..]);
     Ok(Some(crate::effect::Restriction::be_targeted_by_requirements_limited_to(
         target_filter.clone(),
         scope,
@@ -313,6 +319,7 @@ fn player_negated_restriction_from_tail(
     // the restricted player controls can't attack the discourse player
     // (lowering binds IteratedPlayer to it); planeswalkers stay attackable.
     if matches!(words, ["attack", "that", "player" | "opponent"]) {
+        crate::word_claims::claim_words(words);
         return Some(Restriction::attack_player(
             ObjectFilter::creature().controlled_by(player),
             PlayerFilter::IteratedPlayer,
@@ -327,6 +334,8 @@ fn player_negated_restriction_from_tail(
             | ["sacrifice", "it"]
             | ["sacrifice", "that", "creature" | "permanent"]
     ) {
+        // Each arm matches the whole tail.
+        crate::word_claims::claim_words(words);
         let mut filter = ObjectFilter::tagged(crate::tag::CompilerReferenceTag::It.bind());
         // Keep the printed noun so the restriction reads back as "those
         // creatures" (the referenced objects are creatures either way).
@@ -349,6 +358,8 @@ fn player_negated_restriction_from_tail(
                 _ => None,
             }
     {
+        // Each arm matches the whole tail.
+        crate::word_claims::claim_words(words);
         return Some(Restriction::CastOrActivatePayments {
             player,
             pay_life: true,
@@ -362,6 +373,14 @@ fn player_negated_restriction_from_tail(
     } else {
         use restriction_grammar::PlayerRestrictionTailKind;
         let kind = restriction_grammar::parse_player_restriction_tail_words(words)?;
+        // "lose the game" / "win the game" take no object; any further words
+        // ("... and your opponents can't win the game") are another clause,
+        // which this single restriction must not swallow.
+        if matches!(kind, PlayerRestrictionTailKind::LoseGame | PlayerRestrictionTailKind::WinGame)
+            && words.get(3) == Some(&"and")
+        {
+            return None;
+        }
         // A tail that is exactly its restriction's phrase ("gain life",
         // "search libraries", "draw cards", ...) is read word for word.
         let exact_phrase: Option<&[&str]> = match kind {
@@ -375,7 +394,12 @@ fn player_negated_restriction_from_tail(
             }
             _ => None,
         };
-        if exact_phrase.is_some_and(|phrase| words == phrase) {
+        // The draw restriction is per turn (the engine counts this turn's
+        // draws), so "each turn" restates it.
+        if exact_phrase.is_some_and(|phrase| words == phrase)
+            || (kind == PlayerRestrictionTailKind::DrawExtraCards
+                && words == ["draw", "more", "than", "one", "card", "each", "turn"])
+        {
             crate::word_claims::claim_words(words);
         }
         Some(
@@ -446,6 +470,11 @@ fn player_be_attacked_except_by_restriction(
     };
     let mut attackers = ObjectFilter::creature();
     crate::grammar::filters::apply_filter_tail_decoration(&mut attackers, disallowed);
+    // The exception head and the attacker noun; the keyword decoration was
+    // read from a normalized copy ("and/or" as "or"), so claim the authored
+    // words here.
+    crate::word_claims::claim_words(&words[..words.len() - rest.len()]);
+    crate::word_claims::claim_words(rest);
     Some(crate::effect::Restriction::attack_player(attackers, player))
 }
 
@@ -767,6 +796,11 @@ fn parse_cant_restriction_clause_unclaimed(
     } else if let Some(fact) = restriction_grammar::parse_global_cant_restriction_words(&normalized)
     {
         use restriction_grammar::GlobalCantRestrictionFact;
+        // Every fact but the lose-or-win prefix is an exact whole-clause
+        // match over the normalized words.
+        if !matches!(fact, GlobalCantRestrictionFact::PlayersLoseOrWin) {
+            crate::word_claims::claim_tokens(tokens);
+        }
         match fact {
             GlobalCantRestrictionFact::OpponentsBlockManaValueParity(parity) => Restriction::block(
                 ObjectFilter::creature()
@@ -1036,6 +1070,8 @@ pub fn parse_player_restriction_subject(
             if start < end {
                 let mut filter = parse_object_filter(&subject_tokens[start..end], false)?;
                 filter.zone.get_or_insert(crate::zone::Zone::Battlefield);
+                crate::word_claims::claim_words(&words[..HEAD.len()]);
+                crate::word_claims::claim_words(&words[words.len() - TAIL.len()..]);
                 return Ok(Some((
                     PlayerFilter::ControlsMost {
                         filter: Box::new(filter),
@@ -1484,6 +1520,9 @@ pub fn parse_negated_object_restriction_clause(
             _ => None,
         };
         if let Some(keyword) = keyword {
+            // "<keyword> abilities can't be activated", word for word.
+            crate::word_claims::claim_tokens(&subject_tokens);
+            crate::word_claims::claim_tokens(&tokens[neg_end..]);
             return Ok(Some(ParsedCantRestriction {
                 restriction: Restriction::activate_keyword_abilities_of(
                     ObjectFilter::default(),
@@ -1504,6 +1543,9 @@ pub fn parse_negated_object_restriction_clause(
             && !matches!(tail_words.as_slice(), ["be", _, "on", "this", ..])
         {
             let protected = parse_object_filter(&tail_tokens[3..], false)?;
+            // "counters" and "be put on": the protected action.
+            crate::word_claims::claim_tokens(&subject_tokens);
+            crate::word_claims::claim_tokens(&tail_tokens[..3]);
             return Ok(Some(ParsedCantRestriction {
                 restriction: Restriction::have_counters_placed(protected),
                 target: None,
@@ -1524,6 +1566,8 @@ pub fn parse_negated_object_restriction_clause(
             if protected.zone.is_none() {
                 protected.zone = Some(crate::zone::Zone::Battlefield);
             }
+            // "be removed from": the protected action.
+            crate::word_claims::claim_tokens(&tail_tokens[..3]);
             return Ok(Some(ParsedCantRestriction {
                 restriction: Restriction::have_counter_type_removed(protected, counter_type),
                 target: None,
@@ -1806,6 +1850,8 @@ pub fn parse_negated_object_restriction_clause(
         && !source_words.is_empty()
     {
         let sources = parse_object_filter(&remainder_tokens[3..], false)?;
+        // "be countered by", read before the source filter.
+        crate::word_claims::claim_tokens(&remainder_tokens[..3]);
         return Ok(Some(ParsedCantRestriction {
             restriction: Restriction::be_countered_from(filter, sources), target,
         }));
@@ -1839,6 +1885,8 @@ pub fn parse_negated_object_restriction_clause(
             || permanents.card_types.contains(&crate::types::CardType::Planeswalker)
             || permanents.card_types.contains(&crate::types::CardType::Battle))
     {
+        // The verb before the attacked permanents' filter.
+        crate::word_claims::claim_tokens(&remainder_tokens[..1]);
         return Ok(Some(ParsedCantRestriction {
             restriction: Restriction::attack_permanents(filter, permanents),
             target,
@@ -1865,6 +1913,7 @@ pub fn parse_negated_object_restriction_clause(
     // "The Aetherspark can't be attacked": no creature may choose the
     // restricted permanent as the object it attacks (CR 508.1b).
     if remainder_words.as_slice() == ["be", "attacked"] {
+        crate::word_claims::claim_tokens(&remainder_tokens);
         return Ok(Some(ParsedCantRestriction {
             restriction: Restriction::attack_permanents(ObjectFilter::creature(), filter),
             target,

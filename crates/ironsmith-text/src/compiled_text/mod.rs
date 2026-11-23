@@ -8124,6 +8124,7 @@ fn finalize_ast_surface_line(line: String) -> String {
     line = normalize_where_x_before_duration_surface(&line);
     line = normalize_chosen_player_adds_mana_surface(&line);
     line = normalize_role_token_attached_surface(&line);
+    line = normalize_aura_attached_state_surface(&line);
     line = normalize_create_role_then_attach_surface(&line);
     line = normalize_return_with_counter_surface(&line);
     line = normalize_simple_token_keyword_surface(&line);
@@ -9532,6 +9533,26 @@ fn normalize_chosen_player_adds_mana_surface(line: &str) -> String {
         "choose a player, then add one mana of any color to that player's mana pool",
         "choose a player. That player adds one mana of any color they choose",
     )
+}
+
+// The object an Aura is attached to is "enchanted <noun>": "if the permanent
+// this Aura is attached to is an untapped creature" reads "if enchanted
+// creature is untapped" (Narcolepsy).
+fn normalize_aura_attached_state_surface(line: &str) -> String {
+    const LEAD: &str = "the permanent this Aura is attached to is ";
+    if !line.contains(LEAD) {
+        return line.to_string();
+    }
+    let mut line = line.to_string();
+    for (article, state) in [("an", "untapped"), ("a", "tapped")] {
+        for noun in ["creature", "land", "permanent"] {
+            line = line.replace(
+                &format!("{LEAD}{article} {state} {noun}"),
+                &format!("enchanted {noun} is {state}"),
+            );
+        }
+    }
+    line
 }
 
 fn normalize_role_token_attached_surface(line: &str) -> String {

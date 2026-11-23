@@ -265,8 +265,10 @@ pub(super) fn read(input: &ChainEntry<'_>) -> ParseOutcome<RuleMatch<Vec<EffectA
     // Equal readings from two rules are one reading.
     let mut distinct: Vec<RegistryCandidate<Vec<EffectAst>>> = Vec::new();
     for candidate in candidates {
-        if !distinct.iter().any(|kept| kept.value == candidate.value) {
-            distinct.push(candidate);
+        match distinct.iter_mut().find(|kept| kept.value == candidate.value) {
+            // Both rules read the same meaning; either one's words are read.
+            Some(kept) => kept.claims.extend(&candidate.claims),
+            None => distinct.push(candidate),
         }
     }
     if distinct.len() > 1 {
@@ -630,11 +632,14 @@ fn read_until_turned_face_down_become(
     let Some(becomes_idx) = tokens.iter().position(|token| token.is_word("becomes")) else {
         return Ok(None);
     };
-    super::super::clause_dispatch::parse_become_clause(
+    let effect = super::super::clause_dispatch::parse_become_clause(
         &tokens[..becomes_idx],
         &tokens[becomes_idx + 1..],
-    )
-    .map(|effect| Some(vec![effect]))
+    )?;
+    // "until this <noun> is turned face down, it": the exact face-up
+    // duration frame and its subject pronoun, matched word for word above.
+    crate::word_claims::claim_tokens(&tokens[..becomes_idx]);
+    Ok(Some(vec![effect]))
 }
 fn read_for_each_object_effect_chain(
     input: &ChainEntry<'_>,

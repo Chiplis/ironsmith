@@ -123,8 +123,10 @@ pub(super) fn read(input: &ParticipantClause<'_>) -> ParseOutcome<RuleMatch<Effe
     // Equal readings from two rules are one reading.
     let mut distinct: Vec<RegistryCandidate<EffectAst>> = Vec::new();
     for candidate in candidates {
-        if !distinct.iter().any(|kept| kept.value == candidate.value) {
-            distinct.push(candidate);
+        match distinct.iter_mut().find(|kept| kept.value == candidate.value) {
+            // Both rules read the same meaning; either one's words are read.
+            Some(kept) => kept.claims.extend(&candidate.claims),
+            None => distinct.push(candidate),
         }
     }
     if distinct.len() > 1 {
@@ -261,6 +263,41 @@ fn read_who_clause(input: &ParticipantClause<'_>) -> Result<Option<EffectAst>, C
     let outer = input.outer;
     let iteration_filter = input.iteration_filter.clone();
     let clause_text = input.clause_text;
+    // "each player who controlled a permanent destroyed this way" (Shai-Hulud):
+    // the players among the last-known controllers of the prior effect's
+    // objects, each acting once however many of their objects it took.
+    if let Some(((), controlled)) = crate::grammar::primitives::parse_prefix(
+        outer.inner_tokens,
+        crate::grammar::primitives::phrase(&["who", "controlled"]),
+    ) && let Some((destroyed, (), body)) = crate::grammar::primitives::find_prefix(controlled, || {
+        crate::grammar::primitives::phrase(&["destroyed", "this", "way"])
+    }) && destroyed > 0
+        && !body.is_empty()
+    {
+        let mut filter = crate::object_filters::parse_object_filter(&controlled[..destroyed], false)?;
+        filter.controller = Some(PlayerFilter::IteratedPlayer);
+        filter.zone = Some(crate::zone::Zone::Battlefield);
+        let mut query = ironsmith_core::PriorEffectMetricQuery::new(
+            ironsmith_core::EffectMetricSource::AffectedObjects,
+            ironsmith_core::EffectMetric::Count,
+        )
+        .with_filter(filter)
+        .with_action(ironsmith_core::PriorEffectAction::Destroyed);
+        query.use_origin_memory = true;
+        let effects = parse_effect_chain_inner(crate::lexer::trim_lexed_commas(body))?;
+        return Ok(Some(wrap_players(
+            &iteration_filter,
+            vec![EffectAst::Conditionals(ConditionalEffectAst::Conditional {
+                predicate: PredicateAst::ValueComparison {
+                    left: Value::PendingPriorEffectMetric(query),
+                    operator: crate::effect::ValueComparisonOperator::GreaterThan,
+                    right: Value::Fixed(0),
+                },
+                if_true: effects,
+                if_false: Vec::new(),
+            })],
+        )));
+    }
     if let Some(who) = for_each_shapes::parse_who_clause_shape(outer.inner_tokens) {
         match who {
             WhoClauseShape::TappedLandForMana { effect_tokens } => {
@@ -360,6 +397,11 @@ fn read_who_clause(input: &ParticipantClause<'_>) -> Result<Option<EffectAst>, C
                             &greatest,
                             clause_text,
                         )?;
+                        // The discarded-card filter read into the greatest-
+                        // mana-value match over the tagged discards; "that
+                        // mana value" became the same value.
+                        crate::word_claims::claim_tokens(filter_tokens);
+                        crate::word_claims::claim_tokens(&effect_tokens[that_idx..that_idx + 3]);
                         return Ok(Some(EffectAst::ForEach(ForEachEffectAst::ForEachPlayerDid {
                             effects,
                             predicate: Some(PredicateAst::Player(
@@ -388,6 +430,9 @@ fn read_who_clause(input: &ParticipantClause<'_>) -> Result<Option<EffectAst>, C
                         crate::lexer::synthetic_word_tokens(["its", "owner"]);
                     rewritten.extend_from_slice(effect_tokens);
                     let effects = parse_effect_chain_inner(&rewritten)?;
+                    // The relative clause read as iterating the spells cast
+                    // this way, their owner acting.
+                    crate::word_claims::claim_tokens(result_tokens);
                     return Ok(Some(EffectAst::ForEach(ForEachEffectAst::ForEachTagged {
                         tag: crate::tag::CompilerReferenceTag::It.bind(),
                         effects,

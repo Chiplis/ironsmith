@@ -36,6 +36,8 @@ pub(super) fn parse(words: &[&str]) -> Option<(Value, usize)> {
     } else {
         return None;
     };
+    // "[the total] number of <kind> counters among players".
+    crate::word_claims::claim_words(&words[..offset + counter + 1 + used]);
     Some((
         Value::PlayerCounters(player, kind),
         offset + counter + 1 + used,

@@ -113,12 +113,17 @@ fn sentence_finished(tokens: &[OwnedLexToken]) -> bool {
 /// order.” Apostrophe tokenization can expose the possessive as either
 /// `game s` or `games`, so both normalized forms are accepted exactly.
 pub fn parse_resource_reverse_turn_order_shape(tokens: &[OwnedLexToken]) -> bool {
-    matches!(
+    let matched = matches!(
         TokenWordView::new(trimmed(tokens)).word_refs().as_slice(),
         ["the", "game", "s", "turn", "order"]
             | ["the", "games", "turn", "order"]
             | ["the", "game's", "turn", "order"]
-    )
+    );
+    if matched {
+        // An exact object of "reverse".
+        crate::word_claims::claim_tokens(tokens);
+    }
+    matched
 }
 
 fn semantic_kw<'a>(

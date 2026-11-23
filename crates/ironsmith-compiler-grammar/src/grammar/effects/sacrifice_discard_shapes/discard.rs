@@ -82,6 +82,8 @@ pub fn parse_additional_cost_object_colors_surface(
         "permanent" | "permanents" => ironsmith_core::SacrificedObjectKind::Permanent,
         _ => return None,
     };
+    // The whole tail matched: "of [each of] [the] <action> <noun> colors".
+    crate::word_claims::claim_words(&words);
     Some(ironsmith_core::AdditionalCostObjectSurface::new(
         action, kind,
     ))
@@ -226,6 +228,8 @@ pub fn parse_fraction_hand_discard(tokens: &[OwnedLexToken]) -> Option<(i32, boo
         ["their", "hand"] | ["that", "players", "hand"] | ["that", "player's", "hand"] => false,
         _ => return None,
     };
+    // The fraction, its card pool and any rounding suffix: the whole clause.
+    crate::word_claims::claim_words(&words);
     Some((denominator, your_hand, up))
 }
 
@@ -336,6 +340,7 @@ pub fn parse_discard_qualifier_shape(tokens: &[OwnedLexToken]) -> DiscardQualifi
     if words.is_empty() || common::exact(&words, &["the"]) {
         DiscardQualifierShape::EmptyOrThe
     } else if chosen_color_reference(tokens) {
+        crate::word_claims::claim_tokens(tokens);
         DiscardQualifierShape::ChosenColor
     } else if let Some(colors) = color_set(tokens) {
         DiscardQualifierShape::Colors(colors)
@@ -362,6 +367,7 @@ pub fn parse_discard_trailing_shape(tokens: &[OwnedLexToken]) -> DiscardTrailing
         crate::word_claims::claim_words(&words);
         DiscardTrailingShape::ChosenCreatureType
     } else if chosen_color_reference(tokens) {
+        crate::word_claims::claim_tokens(tokens);
         DiscardTrailingShape::ChosenColor
     } else if common::exact_any(&words, SAME_MANA_VALUE_REFERENCES) {
         crate::word_claims::claim_words(&words);

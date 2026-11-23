@@ -48,7 +48,7 @@ fn guesser(sentence: &[OwnedLexToken]) -> Option<(PlayerFilter, Option<TargetAst
 }
 
 /// "If you do and your opponent guessed wrong, <effects>": the tail.
-fn wrong_guess_tail(sentence: &[OwnedLexToken]) -> Option<&[OwnedLexToken]> {
+fn wrong_guess_tail(sentence: &[OwnedLexToken]) -> Option<(&[OwnedLexToken], &[OwnedLexToken])> {
     let sentence = crate::util::trim_edge_punctuation_tokens(sentence);
     let words = parser_token_word_refs(sentence);
     let lead: &[&str] = match words.as_slice() {
@@ -74,7 +74,7 @@ fn wrong_guess_tail(sentence: &[OwnedLexToken]) -> Option<&[OwnedLexToken]> {
         index += 1;
     }
     let tail = crate::util::trim_edge_punctuation_tokens(&sentence[index..]);
-    (!tail.is_empty()).then_some(tail)
+    (!tail.is_empty()).then_some((&sentence[..index], tail))
 }
 
 pub(crate) fn read(sentences: &[&[OwnedLexToken]]) -> Result<Option<Vec<EffectAst>>, CardTextError> {
@@ -91,7 +91,7 @@ pub(crate) fn read(sentences: &[&[OwnedLexToken]]) -> Result<Option<Vec<EffectAs
     let Some((guesser, target)) = guesser(guess) else {
         return Ok(None);
     };
-    let Some(wrong) = wrong_guess_tail(wrong) else {
+    let Some((wrong_lead, wrong)) = wrong_guess_tail(wrong) else {
         return Ok(None);
     };
     let setup_effects = super::parse_effect_chain(choose)?;
@@ -147,5 +147,8 @@ pub(crate) fn read(sentences: &[&[OwnedLexToken]]) -> Result<Option<Vec<EffectAs
         chooser: guesser,
         modes: vec![answer(true), answer(false)],
     }));
+    // The guess and the wrong-guess gate, matched word for word.
+    crate::word_claims::claim_tokens(guess);
+    crate::word_claims::claim_tokens(wrong_lead);
     Ok(Some(effects))
 }

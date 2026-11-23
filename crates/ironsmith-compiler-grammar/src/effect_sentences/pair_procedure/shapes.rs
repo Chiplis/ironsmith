@@ -636,6 +636,8 @@ pub(super) fn opponents_sacrifice_or_discard_damage(
     if !declined || (!equal_to_power && fixed.is_none()) {
         return Ok(None);
     }
+    // Both statements were read word for word above.
+    super::claim_sentences([first, second]);
 
     let mut sacrifice_filter = if nonland {
         ObjectFilter::nonland()

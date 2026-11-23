@@ -280,6 +280,8 @@ fn parse_destroy_all_filter(tokens: &[OwnedLexToken]) -> Result<ObjectFilter, Ca
                     tag: it.into(),
                     relation: crate::target::TaggedOpbjectRelation::SameNameAsTagged,
                 });
+                // "with that name", read word for word above.
+                crate::word_claims::claim_tokens(&trimmed[base_end..]);
                 return Ok(filter);
             }
         }

@@ -73,6 +73,23 @@ pub(super) fn first_library_search_shape(
         {
             return Some((filter.clone(), zones.clone(), *count));
         }
+        // A complete search procedure ("search your library for a basic land
+        // card, reveal it, put it into your hand, then shuffle").
+        if let EffectAst::SubjectVerb(SubjectVerbEffectAst {
+            action:
+                SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::SearchLibrary {
+                    filter,
+                    search_zones,
+                    count,
+                    count_value: None,
+                    ..
+                }),
+            ..
+        }) = effect
+            && search_zones.contains(&Zone::Library)
+        {
+            return Some((filter.clone(), search_zones.clone(), *count));
+        }
         let mut nested_shape = None;
         for_each_nested_effects(effect, true, |nested| {
             if nested_shape.is_none() {
@@ -100,6 +117,23 @@ pub(super) fn replace_matching_library_search_count(
             ..
         }) = effect
             && zones.as_slice() == replacement_zones
+            && filter == replacement_filter
+        {
+            *count = *replacement_count;
+            return true;
+        }
+        if let EffectAst::SubjectVerb(SubjectVerbEffectAst {
+            action:
+                SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::SearchLibrary {
+                    filter,
+                    search_zones,
+                    count,
+                    count_value: None,
+                    ..
+                }),
+            ..
+        }) = effect
+            && search_zones.as_slice() == replacement_zones
             && filter == replacement_filter
         {
             *count = *replacement_count;
@@ -164,6 +198,13 @@ pub(super) fn materialize_search_count_self_replacement(
         return None;
     }
 
+    // "instead of <n>": the replaced selection count's connective.
+    if let Some(at) = sentence_tokens
+        .windows(2)
+        .position(|pair| pair[0].parser_text() == "instead" && pair[1].parser_text() == "of")
+    {
+        crate::word_claims::claim_tokens(&sentence_tokens[at..at + 2]);
+    }
     Some(EffectAst::SelfReplacement {
         predicate,
         if_true: replacement_effects,

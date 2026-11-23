@@ -235,6 +235,11 @@ fn parse_counter_type_words_spec_word_slice(
     };
 
     let counter_type = if let Some(known) = parse_counter_type_word(previous) {
+        // "an additional +1/+1 counter": one more counter of that kind; the
+        // count reader owns the amount, "additional" only marks it as extra.
+        if descriptor.len() >= 2 && descriptor[descriptor.len() - 2] == "additional" {
+            crate::word_claims::claim_words(&descriptor[descriptor.len() - 2..descriptor.len() - 1]);
+        }
         known
     } else if previous == "strike" && descriptor.len() >= 2 {
         let counter_type = match descriptor[descriptor.len() - 2] {

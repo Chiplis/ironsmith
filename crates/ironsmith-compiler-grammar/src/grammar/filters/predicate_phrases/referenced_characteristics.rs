@@ -12,6 +12,7 @@ pub(super) fn parse_referenced_characteristic_state(
     if let ["it", "is", rest @ ..] | ["its" | "it's", rest @ ..] = words.as_slice()
         && crate::word_primitives::equals(&rest, &["at", "least", "one", "of", "the", "chosen", "colors"])
     {
+        crate::word_claims::claim_words(&words);
         return Ok(Some(PredicateAst::ItMatches(ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
             chosen_color: true,
             ..Default::default()
@@ -42,6 +43,7 @@ pub(super) fn parse_referenced_characteristic_state(
             "power"
         ]
     ) {
+        crate::word_claims::claim_words(&words);
         return Ok(Some(PredicateAst::ItMatchedLastKnown(ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
             power_comparison_to_base: Some(crate::effect::ValueComparisonOperator::NotEqual),
             ..Default::default()
@@ -52,6 +54,7 @@ pub(super) fn parse_referenced_characteristic_state(
     if let ["they", "were", "a" | "an", noun] = words.as_slice()
         && let Some(kind) = crate::util::parse_card_type(noun)
     {
+        crate::word_claims::claim_words(&words);
         return Ok(Some(PredicateAst::ItMatchedLastKnown(ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
             card_types: vec![kind],
             ..Default::default()

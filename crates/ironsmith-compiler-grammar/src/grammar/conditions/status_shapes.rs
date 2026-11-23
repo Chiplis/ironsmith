@@ -404,6 +404,8 @@ fn parse_completed_dungeon(tokens: &[OwnedLexToken]) -> Option<PlayerAchievement
     if name_tokens.is_empty() {
         return None;
     }
+    // The dungeon's name is carried verbatim into the achievement.
+    crate::word_claims::claim_tokens(name_tokens);
     Some(PlayerAchievementAst::CompletedDungeon {
         dungeon_name: Some(render_token_slice(name_tokens).trim().to_string()),
     })

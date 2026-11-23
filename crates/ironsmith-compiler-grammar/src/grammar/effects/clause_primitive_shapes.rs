@@ -146,6 +146,7 @@ pub fn parse_stack_retarget_filter_shape(
     let kind = if has_word(tokens, "activated") && has_ability {
         StackRetargetFilterKind::ActivatedAbility
     } else if has_ability && has_spell {
+        claim_spell_or_ability_union(tokens);
         StackRetargetFilterKind::SpellOrAbility
     } else if has_ability {
         StackRetargetFilterKind::Ability
@@ -160,6 +161,18 @@ pub fn parse_stack_retarget_filter_shape(
         kind,
         other: has_word(tokens, "other"),
     })
+}
+
+/// "spell or ability": the "or" reads the two stack kinds as one union.
+fn claim_spell_or_ability_union(tokens: &[OwnedLexToken]) {
+    for window in tokens.windows(3) {
+        if matches!(window[0].as_word(), Some("spell" | "spells"))
+            && window[1].as_word() == Some("or")
+            && matches!(window[2].as_word(), Some("ability" | "abilities"))
+        {
+            crate::word_claims::claim_tokens(&window[1..2]);
+        }
+    }
 }
 
 fn choose_name_prefix<'a>(input: &mut crate::lexer::LexStream<'a>) -> WResult<PlayerAst> {

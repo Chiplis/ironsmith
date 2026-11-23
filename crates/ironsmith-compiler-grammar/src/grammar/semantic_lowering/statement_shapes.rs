@@ -148,6 +148,12 @@ pub fn parse_die_roll_adjustment_tokens(tokens: &[OwnedLexToken]) -> Option<DieR
             .and_then(|idx| words.get(idx + 1))
             .and_then(|word| fixed_leaf_number(&[*word]))
             .unwrap_or(1);
+        // "pay N life": the life the cost pays.
+        if let Some(pay) = phrase_location(&words, &["pay"])
+            && words.get(pay + 2) == Some(&"life")
+        {
+            crate::word_claims::claim_words(&words[pay + 2..pay + 3]);
+        }
         (life_cost, None)
     } else {
         // "you may remove a <kind> counter from this creature."
@@ -160,6 +166,10 @@ pub fn parse_die_roll_adjustment_tokens(tokens: &[OwnedLexToken]) -> Option<DieR
         }
         let kind = words.get(remove + 4)?;
         let counter = crate::grammar::filters::parse_counter_type_words(&[*kind, "counter"])?;
+        // "from this <noun>": the source the counter is removed from.
+        if let Some(noun) = words.get(counter_idx + 3) {
+            crate::word_claims::claim_word(noun);
+        }
         (0, Some(counter))
     };
     let adjustment = phrase_location(&words, &["by"])

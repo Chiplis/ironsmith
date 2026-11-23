@@ -135,6 +135,11 @@ pub(crate) fn parse_tokens(
         },
         None => loses,
     };
+    // The duration, trigger and iteration parts were read word for word;
+    // the instruction is its own sentence reading.
+    for part in &parts[..parts.len() - 1] {
+        crate::word_claims::claim_tokens(part);
+    }
     let delayed = EffectAst::Delayed(DelayedEffectAst::DelayedTriggerForDuration {
         trigger,
         effects: vec![per_permanent],

@@ -57,8 +57,13 @@ pub fn parse_prevention_amount_follow_up_line(
         if !words.ends_with(&suffix) { return Ok(None); }
         let Some(range) = view.token_span_for_words(0, words.len() - suffix.len())
         else { return Ok(None); };
+        let body_end = range.end;
         let body = trim_edge_punctuation_tokens(&tail[range]);
         let mut effects = crate::clause_support::parse_effect_sentences_lexed(body)?;
+        // "for each 1 damage prevented this way", read word for word above.
+        if !effects.is_empty() {
+            crate::word_claims::claim_tokens(&tail[body_end..]);
+        }
         if let [EffectAst::SubjectVerb(SubjectVerbEffectAst {
             action: SubjectVerbActionAst::Tokens(TokenActionAst::CreateTokenWithMods { count, .. }),
             ..

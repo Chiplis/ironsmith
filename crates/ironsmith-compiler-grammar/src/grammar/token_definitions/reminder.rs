@@ -182,6 +182,16 @@ pub use dynamic_power_toughness::parse_token_dynamic_power_toughness_tokens;
 use dynamic_power_toughness::{normalized_reminder_words, parse_dynamic_power_toughness};
 
 pub fn parse_token_reminder_facts_tokens(tokens: &[OwnedLexToken]) -> TokenReminderFacts {
+    let name = super::names::named_card_name_parts(tokens).map(|(name, _)| name);
+    parse_named_token_reminder_facts_tokens(tokens, name.as_deref())
+}
+
+/// Reminder facts of a rule slice whose token's name was authored outside
+/// it ("... token named Rock with \"... Sacrifice Rock: ...\"").
+pub fn parse_named_token_reminder_facts_tokens(
+    tokens: &[OwnedLexToken],
+    token_name: Option<&str>,
+) -> TokenReminderFacts {
     let raw_words = parser_token_word_refs(tokens);
     let words = normalized_reminder_words(&raw_words);
     let delay = effects::parse_next_end_step_delay_words(&words);
@@ -205,7 +215,7 @@ pub fn parse_token_reminder_facts_tokens(tokens: &[OwnedLexToken]) -> TokenRemin
     let definition = TokenDefinitionReminderFacts {
         keywords: surface::token_keywords(&words),
         creature_rules: surface::creature_rules(tokens, &words, &words, None),
-        equipment_rules: equipment::parse_equipment_rules_tokens(tokens),
+        equipment_rules: equipment::parse_equipment_rules_tokens(tokens, token_name),
         artifact_leaves_damage_any_target,
         vehicle_flying: common::word_read(&words, "flying"),
         vehicle_crew_amount: rules::parse_token_crew_shape_words(&words).map(|shape| shape.amount),

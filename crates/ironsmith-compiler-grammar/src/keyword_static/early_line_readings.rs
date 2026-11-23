@@ -355,6 +355,8 @@ fn read_attack_state_xy_attached_anthem_line(
         return Ok(None);
     };
     let subject = crate::object_filters::parse_object_filter(&gets[subject_range], false)?;
+    // The four statements were read word for word above.
+    crate::word_claims::claim_tokens(input.tokens);
     let mut attacking_filter = ObjectFilter::default();
     attacking_filter.attacking = true;
     let is_attacking = PredicateAst::AttachedToSourceMatches(attacking_filter);
@@ -412,8 +414,10 @@ pub(super) fn read(input: &EarlyLine<'_>) -> ParseOutcome<RuleMatch<Vec<StaticAb
     // Equal readings from two rules are one reading.
     let mut distinct: Vec<RegistryCandidate<Vec<StaticAbilityAst>>> = Vec::new();
     for candidate in candidates {
-        if !distinct.iter().any(|kept| kept.value == candidate.value) {
-            distinct.push(candidate);
+        match distinct.iter_mut().find(|kept| kept.value == candidate.value) {
+            // Both rules read the same meaning; either one's words are read.
+            Some(kept) => kept.claims.extend(&candidate.claims),
+            None => distinct.push(candidate),
         }
     }
     if distinct.len() > 1 {
@@ -520,6 +524,8 @@ pub(crate) fn read_aggregate_x_maximum(
         )
     })?
     .without_surface_hint(ironsmith_core::ValueSurfaceHint::EqualTo);
+    // "X can't be greater than": the bound's frame.
+    crate::word_claims::claim_words(&refs[..5]);
     let display = format!("{}.", crate::lexer::render_token_slice(tokens).trim_end_matches('.'));
     Some(StaticAbility::this_spell_x_maximum(value, display).into())
 }
@@ -546,9 +552,12 @@ pub(crate) fn read_defined_x(
     }
     let range = words.token_span_for_words(2, refs.len() - AS_YOU_CAST.len())?;
     let value = crate::grammar::shared_util::value_semantics::parse_equal_to_number_of_filter_value(
-        &tokens[range],
+        &tokens[range.clone()],
     )?
     .without_surface_hint(ironsmith_core::ValueSurfaceHint::EqualTo);
+    // "X is the" and "as you cast this spell" frame the value read above.
+    crate::word_claims::claim_tokens(&tokens[..range.start]);
+    crate::word_claims::claim_tokens(&tokens[range.end..]);
     let (maximum, minimum) = match value.unhinted() {
         Value::Count(filter)
             if filter.controller.is_none()
@@ -758,6 +767,9 @@ fn read_players_cant_pay_life_or_sacrifice_line(
         && !is_players_cant_pay_life_or_sacrifice_line_lexed(tokens)
     {
         let filter = crate::object_filters::parse_object_filter(&trimmed[6..trimmed.len()-6], false)?;
+        // The exact frame around the sacrificed-object filter.
+        crate::word_claims::claim_tokens(&trimmed[..6]);
+        crate::word_claims::claim_tokens(&trimmed[trimmed.len() - 6..]);
         return Ok(Some(vec![StaticAbility::restriction(
             crate::effect::Restriction::CastOrActivatePayments {
                 player: PlayerFilter::Any, pay_life: true, sacrifice: Some(filter),

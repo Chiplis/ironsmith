@@ -170,6 +170,20 @@ pub fn parse_copy_source_tail_tokens(tokens: &[OwnedLexToken]) -> CopySourceTail
         .unwrap_or(tokens.len());
     let modifier_words = CreationTokens::new(trim_lexed_commas(&tokens[modifier_token..])).words();
     let modifier_surface = CreationWords::new(&modifier_words);
+    // "and that's tapped and attacking" / "and that are tapped and
+    // attacking": the joining "and" and the entry words this spec records.
+    crate::word_claims::claim_tokens(&tokens[split_token..modifier_token]);
+    let copula = match modifier_words.as_slice() {
+        ["that", "are" | "is", ..] => 2,
+        ["that's" | "thats", ..] => 1,
+        _ => 0,
+    };
+    crate::word_claims::claim_words(&modifier_words[..copula]);
+    for word in &modifier_words[copula..] {
+        if matches!(*word, "tapped" | "and" | "attacking") {
+            crate::word_claims::claim_word(word);
+        }
+    }
     CopySourceTailSpec {
         source_tokens: trim_lexed_commas(&tokens[..split_token]).to_vec(),
         enters_tapped: modifier_surface.has(CreationWordClass::Tapped),
@@ -202,12 +216,24 @@ pub fn parse_inline_combat_tokens(tokens: &[OwnedLexToken]) -> InlineCombatSpec 
         };
     }
     let start_token = token_surface.boundary(start_word).unwrap_or(tokens.len());
+    let attack_target = modifier_surface.phrase_match(CreationPhrase::AttackTarget);
+    // The entry words this spec records ("that's tapped and attacking [that
+    // player or a planeswalker they control]"); any other word is left for
+    // the audit to report.
+    for (index, word) in modifier_words.iter().enumerate() {
+        let in_attack_target =
+            attack_target.is_some_and(|(at, len)| (at..at + len).contains(&index));
+        if in_attack_target
+            || matches!(*word, "that's" | "thats" | "that" | "are" | "tapped" | "and" | "attacking")
+        {
+            crate::word_claims::claim_word(word);
+        }
+    }
     InlineCombatSpec {
         source_tokens: trim_lexed_commas(&tokens[..start_token]).to_vec(),
         enters_tapped,
         enters_attacking,
-        attacks_that_player_or_planeswalker: modifier_surface
-            .has_phrase(CreationPhrase::AttackTarget),
+        attacks_that_player_or_planeswalker: attack_target.is_some(),
     }
 }
 
@@ -258,6 +284,8 @@ pub fn parse_copy_source_clause_tokens(tokens: &[OwnedLexToken]) -> Option<CopyS
             cut_word -= 2;
         }
         let cut = CreationTokens::new(source).boundary(cut_word)?;
+        // "[tapped and] attacking that player": the entry the copy reads.
+        crate::word_claims::claim_tokens(&source[cut..]);
         source = trim_lexed_commas(&source[..cut]);
     }
     let tail = parse_copy_source_tail_tokens(source);
@@ -342,7 +370,15 @@ pub fn parse_create_head_tokens(tokens: &[OwnedLexToken]) -> Option<CreateHeadSp
             )
     {
         // "Create half X Food tokens, rounded up": the rounding clause
-        // follows the token noun.
+        // follows the token noun. "half" and that clause are read here.
+        if let Some(half) = token_surface.word_range(0..1) {
+            crate::word_claims::claim_tokens(half);
+        }
+        if let Some(marker) = words.iter().position(|word| matches!(*word, "token" | "tokens"))
+            && let Some(rounding) = token_surface.word_range(marker + 1..marker + 3)
+        {
+            crate::word_claims::claim_tokens(rounding);
+        }
         (CreateCountHead::Dynamic(value), used)
     } else if words.first().copied() == Some("twice")
         && let Some((value, used)) =

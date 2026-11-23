@@ -154,6 +154,7 @@ pub fn parse_discard_segment_tokens(
             "discard", "the", "last", "card", "you", "drew", "this", "turn",
         ]
     {
+        crate::word_claims::claim_tokens(tokens);
         return Ok(ActivationCostSegmentCst::DiscardFiltered {
             count: 1,
             card_types: Vec::new(),
@@ -442,7 +443,11 @@ pub fn parse_tap_chosen_segment_tokens(
             .then(|| view.map_word_to_token_start(words.len() - suffix.len()))
             .flatten()
         {
-            Some(token_start) if token_start > 0 => (&filter_tokens[..token_start], true),
+            Some(token_start) if token_start > 0 => {
+                // The shared-type relation over the chosen set.
+                crate::word_claims::claim_tokens(&filter_tokens[token_start..]);
+                (&filter_tokens[..token_start], true)
+            }
             _ => (filter_tokens, false),
         }
     };

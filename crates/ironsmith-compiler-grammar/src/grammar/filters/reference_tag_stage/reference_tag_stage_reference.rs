@@ -821,6 +821,16 @@ fn parse_object_filter_inner_unchecked(
     {
         filter.zone = Some(Zone::Stack);
         filter.stack_kind = Some(crate::filter::StackObjectKind::Ability);
+        // "an ability of an artifact, creature, or planeswalker": the
+        // following card types qualify the ability's source, so "of" reads
+        // as that source relation.
+        if let Some(head) = base_tokens
+            .iter()
+            .position(|token| matches!(token.as_word(), Some("ability" | "abilities")))
+            && base_tokens.get(head + 1).is_some_and(|token| token.as_word() == Some("of"))
+        {
+            crate::word_claims::claim_tokens(&base_tokens[head + 1..head + 2]);
+        }
     }
     if parse_phrase_choice_whole(
         &non_article_parser_word_refs(&base_tokens),
@@ -1565,6 +1575,15 @@ fn parse_object_filter_inner_unchecked(
                     || (all_words[owner_start - 1] == "of" && owner_start < idx))
             {
                 owner_start -= 1;
+            } else if owner_start > 1
+                && all_words[owner_start - 2] == "of"
+                && owner_start < idx
+                && crate::util::parse_number_word_u32(all_words[owner_start - 1]).is_some()
+            {
+                // "the top card of two target players' libraries" (Mohiam):
+                // the target count between "of" and its owner is the target
+                // reader's; "of" places the card in each owned zone.
+                crate::word_claims::claim_words(&all_words[owner_start - 2..owner_start - 1]);
             }
             crate::word_claims::claim_words(&all_words[owner_start..idx]);
         }
@@ -1768,6 +1787,14 @@ fn parse_object_filter_inner_unchecked(
         .is_some()
     {
         filter.power_toughness_relation = Some(crate::filter::PowerToughnessRelation::NotEqual);
+    }
+    // "creature cards that each have mana value X": a relative clause on a
+    // plural noun holds for every member, so its distributive "each" only
+    // restates that.
+    if let Some(at) = clause_words.windows(3).position(|window| {
+        window[0] == "that" && window[1] == "each" && matches!(window[2], "have" | "has")
+    }) {
+        crate::word_claims::claim_words(&clause_words[at + 1..at + 2]);
     }
 
     let mut saw_permanent = false;
@@ -2115,6 +2142,13 @@ fn parse_object_filter_inner_unchecked(
         match *word {
             // A determiner like "a": "any creature card" selects creature cards.
             "any" => {}
+            // "each creature": the filter already selects every matching
+            // object; "creatures each with base power 1 or less": the
+            // distributive "each" restates that the plural's qualifier holds
+            // for every member.
+            "each"
+                if idx == 0
+                    || all_words.get(idx + 1).is_some_and(|next| *next == "with") => {}
             "permanent" | "permanents" => saw_permanent = true,
             "spell" | "spells" => {
                 if !is_tagged_spell_reference_at(idx) {

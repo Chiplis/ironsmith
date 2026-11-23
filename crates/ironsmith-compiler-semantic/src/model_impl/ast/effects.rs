@@ -7104,6 +7104,7 @@ impl EffectAst {
                 x_maximum: None,
                 independent_x_choice: false,
                 mana_cost_of: None,
+                instant_speed_window: false,
             }),
         )
     }
@@ -7122,6 +7123,7 @@ impl EffectAst {
                 x_maximum: Some(x_maximum),
                 independent_x_choice: false,
                 mana_cost_of: None,
+                instant_speed_window: false,
             }),
         )
     }

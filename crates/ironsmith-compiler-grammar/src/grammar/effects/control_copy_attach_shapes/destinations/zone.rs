@@ -110,6 +110,15 @@ pub fn parse_onto_battlefield_destination_shape(
     if !relative_controller && !owner_relative && let Some((index, _, _)) =
         primitives::find_prefix(&destination_tail, || primitives::kw("instead"))
     {
+        // "... instead of putting it into your hand": the replaced
+        // destination restates the instruction this one replaces.
+        let replaced = crate::lexer::parser_token_word_refs(&destination_tail[index + 1..]);
+        if matches!(
+            replaced.as_slice(),
+            ["of", "putting", "it" | "them", "into", "your" | "their" | "its" | "his" | "her", "hand" | "graveyard"]
+        ) {
+            crate::word_claims::claim_tokens(&destination_tail[index + 1..]);
+        }
         destination_tail.truncate(index);
     }
     if let Some((_, rest)) =

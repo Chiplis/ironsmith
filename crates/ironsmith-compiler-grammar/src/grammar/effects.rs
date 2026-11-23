@@ -387,6 +387,8 @@ fn search_put_attachment_target(
         && target_words[1].eq_ignore_ascii_case("player")
         && crate::word_primitives::sequence_occurs(&search_words, &["enchanted", "player"])
     {
+        // "attached to that player": the enchanted player named earlier.
+        crate::word_claims::claim_tokens(&target_tokens);
         return Ok(Some(TargetAst::Player(
             PlayerFilter::TaggedPlayer((crate::tag::CompilerReferenceTag::Enchanted.bind()).into()),
             None,
@@ -596,6 +598,8 @@ fn parse_next_turn_attack_ban_sentence(tokens: &[OwnedLexToken]) -> Option<Effec
     ) {
         return None;
     }
+    // The whole sentence was read word for word above.
+    crate::word_claims::claim_words(&words);
     let mut attackers = ObjectFilter::creature();
     attackers.controller = Some(PlayerFilter::IteratedPlayer);
     // "permanents you control" also covers battles you control (CR 508.1b).
@@ -1276,6 +1280,8 @@ fn excepted_creature_sets_complement(tokens: &[OwnedLexToken]) -> Option<ObjectF
             _ => return None,
         }
     }
+    // Every excepted set and its connective matched an exact arm above.
+    crate::word_claims::claim_tokens(tokens);
     Some(filter)
 }
 
@@ -1633,6 +1639,8 @@ pub fn parse_prevent_damage_source_target_lexed(
         token_word_refs(tokens).as_slice(),
         ["the", "creature" | "permanent" | "artifact"]
     ) {
+        // The definite noun read whole as the anaphor.
+        crate::word_claims::claim_tokens(tokens);
         return Ok((
             TargetAst::Tagged(
                 crate::tag::CompilerReferenceTag::It.bind(),
@@ -1882,6 +1890,11 @@ fn parse_grant_quoted_ability_if_absent_lexed(
             flagged += 1;
         }
     }
+    if flagged == 1 {
+        // The condition's subject and negated "have" (the quoted ability
+        // reads itself in the grant) are the presence gate matched above.
+        crate::word_claims::claim_tokens(&tokens[..open]);
+    }
     (flagged == 1).then_some(effects)
 }
 
@@ -1929,11 +1942,13 @@ pub fn parse_conditional_sentence_with_grammar_entrypoint_lexed(
             let target = parse_target_phrase(&tokens[1..is_index])?;
             let mut matching = ObjectFilter::default();
             matching.chosen_creature_type = true;
+            let if_true = parse_effect_chain_lexed(&tokens[comma + 1..])?;
+            crate::word_claims::claim_tokens(&tokens[is_index + 1..comma]);
             return Ok(vec![
                 EffectAst::subject_verb_explicit_target_only(target),
                 EffectAst::Conditionals(ConditionalEffectAst::Conditional {
                     predicate: PredicateAst::TargetMatches(matching),
-                    if_true: parse_effect_chain_lexed(&tokens[comma + 1..])?,
+                    if_true,
                     if_false: Vec::new(),
                 }),
             ]);
@@ -2067,6 +2082,7 @@ fn parse_persistent_reduced_maximum_hand_size_lexed(
         ["until", "end", "of", "turn"] | ["this", "turn"] => crate::effect::Until::EndOfTurn,
         _ => return None,
     };
+    crate::word_claims::claim_words(&words);
     Some((
         crate::effect::Restriction::reduce_maximum_hand_size(player, amount),
         until,
@@ -2146,7 +2162,10 @@ fn claim_dont_lose_mana_words(words: &[&str]) {
     if !take(&mut rest, &["lose"]) {
         return;
     }
-    take(&mut rest, &["this"]);
+    // "this mana" or "unspent [red] mana" (The Last Agni Kai).
+    if !take(&mut rest, &["this"]) {
+        take(&mut rest, &["unspent"]);
+    }
     if !take(&mut rest, &["mana"]) {
         // A color between "this" and "mana" ("this red mana").
         if !rest.first().is_some_and(|word| crate::color::Color::from_name(word).is_some()) {
@@ -2291,6 +2310,9 @@ pub(crate) fn parse_named_player_untap_restriction(
     };
     let mut filter = parse_object_filter(object_tokens, false)?;
     filter.zone = Some(Zone::Battlefield);
+    // The player phrase, the negation and the untap-step tail matched above.
+    crate::word_claims::claim_tokens(&subject[object_tokens.len()..]);
+    crate::word_claims::claim_tokens(&tokens[negation.first..]);
     let target = TargetAst::Player(player.clone(), span_from_tokens(tokens));
     let player = PlayerFilter::Target(Box::new(player));
     if controller_bound { filter.controller = Some(player.clone()); }

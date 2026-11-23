@@ -1713,6 +1713,16 @@ fn describe_turn_history_condition(condition: &ironsmith_core::TurnHistoryCondit
                 describe_player_filter(player)
             )
         }
+        TurnHistoryCondition::PlayerHasBegunExtraTurnThisGame(player) => {
+            if *player == PlayerFilter::You {
+                "you've begun an extra turn this game".to_string()
+            } else {
+                format!(
+                    "{} has begun an extra turn this game",
+                    describe_player_filter(player)
+                )
+            }
+        }
         TurnHistoryCondition::PlayerWasDealtCombatDamageSinceTheirLastTurn(player) => {
             if *player == PlayerFilter::You {
                 "you've been dealt combat damage since your last turn".to_string()
@@ -6032,6 +6042,9 @@ pub(crate) fn describe_condition(condition: &Condition) -> String {
                 crate::ability::ActivationTiming::AnyPlayerDuringTheirTurnBeforeEndStep => {
                     "during the activating player's turn before the end step"
                 }
+                crate::ability::ActivationTiming::AnyPlayerDuringTheirTurn => {
+                    "during the activating player's turn"
+                }
                 crate::ability::ActivationTiming::DuringSourceOwnersUpkeep => {
                     "during this card's owner's upkeep"
                 }
@@ -8152,6 +8165,20 @@ pub(crate) fn describe_condition(condition: &Condition) -> String {
                 // "if none of those creatures attacked you" (Firemane
                 // Commando): no player controls a creature attacking you.
                 "no creatures are attacking you".to_string()
+            } else if let Condition::TurnHistory(
+                ironsmith_core::TurnHistoryCondition::PlayerHasBegunExtraTurnThisGame(player),
+            ) = inner.as_ref()
+            {
+                // "if you haven't begun an extra turn this game" (H.M.S.
+                // Bounty).
+                if *player == PlayerFilter::You {
+                    "you haven't begun an extra turn this game".to_string()
+                } else {
+                    format!(
+                        "{} hasn't begun an extra turn this game",
+                        describe_player_filter(player)
+                    )
+                }
             } else if let Condition::TurnHistory(
                 ironsmith_core::TurnHistoryCondition::PlayerWasDealtCombatDamageSinceTheirLastTurn(
                     player,

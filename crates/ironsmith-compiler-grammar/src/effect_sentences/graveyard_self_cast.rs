@@ -34,6 +34,7 @@ fn parse_adventure_until_next_turn(tokens: &[OwnedLexToken]) -> Option<EffectAst
     {
         return None;
     }
+    crate::word_claims::claim_words(&words);
     let mut effect = EffectAst::subject_verb_grant_play_tagged_until_your_next_turn(
         crate::tag::CompilerReferenceTag::SourceObject.bind(),
         PlayerAst::You,

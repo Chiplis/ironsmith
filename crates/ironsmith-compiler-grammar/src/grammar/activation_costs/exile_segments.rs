@@ -150,6 +150,7 @@ pub fn parse_exile_segment_tokens(
             let mut cost = parse_exile_segment_tokens(&tokens[..equal], contextual_source_reference)?;
             if let ActivationCostSegmentCst::ExileChosen { count_value, .. } = &mut cost {
                 *count_value = Some(crate::effect::Value::CountPlayers(players));
+                crate::word_claims::claim_words(&words);
                 return Ok(cost);
             }
             return Err(unsupported(tokens, "dynamic-exile-selector"));

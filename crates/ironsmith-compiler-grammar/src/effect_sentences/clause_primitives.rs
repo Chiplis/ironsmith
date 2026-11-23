@@ -363,6 +363,10 @@ pub fn parse_change_target_clause(
                 )
             {
                 let fixed = parse_target_phrase(&trimmed[start..end])?;
+                // "change the target to" and "if able" (the retarget happens
+                // only when the new target is legal) around the new target.
+                crate::word_claims::claim_tokens(&trimmed[..start]);
+                crate::word_claims::claim_tokens(&trimmed[end..]);
                 return Ok(Some(EffectAst::subject_verb_retarget_stack_object(
                     PlayerAst::Implicit,
                     TargetAst::Tagged(
@@ -1334,6 +1338,8 @@ pub fn parse_until_player_next_end_step_play_permission(
         ["without", "paying", "its" | "their", "mana", "cost" | "costs"] => true,
         _ => return Ok(None),
     };
+    // Matched word for word.
+    crate::word_claims::claim_words(&words);
     Ok(Some(EffectAst::GrantPlayTaggedUntilPlayerNextEndStep {
         tag: crate::tag::CompilerReferenceTag::It.bind(),
         player: PlayerAst::That,
@@ -1381,6 +1387,8 @@ pub fn parse_reselect_targets_at_random_clause(
         }
         _ => return Ok(None),
     };
+    // Every word read: the random retarget and the stack objects it names.
+    crate::word_claims::claim_tokens(&trimmed);
     let mut effects: Vec<EffectAst> = objects
         .into_iter()
         .map(|tag| {
@@ -1956,6 +1964,10 @@ fn parse_named_player_turn_end_trailing_trigger_clause(
             render_token_slice(tokens)
         )));
     }
+    // The duration head, and "whenever they <verb>": the synthesized trigger
+    // words carry no authored spans, so the authored ones are claimed here.
+    crate::word_claims::claim_tokens(&tokens[..comma]);
+    crate::word_claims::claim_tokens(&rest[whenever..whenever + 3]);
     Ok(Some(EffectAst::Delayed(DelayedEffectAst::DelayedTriggerForDuration {
         trigger,
         effects,
@@ -2317,6 +2329,8 @@ pub fn parse_anaphoric_object_deals_damage_clause(
     let body_words = TokenWordView::new(body_tokens).to_word_refs();
     // The damage verb names the event every reading below builds.
     crate::word_claims::claim_word(words[deal_idx]);
+    // The source, matched whole above ("this Aura", "she", "that creature").
+    crate::word_claims::claim_tokens(source_tokens);
     // In a follow-up damage clause, "it deals an additional ..." continues
     // the preceding spell or ability's damage event. Binding that "it" to
     // last-object memory instead can incorrectly turn the previous damage

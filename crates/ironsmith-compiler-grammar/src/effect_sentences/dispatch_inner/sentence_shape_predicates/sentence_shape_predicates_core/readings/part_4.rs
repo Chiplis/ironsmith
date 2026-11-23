@@ -290,9 +290,10 @@ pub(super) fn colored_mana_symbol_mana_shape(
         return None;
     };
     match object {
-        ["the", "milled", "card's" | "cards"] | ["the", "milled", "card", "s"] => Some(
-            crate::target::ObjectFilter::tagged(ironsmith_core::tag::COST_MILLED_TAG),
-        ),
+        ["the", "milled", "card's" | "cards"] | ["the", "milled", "card", "s"] => {
+            crate::word_claims::claim_words(&words);
+            Some(crate::target::ObjectFilter::tagged(ironsmith_core::tag::COST_MILLED_TAG))
+        }
         _ => None,
     }
 }
@@ -383,6 +384,8 @@ fn parse_for_each_type_return_one_of_that_type(
     {
         return None;
     }
+    crate::word_claims::claim_tokens(filter_tokens);
+    crate::word_claims::claim_tokens(effect_tokens);
     let mut filter = ObjectFilter::default().in_zone(Zone::Graveyard);
     filter.owner = Some(PlayerFilter::You);
     if permanent_types {

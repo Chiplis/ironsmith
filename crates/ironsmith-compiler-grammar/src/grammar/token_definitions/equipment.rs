@@ -62,7 +62,10 @@ fn granted_ability_tokens(tokens: &[OwnedLexToken]) -> Option<&[OwnedLexToken]> 
 mod scaled_grants;
 use scaled_grants::scaled_equipment_grant_tokens;
 
-pub fn parse_equipment_rules_tokens(tokens: &[OwnedLexToken]) -> Option<EquipmentRulesShape> {
+pub fn parse_equipment_rules_tokens(
+    tokens: &[OwnedLexToken],
+    token_name: Option<&str>,
+) -> Option<EquipmentRulesShape> {
     let words = parser_token_word_refs(tokens);
     let outer = common::token_description_projection(tokens).outer;
     let outer_words = parser_token_word_refs(&outer);
@@ -83,7 +86,7 @@ pub fn parse_equipment_rules_tokens(tokens: &[OwnedLexToken]) -> Option<Equipmen
         let display_text = format!("Equipped creature has \"{granted_text}\"");
         typed_lines.push(EquipmentRuleLineShape::GrantedDamage {
             display_text: display_text.clone(),
-            grant: parse_equipment_damage_grant_tokens(ability_tokens)?,
+            grant: parse_equipment_damage_grant_tokens(ability_tokens, &token_name_words(token_name))?,
         });
         lines.push(display_text);
     }
@@ -216,8 +219,22 @@ pub(super) fn first_generic_mana(tokens: &[OwnedLexToken]) -> Option<u32> {
     None
 }
 
+/// The token's own name ("... token named Rock ..."), as the lowercase
+/// parser words it is read as.
+fn token_name_words(token_name: Option<&str>) -> Vec<String> {
+    token_name
+        .map(|name| {
+            name.split(|ch: char| !ch.is_alphanumeric() && ch != '\'')
+                .filter(|word| !word.is_empty())
+                .map(|word| word.to_ascii_lowercase())
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
 pub fn parse_equipment_damage_grant_tokens(
     tokens: &[OwnedLexToken],
+    token_name: &[String],
 ) -> Option<EquipmentDamageGrantShape> {
     let (colon_idx, _, effect_tokens) =
         primitives::find_prefix(tokens, || primitives::colon().void())?;
@@ -229,6 +246,29 @@ pub fn parse_equipment_damage_grant_tokens(
         return None;
     }
     let all_words = parser_token_word_refs(tokens);
+    // "{N}, {T}, Sacrifice <this Equipment>: This creature deals N damage to
+    // any target": when the rule is exactly that shape, every word is read
+    // into the grant below.
+    let cost_words = parser_token_word_refs(cost_tokens);
+    let exact_effect = matches!(
+        effect_words.as_slice(),
+        ["this", "creature", "deals", _, "damage", "to", "any", "target"]
+    );
+    // The sacrificed object must be this Equipment itself: its own name or a
+    // self-reference.
+    let exact_cost = cost_words
+        .iter()
+        .position(|word| *word == "sacrifice")
+        .is_some_and(|at| {
+            let object = &cost_words[at + 1..];
+            (!token_name.is_empty()
+                && object.len() == token_name.len()
+                && object.iter().zip(token_name).all(|(word, name)| *word == name))
+                || matches!(object, ["this", "artifact" | "equipment"])
+        });
+    if exact_effect && exact_cost {
+        crate::word_claims::claim_tokens(tokens);
+    }
     Some(EquipmentDamageGrantShape {
         generic_amount: first_generic_mana(cost_tokens),
         tap_cost: tokens.iter().any(|token| token.parser_text == "{t}"),
@@ -236,3 +276,4 @@ pub fn parse_equipment_damage_grant_tokens(
         damage_amount: rules::damage_amount(&effect_words)?,
     })
 }
+

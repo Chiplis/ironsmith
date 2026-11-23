@@ -244,6 +244,15 @@ fn read_static_attack_tax(
                 &["counters", "on", "that", "creature"],
             ) || crate::word_primitives::sequence_occurs(&where_words, &["counters", "on", "it"]);
         let value = if tax.singular_payer && names_taxed_attacker {
+            // "where X is the number of counters on that creature": the
+            // binding read whole as the taxed attacker's counter count.
+            if matches!(
+                where_words.as_slice(),
+                ["where", "x", "is", "the", "number", "of", "counters", "on", "that", "creature"]
+                    | ["where", "x", "is", "the", "number", "of", "counters", "on", "it"]
+            ) {
+                crate::word_claims::claim_tokens(binding);
+            }
             // The attacker being taxed is bound under this tag when the
             // cost is locked in at declaration (CR 508.1d/h).
             crate::effect::Value::CountersOn(
@@ -299,6 +308,19 @@ fn read_static_attack_tax(
 
 fn attack_unless_static_ability(tokens: &[OwnedLexToken]) -> Option<StaticAbility> {
     let fact = cant_shapes::parse_attack_unless_condition_tokens(tokens)?;
+    // The head ("<source> can't attack unless") the probe read into the
+    // scope; the probe itself keeps no claims.
+    let display_tokens = fact.display_tokens;
+    let head_len = display_tokens.len().saturating_sub(fact.tail_tokens.len());
+    let head = &display_tokens[..head_len];
+    let ability = attack_unless_fact_static_ability(fact)?;
+    crate::word_claims::claim_tokens(head);
+    Some(ability)
+}
+
+fn attack_unless_fact_static_ability(
+    fact: cant_shapes::AttackUnlessConditionFact<'_>,
+) -> Option<StaticAbility> {
     let display = format_negated_restriction_display(fact.display_tokens);
     match fact.scope {
         AttackUnlessScope::Attack => Some(match fact.surface {
@@ -397,6 +419,9 @@ fn strip_per_blocking_creature_tail(tokens: &[OwnedLexToken]) -> &[OwnedLexToken
                     "for", "each", "creature", "they", "control", "that's", "blocking", "it"
                 ]
         ) {
+            // The block cost is charged per declared blocker (CR 509.1d), so
+            // the per-blocker tail is what that cost already means.
+            crate::word_claims::claim_tokens(&tokens[index..]);
             return &tokens[..index];
         }
     }
@@ -488,6 +513,14 @@ fn per_attacker_action_attack_cost_static_ability(
     let Ok(cost) = parse_compiler_activation_cost(&cost_tokens) else {
         return Ok(None);
     };
+    // The frame matched above: "can't attack unless their controller
+    // sacrifices", "of their choice" and "for each <noun> they control
+    // that's attacking" (the attackers and the sacrificed object read their
+    // own words).
+    crate::word_claims::claim_tokens(&tokens[cant..=unless]);
+    crate::word_claims::claim_tokens(&payment[..=verb]);
+    crate::word_claims::claim_tokens(&payment[verb + 1 + object_tokens.len()..per]);
+    crate::word_claims::claim_tokens(&payment[per..]);
     Ok(Some(
         StaticAbility::block_cost(
             attackers,
@@ -886,6 +919,8 @@ fn opponent_cause_protection_static_abilities(
         | ["sacrifice", "permanents", "or", "discard", "cards"] => (true, true),
         _ => return None,
     };
+    // An exact whole-line shape.
+    crate::word_claims::claim_tokens(tokens);
     let mut abilities = Vec::new();
     if discard {
         abilities.push(StaticAbility::restriction(
@@ -964,6 +999,9 @@ fn ability_kind_cause_protection_static_ability(
     if filter.zone.is_none() {
         filter.zone = Some(Zone::Battlefield);
     }
+    // The ability kind, controller, verb and actions before the filter,
+    // matched word for word.
+    crate::word_claims::claim_tokens(&tokens[..filter_start]);
     let cause = ironsmith_core::CauseFilter {
         cause_type: None,
         source_filter: None,

@@ -55,6 +55,12 @@ fn token_description_scope(tokens: &[OwnedLexToken]) -> TokenDescriptionScope {
     }
 }
 
+/// The token's own authored name ("named Rock", or a leading appositive),
+/// which the rule slices read apart from the description no longer carry.
+pub fn token_definition_name(tokens: &[OwnedLexToken]) -> Option<String> {
+    token_description_scope(tokens).name
+}
+
 pub fn token_definition_outer_tokens(tokens: &[OwnedLexToken]) -> Vec<OwnedLexToken> {
     token_description_scope(tokens).outer
 }
@@ -162,6 +168,8 @@ fn creature_subtypes(words: &[&str]) -> Vec<Subtype> {
             && subtype.display_name().contains('-')
         {
             idx += 1;
+            // Both halves of the hyphenated subtype are read here.
+            crate::word_claims::claim_words(&[*word, *next]);
             if !subtypes.contains(&subtype) {
                 subtypes.push(subtype);
             }
@@ -680,6 +688,32 @@ pub(super) fn creature_rules(
         let _ = common::phrase_read(words, &["until", "end", "of", "turn"])
             || common::phrase_read(words, &["until", "the", "end", "of", "turn"]);
     }
+    // A recognized legacy rule models its whole quoted rule; read it whole.
+    let claim_rule = |anchors: &[&str]| {
+        for body in double_quoted_rule_bodies(source_tokens) {
+            let body_words = parser_token_word_refs(body);
+            if anchors.iter().all(|anchor| body_words.contains(anchor)) {
+                crate::word_claims::claim_tokens(body);
+                break;
+            }
+        }
+    };
+    if dies_create {
+        claim_rule(&["dies", "create", "+1/+0"]);
+        // The created Dragon's nested '{R}: This token gets +1/+0' rule.
+        if let Some(gets) = source_tokens.windows(2).position(|pair| {
+            pair[0].parser_text() == "gets" && pair[1].parser_text() == "+1/+0"
+        }) {
+            crate::word_claims::claim_tokens(&source_tokens[gets..gets + 2]);
+        }
+    }
+    if leaves_return_named.is_some() {
+        claim_rule(&["leaves", "return", "named"]);
+    }
+    let bands_with_wolves = all(&["bands", "other", "creatures", "named", "wolves"]);
+    if bands_with_wolves {
+        claim_rule(&["bands", "other", "named"]);
+    }
     let power_bonus = all(&["saddles", "mounts", "crews", "vehicles", "power", "greater"])
         .then(|| rules::parse_token_power_as_though_greater_shape_words(words))
         .flatten()
@@ -716,9 +750,19 @@ pub(super) fn creature_rules(
         banding: common::word_read(intrinsic_words, "banding"),
         hexproof: common::word_read(intrinsic_words, "hexproof"),
         indestructible: common::word_read(intrinsic_words, "indestructible"),
-        copies_exiled_triggered_abilities: all(&["all", "triggered", "abilities"])
-            && common::word_present(words, "exiled")
-            && common::word_present(words, "cards"),
+        copies_exiled_triggered_abilities: {
+            const PHRASE: &[&str] =
+                &["all", "triggered", "abilities", "of", "the", "exiled", "cards"];
+            let at = words.windows(PHRASE.len()).position(|window| window == PHRASE);
+            // "all triggered abilities of the exiled cards", read whole.
+            if let Some(at) = at {
+                crate::word_claims::claim_words(&words[at..at + PHRASE.len()]);
+            }
+            at.is_some()
+                || (all(&["all", "triggered", "abilities"])
+                    && common::word_present(words, "exiled")
+                    && common::word_present(words, "cards"))
+        },
         toxic_amount: rules::toxic_amount(intrinsic_words),
         sacrifice_return: sacrifice_return_pattern
             .then(|| rules::sacrifice_return_shape(words, named_card))
@@ -733,7 +777,7 @@ pub(super) fn creature_rules(
             "when", "token", "dies", "target", "creature", "gets", "-1/-1",
         ]),
         leaves_damage_you_and_creatures: leaves_damage,
-        bands_with_wolves: all(&["bands", "other", "creatures", "named", "wolves"]),
+        bands_with_wolves,
         red_pump: all(&["r", "this", "creature", "gets", "+1/+0"]) && !dies_create,
         white_tap_target_creature: all(&["w", "t", "tap", "target", "creature"]),
         combat_damage_poison: !has_typed_poison_damage_rule

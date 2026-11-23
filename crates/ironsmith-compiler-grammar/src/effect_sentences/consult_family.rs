@@ -137,6 +137,8 @@ pub(crate) fn parse_consult_traversal_sentence_with_player(
                 && words.ends_with(suffix)
                 && let Some(with_index) = filter_tokens.iter().rposition(|token| token.is_word("with"))
             {
+                // The comparison suffix is read here as the antecedent relation.
+                crate::word_claims::claim_tokens(&filter_tokens[with_index..]);
                 filter_tokens.truncate(with_index);
                 greater_mana_value_than_antecedent = true;
                 break;
@@ -475,6 +477,22 @@ fn parse_typed_consult_damage_and_collection_disposition(
     let player =
         effect_grammar::control_copy_attach_shapes::parse_destination_player(disposition_tokens)
             .unwrap_or(parts.player);
+    // "[you] put the revealed cards on the bottom ...": the remainder shape
+    // reads the moved collection and destination; the put verb (and its
+    // "you" subject) is read here.
+    let put_head = crate::word_claims::probe_only(|| {
+        let word_at = |idx: usize, word: &str| {
+            disposition_tokens.get(idx).is_some_and(|token| token.is_word(word))
+        };
+        if word_at(0, "put") {
+            1
+        } else if word_at(0, "you") && word_at(1, "put") {
+            2
+        } else {
+            0
+        }
+    });
+    crate::word_claims::claim_tokens(&disposition_tokens[..put_head]);
     let disposition =
         EffectAst::subject_verb_put_tagged_remainder_on_bottom_of_library_with_surface(
             crate::tag::TagRef::of(parts.all_tag.clone()),

@@ -114,6 +114,12 @@ pub fn parse_looked_card_into_hand_shape(
     if !starts_sequence(tail, &[&["into"]]) || !contains_sequence_word(tail, "hand") {
         return None;
     }
+    // "... into your hand": the destination through its hand noun.
+    if let Some(hand) = crate::word_claims::probe_only(|| {
+        tail.iter().position(|token| token.is_word("hand"))
+    }) {
+        crate::word_claims::claim_tokens(&tail[..=hand]);
+    }
     Some(LookedCardIntoHandShape {
         filter: 0..filter_end,
     })

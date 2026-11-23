@@ -266,6 +266,8 @@ pub fn parse_permanent_self_damage_prevention_line(
         && (source_words[3..] == ["it"]
             || is_source_reference_words(&source_words[3..]))
     {
+        // "spells that target it|<this>", matched word for word.
+        crate::word_claims::claim_tokens(source.filter_tokens);
         let mut spells = ObjectFilter::default();
         spells.zone = Some(Zone::Stack);
         spells.targets_object = Some(Box::new(ObjectFilter::source()));

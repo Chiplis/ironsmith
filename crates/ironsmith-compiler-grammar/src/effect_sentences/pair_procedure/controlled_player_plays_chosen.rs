@@ -83,6 +83,7 @@ pub(super) fn read(
     if !control_until_resolved(control) {
         return Ok(None);
     }
+    let control_sentence = control;
     let Some(allow_land) = plays_chosen_if_able(play) else {
         return Ok(None);
     };
@@ -120,6 +121,11 @@ pub(super) fn read(
         *control_caster_while_spell_resolves = true;
     } else {
         return Ok(None);
+    }
+    // All four sentences were matched word for word (the word lists split
+    // "and/or", so the claims go through the tokens).
+    for sentence in [control_sentence, play, rider, resolving] {
+        crate::word_claims::claim_tokens(sentence.lowered());
     }
     Ok(Some(vec![control, cast]))
 }

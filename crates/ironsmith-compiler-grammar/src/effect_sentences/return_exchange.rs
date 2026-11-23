@@ -27,6 +27,9 @@ pub(crate) fn parse_return_with_event_timing(
                     tag: crate::tag::CompilerReferenceTag::It.bind().into(),
                     relation: crate::target::TaggedOpbjectRelation::IsTaggedObject,
                 });
+            // "when that <object> dies": the delayed trigger's frame words.
+            crate::word_claims::claim_words(&trigger_words[..2]);
+            crate::word_claims::claim_words(&trigger_words[3..]);
             TriggerSpec::Dies(filter)
         } else {
             crate::activation_and_restrictions::parse_trigger_clause_lexed(&tokens[when_idx..])?

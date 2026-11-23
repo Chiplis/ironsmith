@@ -373,6 +373,8 @@ pub fn parse_draw(
                         }
                         .with_surface_hints(hints);
                         count = Value::Add(Box::new(count), Box::new(dynamic));
+                        // "plus an additional card": the addition the count reads.
+                        crate::word_claims::claim_words(&tail_words[..4]);
                     }
                     _ => {
                         return Err(CardTextError::ParseError(format!(
@@ -1515,6 +1517,8 @@ fn parse_card_types_among_spells_cast_value(filter_tokens: &[OwnedLexToken]) -> 
         Value::SpellsCastThisTurn(player) => (player.clone(), ObjectFilter::default()),
         _ => return None,
     };
+    // "card type among": the metric head over the cast-history scope.
+    crate::word_claims::claim_tokens(&filter_tokens[..3]);
     Some(
         Value::CardTypesAmongSpellsCastThisTurn { player, filter }
             .with_surface_hint(ironsmith_core::ValueSurfaceHint::ForEach),

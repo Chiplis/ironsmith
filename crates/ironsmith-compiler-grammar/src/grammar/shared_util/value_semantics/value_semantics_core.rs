@@ -833,7 +833,11 @@ pub fn parse_turn_history_count_value(tokens: &[OwnedLexToken]) -> Option<Value>
             &["under", "your", "control", "this", "turn"],
         )
         && let Some(put_on) = crate::word_primitives::parse_sequence_start(&words, &["put", "on"])
+        && matches!(words[2..put_on], ["youve" | "you've"] | ["you", "have"])
     {
+        // "+1/+1 counter(s) you've": the counted counters and who put them.
+        let head = word_view.token_span_for_words(0, put_on)?;
+        crate::word_claims::claim_tokens(&tokens[head]);
         let start = put_on + 2;
         let end = words.len().saturating_sub(5);
         let range = word_view.token_span_for_words(start, end)?;

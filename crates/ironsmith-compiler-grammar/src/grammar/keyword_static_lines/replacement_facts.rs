@@ -318,12 +318,16 @@ fn parse_add_named_token_replacement_lexed<'a>(
             ));
         }
     };
+    // The added token's exact descriptor.
+    crate::word_claims::claim_tokens(repeated_descriptor);
     if !per_created && !descriptor_words.is_empty() && descriptor_words != repeated_words {
         return Err(primitives::backtrack_err(
             "additional named token replacement",
             "a repeated token descriptor",
         ));
     }
+    // The repeated descriptor names the additional token's kind.
+    crate::word_claims::claim_tokens(repeated_descriptor);
     Ok(TokenCreationReplacementShape::AddNamedToken {
         descriptor_tokens: trim_lexed_commas(descriptor_tokens),
         additional_kind_word,
@@ -967,6 +971,8 @@ fn parse_add_treasure_token_replacement_lexed<'a>(
             "matching Treasure token descriptors",
         ));
     }
+    // The added tokens restate the replaced descriptor word for word.
+    crate::word_claims::claim_tokens(repeated_descriptor);
     Ok(TokenCreationReplacementShape::AddTreasure {
         descriptor_tokens: trim_lexed_commas(descriptor_tokens),
     })

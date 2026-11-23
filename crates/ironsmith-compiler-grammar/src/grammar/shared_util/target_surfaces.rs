@@ -140,9 +140,17 @@ pub(super) fn matches_surface(words: &[&str], surface: TargetSurface) -> bool {
             &[&["controller"], &["controllers"], &["owner"], &["owners"]],
         ),
         TargetSurface::CreatureTappedForSpellCost => {
-            permission_shapes::prefix_words(words, &["creature", "tapped", "to", "pay", "this"])
-                && suffix_one_of(words, &[&["additional", "cost"], &["additional", "costs"]])
-                && has_one_of_words(words, &["spell", "spell's", "spell’s", "spells"])
+            // "creature tapped to pay this spell's additional cost", read
+            // word for word (the possessive spell noun included).
+            let exact = words.len() == 8
+                && matches!(words[5], "spell" | "spell's" | "spell’s" | "spells");
+            let matched = exact
+                && permission_shapes::prefix_words(words, &["creature", "tapped", "to", "pay", "this"])
+                && suffix_one_of(words, &[&["additional", "cost"], &["additional", "costs"]]);
+            if matched {
+                crate::word_claims::claim_words(&words[5..6]);
+            }
+            matched
         }
         TargetSurface::DefendingPlayerChoice => {
             has_all_words(words, &["defending", "player", "choice"])
@@ -305,12 +313,6 @@ fn suffix_one_of(words: &[&str], alternatives: &[&[&str]]) -> bool {
     alternatives
         .iter()
         .any(|expected| permission_shapes::suffix_words(words, expected))
-}
-
-fn has_one_of_words(words: &[&str], alternatives: &[&str]) -> bool {
-    alternatives
-        .iter()
-        .any(|word| permission_shapes::find_words(words, &[*word]).is_some())
 }
 
 fn has_all_words(words: &[&str], required: &[&str]) -> bool {

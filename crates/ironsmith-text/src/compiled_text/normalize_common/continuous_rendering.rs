@@ -8537,6 +8537,9 @@ pub(crate) fn describe_effect_predicate(predicate: &EffectPredicate) -> String {
         EffectPredicate::ExcessDamageDealtToCreature => {
             "excess damage was dealt to a creature this way".to_string()
         }
+        EffectPredicate::ExcessDamageDealtToObjectMatching(filter) => {
+            format!("excess damage was dealt to {} this way", filter.description())
+        }
         EffectPredicate::DealtDamageToPlayer => "a player is dealt damage this way".to_string(),
         EffectPredicate::ExcessDamageRedirected => {
             "excess damage would be dealt to that creature this way".to_string()

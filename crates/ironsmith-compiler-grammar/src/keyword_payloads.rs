@@ -344,6 +344,7 @@ pub(super) fn parse_additional_cost(
         && let (Ok(low), Ok(high)) = (low.parse::<i32>(), high.parse::<i32>())
         && low <= high
     {
+        crate::word_claims::claim_words(&words);
         let display = format!(
             "{}.",
             crate::lexer::render_token_slice(crate::util::trim_edge_punctuation_tokens(tokens))
@@ -407,6 +408,8 @@ pub(super) fn parse_additional_cost(
             optional_costs.push(LineAst::OptionalCost(optional));
         }
         if optional_costs.len() == 2 {
+            crate::word_claims::claim_tokens(&trimmed[split..split + 1]);
+            crate::word_claims::claim_tokens(&trimmed[trimmed.len() - 4..]);
             return Ok(ast(LineAst::Multiple(optional_costs)));
         }
     }
@@ -423,6 +426,8 @@ pub(super) fn parse_additional_cost(
         } else { None };
         let mut optional = crate::model::CompilerOptionalCost::custom("Additional", cost).repeatable();
         if let Some(reference) = reference { optional.reference = reference; }
+        // The repeat marker: the payment may be made any number of times.
+        crate::word_claims::claim_tokens(&trimmed[trimmed.len() - 4..]);
         return Ok(ast(LineAst::OptionalCost(optional)));
     }
     // "you may sacrifice any number of Spirits" (Devouring Greed): sacrificing
@@ -495,6 +500,7 @@ pub(super) fn parse_additional_cost(
         _ => None,
     };
     if let Some(minimum) = evidence_minimum {
+        crate::word_claims::claim_words(&words);
         return Ok(ast(LineAst::AdditionalCost {
             effects: vec![EffectAst::subject_verb_collect_evidence(minimum)],
         }));

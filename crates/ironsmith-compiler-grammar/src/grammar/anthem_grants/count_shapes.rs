@@ -151,6 +151,7 @@ pub fn parse_for_each_special_shape(tokens: &[OwnedLexToken]) -> Option<ForEachS
             ],
         )
     {
+        crate::word_claims::claim_tokens(&tokens[..1]);
         return Some(ForEachSpecialShape::ManaSymbolsOfColorInAffectedCost(color));
     }
     let (filter_tokens, tail) =

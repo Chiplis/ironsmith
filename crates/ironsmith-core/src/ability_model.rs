@@ -84,6 +84,20 @@ pub enum ActivationTiming {
     /// "Activate only during the end of combat step" (Desert): the game is in
     /// the end of combat step (CR 511). Appended for wire stability.
     DuringEndOfCombatStep,
+    /// "Activate only during combat after blockers are declared" (Trap
+    /// Runner): the declare blockers step or a later step of combat (CR 509).
+    /// Appended for wire stability.
+    DuringCombatAfterBlockersDeclared,
+    /// "Activate only during an opponent's turn, before attackers are
+    /// declared" (Nettling Imp): not the activator's turn, and earlier than
+    /// the declare attackers step of the turn's first combat (CR 506.8).
+    DuringOpponentsTurnBeforeAttackersDeclared,
+    /// "Activate only before combat" (Maddening Imp): the beginning phase or
+    /// the precombat main phase, before the turn's first combat begins.
+    BeforeCombat,
+    /// "Any player may activate this ability but only during their turn"
+    /// (Volrath's Dungeon): any player, while they are the active player.
+    AnyPlayerDuringTheirTurn,
 }
 
 impl ActivationTiming {
@@ -102,6 +116,13 @@ impl ActivationTiming {
             ActivationTiming::BeforeCombatDamageStep => "before the combat damage step",
             ActivationTiming::BeforeEndOfCombatStep => "before the end of combat step",
             ActivationTiming::DuringEndOfCombatStep => "during the end of combat step",
+            ActivationTiming::DuringCombatAfterBlockersDeclared => {
+                "during combat after blockers are declared"
+            }
+            ActivationTiming::DuringOpponentsTurnBeforeAttackersDeclared => {
+                "during an opponent's turn, before attackers are declared"
+            }
+            ActivationTiming::BeforeCombat => "before combat",
             _ => return None,
         })
     }
@@ -1280,6 +1301,7 @@ impl<E: Clone, C: CoreCostComponent, Cond> ActivatedAbility<E, C, Cond> {
         matches!(
             self.timing,
             ActivationTiming::AnyPlayerDuringTheirTurnBeforeEndStep
+                | ActivationTiming::AnyPlayerDuringTheirTurn
                 | ActivationTiming::AnyTimeByEnchantedCreatureController
                 | ActivationTiming::AnyTimeByOpponents
                 | ActivationTiming::AnyTimeBySourceOwner

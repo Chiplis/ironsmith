@@ -100,11 +100,12 @@ pub(super) fn try_parse_chosen_type_behold_two_additional_cost(
 /// dice are rolled once (in order); each die's result selects its row, and
 /// doubles compare the two results.
 fn try_parse_per_die_result_ability_table(
-    modal: &RewriteModalBlock,
+    header: &LineInfo,
+    tokens: &[OwnedLexToken],
+    mode_texts: &[&str],
 ) -> Result<Option<ParsedCardItem>, CardTextError> {
     use crate::cards::builders::ConditionalEffectAst;
     use ironsmith_core::{EffectMetric, EffectMetricSource};
-    let tokens = modal.header_tokens.as_slice();
     let Some(comma) = tokens.iter().position(|token| token.is_comma()) else {
         return Ok(None);
     };
@@ -159,6 +160,7 @@ fn try_parse_per_die_result_ability_table(
     {
         return Ok(None);
     }
+    let mut doubles_lead = None;
     let doubles_effects = match sentences.get(3) {
         None => None,
         Some(doubles) => {
@@ -186,6 +188,8 @@ fn try_parse_per_die_result_ability_table(
                 rewritten.clear();
             }
             rewritten.extend_from_slice(&body[skip..]);
+            // "if you rolled doubles," and the "it [also]" the rewrite replaces.
+            doubles_lead = Some(&doubles[..doubles_comma + 1 + skip]);
             Some(crate::effect_sentences::parse_effect_sentence_lexed(&rewritten)?)
         }
     };
@@ -196,8 +200,8 @@ fn try_parse_per_die_result_ability_table(
         first_value,
         crate::effect_sentences::parse_effect_sentence_lexed(&first_row[row_comma + 1..])?,
     )];
-    for mode in &modal.modes {
-        let text = mode.text.trim().trim_start_matches('•').trim();
+    for text in mode_texts {
+        let text = text.trim().trim_start_matches('•').trim();
         let Some((value, ability)) = text.split_once('—') else {
             return Ok(None);
         };
@@ -214,6 +218,14 @@ fn try_parse_per_die_result_ability_table(
         rows.push((value, crate::effect_sentences::parse_effect_sentence_lexed(&grant)?));
     }
     let trigger = parse_trigger_clause_lexed(&tokens[..comma])?;
+    // The table is committed: claim the fixed sentences matched above (the
+    // row effects and the trigger were read by their own parsers).
+    crate::word_claims::claim_tokens(roll);
+    crate::word_claims::claim_tokens(&first_row[..=row_comma]);
+    crate::word_claims::claim_tokens(other_rows);
+    if let Some(doubles_lead) = doubles_lead {
+        crate::word_claims::claim_tokens(doubles_lead);
+    }
 
     let mut roll_effect = EffectAst::subject_verb_roll_dice_choose_result_with_surface(
         PlayerAst::Implicit,
@@ -259,21 +271,35 @@ fn try_parse_per_die_result_ability_table(
         }));
     }
     Ok(Some(ParsedCardItem::Line(crate::cards::builders::ParsedLineAst {
-        info: modal.header.semantic_info(),
+        info: header.semantic_info(),
         chunks: vec![LineAst::Triggered {
             trigger,
             effects,
             max_triggers_per_turn: None,
         }],
         restrictions: ParsedRestrictions::default(),
-        semantic_facts: modal.header.semantic_facts.clone(),
+        semantic_facts: header.semantic_facts.clone(),
     })))
+}
+
+/// Whether a recognized modal block is a per-die result table. The document
+/// phase reads it here, inside the card's parse, so the words it reads count
+/// as read; lowering reads the same block again to build it.
+pub(crate) fn reads_per_die_result_ability_table(
+    header: &LineInfo,
+    tokens: &[OwnedLexToken],
+    mode_texts: &[&str],
+) -> bool {
+    matches!(try_parse_per_die_result_ability_table(header, tokens, mode_texts), Ok(Some(_)))
 }
 
 pub fn rewrite_modal_to_parsed_item(
     modal: RewriteModalBlock,
 ) -> Result<ParsedCardItem, CardTextError> {
-    if let Some(item) = try_parse_per_die_result_ability_table(&modal)? {
+    let mode_texts: Vec<&str> = modal.modes.iter().map(|mode| mode.text.as_str()).collect();
+    if let Some(item) =
+        try_parse_per_die_result_ability_table(&modal.header, &modal.header_tokens, &mode_texts)?
+    {
         return Ok(item);
     }
     let header_text = modal.header.raw_line.clone();

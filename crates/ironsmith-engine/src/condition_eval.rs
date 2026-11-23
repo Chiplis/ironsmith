@@ -3568,6 +3568,9 @@ fn evaluate_turn_history_condition(
                 .iter()
                 .any(|player| game.player_was_dealt_combat_damage_since_their_last_turn(*player))
         }
+        TurnHistoryCondition::PlayerHasBegunExtraTurnThisGame(player) => matching_players(player)
+            .iter()
+            .any(|player| game.player_has_begun_extra_turn_this_game(*player)),
         TurnHistoryCondition::TriggeringPlayersTurn { .. } => ctx
             .triggering_event
             .and_then(|event| event.trigger_player().or_else(|| event.player()))
@@ -6270,6 +6273,9 @@ fn evaluate_condition_in_context(
                             .is_some_and(|host| game.object(host).is_some_and(|object| object.zone == crate::Zone::Battlefield)
                                 && game.current_has_card_type(host, crate::CardType::Creature)
                                 && game.current_controller(host) == Some(ctx.controller))
+                    }
+                    crate::ability::ActivationTiming::AnyPlayerDuringTheirTurn => {
+                        game.is_active_player(ctx.controller)
                     }
                     crate::ability::ActivationTiming::AnyPlayerDuringTheirTurnBeforeEndStep => {
                         game.is_active_player(ctx.controller)

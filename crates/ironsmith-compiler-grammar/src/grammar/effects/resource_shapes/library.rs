@@ -87,6 +87,13 @@ pub fn parse_resource_shuffle_shape(
                 primitives::parse_prefix(&normalized_destination, destination)
             && supported_source_tail(trimmed(rest))
         {
+            // "shuffles the rest into their library" after a reveal: the
+            // revealed remainder never left the library (revealing moves no
+            // card), so shuffling it in is shuffling that library. An exiled
+            // remainder ("all other cards exiled this way") is not read here.
+            if crate::lexer::token_word_refs(target) == ["the", "rest"] {
+                crate::word_claims::claim_tokens(clause);
+            }
             return Some(ResourceShuffleShape::ShuffleLibrary {
                 player: resolve_destination(destination_player, default_player),
             });

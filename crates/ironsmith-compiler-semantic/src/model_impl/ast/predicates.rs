@@ -272,6 +272,7 @@ pub enum TurnHistoryPredicateAst {
     PlayerLostLifeLastTurn(PlayerAst),
     PlayerWasDealtNoncombatDamageLastTurn(PlayerAst),
     PlayerWasDealtCombatDamageSinceTheirLastTurn(PlayerAst),
+    PlayerHasBegunExtraTurnThisGame(PlayerAst),
     TriggeringPlayersTurn {
         definite_player: bool,
     },

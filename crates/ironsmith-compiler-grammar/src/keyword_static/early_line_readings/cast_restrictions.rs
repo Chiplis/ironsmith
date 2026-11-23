@@ -78,6 +78,7 @@ pub(super) fn read_cant_cast_this_during_first_turns(
     ]) {
         return Ok(None);
     }
+    crate::word_claims::claim_words(&words);
     Ok(Some(vec![
         StaticAbility::this_spell_cast_restriction(
             crate::static_abilities::ThisSpellCastRestrictionKind::timing(

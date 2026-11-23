@@ -195,7 +195,11 @@ fn split_collection_cast_total_mana_value(
         _ => None,
     };
     match value {
-        Some(value) => (trim_lexed_commas(&tokens[..bound_start]), Some(value)),
+        Some(value) => {
+            // "N or less" / "X or less": the whole bound is the cap.
+            crate::word_claims::claim_tokens(trim_lexed_commas(bound_tokens));
+            (trim_lexed_commas(&tokens[..bound_start]), Some(value))
+        }
         None => (tokens, None),
     }
 }

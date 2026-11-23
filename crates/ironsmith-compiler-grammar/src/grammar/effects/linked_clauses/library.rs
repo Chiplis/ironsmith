@@ -10,6 +10,7 @@ use crate::lexer::{LexStream, OwnedLexToken};
 
 use super::super::super::primitives;
 use super::{
+    read_sequence_phrase,
     contains_content_sequence, contains_sequence_phrase, contains_sequence_word,
     matches_complete_content_sequence, seek_sequence_phrase, sequence_any_phrase, sequence_phrase,
     starts_content_sequence, starts_sequence,
@@ -126,10 +127,12 @@ pub fn parse_bottom_order(tokens: &[OwnedLexToken]) -> Option<LibraryBottomOrder
         }
     };
     if contains_sequence_phrase(tokens, &[&["random", "order"]]) {
+        super::claim_bottom_of_library(tokens);
         claim_order("random");
         return Some(LibraryBottomOrderAst::Random);
     }
     if contains_sequence_phrase(tokens, &[&["any", "order"]]) {
+        super::claim_bottom_of_library(tokens);
         claim_order("any");
         return Some(LibraryBottomOrderAst::ChooserChooses);
     }
@@ -235,9 +238,12 @@ pub fn parse_looked_card_disposition(tokens: &[OwnedLexToken]) -> Option<LookedC
         ));
     }
     if contains_content_sequence(tokens, OTHER_GRAVEYARD) {
+        // The remainder's destination, read where it occurs.
+        let _ = read_sequence_phrase(tokens, OTHER_GRAVEYARD);
         return Some(LookedCardDisposition::HandAndGraveyard);
     }
     if contains_content_sequence(tokens, OTHER_EXILE) {
+        let _ = read_sequence_phrase(tokens, OTHER_EXILE);
         return Some(LookedCardDisposition::HandAndExile);
     }
     None

@@ -103,11 +103,8 @@ pub fn parse_source_damage_to_decider(
     ];
     let clause = LexedClause::new(tokens).trimmed();
     let parsed = PermissionSequence::new(&atoms).parse_full(clause)?;
-    if parsed
-        .capture_clause("source", clause)?
-        .word_refs()
-        .is_empty()
-    {
+    let source = parsed.capture_clause("source", clause)?;
+    if source.word_refs().is_empty() {
         return None;
     }
     let damage = parsed.capture_clause_by_role(PermissionCaptureRole::Tail, clause)?;
@@ -116,6 +113,18 @@ pub fn parse_source_damage_to_decider(
         &words,
         &[&["to", "them"], &["to", "that", "player"]],
     );
+    // "has this enchantment deal ...": the causing source is the ability's
+    // own source, read when the capture names it ("has" is the causative).
+    if recipient_is_decider {
+        let source_tokens = source.tokens();
+        let source_tokens = match source_tokens.split_first() {
+            Some((first, rest)) if matches!(first.as_word(), Some("has" | "have")) => rest,
+            _ => source_tokens,
+        };
+        if crate::util::is_source_reference_words(&crate::lexer::token_word_refs(source_tokens)) {
+            crate::word_claims::claim_tokens(source_tokens);
+        }
+    }
     recipient_is_decider.then_some(SourceDamageToDeciderShape {
         damage_tokens: damage.tokens(),
     })

@@ -47,6 +47,9 @@ pub(super) fn read(
     if limit != shortfall_limit || limit == 0 || limit > 10 {
         return Ok(None);
     }
+    // Both statements matched their exact shapes.
+    crate::word_claims::claim_words(&first_words);
+    crate::word_claims::claim_words(&second_words);
     let draw = EffectAst::subject_verb(
         SubjectVerbRoleAst::AffectedPlayer,
         PlayerAst::That,

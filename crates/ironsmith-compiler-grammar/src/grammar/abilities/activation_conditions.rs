@@ -52,6 +52,10 @@ const DURING_ANY_UPKEEP_PREFIXES: &[&[&str]] = &[
     &["activate", "only", "during", "any", "upkeep"],
     &["activate", "only", "during", "each", "upkeep"],
 ];
+const ANY_PLAYER_DURING_THEIR_TURN: &[&str] = &[
+    "any", "player", "may", "activate", "this", "ability", "but", "only", "during", "their",
+    "turn",
+];
 const ANY_PLAYER_DURING_THEIR_TURN_BEFORE_END_STEP: &[&str] = &[
     "any", "player", "may", "activate", "this", "ability", "but", "only", "during", "their",
     "turn", "before", "the", "end", "step",
@@ -84,6 +88,40 @@ const STEP_WINDOW_PREFIXES: &[(&[&[&str]], ActivationTiming)] = &[
             ],
         ],
         ActivationTiming::DuringYourTurnBeforeAttackersDeclared,
+    ),
+    (
+        &[
+            &[
+                "activate",
+                "only",
+                "during",
+                "an",
+                "opponents",
+                "turn",
+                "before",
+                "attackers",
+                "are",
+                "declared",
+            ],
+            &[
+                "activate",
+                "only",
+                "during",
+                "opponents",
+                "turn",
+                "before",
+                "attackers",
+                "are",
+                "declared",
+            ],
+        ],
+        ActivationTiming::DuringOpponentsTurnBeforeAttackersDeclared,
+    ),
+    (
+        &[&[
+            "activate", "only", "during", "combat", "after", "blockers", "are", "declared",
+        ]],
+        ActivationTiming::DuringCombatAfterBlockersDeclared,
     ),
     (
         &[&["activate", "only", "before", "attackers", "are", "declared"]],
@@ -151,6 +189,11 @@ const STEP_WINDOW_PREFIXES: &[(&[&[&str]], ActivationTiming)] = &[
             &["activate", "only", "during", "their", "draw", "step"],
         ],
         ActivationTiming::DuringYourDrawStep,
+    ),
+    // After "before combat damage" above, which it would otherwise shadow.
+    (
+        &[&["activate", "only", "before", "combat"]],
+        ActivationTiming::BeforeCombat,
     ),
 ];
 const THIS_ABILITY_TRIGGERS_ONLY_PREFIXES: &[&[&str]] = &[
@@ -275,6 +318,11 @@ pub fn parse_activate_only_timing_lexed(tokens: &[OwnedLexToken]) -> Option<Acti
     if matches_exact_tokens(tokens, ANY_PLAYER_DURING_THEIR_TURN_BEFORE_END_STEP) {
         return Some(ActivationTiming::AnyPlayerDuringTheirTurnBeforeEndStep);
     }
+    // "Any player may activate this ability but only during their turn"
+    // (Volrath's Dungeon): any player, while they are the active player.
+    if matches_exact_tokens(tokens, ANY_PLAYER_DURING_THEIR_TURN) {
+        return Some(ActivationTiming::AnyPlayerDuringTheirTurn);
+    }
     // Step windows (CR 506.8): checked before the "during your turn" marker
     // so "during your turn, before attackers are declared" keeps its cutoff.
     for (prefixes, timing) in STEP_WINDOW_PREFIXES {
@@ -332,6 +380,7 @@ pub fn is_activate_only_restriction_sentence_lexed(tokens: &[OwnedLexToken]) -> 
         || matches_any_prefix_tokens(tokens, ACTIVATE_ONLY_RESTRICTION_PREFIXES)
         || matches_any_prefix_tokens(tokens, ACTIVATE_ONLY_SORCERY_PREFIXES)
         || matches_exact_tokens(tokens, ANY_PLAYER_DURING_THEIR_TURN_BEFORE_END_STEP)
+        || matches_exact_tokens(tokens, ANY_PLAYER_DURING_THEIR_TURN)
         || parse_counted_activation_cap(tokens).is_some()
 }
 
@@ -801,6 +850,10 @@ fn parse_sources_damage_condition(tokens: &[OwnedLexToken]) -> Option<PredicateA
     let (threshold, used) = parse_number(parsed.threshold_tokens)?;
     if used != threshold_words.len() {
         return None;
+    }
+    // "dealt" joins the sources to the damage threshold the value counts.
+    if let Some(dealt) = tokens.iter().position(|token| token.as_word() == Some("dealt")) {
+        crate::word_claims::claim_tokens(&tokens[dealt..dealt + 1]);
     }
     Some(PredicateAst::ValueComparison {
         left: crate::effect::Value::NoncombatDamageDealtBySourcesControlledThisTurn {

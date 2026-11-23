@@ -195,8 +195,10 @@ pub(super) fn read(input: &PayClause<'_>) -> ParseOutcome<RuleMatch<EffectAst>> 
     // Equal readings from two rules are one reading.
     let mut distinct: Vec<RegistryCandidate<EffectAst>> = Vec::new();
     for candidate in candidates {
-        if !distinct.iter().any(|kept| kept.value == candidate.value) {
-            distinct.push(candidate);
+        match distinct.iter_mut().find(|kept| kept.value == candidate.value) {
+            // Both rules read the same meaning; either one's words are read.
+            Some(kept) => kept.claims.extend(&candidate.claims),
+            None => distinct.push(candidate),
         }
     }
     if distinct.len() > 1 {
@@ -293,6 +295,7 @@ fn read_any_amount_of_mana(input: &PayClause<'_>) -> Result<Option<EffectAst>, C
             x_maximum: None,
             independent_x_choice: true,
             mana_cost_of: None,
+            instant_speed_window: false,
         }),
     )))
 }
@@ -328,6 +331,8 @@ fn read_triggering_spell_mana_cost(
     ) {
         return Ok(None);
     }
+    // "that spell's mana cost" read as the triggering spell's mana cost.
+    crate::word_claims::claim_tokens(input.tokens);
     Ok(Some(subject_verb_player_effect(
         SubjectVerbRoleAst::AffectedPlayer,
         input.player,
@@ -339,6 +344,7 @@ fn read_triggering_spell_mana_cost(
             mana_cost_of: Some(crate::target::ChooseSpec::tagged(
                 crate::tag::CompilerReferenceTag::Triggering.key(),
             )),
+            instant_speed_window: false,
         }),
     )))
 }
@@ -457,6 +463,7 @@ fn read_mana_for_each_count(input: &PayClause<'_>) -> Result<Option<EffectAst>, 
                     x_maximum: None,
                     independent_x_choice: false,
                     mana_cost_of: None,
+                    instant_speed_window: false,
                 }),
             )));
         }
@@ -544,6 +551,8 @@ fn parse_target_object_mana_value_amount(
         crate::cards::TextSpan::synthetic(),
     ));
     let filter = crate::object_filters::parse_object_filter(&filter_tokens, false)?;
+    // The possessive noun was read through its stripped copy.
+    crate::word_claims::claim_tokens(&tokens[len - 3..len - 2]);
     Ok(Some(Value::ManaValueOf(Box::new(crate::target::ChooseSpec::target(
         crate::target::ChooseSpec::Object(filter),
     )))))

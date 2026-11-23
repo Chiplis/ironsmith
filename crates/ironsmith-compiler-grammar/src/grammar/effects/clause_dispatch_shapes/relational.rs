@@ -82,10 +82,12 @@ pub struct CopularAnimationShape<'a> {
 pub fn parse_copular_animation_shape(
     tokens: &[OwnedLexToken],
 ) -> Option<CopularAnimationShape<'_>> {
+    let mut copula_tokens: &[OwnedLexToken] = &[];
     let (subject_tokens, animation_tokens) = if tokens
         .first()
         .is_some_and(|token| token.is_word("it's") || token.is_word("its") || token.is_word("it’s"))
     {
+        copula_tokens = tokens.get(..1)?;
         (tokens.get(..1)?, tokens.get(1..)?)
     } else {
         let (copula, _, animation_tokens) = primitives::find_prefix(tokens, || {
@@ -99,6 +101,7 @@ pub fn parse_copular_animation_shape(
         if tokens.get(copula - 1).is_some_and(|token| token.is_word("and")) {
             return None;
         }
+        copula_tokens = tokens.get(copula..=copula)?;
         (tokens.get(..copula)?, animation_tokens)
     };
     // "Each of those lands is an 8/8 green Elemental creature for as long as
@@ -168,6 +171,10 @@ pub fn parse_copular_animation_shape(
         return None;
     }
     let subject_tokens = trim_lexed_commas(subject_tokens);
+    if !subject_tokens.is_empty() {
+        // The copula ("is", "are", a contracted "it's") of the animation.
+        crate::word_claims::claim_tokens(copula_tokens);
+    }
     (!subject_tokens.is_empty()).then_some(CopularAnimationShape {
         subject_tokens,
         animation_tokens: trim_lexed_commas(animation_tokens),

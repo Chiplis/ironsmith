@@ -263,8 +263,10 @@ pub(super) fn read(input: &AlternativeCastLine<'_>) -> ParseOutcome<RuleMatch<Ke
     // Equal readings from two rules are one reading.
     let mut distinct: Vec<RegistryCandidate<KeywordLinePayload>> = Vec::new();
     for candidate in candidates {
-        if !distinct.iter().any(|kept| kept.value == candidate.value) {
-            distinct.push(candidate);
+        match distinct.iter_mut().find(|kept| kept.value == candidate.value) {
+            // Both rules read the same meaning; either one's words are read.
+            Some(kept) => kept.claims.extend(&candidate.claims),
+            None => distinct.push(candidate),
         }
     }
     if distinct.len() > 1 {
@@ -660,6 +662,8 @@ fn read_blitz_from_graveyard(
             "mutate" => AlternativeCastKeyword::Mutate,
             _ => return Ok(None),
         };
+        // The exact sentence matched word for word, keyword included.
+        crate::word_claims::claim_tokens(tokens);
         let ability = crate::model::CompilerStaticAbilityCore::native_alternative_cast_from_zone(
             crate::zone::Zone::Graveyard,
             method,

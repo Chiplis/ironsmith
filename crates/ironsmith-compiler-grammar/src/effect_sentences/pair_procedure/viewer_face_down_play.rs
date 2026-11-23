@@ -71,6 +71,8 @@ pub(super) fn read(
     }
     // The damaging creature is the triggering event's source; its controller
     // is the viewer and the permission holder.
+    // Each statement was read word for word above.
+    super::claim_sentences(&sentences[index..index + 2 + usize::from(with_mana_rider)]);
     let holder = PlayerAst::TriggeringSourceController;
     let it = crate::tag::CompilerReferenceTag::It.bind();
     Ok(Some(vec![

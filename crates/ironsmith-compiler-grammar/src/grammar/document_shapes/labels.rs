@@ -119,6 +119,8 @@ pub fn parse_numeric_result_prefix_tokens(
         }
         _ => return None,
     };
+    // Each arm reads the whole result header.
+    crate::word_claims::claim_tokens(&tokens[..pipe]);
     Some(NumericResultPrefixShape { comparison, body_start: pipe + 1 })
 }
 

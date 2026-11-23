@@ -504,8 +504,10 @@ fn collect(
     // Equal readings from two rules are one reading.
     let mut distinct: Vec<RegistryCandidate<Vec<EffectAst>>> = Vec::new();
     for candidate in candidates {
-        if !distinct.iter().any(|kept| kept.value == candidate.value) {
-            distinct.push(candidate);
+        match distinct.iter_mut().find(|kept| kept.value == candidate.value) {
+            // Both rules read the same meaning; either one's words are read.
+            Some(kept) => kept.claims.extend(&candidate.claims),
+            None => distinct.push(candidate),
         }
     }
     if distinct.len() > 1 {
@@ -931,6 +933,8 @@ fn read_meld_them_into(input: &Chain<'_>) -> Result<Option<Vec<EffectAst>>, Card
             )))
             .map(Some);
         }
+        // The melded card's name is the result's identity.
+        crate::word_claims::claim_tokens(result_tokens);
         return Ok(Some(vec![EffectAst::subject_verb_meld(
             result_words.join(" "),
             false,
@@ -1009,6 +1013,12 @@ pub fn parse_any_other_player_may_pay_lexed(
         crate::util::trim_edge_punctuation_tokens(&stripped[1..]),
         Some(crate::cards::builders::SubjectAst::Player(PlayerAst::That)),
     )?;
+    // "any other player may pay": the offered players, excluding the
+    // trigger's controller, and the optional payment verb.
+    let head_end = crate::lexer::TokenWordView::new(tokens)
+        .map_word_to_token_start(5)
+        .unwrap_or(tokens.len());
+    crate::word_claims::claim_tokens(&tokens[..head_end]);
     Ok(Some(EffectAst::Permissions(PermissionEffectAst::AnyPlayerMay {
         players: PlayerFilter::Excluding {
             base: Box::new(PlayerFilter::Any),
@@ -1141,10 +1151,11 @@ fn read_player_may(input: &Chain<'_>) -> Result<Option<Vec<EffectAst>>, CardText
         }
         // "you may pay {G} up to three times" (Tranquil Frillback): a bounded
         // repeated optional payment whose result counts the payments made.
-        if let Some((max, body)) = split_up_to_times_suffix(&stripped)
+        if let Some((max, body, tail)) = split_up_to_times_suffix(&stripped)
             && let Ok(mut effects) = parse_effect_chain_lexed(body)
             && is_repeatable_optional_payment(&effects)
         {
+            crate::word_claims::claim_tokens(tail);
             for effect in &mut effects {
                 bind_implicit_player_context(effect, player);
             }
@@ -1255,10 +1266,11 @@ fn read_leading_may(input: &Chain<'_>) -> Result<Option<Vec<EffectAst>>, CardTex
         if let Some(permission) = parse_additional_land_plays_clause_lexed(&stripped)? {
             return Ok(Some(vec![permission]));
         }
-        if let Some((max, body)) = split_up_to_times_suffix(&stripped)
+        if let Some((max, body, tail)) = split_up_to_times_suffix(&stripped)
             && let Ok(effects) = parse_effect_chain_lexed(body)
             && is_repeatable_optional_payment(&effects)
         {
+            crate::word_claims::claim_tokens(tail);
             return Ok(Some(vec![EffectAst::ForEach(ForEachEffectAst::RepeatProcess {
                 effects: vec![EffectAst::Permissions(PermissionEffectAst::May { effects })],
                 continue_effect_index: 0,
@@ -1587,6 +1599,8 @@ fn read_put_triggering_counter_kind(
         return Ok(None);
     };
     let target = crate::util::parse_target_phrase(&tokens[target_start..])?;
+    // The subject, "put" and the exact counter noun phrase before the target.
+    crate::word_claims::claim_tokens(&tokens[..target_start]);
     Ok(Some(vec![EffectAst::PutTriggeringCounterKind {
         target,
         one_of_each,

@@ -54,7 +54,13 @@ fn would_outside_conditional_head(tokens: &[&OwnedLexToken]) -> bool {
         && !head.is_empty()
 }
 
+/// Classifying the follow-up only inspects it; the reading that commits
+/// claims what it reads.
 pub fn classify_instead_followup_semantics_tokens(tokens: &[OwnedLexToken]) -> InsteadSemantics {
+    crate::word_claims::probe_only(|| classify_instead_followup_semantics_tokens_inner(tokens))
+}
+
+fn classify_instead_followup_semantics_tokens_inner(tokens: &[OwnedLexToken]) -> InsteadSemantics {
     if tokens.iter().any(|token| token.kind == crate::lexer::TokenKind::Quote) {
         // A quoted granted ability owns its own replacement semantics.
         // It must not turn the enclosing grant into a self-replacement.
@@ -65,7 +71,7 @@ pub fn classify_instead_followup_semantics_tokens(tokens: &[OwnedLexToken]) -> I
                 None
             } else if quoted { None } else { Some(token.clone()) }
         }).collect();
-        return classify_instead_followup_semantics_tokens(&outer);
+        return classify_instead_followup_semantics_tokens_inner(&outer);
     }
     // A spell's eventual resolution destination is a future zone event,
     // including the "that card" reference used by cast-trigger bodies.
@@ -82,6 +88,10 @@ pub fn classify_instead_followup_semantics_tokens(tokens: &[OwnedLexToken]) -> I
 }
 
 pub fn parse_instead_followup_shape_tokens(tokens: &[OwnedLexToken]) -> InsteadFollowupShape {
+    crate::word_claims::probe_only(|| parse_instead_followup_shape_tokens_inner(tokens))
+}
+
+fn parse_instead_followup_shape_tokens_inner(tokens: &[OwnedLexToken]) -> InsteadFollowupShape {
     let leading_instead_surface = crate::slice_primitives::find_window_by(tokens, 2, |pair| {
         (pair[0].is_comma() && pair[1].is_word("instead"))
             || (pair[0].is_word("may") && pair[1].is_word("instead"))

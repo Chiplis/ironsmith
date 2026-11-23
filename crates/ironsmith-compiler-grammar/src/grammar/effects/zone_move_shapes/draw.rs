@@ -203,12 +203,14 @@ fn parse_as_many_this_way(tokens: &[OwnedLexToken]) -> Option<Value> {
         )
             .void(),
     )?;
-    primitives::find_prefix(rest, || semantic_phrase(&["this", "way"]))
-        .is_some()
-        .then_some(
-            Value::EventValue(EventValueSpec::Amount)
-                .with_surface_hint(ironsmith_core::ValueSurfaceHint::AsManyCardsThisWay),
-        )
+    let (_, (), after) = primitives::find_prefix(rest, || semantic_phrase(&["this", "way"]))?;
+    // "as many cards as <they discarded> this way": the prior instruction's
+    // result, which the clause between "as" and "this way" names.
+    crate::word_claims::claim_tokens(&tokens[..tokens.len() - after.len()]);
+    Some(
+        Value::EventValue(EventValueSpec::Amount)
+            .with_surface_hint(ironsmith_core::ValueSurfaceHint::AsManyCardsThisWay),
+    )
 }
 
 /// A trailing `where <variable> is ...` clause is bound by the sentence
@@ -660,6 +662,14 @@ pub fn parse_draw_this_way_metric_shape(tokens: &[OwnedLexToken]) -> Option<Valu
         return Some(
             metric.with_surface_hint(ironsmith_core::ValueSurfaceHint::CardsDrawnThisWay),
         );
+    }
+    // "for each one they gained control of this way" (Coveted Falcon): the
+    // objects the preceding control change actually moved.
+    if matches!(
+        words.as_slice(),
+        ["one", "they" | "you", "gained", "control", "of", "this", "way"]
+    ) {
+        crate::word_claims::claim_tokens(tokens);
     }
     Some(metric)
 }

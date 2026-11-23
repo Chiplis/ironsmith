@@ -153,6 +153,10 @@ pub fn parse_object_template_tokens(tokens: &[OwnedLexToken]) -> Option<ObjectTe
     // invented. Explicit artifact/land/etc descriptors retain their own type.
     if card_types.is_empty() && !subtypes.iter().all(|s| s.belongs_to_family(crate::types::SubtypeFamily::Creature)) { return None; }
     if card_types.is_empty() && subtypes.is_empty() && supertypes.is_empty() && !color_stated { return None; }
+    // The descriptor's articles and list connectives, skipped above.
+    for word in parser_token_word_refs(descriptor_tokens) {
+        if matches!(word, "a" | "an" | "the" | "and") { crate::word_claims::claim_word(word); }
+    }
     Some(ObjectTemplateShape { base_power_toughness, name_override, card_types, subtypes, supertypes, colors: color_stated.then_some(colors), ability_tokens, preserve_other_types, preserve_other_colors, remove_other_abilities, remove_other_supertypes, remove_other_card_types, remove_other_subtypes })
 }
 

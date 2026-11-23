@@ -16,6 +16,7 @@ pub(super) fn parse(tokens: &[OwnedLexToken]) -> Result<Option<EffectAst>, CardT
         let would = tokens.iter().position(|token| token.is_word("would")).unwrap();
         if would > time + 1 {
             let target = crate::util::parse_target_phrase(&tokens[time + 1..would])?;
+            claim_frame(tokens, time, would);
             return Ok(Some(EffectAst::subject_verb_destruction_recovery(target)));
         }
     }
@@ -41,5 +42,13 @@ pub(super) fn parse(tokens: &[OwnedLexToken]) -> Result<Option<EffectAst>, CardT
         return Ok(None);
     }
     let target = crate::util::parse_target_phrase(subject)?;
+    claim_frame(tokens, time, would);
     Ok(Some(EffectAst::subject_verb_destruction_damage_removal_shield(target)))
+}
+
+/// "The next time" and the replacement tail were matched word for word; the
+/// target between them read itself.
+fn claim_frame(tokens: &[OwnedLexToken], time: usize, would: usize) {
+    crate::word_claims::claim_tokens(&tokens[..=time]);
+    crate::word_claims::claim_tokens(&tokens[would..]);
 }

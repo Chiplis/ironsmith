@@ -104,6 +104,11 @@ pub fn parse_battlefield_controller_prefix(
     for words in [
         &["under", "control", "of", "that", "cards", "owner"][..],
         &["under", "control", "of", "that", "card's", "owner"][..],
+        // "return a creature card from its owner's graveyard ... under the
+        // control of that creature's owner" (Reincarnation): the card's
+        // graveyard owner is that creature's owner.
+        &["under", "control", "of", "that", "creatures", "owner"][..],
+        &["under", "control", "of", "that", "creature's", "owner"][..],
     ] {
         if let Some(((), rest)) = primitives::parse_prefix(tokens, primitives::phrase(words)) {
             return Some(BattlefieldControllerPrefix {

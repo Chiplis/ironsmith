@@ -262,6 +262,8 @@ pub fn parse_cast_from_zone_using_keyword_abilities_line(
         _ => return Ok(None),
     };
     let mut filter = parse_object_filter_lexed(&tokens[3..from_idx], false)?;
+    // "from <zone> using their <keyword> abilities", matched word for word.
+    crate::word_claims::claim_words(&tail);
     // "creature spells" names the cards those spells come from.
     filter.zone = None;
     filter.stack_kind = None;
