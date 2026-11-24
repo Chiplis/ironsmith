@@ -1265,7 +1265,7 @@ dependencies = [
 
 [[package]]
 name = "ironsmith-artifact-baker"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "ironsmith-compiled-artifact",
  "ironsmith-compiler",
@@ -1277,7 +1277,7 @@ dependencies = [
 
 [[package]]
 name = "ironsmith-artifact-effect-decoder"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "ironsmith-compiled-artifact",
  "ironsmith-core",
@@ -1287,7 +1287,7 @@ dependencies = [
 
 [[package]]
 name = "ironsmith-card-catalog"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "brotli",
  "brotli-decompressor",
@@ -1298,7 +1298,7 @@ dependencies = [
 
 [[package]]
 name = "ironsmith-card-source"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "serde_json",
  "sha2 0.11.0",
@@ -1306,7 +1306,7 @@ dependencies = [
 
 [[package]]
 name = "ironsmith-cli"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "ironsmith-compiler",
  "ironsmith-registry",
@@ -1318,7 +1318,7 @@ dependencies = [
 
 [[package]]
 name = "ironsmith-compiled-artifact"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "ironsmith-core",
  "serde",
@@ -1328,7 +1328,7 @@ dependencies = [
 
 [[package]]
 name = "ironsmith-compiler"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "ironsmith-compiler",
  "ironsmith-compiler-api",
@@ -1344,11 +1344,11 @@ dependencies = [
 
 [[package]]
 name = "ironsmith-compiler-api"
-version = "0.1.0"
+version = "1.0.0"
 
 [[package]]
 name = "ironsmith-compiler-ast"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "ironsmith-compiler-api",
  "ironsmith-compiler-source",
@@ -1357,7 +1357,7 @@ dependencies = [
 
 [[package]]
 name = "ironsmith-compiler-grammar"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "erased-serde",
  "ironsmith-compiler",
@@ -1376,7 +1376,7 @@ dependencies = [
 
 [[package]]
 name = "ironsmith-compiler-lowering"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "ironsmith-artifact-effect-decoder",
  "ironsmith-compiled-artifact",
@@ -1394,7 +1394,7 @@ dependencies = [
 
 [[package]]
 name = "ironsmith-compiler-resolve"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "ironsmith-compiler-semantic",
  "ironsmith-compiler-source",
@@ -1403,7 +1403,7 @@ dependencies = [
 
 [[package]]
 name = "ironsmith-compiler-runtime"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "ironsmith-compiled-artifact",
  "ironsmith-compiler",
@@ -1417,7 +1417,7 @@ dependencies = [
 
 [[package]]
 name = "ironsmith-compiler-semantic"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "erased-serde",
  "ironsmith-compiler-api",
@@ -1429,7 +1429,7 @@ dependencies = [
 
 [[package]]
 name = "ironsmith-compiler-source"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "ironsmith-compiler-api",
  "ironsmith-compiler-syntax",
@@ -1437,7 +1437,7 @@ dependencies = [
 
 [[package]]
 name = "ironsmith-compiler-syntax"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "ironsmith-compiler-api",
  "logos",
@@ -1446,7 +1446,7 @@ dependencies = [
 
 [[package]]
 name = "ironsmith-compiler-wasm"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "getrandom 0.4.2",
  "ironsmith-compiled-artifact",
@@ -1462,7 +1462,7 @@ dependencies = [
 
 [[package]]
 name = "ironsmith-core"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "ironsmith-tag-walk-derive",
  "serde",
@@ -1472,7 +1472,7 @@ dependencies = [
 
 [[package]]
 name = "ironsmith-dynamic-compile"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "ironsmith-compiler",
  "ironsmith-engine",
@@ -1481,7 +1481,7 @@ dependencies = [
 
 [[package]]
 name = "ironsmith-engine"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "criterion",
  "getrandom 0.4.2",
@@ -1501,7 +1501,7 @@ dependencies = [
 
 [[package]]
 name = "ironsmith-engine-macros"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "quote",
  "syn",
@@ -1509,14 +1509,14 @@ dependencies = [
 
 [[package]]
 name = "ironsmith-engine-wasm"
-version = "0.9.6"
+version = "1.0.0"
 dependencies = [
  "ironsmith-web-session",
 ]
 
 [[package]]
 name = "ironsmith-grammar-common"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "ironsmith-compiler-api",
  "ironsmith-compiler-semantic",
@@ -1527,7 +1527,7 @@ dependencies = [
 
 [[package]]
 name = "ironsmith-registry"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "ironsmith-card-source",
  "ironsmith-compiler",
@@ -1540,7 +1540,7 @@ dependencies = [
 
 [[package]]
 name = "ironsmith-registry-sync"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "ironsmith-card-source",
  "ironsmith-status-db",
@@ -1549,7 +1549,7 @@ dependencies = [
 
 [[package]]
 name = "ironsmith-runtime"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "ironsmith-engine",
  "ironsmith-runtime-catalog",
@@ -1558,7 +1558,7 @@ dependencies = [
 
 [[package]]
 name = "ironsmith-runtime-catalog"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "ironsmith-artifact-effect-decoder",
  "ironsmith-compiled-artifact",
@@ -1571,11 +1571,11 @@ dependencies = [
 
 [[package]]
 name = "ironsmith-semantic-compare"
-version = "0.1.0"
+version = "1.0.0"
 
 [[package]]
 name = "ironsmith-status-db"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "ironsmith-card-source",
  "rusqlite",
@@ -1583,7 +1583,7 @@ dependencies = [
 
 [[package]]
 name = "ironsmith-tag-walk-derive"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -1592,7 +1592,7 @@ dependencies = [
 
 [[package]]
 name = "ironsmith-text"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "ironsmith-compiled-artifact",
  "ironsmith-compiler",
@@ -1607,7 +1607,7 @@ dependencies = [
 
 [[package]]
 name = "ironsmith-tools"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "csv",
  "ironsmith-card-source",
@@ -1627,14 +1627,14 @@ dependencies = [
 
 [[package]]
 name = "ironsmith-verifier"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "ironsmith-verifier-ziffle",
 ]
 
 [[package]]
 name = "ironsmith-verifier-wasm"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "ironsmith-verifier",
  "ironsmith-verifier-wasm-api",
@@ -1644,7 +1644,7 @@ dependencies = [
 
 [[package]]
 name = "ironsmith-verifier-wasm-api"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "ironsmith-verifier-ziffle",
  "js-sys",
@@ -1653,7 +1653,7 @@ dependencies = [
 
 [[package]]
 name = "ironsmith-verifier-ziffle"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "ark-ec",
  "ark-ff",
@@ -1668,14 +1668,14 @@ dependencies = [
 
 [[package]]
 name = "ironsmith-wasm"
-version = "0.1.2"
+version = "1.0.0"
 dependencies = [
  "ironsmith-compiled-artifact",
 ]
 
 [[package]]
 name = "ironsmith-web-session"
-version = "0.1.2"
+version = "1.0.0"
 dependencies = [
  "console_error_panic_hook",
  "getrandom 0.2.17",

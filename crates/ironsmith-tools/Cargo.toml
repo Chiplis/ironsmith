@@ -1,7 +1,7 @@
 [package]
 autotests = false
 name = "ironsmith-tools"
-version = "0.1.0"
+version = "1.0.0"
 edition = "2024"
 license = "AGPL-3.0-or-later"
 autobins = false
