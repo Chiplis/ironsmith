@@ -1645,6 +1645,8 @@ impl WasmGame {
             manabrew_human_players: vec![true, true],
             manabrew_next_prompt_id: 1,
             manabrew_open_prompt: None,
+            manabrew_verified: false,
+            manabrew_forced_command: None,
             cached_snapshot: None,
             defer_mana_options: false,
             automation_snapshot: false,

@@ -99,6 +99,11 @@ await rm(resolve(outDir, "compiler_bg.wasm"), { force: true });
 await rm(resolve(outDir, "compiler_bg.wasm.d.ts"), { force: true });
 
 await prepareExactBuildSnapshots(outDir);
+// The Verified session protocol, bundled for hosts that are not the web app.
+{
+  const result = spawnSync(process.execPath, [resolve(root, "scripts/build-verified-session.mjs"), outDir], { cwd: root, stdio: "inherit" });
+  if (result.status !== 0) throw new Error(`verified-session bundle failed with status ${result.status ?? result.error ?? "unknown"}`);
+}
 
 const requiredFiles = [
   "ironsmith.js",
@@ -107,7 +112,8 @@ const requiredFiles = [
   "engine_bg.wasm",
   "compiler.js",
   "verifier.js",
-  "verifier_bg.wasm"
+  "verifier_bg.wasm",
+  "verified-session.js"
 ];
 for (const file of requiredFiles) {
   await readFile(resolve(outDir, file));

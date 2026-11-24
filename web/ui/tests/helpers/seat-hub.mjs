@@ -24,6 +24,8 @@ export class SeatHub {
       name,
       handle,
       call: (path, method, ...args) => this.rpc(handle, { op: 'call', path, method, args }),
+      hasMethod: method => this.rpc(handle, { op: 'has-method', method }),
+      engine: (method, ...args) => this.rpc(handle, { op: 'engine', method, args }),
       lobby: (method, ...args) => this.rpc(handle, { op: 'call', path: 'lobby', method, args }),
       snapshot: () => this.rpc(handle, { op: 'snapshot' }),
       async until(label, predicate, timeoutMs = 60_000) {

@@ -123,6 +123,10 @@ async function onRpc(message) {
     } else if (message.op === 'call') {
       const target = message.path === 'lobby' ? seat.lobby : seat[message.path];
       result = await target[message.method](...(message.args || []));
+    } else if (message.op === 'has-method') {
+      result = typeof seat.wasm[message.method] === 'function';
+    } else if (message.op === 'engine') {
+      result = await seat.wasm[message.method](...(message.args || []));
     } else if (message.op === 'snapshot') {
       const m = seat.multiplayer || {};
       const s = seat.state || {};

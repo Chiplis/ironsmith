@@ -5073,6 +5073,12 @@ pub struct WasmGame {
     manabrew_human_players: Vec<bool>,
     manabrew_next_prompt_id: u32,
     manabrew_open_prompt: Option<ManabrewOpenPrompt>,
+    /// Verified matches replicate every action through a signed transcript, so
+    /// the adapter never answers or applies anything on its own: forced answers
+    /// are reported as `forcedCommand` and translated responses are returned,
+    /// not dispatched.
+    manabrew_verified: bool,
+    manabrew_forced_command: Option<UiCommand>,
     cached_snapshot: Option<CachedSnapshot>,
     defer_mana_options: bool,
     /// Set only while `dispatchForAutomation` builds its result: the caller

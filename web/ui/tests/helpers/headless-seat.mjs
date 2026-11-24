@@ -3,13 +3,9 @@
 // PeerJS-compatible network. One call to createSeat() is one player's client.
 import "fake-indexeddb/auto";
 import { readFileSync, existsSync } from "node:fs";
-import { createHeadlessHook } from '../../src/lib/verified-session/hook-runtime.js';
-import { resolveSyncedCommand } from '../../src/lib/sync-command-resolve.js';
-import { isDecisionCommandCompatible } from '../../src/lib/sync-commands.js';
-import { previewCryptoRequirementsWithMaterial } from '../../src/lib/preview-crypto-material.js';
-import { usePeerLobby } from '../../src/hooks/usePeerLobby.js';
+import { cardNamesInArguments, createVerifiedSession, previewCryptoRequirementsWithMaterial } from '../../src/lib/verified-session/index.js';
 
-const PKG = new URL('../../../wasm_demo/pkg/', import.meta.url);
+const PKG = process.env.IRONSMITH_PKG ? new URL('file://' + process.env.IRONSMITH_PKG.replace(/\/?$/, '/')) : new URL('../../../wasm_demo/pkg/', import.meta.url);
 const CARDS = new URL('../../public/cards/', import.meta.url);
 
 let enginePromise = null;
@@ -114,14 +110,6 @@ class MemoryPeer extends Events {
   }
 }
 
-function methodNames(game) {
-  const names = new Set();
-  for (let proto = Object.getPrototypeOf(game); proto && proto !== Object.prototype; proto = Object.getPrototypeOf(proto)) {
-    for (const name of Object.getOwnPropertyNames(proto)) if (name !== 'constructor') names.add(name);
-  }
-  return names;
-}
-
 // Card definitions load on demand, like the worker's route registration.
 function createCardLoader(game) {
   const registered = new Set();
@@ -141,101 +129,43 @@ function createCardLoader(game) {
   };
 }
 
-const NAME_KEYS = new Set(['cardName', 'card_name', 'card', 'name']);
-function namesIn(value, found = new Set(), depth = 0) {
-  if (depth > 6 || value == null) return found;
-  if (Array.isArray(value)) { for (const entry of value) namesIn(entry, found, depth + 1); return found; }
-  if (typeof value === 'object') {
-    for (const [key, entry] of Object.entries(value)) {
-      if (typeof entry === 'string' && NAME_KEYS.has(key)) found.add(entry);
-      else if (entry && typeof entry === 'object') namesIn(entry, found, depth + 1);
-    }
-  } else if (typeof value === 'string' && depth === 0) {
-    for (const line of value.split('\n')) {
-      const match = /^\s*\d+\s+(.+?)\s*$/.exec(line);
-      if (match) found.add(match[1]);
-    }
+
+// A direct (same-thread) engine: the session's `engine.call` over a wasm game.
+function methodNames(game) {
+  const names = new Set(['previewCryptoRequirementsWithMaterial']);
+  for (let proto = Object.getPrototypeOf(game); proto && proto !== Object.prototype; proto = Object.getPrototypeOf(proto)) {
+    for (const name of Object.getOwnPropertyNames(proto)) if (name !== 'constructor') names.add(name);
   }
-  return found;
+  return names;
 }
 
-function createGameProxy(wasm, cards) {
-  const proxy = {};
-  for (const name of methodNames(wasm)) {
-    proxy[name] = async (...args) => {
-      cards.ensure(namesIn(args));
-      if (name === 'previewCryptoRequirementsWithMaterial') return previewCryptoRequirementsWithMaterial(wasm, args[0], args[1]);
-      return wasm[name](...args);
-    };
-  }
-  proxy.__wasm = wasm;
-  proxy.supportsRuntimeSavepoints = typeof wasm.createRuntimeSavepoint === 'function';
-  proxy.supportsExactBuildSnapshots = false;
-  proxy.supportsRuntimeBranches = false;
-  proxy.runtimeGeneration = 0;
-  return proxy;
+function createDirectEngine(wasm) {
+  return {
+    methods: methodNames(wasm),
+    async call(method, ...args) {
+      if (method === 'previewCryptoRequirementsWithMaterial') return previewCryptoRequirementsWithMaterial(wasm, args[0], args[1]);
+      return wasm[method](...args);
+    },
+  };
 }
 
-export async function createSeat({ name, network, deckText = '', autoStatus = false }) {
+export async function createSeat({ name, network, deckText = '' }) {
   const mod = await loadEngine();
   const wasm = new mod.WasmGame();
   const cards = createCardLoader(wasm);
-  cards.ensure(namesIn(deckText));
-  const game = createGameProxy(wasm, cards);
-  const statuses = [];
-  const listeners = new Set();
-  const store = { state: null };
-  const publish = (next) => {
-    store.state = typeof next === 'function' ? next(store.state) : next;
-    for (const listener of [...listeners]) listener(store.state);
-    hook?.update(inputs());
-  };
-  const inputs = () => ({
-    game,
-    state: store.state,
-    setState: publish,
-    subscribeState: (listener) => { listeners.add(listener); return () => listeners.delete(listener); },
-    setStatus: (text, isError) => { statuses.push({ text: String(text), isError: Boolean(isError) }); if (autoStatus && isError) console.error(`[${name}] ${text}`); },
-    applySyncedCommand: async (command, _message = '', syncOptions = null) => {
-      const { preState, runtimeGame } = syncOptions || {};
-      const current = runtimeGame || game;
-      const before = current.isCurrentSnapshot?.(preState) ? preState : await current.uiState();
-      const resolved = resolveSyncedCommand(command, before);
-      if (!isDecisionCommandCompatible(before?.decision || null, resolved)) {
-        const error = new Error(`Command ${resolved?.type} does not match decision ${before?.decision?.kind}`);
-        error.syncedNeedsResync = true;
-        throw error;
-      }
-      let next;
-      if (resolved?.type === 'cancel_decision') next = await current.cancelDecision();
-      else if (resolved?.type === 'forfeit_player') next = await current.forfeitPlayer(Number(resolved.player));
-      else next = await current.dispatch(resolved);
-      if (syncOptions?.publishState !== false) publish(next);
-      return next;
-    },
+  cards.ensure(cardNamesInArguments(deckText));
+  const session = createVerifiedSession({
+    engine: createDirectEngine(wasm),
     createPeer: network.factory(name),
+    ensureCards: async names => cards.ensure(names),
   });
-  let hook = null;
-  hook = createHeadlessHook(usePeerLobby, inputs(), { onError: (error) => { statuses.push({ text: String(error?.stack || error), isError: true }); console.error(`[${name}] render error`, error); } });
   const seat = {
-    name, game, wasm, cards, statuses, store, hook,
-    get lobby() { return hook.current; },
-    get multiplayer() { return hook.current?.multiplayer; },
-    get state() { return store.state; },
-    async until(label, predicate, timeoutMs = 30_000) {
-      const started = Date.now();
-      for (;;) {
-        await hook.settled();
-        const value = predicate(seat);
-        if (value) return value;
-        if (Date.now() - started > timeoutMs) {
-          const errors = statuses.filter(entry => entry.isError).slice(-5).map(entry => entry.text);
-          throw new Error(`${name}: timed out waiting for ${label}; mode=${seat.multiplayer?.mode} started=${seat.multiplayer?.matchStarted} errors=${JSON.stringify(errors)}`);
-        }
-        await new Promise(resolve => setTimeout(resolve, 20));
-      }
-    },
-    dispose() { hook.dispose(); },
+    name, wasm, cards, session,
+    statuses: session.statuses,
+    get lobby() { return session.lobby; },
+    get multiplayer() { return session.multiplayer; },
+    get state() { return session.state; },
+    dispose() { session.dispose(); },
   };
   return seat;
 }

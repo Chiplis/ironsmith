@@ -68,6 +68,24 @@ struct ManabrewViewResult {
     prompt: Option<AgentPrompt>,
     #[serde(skip_serializing_if = "Option::is_none")]
     error: Option<ProtocolError>,
+    /// Verified matches only: the single legal answer to a decision the player
+    /// is not asked about. The host submits it through the signed transcript.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    forced_command: Option<Value>,
+}
+
+/// What a Manabrew response means for the engine, without applying it.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase", tag = "kind")]
+enum ManabrewTranslation {
+    /// Submit this command (a `UiCommand`) through the host's action pipeline.
+    Dispatch { command: Value },
+    /// Take back the action chain the prompt belongs to.
+    Cancel,
+    /// A multi-step prompt moved on locally; nothing to submit.
+    Continue { view: ManabrewViewResult },
+    /// The response was refused; the view carries the error.
+    Rejected { view: ManabrewViewResult },
 }
 
 enum ManabrewResponseAction {
@@ -1312,6 +1330,11 @@ impl WasmGame {
         let Some(object) = self.manabrew_game().object(id) else {
             return false;
         };
+        // A Verified match holds a hidden card as a placeholder until its
+        // identity is opened; there is nothing to show before that.
+        if self.manabrew_game().is_hidden_card_placeholder(id) {
+            return false;
+        }
         let has_view_permission = self
             .active_viewed_cards
             .iter()
@@ -3313,6 +3336,7 @@ impl WasmGame {
         // an optional choice with no legal option (a kicker the player cannot
         // pay; the protocol cannot show disabled options), and a combat
         // declaration with nothing to declare.
+        self.manabrew_forced_command = None;
         for _ in 0..16 {
             let forced = match self.pending_decision.as_ref() {
                 Some(DecisionContext::SelectOptions(ctx))
@@ -3343,6 +3367,12 @@ impl WasmGame {
             let Some(command) = forced else {
                 break;
             };
+            if self.manabrew_verified {
+                // Applying it here would skip signing and replay on other seats.
+                self.manabrew_forced_command = Some(command);
+                self.manabrew_open_prompt = None;
+                return Ok(None);
+            }
             if self.dispatch_typed_command(command, 0.0).is_err() {
                 break;
             }
@@ -3410,14 +3440,24 @@ impl WasmGame {
                     state: self.manabrew_state(viewer),
                     prompt: None,
                     error: error.or(Some(prompt_error)),
+                    forced_command: None,
                 };
             }
         };
+        let forced_command = viewer
+            .filter(|viewer| {
+                self.pending_decision
+                    .as_ref()
+                    .is_some_and(|context| context.player() == *viewer)
+            })
+            .and(self.manabrew_forced_command.as_ref())
+            .and_then(|command| serde_json::to_value(command).ok());
         ManabrewViewResult {
             protocol_version: manabrew_protocol_major(),
             state: self.manabrew_state(viewer),
             prompt,
             error,
+            forced_command,
         }
     }
 
@@ -4275,6 +4315,7 @@ impl WasmGame {
                             state: self.manabrew_state(None),
                             prompt: None,
                             error: Some(error),
+                            forced_command: None,
                         },
                         "Manabrew view",
                     );
@@ -4388,6 +4429,138 @@ impl WasmGame {
         self.manabrew_open_prompt = None;
         let result = self.manabrew_result(Some(player), None);
         manabrew_to_js(&result, "Manabrew response")
+    }
+
+    /// Attach the Manabrew adapter to a match that was started elsewhere (a
+    /// Verified match starts through `startMatch` with committed decks, not
+    /// through `startManabrewMatch`).
+    #[wasm_bindgen(js_name = manabrewAttach)]
+    pub fn manabrew_attach(&mut self, game_id: String, human_players: Vec<u8>, verified: bool) {
+        let count = self.manabrew_game().players.len();
+        self.manabrew_human_players = (0..count)
+            .map(|index| human_players.is_empty() || human_players.contains(&(index as u8)))
+            .collect();
+        self.manabrew_game_id = if game_id.trim().is_empty() {
+            "ironsmith-verified".to_string()
+        } else {
+            game_id
+        };
+        self.manabrew_next_prompt_id = 1;
+        self.manabrew_open_prompt = None;
+        self.manabrew_forced_command = None;
+        self.manabrew_verified = verified;
+    }
+
+    /// Verified matches replicate every engine change through a signed
+    /// transcript: the adapter stops answering forced decisions itself and the
+    /// host turns responses into commands with `manabrewTranslate`.
+    #[wasm_bindgen(js_name = manabrewSetVerified)]
+    pub fn manabrew_set_verified(&mut self, enabled: bool) {
+        self.manabrew_verified = enabled;
+        if !enabled {
+            self.manabrew_forced_command = None;
+        }
+    }
+
+    /// Translate a Manabrew prompt response into the engine command it means,
+    /// without applying it. The host submits `dispatch` commands through its
+    /// own pipeline (signing, quorum, replay on every seat) and then asks for
+    /// the next view. `continue` answers need no command: the prompt advanced
+    /// locally.
+    #[wasm_bindgen(js_name = manabrewTranslate)]
+    pub fn manabrew_translate(
+        &mut self,
+        player: u8,
+        prompt_id: u32,
+        output: JsValue,
+    ) -> Result<JsValue, JsValue> {
+        let _menu_policy = ManabrewMenuPolicy::enter(&self.manabrew_human_players);
+        let player = match self.manabrew_player(player) {
+            Ok(player) => player,
+            Err(error) => {
+                let view = self.manabrew_result(None, Some(error));
+                return manabrew_to_js(&ManabrewTranslation::Rejected { view }, "Manabrew translation");
+            }
+        };
+        if let Err(error) = self.validate_manabrew_prompt_owner(player, prompt_id) {
+            let view = self.manabrew_result(Some(player), Some(error));
+            return manabrew_to_js(&ManabrewTranslation::Rejected { view }, "Manabrew translation");
+        }
+        let output: PromptOutput = match serde_wasm_bindgen::from_value(output) {
+            Ok(output) => output,
+            Err(error) => {
+                let view = self.manabrew_result(
+                    Some(player),
+                    Some(protocol_error(
+                        ProtocolErrorCode::InvalidShape,
+                        format!("invalid Manabrew prompt output: {error}"),
+                        Some(prompt_id),
+                    )),
+                );
+                return manabrew_to_js(&ManabrewTranslation::Rejected { view }, "Manabrew translation");
+            }
+        };
+        let open = match self.validate_manabrew_response(player, prompt_id, &output) {
+            Ok(open) => open.clone(),
+            Err(error) => {
+                let view = self.manabrew_result(Some(player), Some(error));
+                return manabrew_to_js(&ManabrewTranslation::Rejected { view }, "Manabrew translation");
+            }
+        };
+        let action = match self.manabrew_response_action(&open, output) {
+            Ok(action) => action,
+            Err(error) => {
+                let view = self.manabrew_result(Some(player), Some(error));
+                return manabrew_to_js(&ManabrewTranslation::Rejected { view }, "Manabrew translation");
+            }
+        };
+        let translation = match action {
+            ManabrewResponseAction::Dispatch(command) => match serde_json::to_value(&command) {
+                Ok(command) => ManabrewTranslation::Dispatch { command },
+                Err(error) => {
+                    let view = self.manabrew_result(
+                        Some(player),
+                        Some(protocol_error(
+                            ProtocolErrorCode::InvalidShape,
+                            format!("could not encode the Ironsmith command: {error}"),
+                            Some(prompt_id),
+                        )),
+                    );
+                    ManabrewTranslation::Rejected { view }
+                }
+            },
+            ManabrewResponseAction::Cancel => ManabrewTranslation::Cancel,
+            ManabrewResponseAction::Continue { input, binding } => {
+                let next_prompt_id = self.manabrew_next_prompt_id;
+                let Some(after_next_prompt_id) = next_prompt_id.checked_add(1) else {
+                    let view = self.manabrew_result(
+                        Some(player),
+                        Some(protocol_error(
+                            ProtocolErrorCode::InvalidShape,
+                            "Manabrew prompt ID space is exhausted",
+                            Some(prompt_id),
+                        )),
+                    );
+                    return manabrew_to_js(
+                        &ManabrewTranslation::Rejected { view },
+                        "Manabrew translation",
+                    );
+                };
+                self.manabrew_next_prompt_id = after_next_prompt_id;
+                self.manabrew_open_prompt = Some(ManabrewOpenPrompt {
+                    prompt_id: next_prompt_id,
+                    deciding_player: open.deciding_player,
+                    decision_hash: open.decision_hash,
+                    source_card_id: open.source_card_id,
+                    source_card: open.source_card,
+                    input,
+                    binding,
+                });
+                let view = self.manabrew_result(Some(player), None);
+                ManabrewTranslation::Continue { view }
+            }
+        };
+        manabrew_to_js(&translation, "Manabrew translation")
     }
 
     #[wasm_bindgen(js_name = manabrewApplyDirective)]

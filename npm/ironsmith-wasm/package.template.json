@@ -21,7 +21,12 @@
     "./engine_bg.wasm": "./engine_bg.wasm",
     "./ironsmith_bg.wasm": "./engine_bg.wasm",
     "./verifier_bg.wasm": "./verifier_bg.wasm",
-    "./package.json": "./package.json"
+    "./package.json": "./package.json",
+    "./verified-session": {
+      "types": "./verified-session.d.ts",
+      "import": "./verified-session.js",
+      "default": "./verified-session.js"
+    }
   },
   "files": [
     "ironsmith.js",
@@ -37,7 +42,9 @@
     "engine_bg.wasm.d.ts",
     "verifier_bg.wasm.d.ts",
     "snippets",
-    "README.md"
+    "README.md",
+    "verified-session.js",
+    "verified-session.d.ts"
   ],
   "sideEffects": [
     "./snippets/*"
@@ -53,5 +60,13 @@
   "publishConfig": {
     "access": "public",
     "provenance": true
+  },
+  "peerDependencies": {
+    "react": ">=18"
+  },
+  "peerDependenciesMeta": {
+    "react": {
+      "optional": true
+    }
   }
 }
