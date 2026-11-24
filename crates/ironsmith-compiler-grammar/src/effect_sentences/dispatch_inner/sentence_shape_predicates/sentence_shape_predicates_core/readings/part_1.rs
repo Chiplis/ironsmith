@@ -528,7 +528,7 @@ pub(super) fn read_look_at_hand_with_listed_followups(
     if !tokens.first().is_some_and(|token| token.is_word("look")) {
         return Ok(None);
     }
-    let Some(hand) = tokens.iter().position(|token| token.is_word("hand")) else {
+    let Some(hand) = tokens.iter().position(|token| token.matches_word("hand")) else {
         return Ok(None);
     };
     if !tokens.get(hand + 1).is_some_and(|token| token.is_comma()) {

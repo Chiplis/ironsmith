@@ -110,7 +110,7 @@ fn choose_then_copy(
         return Ok(None);
     }
     let Some(and) = (1..sentence.len().saturating_sub(1))
-        .find(|&index| sentence[index].is_word("and") && sentence[index + 1].is_word("copy"))
+        .find(|&index| sentence[index].matches_word("and") && sentence[index + 1].matches_word("copy"))
     else {
         return Ok(None);
     };
@@ -198,8 +198,8 @@ pub(crate) fn read(
     if copy_statement(copy).is_none()
         && choose_then_copy(copy)?.is_none()
         && let Some(and) = (1..copy.len()).rev().find(|&index| {
-            copy[index].is_word("and")
-                && copy.get(index + 1).is_some_and(|token| token.is_word("copy"))
+            copy[index].matches_word("and")
+                && copy.get(index + 1).is_some_and(|token| token.matches_word("copy"))
         })
         && copy_statement(&copy[and + 1..]).is_some()
     {

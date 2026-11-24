@@ -71,8 +71,8 @@ pub fn parse_search_library_sentence_with_grammar_entrypoint_lexed(
     // comma-then chain, which reads each part.
     if head_split.search_tokens.windows(3).any(|window| {
         window[0].is_comma()
-            && window[1].is_word("then")
-            && window[2].is_any_word(&["roll", "rolls", "flip", "flips"])
+            && window[1].matches_word("then")
+            && window[2].matches_any_word(&["roll", "rolls", "flip", "flips"])
     }) {
         return Ok(None);
     }
@@ -167,7 +167,7 @@ pub fn parse_search_library_sentence_with_grammar_entrypoint_lexed(
         }));
     }
     let search_zones_override = subject_routing.search_zones_override;
-    let optional_search_zones = search_tokens.iter().take_while(|token| !token.is_word("for")).any(|token| token.is_word("and/or"));
+    let optional_search_zones = search_tokens.iter().take_while(|token| !token.matches_word("for")).any(|token| token.matches_word("and/or"));
     if search_library_has_unsupported_top_position_probe_lexed(search_tokens) {
         return Err(CardTextError::ParseError(format!(
             "unsupported search-library top-position clause (clause: '{}')",
@@ -266,7 +266,7 @@ pub fn parse_search_library_sentence_with_grammar_entrypoint_lexed(
     if prefix_count_value.is_none()
         && let Some(equal_idx) = raw_filter_tokens
             .windows(2)
-            .position(|window| window[0].is_word("equal") && window[1].is_word("to"))
+            .position(|window| window[0].matches_word("equal") && window[1].matches_word("to"))
         && equal_idx > 0
         && let Some((value, used)) =
             crate::grammar::shared_util::value_expr::parse_value_expr_tokens(
@@ -299,6 +299,8 @@ pub fn parse_search_library_sentence_with_grammar_entrypoint_lexed(
             if let Some(len) = number_of_len {
                 head.drain(..len);
             }
+            // The "equal to" this count was split at.
+            crate::word_claims::claim_tokens(&raw_filter_tokens[equal_idx..equal_idx + 2]);
             prefix_count_value = Some(value);
             count = if search_mode == SearchSelectionMode::Optional {
                 ChoiceCount::up_to_dynamic_x()
@@ -429,7 +431,7 @@ pub fn parse_search_library_sentence_with_grammar_entrypoint_lexed(
     let searched_controller = if effect_routing.enters_under_your_control {
         // The put instruction's controller phrase is read here (Bribery).
         if let Some(index) = tokens.windows(3).position(|window| {
-            window[0].is_word("under") && window[1].is_word("your") && window[2].is_word("control")
+            window[0].matches_word("under") && window[1].matches_word("your") && window[2].matches_word("control")
         }) {
             crate::word_claims::claim_tokens(&tokens[index..index + 3]);
         }

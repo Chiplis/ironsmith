@@ -931,7 +931,7 @@ fn all_hand_replacement_predicate(
         return None;
     }
     let tokens = replacement.lowered();
-    let split = tokens.iter().position(|token| token.is_word("if"))?;
+    let split = tokens.iter().position(|token| token.matches_word("if"))?;
     let prefix = crate::lexer::parser_token_word_refs(&tokens[..split]);
     if prefix
         != [

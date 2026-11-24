@@ -68,8 +68,8 @@ fn paid_additional_count(head: &[OwnedLexToken]) -> Option<Value> {
     if !words.starts_with(&["for", "each", "additional"]) || !words.ends_with(&["you", "paid"]) {
         return None;
     }
-    let additional = head.iter().position(|token| token.is_word("additional"))?;
-    let you = head.iter().rposition(|token| token.is_word("you"))?;
+    let additional = head.iter().position(|token| token.matches_word("additional"))?;
+    let you = head.iter().rposition(|token| token.matches_word("you"))?;
     let mut symbols = Vec::new();
     for token in head.get(additional + 1..you)? {
         let pip = crate::grammar::leaf::parse_leaf_surface_mana_pip_token(token)?;

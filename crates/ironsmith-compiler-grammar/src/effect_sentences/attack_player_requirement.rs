@@ -10,7 +10,7 @@ use crate::target::PlayerFilter;
 
 pub(crate) fn parse(tokens: &[OwnedLexToken]) -> Result<Option<EffectAst>, CardTextError> {
     let tokens = crate::util::trim_edge_punctuation_tokens(tokens);
-    let Some(attacks) = tokens.iter().position(|token| token.is_word("attacks")) else {
+    let Some(attacks) = tokens.iter().position(|token| token.matches_word("attacks")) else {
         return Ok(None);
     };
     let tail = &tokens[attacks + 1..];

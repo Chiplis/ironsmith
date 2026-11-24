@@ -33,7 +33,7 @@ pub fn parse_document_semantic_facts<'a>(
             overload_target_spans.extend(
                 tokens
                     .iter()
-                    .filter(|token| token.is_word("target"))
+                    .filter(|token| token.matches_word("target"))
                     .map(|token| token.span),
             );
         }

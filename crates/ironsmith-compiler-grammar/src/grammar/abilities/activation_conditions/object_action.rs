@@ -16,6 +16,7 @@ pub(super) fn parse_controlled_creature_power_shape(
     }
     Some(ControlledCreaturePowerShape {
         object_tokens: token_slice_for_words(tail.tokens(), &view, 0, power)?,
+        relation_tokens: token_slice_for_words(tail.tokens(), &view, power, comparison_start)?,
         comparison_tokens: token_slice_for_words(
             tail.tokens(),
             &view,
@@ -43,12 +44,10 @@ pub(super) fn parse_controlled_creature_power_condition(
     if used != comparison_words.len() {
         return None;
     }
-    // "a creature with power 4 or greater": the "with" joining the creature
-    // to its power comparison (a matching word test reads it).
-    let _ = tokens.iter().any(|token| token.is_word("with"));
-    // The compared characteristic: the tail the comparison reads is a
-    // rewritten copy, so the authored "power" is claimed here.
-    let _ = tokens.iter().any(|token| token.is_word("power"));
+    // "a creature with power 4 or greater": the "with power" joining the
+    // creature to its comparison. The comparison reads a rewritten copy, so
+    // the authored "power" is claimed here too.
+    crate::word_claims::claim_tokens(parsed.relation_tokens);
     Some(PredicateAst::YouControl(
         ObjectFilter::creature().with_power(comparison),
     ))

@@ -83,7 +83,7 @@ pub fn parse_tap(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextError> {
     // A selection the aggregate reader cannot read whole ("an untapped land
     // they control for each fade counter on this artifact") falls through to
     // the ordinary tap readings below rather than failing the sentence.
-    if tokens.iter().any(|token| token.is_word("untapped")) {
+    if tokens.iter().any(|token| token.matches_word("untapped")) {
         let mut payment = vec![OwnedLexToken::synthetic_word("tap")];
         payment.extend_from_slice(tokens);
         if let Ok(Some(cost)) = crate::activation_and_restrictions::activated_line_core::parse_aggregate_tap_cost(&payment)

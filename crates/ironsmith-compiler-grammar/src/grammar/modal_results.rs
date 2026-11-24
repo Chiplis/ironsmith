@@ -389,11 +389,11 @@ pub fn parse_put_onto_battlefield_this_way_result(
     {
         return None;
     }
-    let onto = tokens.iter().position(|token| token.is_word("onto"))?;
-    if tokens.iter().filter(|token| token.is_word("onto")).count() != 1 || onto <= 2 {
+    let onto = tokens.iter().position(|token| token.matches_word("onto"))?;
+    if tokens.iter().filter(|token| token.matches_word("onto")).count() != 1 || onto <= 2 {
         return None;
     }
-    let put = tokens.iter().position(|token| token.is_word("put"))?;
+    let put = tokens.iter().position(|token| token.matches_word("put"))?;
     let filter_tokens = &tokens[put + 1..onto];
     let one_or_more = filter_tokens.first().is_some_and(|token| token.is_word("one"))
         && filter_tokens.get(1).is_some_and(|token| token.is_word("or"))

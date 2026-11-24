@@ -430,7 +430,7 @@ impl<'a> LexedClause<'a> {
         mut predicate: impl FnMut(usize, Self) -> bool,
     ) -> Option<usize> {
         self.tokens.iter().enumerate().find_map(|(idx, token)| {
-            if token.is_word(expected) && predicate(idx, self.from(idx + 1)) {
+            if token.matches_word(expected) && predicate(idx, self.from(idx + 1)) {
                 Some(idx)
             } else {
                 None

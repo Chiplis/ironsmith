@@ -38,7 +38,7 @@ pub(super) fn prevention_recipient_filters(
     // the repeated "to" names two recipient sets. One conjunctive filter
     // (the source AND banded with the source) would match nothing.
     if let Some(index) = tokens.windows(2).position(|pair| {
-        pair[0].is_any_word(&["and", "or"]) && pair[1].is_word("to")
+        pair[0].matches_any_word(&["and", "or"]) && pair[1].matches_word("to")
     }) && index > 0
         && index + 2 < tokens.len()
         && let Ok((None, Some(left))) = prevention_recipient_filters(&tokens[..index])
@@ -67,7 +67,7 @@ pub(super) fn needs_shared_recipient_allocation(tokens: &[OwnedLexToken]) -> boo
     parser_token_word_refs(tokens)
         .word_windows(3)
         .any(|words| words == ["one", "or", "more"])
-        || tokens.iter().any(|token| token.is_word("and/or"))
+        || tokens.iter().any(|token| token.matches_word("and/or"))
 }
 
 /// "you and/or one or more creatures you control" as its recipient union
@@ -302,17 +302,19 @@ pub fn parse_persistent_filtered_damage_prevention_line(
     // choice replaces the source's chosen color, so the last chosen color is
     // the source's current chosen color.
     if tokens.windows(3).any(|window| {
-        window[0].is_word("last") && window[1].is_word("chosen") && window[2].is_word("color")
+        window[0].matches_word("last") && window[1].matches_word("chosen") && window[2].matches_word("color")
     }) {
-        let stripped = tokens
-            .iter()
-            .enumerate()
-            .filter(|(index, token)| {
-                !(token.is_word("last")
-                    && tokens.get(index + 1).is_some_and(|next| next.is_word("chosen")))
-            })
-            .map(|(_, token)| token.clone())
-            .collect::<Vec<_>>();
+        let mut stripped = Vec::with_capacity(tokens.len());
+        let mut last = Vec::new();
+        for (index, token) in tokens.iter().enumerate() {
+            if token.matches_word("last")
+                && tokens.get(index + 1).is_some_and(|next| next.matches_word("chosen"))
+            {
+                last.push(token.clone());
+            } else {
+                stripped.push(token.clone());
+            }
+        }
         let Some(ability) = parse_persistent_filtered_damage_prevention_line(&stripped)? else {
             return Ok(None);
         };
@@ -320,6 +322,9 @@ pub fn parse_persistent_filtered_damage_prevention_line(
         else {
             return Ok(None);
         };
+        // The "last" the stripped reading drops: the source's current choice
+        // is the last one made.
+        crate::word_claims::claim_tokens(&last);
         spec.display = render_token_slice(tokens);
         return Ok(Some(StaticAbility::prevent_matching_damage(spec)));
     }

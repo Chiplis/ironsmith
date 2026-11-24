@@ -61,7 +61,7 @@ fn search_reveal(sentence: &SentenceInput) -> Option<SearchReveal> {
     let rest_start = tokens.len() - input.len();
     let rest = &tokens[rest_start..];
     let reveal_at = rest.windows(3).position(|window| {
-        window[0].is_word("and") && window[1].is_word("reveal") && window[2].is_word("them")
+        window[0].matches_word("and") && window[1].matches_word("reveal") && window[2].matches_word("them")
     })?;
     if reveal_at + 3 != rest.len() || reveal_at == 0 {
         return None;

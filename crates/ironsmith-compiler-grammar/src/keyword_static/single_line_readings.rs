@@ -340,7 +340,7 @@ fn read_conditional_enters_with_counters(
     // it the intact condition before the generic conditional wrapper strips
     // the prefix and leaves an apparently unconditional ability grant.
     if tokens.first().is_some_and(|token| token.is_word("if"))
-        && tokens.iter().any(|token| token.is_word("enters"))
+        && tokens.iter().any(|token| token.matches_word("enters"))
         && let Some(abilities) = parse_enters_with_counters_ast_line(tokens)?
     {
         return Ok(Some(abilities));

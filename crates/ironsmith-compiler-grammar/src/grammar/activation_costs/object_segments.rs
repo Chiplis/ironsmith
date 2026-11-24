@@ -295,7 +295,7 @@ fn parse_typed_discard_selector(
     };
     if !filter_tokens
         .iter()
-        .any(|token| token.is_word("card") || token.is_word("cards"))
+        .any(|token| token.matches_word("card") || token.matches_word("cards"))
     {
         return Err(unsupported(tokens, "discard"));
     }

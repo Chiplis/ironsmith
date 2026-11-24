@@ -312,7 +312,7 @@ fn read_simple_gain_ability(
         && !shape
             .subject_tokens
             .iter()
-            .any(|token| token.is_any_word(&["has", "have", "get", "gets"]))
+            .any(|token| token.matches_any_word(&["has", "have", "get", "gets"]))
         && !crate::word_primitives::sequence_occurs(
             &crate::lexer::parser_token_word_refs(tokens),
             &["as", "long", "as"],

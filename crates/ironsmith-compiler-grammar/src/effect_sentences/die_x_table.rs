@@ -42,7 +42,7 @@ fn starts_with_roll(sentence: &[OwnedLexToken]) -> bool {
 }
 
 fn mentions_x(sentence: &[OwnedLexToken]) -> bool {
-    sentence.iter().any(|token| token.is_word("x"))
+    sentence.iter().any(|token| token.matches_word("x"))
 }
 
 /// Whether a roll in `owner` is followed by sentences that read X, so a

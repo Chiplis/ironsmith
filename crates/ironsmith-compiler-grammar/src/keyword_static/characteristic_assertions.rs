@@ -35,7 +35,7 @@ pub(super) fn parse_supertype_assertion_line(
     if tokens
         .first()
         .is_some_and(|t| t.is_any_word(&["if", "as", "when", "whenever", "until"]))
-        || fact.subject.iter().any(|t| t.is_word("target"))
+        || fact.subject.iter().any(|t| t.matches_word("target"))
     {
         return Ok(None);
     }

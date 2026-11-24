@@ -905,17 +905,17 @@ fn parse_player_or_object_damage_recipient(
         .iter()
         .enumerate()
         .find_map(|(index, token)| {
-            if token.is_word("and/or") {
+            if token.matches_word("and/or") {
                 return Some((index, true));
             }
-            if !token.is_word("or") {
+            if !token.matches_word("or") {
                 return None;
             }
             let belongs_to_one_or_more = index > 0
-                && target_tokens[index - 1].is_word("one")
+                && target_tokens[index - 1].matches_word("one")
                 && target_tokens
                     .get(index + 1)
-                    .is_some_and(|next| next.is_word("more"));
+                    .is_some_and(|next| next.matches_word("more"));
             (!belongs_to_one_or_more).then_some((index, false))
         })?;
     let (union_idx, is_and_or) = union_idx;
@@ -934,6 +934,8 @@ fn parse_player_or_object_damage_recipient(
             filter.set_union_connective(crate::filter::ObjectFilterUnionConnective::AndOr);
         }
         filter.set_union_one_or_more(one_or_more);
+        // The "or" / "and/or" joining the two recipients, read here.
+        crate::word_claims::claim_tokens(&target_tokens[union_idx..=union_idx]);
         return Some((player, filter, true));
     }
 
@@ -946,6 +948,7 @@ fn parse_player_or_object_damage_recipient(
             filter.set_union_connective(crate::filter::ObjectFilterUnionConnective::AndOr);
         }
         filter.set_union_one_or_more(one_or_more);
+        crate::word_claims::claim_tokens(&target_tokens[union_idx..=union_idx]);
         return Some((player, filter, false));
     }
 
@@ -995,7 +998,7 @@ fn preserve_trigger_filter_union_surface(
     filter: &mut ObjectFilter,
     subject_tokens: &[OwnedLexToken],
 ) {
-    if subject_tokens.iter().any(|token| token.is_word("and/or")) {
+    if subject_tokens.iter().any(|token| token.matches_word("and/or")) {
         filter.set_union_connective(crate::filter::ObjectFilterUnionConnective::AndOr);
     }
 }
@@ -2351,7 +2354,7 @@ fn try_parse_enters_or_becomes_tapped_trigger_lexed(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<TriggerSpec>, CardTextError> {
     let tokens = trim_edge_punctuation_tokens(tokens);
-    let Some(or_idx) = tokens.iter().position(|token| token.is_word("or")) else {
+    let Some(or_idx) = tokens.iter().position(|token| token.matches_word("or")) else {
         return Ok(None);
     };
     if or_idx < 2
@@ -2664,11 +2667,11 @@ fn parse_trigger_clause_lexed_inner(
 /// targets only Bill Potts").
 fn try_parse_cast_or_activate_trigger_lexed(tokens: &[OwnedLexToken]) -> Option<TriggerSpec> {
     let or_idx = tokens.windows(2).position(|pair| {
-        pair[0].is_word("or") && (pair[1].is_word("activate") || pair[1].is_word("activates"))
+        pair[0].matches_word("or") && (pair[1].matches_word("activate") || pair[1].matches_word("activates"))
     })?;
     let cast_idx = tokens[..or_idx]
         .iter()
-        .position(|token| token.is_word("cast") || token.is_word("casts"))?;
+        .position(|token| token.matches_word("cast") || token.matches_word("casts"))?;
     if cast_idx == 0 {
         return None;
     }
@@ -2685,8 +2688,12 @@ fn try_parse_cast_or_activate_trigger_lexed(tokens: &[OwnedLexToken]) -> Option<
             _ => false,
         }
     }
-    (is_kind(&left, true) && is_kind(&right, false))
-        .then(|| TriggerSpec::Either(Box::new(left), Box::new(right)))
+    if !(is_kind(&left, true) && is_kind(&right, false)) {
+        return None;
+    }
+    // The "or" joining the cast and activation arms.
+    crate::word_claims::claim_tokens(&tokens[or_idx..=or_idx]);
+    Some(TriggerSpec::Either(Box::new(left), Box::new(right)))
 }
 
 /// "Whenever a player kicks a spell" (Saproling Infestation). CR 702.33d: a
@@ -2698,7 +2705,7 @@ fn try_parse_kicks_a_spell_trigger_lexed(
     let trimmed = trim_edge_punctuation_tokens(strip_leading_trigger_intro(tokens));
     let Some(kick_idx) = trimmed
         .iter()
-        .position(|token| token.is_any_word(&["kicks", "kick"]))
+        .position(|token| token.matches_any_word(&["kicks", "kick"]))
     else {
         return Ok(None);
     };
@@ -3165,7 +3172,7 @@ fn try_parse_player_attack_with_one_or_more_lexed(
 ) -> Result<Option<TriggerSpec>, CardTextError> {
     let tokens = trim_edge_punctuation_tokens(strip_leading_trigger_intro(raw_tokens));
     if tokens.iter().enumerate().any(|(index, token)| {
-        token.is_word("and")
+        token.matches_word("and")
             && tokens
                 .get(index + 1)
                 .is_some_and(|next| trigger_token_is_atom(next, TriggerClauseAtom::TriggerIntro))
@@ -3479,7 +3486,7 @@ fn try_parse_repeated_intro_event_union_lexed(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<TriggerSpec>, CardTextError> {
     let Some(separator) = tokens.windows(2).position(|pair| {
-        pair[0].is_word("and") && pair[1].is_any_word(&["when", "whenever", "at"])
+        pair[0].matches_word("and") && pair[1].matches_any_word(&["when", "whenever", "at"])
     }) else {
         return Ok(None);
     };
@@ -3507,10 +3514,15 @@ fn try_parse_repeated_intro_event_union_lexed(
     {
         let mut rebound = left_clause[..2].to_vec();
         rebound.extend_from_slice(&right_clause[1..]);
-        parse_trigger_clause_lexed(&rebound)?
+        let right = parse_trigger_clause_lexed(&rebound)?;
+        // The pronoun, read as the left clause's source subject.
+        crate::word_claims::claim_tokens(&right_clause[..1]);
+        right
     } else {
         parse_trigger_clause_lexed(right_clause)?
     };
+    // The "and" joining the repeated trigger introductions.
+    crate::word_claims::claim_tokens(&tokens[separator..=separator]);
     Ok(Some(TriggerSpec::Either(
         Box::new(left),
         Box::new(apply_leading_trigger_intro_surface(right, right_tokens)),
@@ -3523,7 +3535,7 @@ fn try_parse_player_plays_card_lexed(
     let tokens = strip_leading_trigger_intro(raw_tokens);
     let Some(play) = tokens
         .iter()
-        .position(|token| token.is_any_word(&["play", "plays"]))
+        .position(|token| token.matches_any_word(&["play", "plays"]))
     else {
         return Ok(None);
     };
@@ -3543,6 +3555,8 @@ fn try_parse_player_plays_card_lexed(
     // (Mizzix's Mastery, CR 707.12) is not a card (CR 108.2, 109.1). A land
     // played is always a card, so both arms share the restriction.
     filter.physical_card = true;
+    // The "play(s)" verb the scan above found.
+    crate::word_claims::claim_tokens(&tokens[play..=play]);
     Ok(Some(apply_leading_trigger_intro_surface(
         TriggerSpec::AnyOf(vec![
             TriggerSpec::SpellCast {
@@ -3567,15 +3581,17 @@ fn try_parse_land_play_or_spell_cast_lexed(
     raw_tokens: &[OwnedLexToken],
 ) -> Result<Option<TriggerSpec>, CardTextError> {
     let tokens = trim_edge_punctuation_tokens(strip_leading_trigger_intro(raw_tokens));
-    let Some(play) = tokens.iter().position(|token| token.is_word("play") || token.is_word("plays")) else { return Ok(None); };
+    let Some(play) = tokens.iter().position(|token| token.matches_word("play") || token.matches_word("plays")) else { return Ok(None); };
     if parse_trigger_subject_player_filter(&crate::lexer::token_word_refs(&tokens[..play])).is_none() { return Ok(None); }
     let tail = crate::lexer::token_word_refs(&tokens[play + 1..]);
     if !matches!(tail.as_slice(), ["a", "land", "or", "cast" | "casts", "a", "spell"]) { return Ok(None); }
-    let or = tokens.iter().position(|token| token.is_word("or")).expect("complete union has or");
+    let or = tokens.iter().position(|token| token.matches_word("or")).expect("complete union has or");
     let land = parse_trigger_clause_lexed_unstacked(&tokens[..or])?;
     let mut cast = tokens[..play].to_vec();
     cast.extend_from_slice(&tokens[or + 1..]);
     let spell = parse_trigger_clause_lexed_unstacked(&cast)?;
+    // The "or" joining the two arms.
+    crate::word_claims::claim_tokens(&tokens[or..=or]);
     Ok(Some(apply_leading_trigger_intro_surface(TriggerSpec::Either(Box::new(land), Box::new(spell)), raw_tokens)))
 }
 
@@ -3689,9 +3705,9 @@ fn try_parse_trigger_union_lexed(tokens: &[OwnedLexToken]) -> Option<TriggerSpec
             let subject_end = left
                 .windows(3)
                 .position(|words| {
-                    (words[0].is_word("is") || words[0].is_word("are"))
-                        && words[1].is_word("put")
-                        && words[2].is_word("into")
+                    (words[0].matches_word("is") || words[0].matches_word("are"))
+                        && words[1].matches_word("put")
+                        && words[2].matches_word("into")
                 })
                 .unwrap_or(left.len().min(4));
             (0..=subject_end).rev().collect()

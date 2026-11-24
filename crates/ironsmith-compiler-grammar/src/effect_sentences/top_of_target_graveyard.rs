@@ -34,7 +34,7 @@ pub(crate) fn parse(tokens: &[OwnedLexToken]) -> Option<Vec<EffectAst>> {
     // The quality's tokens: everything in the condition after "is".
     let quality_start = condition
         .iter()
-        .rposition(|token| token.is_word("is"))?
+        .rposition(|token| token.matches_word("is"))?
         + 1;
     let mut quality_filter =
         crate::object_filters::parse_object_filter(&condition[quality_start..], false).ok()?;
@@ -61,10 +61,10 @@ pub(crate) fn parse(tokens: &[OwnedLexToken]) -> Option<Vec<EffectAst>> {
     crate::word_claims::claim_tokens(body);
     let player_tokens_start = condition
         .iter()
-        .position(|token| token.is_word("target"))?;
+        .position(|token| token.matches_word("target"))?;
     let player_tokens_end = condition
         .iter()
-        .position(|token| token.is_word("graveyard"))?;
+        .position(|token| token.matches_word("graveyard"))?;
     let target_player = TargetAst::Player(
         PlayerFilter::Any,
         crate::util::span_from_tokens(&condition[player_tokens_start..player_tokens_end]),

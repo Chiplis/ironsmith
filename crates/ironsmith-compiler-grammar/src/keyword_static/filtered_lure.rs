@@ -15,7 +15,7 @@ pub fn parse_filtered_creatures_able_to_block_source_line(
     if !tokens.first().is_some_and(|token| token.is_word("all")) {
         return Ok(None);
     }
-    let Some(able_idx) = tokens.iter().position(|token| token.is_word("able")) else {
+    let Some(able_idx) = tokens.iter().position(|token| token.matches_word("able")) else {
         return Ok(None);
     };
     if able_idx < 2

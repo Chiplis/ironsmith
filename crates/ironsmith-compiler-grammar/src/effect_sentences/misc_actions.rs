@@ -648,7 +648,7 @@ pub fn parse_get(
         return Ok(EffectAst::subject_verb_poison_counters(player, count));
     }
 
-    if let Some(rad_idx) = tokens.iter().position(|token| token.is_word("rad"))
+    if let Some(rad_idx) = tokens.iter().position(|token| token.matches_word("rad"))
         && tokens
             .get(rad_idx + 1)
             .is_some_and(|token| token.is_word("counter") || token.is_word("counters"))
@@ -656,6 +656,8 @@ pub fn parse_get(
         // "gets N rad counters [for each ...]" (CR 122.1i). Any other tail
         // ("... if they don't have any rad counters") is a condition this
         // shape does not model, so reject it instead of dropping it.
+        // "rad" names the counter kind every reading below gives the player.
+        crate::word_claims::claim_tokens(&tokens[rad_idx..=rad_idx]);
         let count_tokens = &tokens[..rad_idx];
         let tail = &tokens[rad_idx + 2..];
         let tail = if tail.last().is_some_and(|token| token.kind == TokenKind::Period) {
@@ -938,7 +940,7 @@ pub(crate) fn parse_additional_step_tail(
         Some(last) if last.kind == TokenKind::Period => &tokens[..tokens.len() - 1],
         _ => tokens,
     };
-    let additional = tokens.iter().position(|token| token.is_word("additional"))?;
+    let additional = tokens.iter().position(|token| token.matches_word("additional"))?;
     if additional == 0 || tokens.iter().any(|token| token.as_word().is_none()) {
         return None;
     }
@@ -1126,7 +1128,7 @@ pub fn parse_untap(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextError>
     if let UntapActionShape::Explicit { target_tokens } =
         misc_action_shapes::parse_untap_action_tokens(tokens)
         && let Some(and_idx) = target_tokens.windows(2).position(|pair| {
-            pair[0].is_word("and") && (pair[1].is_word("all") || pair[1].is_word("each"))
+            pair[0].matches_word("and") && (pair[1].matches_word("all") || pair[1].matches_word("each"))
         })
         && and_idx > 0
         && and_idx + 2 < target_tokens.len()

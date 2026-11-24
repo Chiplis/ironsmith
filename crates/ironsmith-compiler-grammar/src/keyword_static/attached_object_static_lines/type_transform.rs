@@ -107,7 +107,7 @@ pub fn parse_attached_type_transform_line(
                 .iter()
                 .enumerate()
                 .find_map(|(index, token)| {
-                    (token.is_word("and")
+                    (token.matches_word("and")
                         && split
                             .keyword_tokens
                             .get(index + 1)
@@ -115,7 +115,7 @@ pub fn parse_attached_type_transform_line(
                         && split
                             .keyword_tokens
                             .get(index + 2)
-                            .is_some_and(|next| next.is_word(crate::keyword_forms::GOADED))
+                            .is_some_and(|next| next.matches_word(crate::keyword_forms::GOADED))
                         && trim_edge_punctuation(&split.keyword_tokens[index + 3..]).is_empty())
                     .then_some(index)
                 });

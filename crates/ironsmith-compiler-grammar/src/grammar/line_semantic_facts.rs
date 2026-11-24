@@ -136,8 +136,8 @@ fn parse_as_transforms_effect_program_facts(
             }
             let comma_idx = destination_start + offset;
             let tail = &tokens[comma_idx + 1..];
-            (tail.first().is_some_and(|token| token.is_word("it"))
-                && tail.get(1).is_some_and(|token| token.is_word("becomes")))
+            (tail.first().is_some_and(|token| token.matches_word("it"))
+                && tail.get(1).is_some_and(|token| token.matches_word("becomes")))
             .then_some(comma_idx)
         })
         .or_else(|| {

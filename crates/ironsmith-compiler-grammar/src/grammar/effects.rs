@@ -1571,7 +1571,7 @@ pub fn parse_prevent_damage_sentence_lexed(
         if source_words.len() > 3
             && source_words.ends_with(&["of", "your", "choice"])
             && let Some(chosen_tokens) = source_tokens.get(..source_tokens.len().saturating_sub(3))
-            && !chosen_tokens.iter().any(|token| token.is_word("source"))
+            && !chosen_tokens.iter().any(|token| token.matches_word("source"))
             && !is_prevent_damage_explicit_target_source(chosen_tokens)
             && let Ok(source_filter) = parse_object_filter(chosen_tokens, false)
         {
@@ -1932,7 +1932,7 @@ pub fn parse_conditional_sentence_with_grammar_entrypoint_lexed(
     if tokens.first().is_some_and(|token| token.is_word("if"))
         && tokens.get(1).is_some_and(|token| token.is_word("target"))
         && let Some(comma) = tokens.iter().position(|token| token.is_comma())
-        && let Some(is_index) = tokens[..comma].iter().position(|token| token.is_word("is"))
+        && let Some(is_index) = tokens[..comma].iter().position(|token| token.matches_word("is"))
     {
         let predicate_words = parser_token_word_refs(&tokens[is_index + 1..comma]);
         if matches!(
@@ -1943,7 +1943,7 @@ pub fn parse_conditional_sentence_with_grammar_entrypoint_lexed(
             let mut matching = ObjectFilter::default();
             matching.chosen_creature_type = true;
             let if_true = parse_effect_chain_lexed(&tokens[comma + 1..])?;
-            crate::word_claims::claim_tokens(&tokens[is_index + 1..comma]);
+            crate::word_claims::claim_tokens(&tokens[is_index..comma]);
             return Ok(vec![
                 EffectAst::subject_verb_explicit_target_only(target),
                 EffectAst::Conditionals(ConditionalEffectAst::Conditional {
@@ -1972,11 +1972,13 @@ pub fn parse_conditional_sentence_with_grammar_entrypoint_lexed(
     if tokens.first().is_some_and(|token| token.is_word("if"))
         && let Some(comma) = tokens.iter().position(|token| token.is_comma())
         && let Some(or) = tokens[..comma].windows(2).position(|pair|
-            pair[0].is_word("or") && pair[1].is_word("if"))
+            pair[0].matches_word("or") && pair[1].matches_word("if"))
         && let Some(result) = super::structure::parse_if_result_predicate(&tokens[1..or])
     {
         let predicate = super::structure::parse_predicate_with_grammar_entrypoint_lexed(&tokens[or + 2..comma])?;
         let effects = parse_effect_chain_lexed(&tokens[comma + 1..])?;
+        // The "or if" joining the two alternative gates.
+        crate::word_claims::claim_tokens(&tokens[or..or + 2]);
         return Ok(vec![EffectAst::Conditionals(ConditionalEffectAst::Conditional {
             predicate,
             if_true: effects.clone(),
@@ -2293,7 +2295,7 @@ pub(crate) fn parse_named_player_untap_restriction(
         || tail == ["untap", "during", "their", "next", "untap", "step"];
     if !explicit_player && !referenced_player { return Ok(None); }
     let subject = &tokens[..negation.first];
-    let (object_tokens, player, controller_bound) = if let Some(target) = subject.iter().position(|token| token.is_word("target")) {
+    let (object_tokens, player, controller_bound) = if let Some(target) = subject.iter().position(|token| token.matches_word("target")) {
         let player_words = parser_token_word_refs(&subject[target..]);
         let player = match player_words.as_slice() {
             ["target", "opponent", "controls"] => PlayerFilter::Opponent,
@@ -2338,7 +2340,7 @@ pub(crate) fn parse_source_and_target_cant_effect(
         return Ok(None);
     };
     let subject = &tokens[..negation.first];
-    let Some(and_index) = subject.iter().position(|token| token.is_word("and")) else {
+    let Some(and_index) = subject.iter().position(|token| token.matches_word("and")) else {
         return Ok(None);
     };
     let left = &subject[..and_index];
@@ -2662,7 +2664,7 @@ fn parse_mana_gated_restriction_pair(
     };
     let Some(split) = tokens
         .windows(2)
-        .position(|pair| pair[0].is_word("and") && is_cant(&pair[1]))
+        .position(|pair| pair[0].matches_word("and") && is_cant(&pair[1]))
     else {
         return Ok(None);
     };
@@ -2674,10 +2676,12 @@ fn parse_mana_gated_restriction_pair(
     second.extend_from_slice(&tokens[split + 1..]);
     let mut target: Option<crate::cards::builders::TargetAst> = None;
     let mut gated = Vec::new();
+    let mut condition_keywords = Vec::new();
     for segment in [first.to_vec(), second] {
-        let Some(if_idx) = segment.iter().rposition(|token| token.is_word("if")) else {
+        let Some(if_idx) = segment.iter().rposition(|token| token.matches_word("if")) else {
             return Ok(None);
         };
+        condition_keywords.push(segment[if_idx].clone());
         let Some(predicate) = crate::grammar::primitives::probe_shape(
             super::filters::parse_predicate(&segment[if_idx + 1..]),
         ) else {
@@ -2719,6 +2723,8 @@ fn parse_mana_gated_restriction_pair(
     let Some(target) = target else {
         return Ok(None);
     };
+    // Each half's "if", split from its restriction above.
+    crate::word_claims::claim_tokens(&condition_keywords);
     let mut effects = vec![EffectAst::subject_verb_target_only(target)];
     effects.extend(gated);
     Ok(Some(effects))

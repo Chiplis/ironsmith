@@ -142,12 +142,14 @@ pub fn parse_prevent_next_damage_clause(
     if !divided_targets
         && !shape.protects_you_and_permanents_you_control
         && !shape.source_of_your_choice
-        && let Some(by) = shape.target_tokens.iter().rposition(|token| token.is_word("by"))
+        && let Some(by) = shape.target_tokens.iter().rposition(|token| token.matches_word("by"))
         && by > 0
         && by + 1 < shape.target_tokens.len()
         && let Ok(source @ TargetAst::Tagged(..)) =
             parse_target_phrase(&shape.target_tokens[by + 1..])
     {
+        // The "by" before the named source, found by the scan above.
+        crate::word_claims::claim_tokens(&shape.target_tokens[by..=by]);
         damage_source = Some(source);
         recipient_tokens = &shape.target_tokens[..by];
     }
@@ -1620,7 +1622,7 @@ fn parse_source_of_your_choice_filter(
     };
     if !base.last().is_some_and(|token| token.is_word("source"))
         || base.iter().any(|token| {
-            token.is_any_word(&["target", "and", "or", "color", "that", "other"])
+            token.matches_any_word(&["target", "and", "or", "color", "that", "other"])
         })
     {
         return Ok(None);
@@ -1742,13 +1744,13 @@ pub fn parse_prevent_all_damage_clause(
             // following "that creature"), protecting every recipient.
             if source_tokens
                 .windows(2)
-                .any(|pair| pair[0].is_word("other") && pair[1].is_word("than"))
+                .any(|pair| pair[0].matches_word("other") && pair[1].matches_word("than"))
             {
                 return Err(CardTextError::ParseError(
                     "all-damage source exclusion needs its own complete target binding".into(),
                 ));
             }
-            if source_tokens.iter().any(|token| token.is_word("target")) {
+            if source_tokens.iter().any(|token| token.matches_word("target")) {
                 let source_target = parse_target_phrase(source_tokens)?;
                 return Ok(Some(
                     EffectAst::subject_verb_prevent_all_damage_to_target_from_target_source(
@@ -1763,7 +1765,7 @@ pub fn parse_prevent_all_damage_clause(
             // chosen on resolution (CR 609.7a); the relative clause only
             // limits that choice.
             if let Some(choice_idx) = source_tokens.windows(3).position(|window| {
-                window[0].is_word("of") && window[1].is_word("your") && window[2].is_word("choice")
+                window[0].matches_word("of") && window[1].matches_word("your") && window[2].matches_word("choice")
             }) && choice_idx + 3 < source_tokens.len()
                 && let base = &source_tokens[..choice_idx]
                 && base.last().is_some_and(|token| token.is_word("source"))
@@ -1780,6 +1782,9 @@ pub fn parse_prevent_all_damage_clause(
                         "chosen-color source must retain its explicit decision".into(),
                     ));
                 }
+                // "of your choice", found by the scan above: the source is
+                // chosen on resolution.
+                crate::word_claims::claim_tokens(&source_tokens[choice_idx..choice_idx + choice_len]);
                 let mut effect = filtered_prevention(
                     TargetAst::ObjectOrPlayer(ObjectFilter::default(), PlayerFilter::Any, None),
                     choice_filter,
@@ -1821,7 +1826,7 @@ pub fn parse_prevent_all_damage_clause(
                 .is_some_and(|token| token.is_word("that"))
                 && (source_tokens
                     .iter()
-                    .any(|token| token.is_word("sources"))
+                    .any(|token| token.matches_word("sources"))
                     || source_tokens.get(1).is_some_and(|token| {
                         token.is_any_word(&[
                             "sources",
@@ -1859,7 +1864,7 @@ pub fn parse_prevent_all_damage_clause(
             }
             if source_tokens
                 .windows(2)
-                .any(|pair| pair[0].is_word("other") && pair[1].is_word("than"))
+                .any(|pair| pair[0].matches_word("other") && pair[1].matches_word("than"))
             {
                 return Err(CardTextError::ParseError(
                     "all-damage source exclusion needs its own complete target binding".into(),
@@ -1888,7 +1893,7 @@ pub fn parse_prevent_all_damage_clause(
                 }
                 return Ok(Some(effect.with_prevention_source_would_deal_surface()));
             }
-            if source_tokens.iter().any(|token| token.is_word("target"))
+            if source_tokens.iter().any(|token| token.matches_word("target"))
                 || source_tokens.first().is_some_and(|token| {
                     token.is_any_word(&["this", "that", "those", "it", "them"])
                 })
@@ -1970,14 +1975,14 @@ pub fn parse_prevent_all_damage_clause(
                 clause_shapes::PreventAllDamageSourceShape::Filter(source_tokens) => {
                     if source_tokens
                         .windows(2)
-                        .any(|pair| pair[0].is_word("other") && pair[1].is_word("than"))
+                        .any(|pair| pair[0].matches_word("other") && pair[1].matches_word("than"))
                     {
                         return Err(CardTextError::ParseError(
                             "all-damage source exclusion needs its own complete target binding"
                                 .into(),
                         ));
                     }
-                    if source_tokens.iter().any(|token| token.is_word("target")) {
+                    if source_tokens.iter().any(|token| token.matches_word("target")) {
                         let source_target = parse_target_phrase(source_tokens)?;
                         return Ok(Some(
                             EffectAst::subject_verb_prevent_all_damage_to_target_from_target_source(
@@ -2196,7 +2201,7 @@ pub fn parse_redirect_next_damage_sentence(
                         parse_target_phrase(&shape.destination)?,
                     )
                 };
-            let dynamic_set = !shape.recipient.iter().any(|token| token.is_word("target"))
+            let dynamic_set = !shape.recipient.iter().any(|token| token.matches_word("target"))
                 && (recipient_words == ["you"]
                     || recipient_words.first() == Some(&"any")
                     || recipient_words
@@ -2210,7 +2215,7 @@ pub fn parse_redirect_next_damage_sentence(
                 (None, None, Some(parse_target_phrase(&shape.recipient)?))
             };
             let (source_filter, source_target) = match &shape.source {
-                Some(source) if source.iter().any(|token| token.is_word("target")) => {
+                Some(source) if source.iter().any(|token| token.matches_word("target")) => {
                     (ObjectFilter::default(), Some(parse_target_phrase(source)?))
                 }
                 Some(source) => (
@@ -2323,7 +2328,7 @@ pub fn parse_redirect_next_damage_sentence(
             };
             let target = if target_tokens.is_empty() {
                 None
-            } else if let Some(index) = target_tokens.iter().position(|token| token.is_word("and/or") || token.is_word("or") || token.is_word("and")) {
+            } else if let Some(index) = target_tokens.iter().position(|token| token.matches_word("and/or") || token.matches_word("or") || token.matches_word("and")) {
                 let left = &target_tokens[..index];
                 let right = &target_tokens[index + 1..];
                 let left_words = crate::lexer::TokenWordView::new(left).word_refs();
@@ -2917,7 +2922,7 @@ pub fn parse_keyword_mechanic_clause(
 ) -> Result<Option<EffectAst>, CardTextError> {
     // A keyword action can have a player actor, just as draw or sacrifice can.
     // Keep the creature choice inside that player's scope; it is not a target.
-    if let Some(verb) = tokens.iter().position(|token| token.is_word("blights")) {
+    if let Some(verb) = tokens.iter().position(|token| token.matches_word("blights")) {
         let (player, announced_target) = match parse_target_phrase(&tokens[..verb])? {
             TargetAst::Player(player, span) => (player, span.is_some()),
             _ => return Ok(None),
@@ -2927,6 +2932,8 @@ pub fn parse_keyword_mechanic_clause(
         let Some(mut effect) = parse_keyword_mechanic_clause(&action_tokens)? else {
             return Ok(None);
         };
+        // The inflected verb found above, read as "blight" by the clause.
+        crate::word_claims::claim_tokens(&tokens[verb..=verb]);
         if let EffectAst::SubjectVerb(SubjectVerbEffectAst {
             action:
                 SubjectVerbActionAst::Counters(crate::cards::builders::CounterActionAst::PutCounters {
@@ -2965,7 +2972,7 @@ pub fn parse_keyword_mechanic_clause(
     }
     // "Its controller amasses Goblins X, where X is that creature's power."
     // (Azog, Moria's Ruin): the named player amasses (CR 701.47a).
-    if let Some(verb) = tokens.iter().position(|token| token.is_word("amasses"))
+    if let Some(verb) = tokens.iter().position(|token| token.matches_word("amasses"))
         && verb > 0
     {
         let SubjectAst::Player(player) = crate::util::parse_subject(&tokens[..verb]) else {
@@ -2976,6 +2983,8 @@ pub fn parse_keyword_mechanic_clause(
         let Some(mut effect) = parse_keyword_mechanic_clause(&action_tokens)? else {
             return Ok(None);
         };
+        // The inflected verb found above, read as "amass" by the clause.
+        crate::word_claims::claim_tokens(&tokens[verb..=verb]);
         if let EffectAst::SubjectVerb(subject_verb) = &mut effect {
             subject_verb.subject.player = player;
         }
@@ -3058,7 +3067,7 @@ pub fn parse_keyword_mechanic_clause(
             if subtype.is_some()
                 && let Some(subtype_token) = tokens
                     .iter()
-                    .position(|token| token.is_word("amass"))
+                    .position(|token| token.matches_word("amass"))
                     .and_then(|index| tokens.get(index + 1..index + 2))
             {
                 crate::word_claims::claim_tokens(subtype_token);
@@ -3196,7 +3205,7 @@ pub fn parse_keyword_mechanic_clause(
                 let and_positions = target_tokens
                     .iter()
                     .enumerate()
-                    .filter(|(_, token)| token.is_word("and"))
+                    .filter(|(_, token)| token.matches_word("and"))
                     .map(|(index, _)| index)
                     .collect::<Vec<_>>();
                 let conjoined = match and_positions.as_slice() {

@@ -157,7 +157,7 @@ pub(super) fn parse(tokens: &[OwnedLexToken]) -> Result<Option<Vec<EffectAst>>, 
     spec.may_look_at_top = true;
     spec.cast_mana_spend_mode = mana_spend_mode;
     // The permission surface starts at its own first member ("you may look").
-    if let Some(start) = tokens.iter().position(|token| token.is_word("you")) {
+    if let Some(start) = tokens.iter().position(|token| token.matches_word("you")) {
         let rendered = crate::lexer::render_token_slice(&tokens[start..]);
         let surface = rendered.trim().trim_end_matches('.');
         let mut chars = surface.chars();

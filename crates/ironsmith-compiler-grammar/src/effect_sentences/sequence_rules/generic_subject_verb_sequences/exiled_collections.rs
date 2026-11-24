@@ -54,7 +54,7 @@ pub(crate) fn find_exiled_top_collection_tag(effects: &[EffectAst]) -> Option<Ta
 fn explicit_battlefield_controller(tokens: &[OwnedLexToken]) -> Option<ReturnControllerAst> {
     tokens.iter().enumerate().find_map(|(index, token)| {
         token
-            .is_word("under")
+            .matches_word("under")
             .then(|| {
                 control_copy_attach_shapes::parse_battlefield_controller_prefix(&tokens[index..])
             })

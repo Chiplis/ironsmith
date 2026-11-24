@@ -78,15 +78,15 @@ fn parse_base_axis_clause_shape<'a>(
     axis: &'static str,
 ) -> Result<Option<BasePowerClauseShape<'a>>, CardTextError> {
     if tokens.first().is_some_and(|token| token.is_word("change")) {
-        let Some(base) = tokens.windows(3).position(|words| words[0].is_word("base")
-            && words[1].is_word(axis) && words[2].is_word("to")) else { return Ok(None); };
+        let Some(base) = tokens.windows(3).position(|words| words[0].matches_word("base")
+            && words[1].matches_word(axis) && words[2].matches_word("to")) else { return Ok(None); };
         if base <= 1 { return Ok(None); }
         // The assignment owns its duration. Aggregate values consume their
         // complete scope, so detach the duration before reading quantities
         // such as "1 plus the greatest power among other creatures you control".
         let assignment = trim_edge_punctuation_tokens(&tokens[base + 3..]);
         let (value_tokens, duration) = if let Some(start) = assignment.iter()
-            .position(|token| token.is_word("until"))
+            .position(|token| token.matches_word("until"))
         {
             let Some(duration) = complete_duration(&assignment[start..]) else {
                 return Ok(None);
@@ -97,6 +97,8 @@ fn parse_base_axis_clause_shape<'a>(
         };
         let Some((power, used)) = crate::grammar::shared_util::value_expr::parse_value_expr_tokens(value_tokens) else { return Ok(None); };
         if used != value_tokens.len() { return Ok(None); }
+        // "base <axis> to": the assignment located above.
+        crate::word_claims::claim_tokens(&tokens[base..base + 3]);
         return Ok(Some(BasePowerClauseShape { power, target_tokens: &tokens[1..base], duration }));
     }
     let Some((subject, rest)) = split_subject_and_rest(tokens) else {
@@ -156,7 +158,7 @@ fn parse_base_axis_clause_shape<'a>(
 
 fn parse_base_pair_assignment_values(tokens: &[OwnedLexToken]) -> Option<(Value, Value, Until)> {
     let tokens = trim_edge_punctuation_tokens(tokens);
-    let duration_start = tokens.iter().position(|token| token.is_word("until"));
+    let duration_start = tokens.iter().position(|token| token.matches_word("until"));
     let (values, duration) = if let Some(start) = duration_start {
         (&tokens[..start], complete_duration(&tokens[start..])?)
     } else { (tokens, Until::Forever) };
@@ -174,10 +176,10 @@ pub fn parse_base_power_toughness_clause_shape(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<BasePowerToughnessClauseShape<'_>>, CardTextError> {
     if let Some(base) = tokens.windows(3).position(|words|
-        words[0].is_word("base") && words[1].is_word("power") && words[2].is_word("becomes"))
+        words[0].matches_word("base") && words[1].matches_word("power") && words[2].matches_word("becomes"))
         && let Some(second) = tokens.windows(5).position(|words|
-            words[0].is_word("and") && words[1].is_word("its")
-                && words[2].is_word("base") && words[3].is_word("toughness") && words[4].is_word("becomes"))
+            words[0].matches_word("and") && words[1].matches_word("its")
+                && words[2].matches_word("base") && words[3].matches_word("toughness") && words[4].matches_word("becomes"))
         && second > base + 3
     {
         let parse_value = crate::grammar::shared_util::value_expr::parse_value_expr_tokens;
@@ -194,17 +196,23 @@ pub fn parse_base_power_toughness_clause_shape(
                     trailing
                 } else { return Ok(None); };
             if !target_tokens.is_empty() {
+                // "base power becomes" and "and its base toughness becomes",
+                // the two assignments this shape was split at.
+                crate::word_claims::claim_tokens(&tokens[base..base + 3]);
+                crate::word_claims::claim_tokens(&tokens[second..second + 5]);
                 return Ok(Some(BasePowerToughnessClauseShape { power, toughness, target_tokens, duration, where_x_tokens: None }));
             }
         }
     }
     if tokens.first().is_some_and(|token| token.is_word("change"))
         && let Some(base) = tokens.windows(5).position(|words|
-            words[0].is_word("base") && words[1].is_word("power")
-                && words[2].is_word("and") && words[3].is_word("toughness") && words[4].is_word("to"))
+            words[0].matches_word("base") && words[1].matches_word("power")
+                && words[2].matches_word("and") && words[3].matches_word("toughness") && words[4].matches_word("to"))
         && base > 1
         && let Some((power, toughness, duration)) = parse_base_pair_assignment_values(&tokens[base + 5..])
     {
+        // "base power and toughness to": the assignment located above.
+        crate::word_claims::claim_tokens(&tokens[base..base + 5]);
         return Ok(Some(BasePowerToughnessClauseShape {
             power, toughness, target_tokens: &tokens[1..base], duration, where_x_tokens: None,
         }));
@@ -217,11 +225,13 @@ pub fn parse_base_power_toughness_clause_shape(
         .map(|(_, rest)| (rest, false));
     if let Some((rest, imperative)) = imperative.or(copular)
     {
-        let Some(to) = rest.iter().rposition(|token| if imperative { token.is_word("to") }
-            else { token.is_any_word(&["become", "becomes"]) }) else { return Ok(None); };
+        let Some(to) = rest.iter().rposition(|token| if imperative { token.matches_word("to") }
+            else { token.matches_any_word(&["become", "becomes"]) }) else { return Ok(None); };
         let Some((power, toughness, duration)) = parse_base_pair_assignment_values(&rest[to + 1..])
             else { return Ok(None); };
         if to == 0 { return Ok(None); }
+        // The "to"/"become(s)" the target was split from the values at.
+        crate::word_claims::claim_tokens(&rest[to..=to]);
         return Ok(Some(BasePowerToughnessClauseShape {
             power, toughness, target_tokens: &rest[..to], duration, where_x_tokens: None,
         }));

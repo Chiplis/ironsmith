@@ -1781,7 +1781,7 @@ fn source_kicked_twice(words: &[&str]) -> Option<PredicateAst> {
 fn negated_mana_spent(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
     let negation = tokens
         .iter()
-        .position(|token| token.is_word("wasn't") || token.is_word("wasnt"))?;
+        .position(|token| token.matches_word("wasn't") || token.matches_word("wasnt"))?;
     if negation == 0 || !tokens.get(negation + 1)?.is_word("spent") {
         return None;
     }

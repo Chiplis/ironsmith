@@ -3,8 +3,8 @@ use super::*;
 pub(crate) fn read(tokens:&[OwnedLexToken])->Result<Option<EffectAst>,CardTextError>{
     let tokens=crate::util::trim_edge_punctuation_tokens(tokens);
     if !tokens.first().is_some_and(|token|token.is_word("link")){return Ok(None);}
-    let Some(to)=tokens.iter().position(|token|token.is_word("to"))else{return Ok(None)};
-    let Some(under)=tokens.windows(2).position(|pair|pair[0].is_word("under")&&pair[1].is_word("the"))else{return Ok(None)};
+    let Some(to)=tokens.iter().position(|token|token.matches_word("to"))else{return Ok(None)};
+    let Some(under)=tokens.windows(2).position(|pair|pair[0].matches_word("under")&&pair[1].matches_word("the"))else{return Ok(None)};
     if to<=1||under<=to+1||under+3>=tokens.len()||!tokens.last().is_some_and(|token|token.is_word("relationship")){return Ok(None);}
     let name_tokens=&tokens[under+2..tokens.len()-1];
     if name_tokens.iter().any(|token|token.kind!=TokenKind::Word){return Ok(None);}

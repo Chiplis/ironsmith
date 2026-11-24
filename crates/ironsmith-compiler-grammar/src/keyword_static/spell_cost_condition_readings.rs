@@ -446,12 +446,12 @@ pub(super) fn read_bound_static_condition(
 fn cast_this_turn_descriptor(
     tokens: &[OwnedLexToken],
 ) -> Option<(&[OwnedLexToken], Option<&OwnedLexToken>)> {
-    let cast = tokens.iter().position(|token| token.is_word("cast"))?;
+    let cast = tokens.iter().position(|token| token.matches_word("cast"))?;
     let this = tokens
         .windows(2)
-        .rposition(|pair| pair[0].is_word("this") && pair[1].is_word("turn"))?;
+        .rposition(|pair| pair[0].matches_word("this") && pair[1].matches_word("turn"))?;
     let mut start = cast + 1;
-    let another = tokens.get(start).filter(|token| token.is_word("another"));
+    let another = tokens.get(start).filter(|token| token.matches_word("another"));
     if another.is_some() || tokens.get(start).is_some_and(|token| token.is_any_word(&["a", "an"])) {
         start += 1;
     }

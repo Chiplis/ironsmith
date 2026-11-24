@@ -142,7 +142,7 @@ fn parse_direct_controller_sacrifice_draw_program(
         .iter()
         .enumerate()
         .skip(sacrifice_idx + 1)
-        .find_map(|(index, token)| token.is_word("and").then_some(index))
+        .find_map(|(index, token)| token.matches_word("and").then_some(index))
     else {
         return Ok(None);
     };
@@ -1135,7 +1135,7 @@ fn parse_enters_tapped_turn_condition_line(tokens: &[OwnedLexToken]) -> Option<S
 
     let marker = tokens
         .iter()
-        .position(|token| token.is_any_word(&["if", "unless"]))?;
+        .position(|token| token.matches_any_word(&["if", "unless"]))?;
     let unless = tokens[marker].is_word("unless");
     let head = crate::lexer::trim_lexed_commas(&tokens[..marker]);
     if !matches!(
@@ -1206,6 +1206,8 @@ fn parse_enters_tapped_turn_condition_line(tokens: &[OwnedLexToken]) -> Option<S
             crate::grammar::anthem_grants::parse_fixed_static_condition_kind(condition_tokens),
             Some(FixedStaticConditionKind::NotYourTurn)
         );
+    // The "if"/"unless" the entry was split from its condition at.
+    crate::word_claims::claim_tokens(&tokens[marker..=marker]);
     let display = crate::lexer::render_token_slice(tokens);
     Some(if if_not_surface {
         StaticAbility::enters_tapped_if_not_condition(condition, display)

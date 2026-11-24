@@ -36,7 +36,7 @@ pub fn parse_pay_segment_tokens(
     // "pay its mana cost reduced by {2}" (Flash): the referenced object's
     // mana cost with that much generic mana removed.
     if words.starts_with(&["pay", "its", "mana", "cost", "reduced", "by"])
-        && let Some(by) = tokens.iter().position(|token| token.is_word("by"))
+        && let Some(by) = tokens.iter().position(|token| token.matches_word("by"))
         && let Ok(reduction) = crate::grammar::values::parse_mana_cost_tokens(
             crate::util::trim_edge_punctuation_tokens(&tokens[by + 1..]),
         )
@@ -347,7 +347,7 @@ fn parse_mana_per_count_payment<'a>(
         .parse_next(input)?;
     let for_index = tokens
         .iter()
-        .position(|token| token.is_word("for"))
+        .position(|token| token.matches_word("for"))
         .ok_or_else(|| primitives::backtrack_err("mana payment", "for-each multiplier"))?;
     let Some(ActivationCostSegmentCst::Mana(base)) =
         parse_bare_symbol_segment_tokens(&tokens[..for_index])

@@ -388,7 +388,7 @@ fn split_card_type_union_segments(tokens: &[OwnedLexToken]) -> Vec<&[OwnedLexTok
         return segments;
     }
 
-    if !tokens.iter().any(|token| token.is_word("and/or")) {
+    if !tokens.iter().any(|token| token.matches_word("and/or")) {
         return primitives::split_lexed_slices_on_or(tokens);
     }
 

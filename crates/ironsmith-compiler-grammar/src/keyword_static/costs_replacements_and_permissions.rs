@@ -20,8 +20,9 @@ fn claim_cost_phrase(words: &[&str], phrase: &[&str]) {
     }
 }
 
-fn is_exact_per_target_cost_modifier(words: &[&str]) -> bool {
-    words.iter().enumerate().any(|(idx, word)| {
+/// Where "for each target" (not "... beyond the first") starts in `words`.
+fn exact_per_target_cost_modifier_start(words: &[&str]) -> Option<usize> {
+    words.iter().enumerate().position(|(idx, word)| {
         *word == "for"
             && words.get(idx + 1) == Some(&"each")
             && words.get(idx + 2) == Some(&"target")
@@ -886,7 +887,7 @@ pub fn parse_spells_cost_modifier_line(
                 .iter()
                 .skip(1)
                 .position(|token| {
-                    token.is_any_word(&["from", "that", "with", "without"])
+                    token.matches_any_word(&["from", "that", "with", "without"])
                         || matches!(
                             token.kind,
                             crate::lexer::TokenKind::Period | crate::lexer::TokenKind::Semicolon
@@ -1088,8 +1089,17 @@ pub fn parse_spells_cost_modifier_line(
     } else {
         parse_per_matching_target_cost_modifier(remaining_tokens)?
     };
+    let exact_per_target = if is_life_cost_modifier {
+        None
+    } else {
+        exact_per_target_cost_modifier_start(&remaining_words)
+    };
+    // "for each target": the per-target repetition of the amount.
+    if let Some(start) = exact_per_target {
+        crate::word_claims::claim_words(&remaining_words[start..start + 3]);
+    }
     let per_target = !is_life_cost_modifier
-        && (is_exact_per_target_cost_modifier(&remaining_words) || per_matching_target.is_some());
+        && (exact_per_target.is_some() || per_matching_target.is_some());
     if let Some(target_filter) = per_matching_target {
         // The spell must target a matching object for the modifier to apply;
         // the engine counts the chosen targets that match it.
@@ -1478,7 +1488,7 @@ pub fn parse_double_conditional_this_spell_cost_reduction_line(
         return Ok(None);
     };
     let split = (costs_idx + 1..tokens.len()).find(|&idx| {
-        tokens[idx].is_word("and")
+        tokens[idx].matches_word("and")
             && tokens
                 .get(idx + 1)
                 .is_some_and(|token| token.mana_group_inner().is_some())
@@ -1492,13 +1502,13 @@ pub fn parse_double_conditional_this_spell_cost_reduction_line(
     // sentence is a second, independent reduction of the same spell.
     let also_sentence = (costs_idx + 1..tokens.len()).find(|&idx| {
         tokens[idx].kind == TokenKind::Period
-            && tokens.get(idx + 1).is_some_and(|token| token.is_word("it"))
+            && tokens.get(idx + 1).is_some_and(|token| token.matches_word("it"))
             && tokens
                 .get(idx + 2)
-                .is_some_and(|token| token.is_word("also"))
+                .is_some_and(|token| token.matches_word("also"))
             && tokens
                 .get(idx + 3)
-                .is_some_and(|token| token.is_word("costs"))
+                .is_some_and(|token| token.matches_word("costs"))
     });
     let (left, right) = if let Some(period_idx) = also_sentence {
         let left = trim_commas(&tokens[..period_idx]);
@@ -1536,6 +1546,16 @@ pub fn parse_double_conditional_this_spell_cost_reduction_line(
             "unsupported compound this-spell cost reduction (clause: '{}')",
             words.join(" ")
         )));
+    }
+    // "It also costs": the second reduction's subject, restated as the
+    // first sentence's "This spell costs"; or the "and" joining the two.
+    match also_sentence {
+        Some(period_idx) => crate::word_claims::claim_tokens(&tokens[period_idx + 1..period_idx + 4]),
+        None => {
+            if let Some(and_idx) = split {
+                crate::word_claims::claim_tokens(&tokens[and_idx..=and_idx]);
+            }
+        }
     }
     Ok(Some(vec![first, second]))
 }
@@ -2030,7 +2050,7 @@ pub fn parse_plotting_cards_cost_modifier_line(
     if !words.starts_with(&["plotting", "cards", "from", "your", "hand", "costs"]) {
         return Ok(None);
     }
-    let Some(costs_index) = tokens.iter().position(|token| token.is_word("costs")) else {
+    let Some(costs_index) = tokens.iter().position(|token| token.matches_word("costs")) else {
         return Ok(None);
     };
     let Some((Value::Fixed(amount), consumed)) =
@@ -2068,7 +2088,7 @@ pub fn parse_morph_costs_cost_modifier_line(
     let Some(cost_index) = tokens
         .iter()
         .enumerate()
-        .filter(|(_, token)| token.is_word("cost"))
+        .filter(|(_, token)| token.matches_word("cost"))
         .map(|(index, _)| index)
         .next()
     else {
@@ -2108,7 +2128,7 @@ pub fn parse_unlock_costs_cost_modifier_line(
     let Some(cost_index) = tokens
         .iter()
         .enumerate()
-        .filter(|(_, token)| token.is_word("cost"))
+        .filter(|(_, token)| token.matches_word("cost"))
         .map(|(index, _)| index)
         .next()
     else {
@@ -2208,7 +2228,7 @@ pub fn parse_foretelling_cards_cost_modifier_line(
         return Ok(None);
     }
 
-    let Some(costs_index) = tokens.iter().position(|token| token.is_word("costs")) else {
+    let Some(costs_index) = tokens.iter().position(|token| token.matches_word("costs")) else {
         return Ok(None);
     };
     let Some((Value::Fixed(amount), consumed)) = parse_cost_modifier_amount(&tokens[costs_index + 1..]) else {
@@ -2238,7 +2258,7 @@ pub fn parse_foretelling_cards_cost_modifier_line(
 pub fn parse_first_foretell_each_turn_free_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbility>, CardTextError> {
-    let Some(costs_index) = tokens.iter().position(|token| token.is_word("costs")) else {
+    let Some(costs_index) = tokens.iter().position(|token| token.matches_word("costs")) else {
         return Ok(None);
     };
     let prefix_words = crate::lexer::parser_token_word_refs(&tokens[..costs_index]);
@@ -3251,7 +3271,7 @@ pub fn parse_subject_are_card_types_in_addition_to_their_other_types_line(
 ) -> Result<Option<Vec<StaticAbility>>, CardTextError> {
     // A postfix source-characteristic condition gates the additive layer-4
     // effect rather than changing the printed subtype of the card everywhere.
-    if let Some(while_at) = tokens.iter().position(|token| token.is_word("while")) {
+    if let Some(while_at) = tokens.iter().position(|token| token.matches_word("while")) {
         let condition_tokens = trim_edge_punctuation(&tokens[while_at + 1..]);
         let words = parser_token_word_refs(&condition_tokens);
         if matches!(words.as_slice(), ["its" | "it's", "a", "creature"]
@@ -3281,7 +3301,7 @@ pub fn parse_subject_are_card_types_in_addition_to_their_other_types_line(
         };
         // The authored family wins over recipient types. A land or land/creature
         // union may receive the chosen creature type without choosing a land type.
-        let explicit_creature_type = fact.descriptor_tokens.iter().any(|token| token.is_word("creature"));
+        let explicit_creature_type = fact.descriptor_tokens.iter().any(|token| token.matches_word("creature"));
         fn includes_land(filter: &ObjectFilter) -> bool {
             filter.card_types.contains(&CardType::Land)
                 || filter.any_of.iter().any(includes_land)
@@ -3535,7 +3555,7 @@ fn complete_characteristic_extended_subject(
                 // type even with a card noun. That default is not an authored
                 // zone and must yield to the explicit nonbattlefield suffix.
                 let explicit_zone = tokens[..split].iter()
-                    .any(|token| token.is_any_word(&["in", "on", "from"]));
+                    .any(|token| token.matches_any_word(&["in", "on", "from"]));
                 if base.has_explicit_card_noun() && !explicit_zone
                     && matches!(base.zone, None | Some(Zone::Battlefield))
                     && base.stack_kind.is_none() && base.any_of.is_empty()
@@ -4068,7 +4088,7 @@ pub fn parse_subject_is_pt_creature_with_keywords_still_land_line(
     let first = trim_edge_punctuation_tokens(first);
     // "... creature with haste" / "... with vigilance and haste": the keyword
     // grant follows the animation descriptor.
-    let with = first.iter().position(|token| token.is_word("with"));
+    let with = first.iter().position(|token| token.matches_word("with"));
     let (animation_tokens, keyword_tokens) = match with {
         Some(index) => (&first[..index], Some(&first[index + 1..])),
         None => (first, None),
@@ -4147,12 +4167,12 @@ pub fn parse_conditional_copular_creature_line(
     if tokens.iter().any(|token| matches!(token.kind, TokenKind::Quote | TokenKind::Period | TokenKind::Semicolon)) {
         return Ok(None);
     }
-    let (body, condition_tokens) = if let Some(split) = split_as_long_as_condition_prefix_lexed(tokens) {
-        (split.remainder_tokens, split.condition_tokens)
+    let (body, condition_tokens, trailing_as_long_as) = if let Some(split) = split_as_long_as_condition_prefix_lexed(tokens) {
+        (split.remainder_tokens, split.condition_tokens, None)
     } else if let Some(index) = tokens.windows(3).position(|part| {
-        part[0].is_word("as") && part[1].is_word("long") && part[2].is_word("as")
+        part[0].matches_word("as") && part[1].matches_word("long") && part[2].matches_word("as")
     }) {
-        (&tokens[..index], &tokens[index + 3..])
+        (&tokens[..index], &tokens[index + 3..], Some(&tokens[index..index + 3]))
     } else { return Ok(None); };
     let Some(be) = static_keyword_line_shapes::parse_animation_copula(body) else { return Ok(None); };
     let contracted = be.token == 0 && body[0].is_any_word(&["it's", "it’s", "its"]);
@@ -4160,7 +4180,7 @@ pub fn parse_conditional_copular_creature_line(
     let source_pronoun = contracted || matches!(parser_token_word_refs(subject_tokens).as_slice(), ["it"]);
     let predicate = &body[be.token + 1..];
     let addition = predicate.windows(3).position(|part| {
-        part[0].is_word("in") && part[1].is_word("addition") && part[2].is_word("to")
+        part[0].matches_word("in") && part[1].matches_word("addition") && part[2].matches_word("to")
     });
     let descriptor = if let Some(index) = addition {
         if type_and_color_facts::parse_other_type_addition_tail_tokens(&predicate[index..]).is_none() {
@@ -4205,7 +4225,7 @@ pub fn parse_conditional_copular_creature_line(
     let filter = if source_pronoun {
         match infer_attached_subject_filter_from_condition_expr(Some(&condition)) {
             Some(filter) => filter,
-            None if condition_tokens.iter().any(|token| token.is_any_word(&["enchanted", "equipped", "fortified"])) => {
+            None if condition_tokens.iter().any(|token| token.matches_any_word(&["enchanted", "equipped", "fortified"])) => {
                 // Do not silently bind an attachment-dependent pronoun to the
                 // granting permanent when a compound antecedent is not modeled.
                 return Err(CardTextError::ParseError("unsupported compound attachment antecedent in copular static".into()));
@@ -4231,8 +4251,12 @@ pub fn parse_conditional_copular_creature_line(
     {
         crate::word_claims::claim_word(article);
     }
-    // The copula ("is", "are", "it's") joining subject and descriptor.
+    // The copula ("is", "are", "it's") joining subject and descriptor, and
+    // a trailing "as long as" the scan above found.
     crate::word_claims::claim_tokens(std::slice::from_ref(&body[be.token]));
+    if let Some(as_long_as) = trailing_as_long_as {
+        crate::word_claims::claim_tokens(as_long_as);
+    }
     Ok(Some(result))
 }
 
@@ -5743,12 +5767,12 @@ pub fn parse_cast_target_restriction_line(
     {
         return Ok(None);
     }
-    let Some(choose_idx) = trimmed.iter().position(|token| token.is_word("choose")) else {
+    let Some(choose_idx) = trimmed.iter().position(|token| token.matches_word("choose")) else {
         return Ok(None);
     };
     let Some(as_offset) = trimmed[choose_idx + 1..]
         .iter()
-        .position(|token| token.is_word("as"))
+        .position(|token| token.matches_word("as"))
     else {
         return Ok(None);
     };
@@ -5850,7 +5874,7 @@ pub fn parse_additional_sacrifice_per_mana_symbol_line(
 pub fn parse_untap_step_limit_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbility>, CardTextError> {
-    if let Some(while_at) = tokens.iter().position(|token| token.is_word("while")) {
+    if let Some(while_at) = tokens.iter().position(|token| token.matches_word("while")) {
         let condition_tokens = trim_edge_punctuation(&tokens[while_at + 1..]);
         let words = parser_token_word_refs(&condition_tokens);
         if let Some(source) = words.strip_suffix(&["is", "on", "the", "battlefield"])
@@ -6007,7 +6031,7 @@ pub fn parse_attached_untap_and_activation_restrictions_line(
             if crate::keyword_forms::words_spell(participle, crate::keyword_forms::BEAMED_UP) => true,
         _ => return Ok(None),
     };
-    let Some(and_index) = tokens.iter().position(|token| token.is_word("and")) else {
+    let Some(and_index) = tokens.iter().position(|token| token.matches_word("and")) else {
         return Ok(None);
     };
     let Some(untap) = parse_doesnt_untap_during_untap_step_line(&tokens[..and_index])? else {
@@ -7479,7 +7503,7 @@ pub fn parse_cast_this_card_from_library_while_searching_line(
 pub fn parse_conditional_self_flash_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbilityAst>, CardTextError> {
-    let Some(index) = tokens.iter().position(|token| token.is_word("if")) else {
+    let Some(index) = tokens.iter().position(|token| token.matches_word("if")) else {
         return Ok(None);
     };
     if !is_cast_this_spell_as_though_it_had_flash_line_lexed(&tokens[..index]) {
@@ -7556,6 +7580,8 @@ pub fn parse_conditional_self_flash_line(
     {
         return Ok(None);
     }
+    // The "if" the flash permission was split from its condition at.
+    crate::word_claims::claim_tokens(&tokens[index..=index]);
     Ok(Some(StaticAbilityAst::LabeledConditionalStaticAbility {
         ability: Box::new(StaticAbilityAst::from(StaticAbility::flash())),
         condition,
@@ -7569,12 +7595,14 @@ pub fn parse_cast_this_spell_as_though_it_had_flash_line(
     if is_cast_this_spell_as_though_it_had_flash_line_lexed(tokens) {
         return Ok(Some(StaticAbility::flash()));
     }
-    if let Some(index) = tokens.iter().position(|token| token.is_word("if"))
+    if let Some(index) = tokens.iter().position(|token| token.matches_word("if"))
         && is_cast_this_spell_as_though_it_had_flash_line_lexed(&tokens[..index])
     {
         let tail = trim_edge_punctuation(&tokens[index + 1..]);
         if tail.len() > 2 && tail[0].is_word("it") && tail[1].is_word("targets") {
             let filter = parse_object_filter_lexed(&tail[2..], false)?;
+            // The "if" opening the targeting condition.
+            crate::word_claims::claim_tokens(&tokens[index..=index]);
             return Ok(Some(StaticAbility::flash_if_targets_matching(filter)));
         }
         // Decision-dependent timing (CR 601.2b-c): "if X is 3 or less"
@@ -7596,8 +7624,10 @@ pub fn parse_cast_this_spell_as_though_it_had_flash_line(
             _ => None,
         };
         if let Some(choice) = choice {
-            // The words above are a normalized copy; claim the authored tail.
+            // The words above are a normalized copy; claim the authored tail
+            // and the "if" that opens it.
             crate::word_claims::claim_tokens(&tail);
+            crate::word_claims::claim_tokens(&tokens[index..=index]);
             return Ok(Some(StaticAbility::flash_if_cast_choice(choice)));
         }
     }
@@ -7614,7 +7644,7 @@ pub fn parse_attacks_each_combat_if_able_line(
         }));
     }
 
-    if let Some(unless) = tokens.iter().position(|token| token.is_word("unless"))
+    if let Some(unless) = tokens.iter().position(|token| token.matches_word("unless"))
         && let Some(ability) = parse_attacks_each_combat_if_able_line(&tokens[..unless])?
     {
         let condition = parse_static_condition_clause(&tokens[unless + 1..])?;
@@ -9401,7 +9431,7 @@ pub fn parse_choose_basic_land_type_then_pay_life_line(
     // The gate shares the choice sentence's "As this land enters" subject.
     let Some(enters) = choice_tokens
         .iter()
-        .position(|token| token.is_any_word(&["enters", "enter"]))
+        .position(|token| token.matches_any_word(&["enters", "enter"]))
     else {
         return Ok(None);
     };
@@ -10010,7 +10040,7 @@ pub fn parse_spend_mana_as_any_color_lines(
             ["or", "to", "activate", "abilities", "of"]
                 .iter()
                 .zip(window)
-                .all(|(word, token)| token.is_word(word))
+                .all(|(word, token)| token.matches_word(word))
         })
         && or_idx > 0
         && or_idx + 5 < filter_tokens.len()
@@ -11820,7 +11850,7 @@ pub(crate) fn parse_mana_output_rewrite_definition(
     };
     let target = shape
         .source_tokens
-        .filter(|tokens| tokens.first().is_some_and(|token| token.is_word("target")))
+        .filter(|tokens| tokens.first().is_some_and(|token| token.matches_word("target")))
         .map(crate::util::parse_target_phrase)
         .transpose()?;
     let mut source_filter = if let Some(tokens) = shape.source_tokens {
@@ -12117,7 +12147,7 @@ pub fn parse_optional_spell_cost_grant_line(tokens: &[OwnedLexToken]) -> Result<
     let prefix = ["you", "may", "pay", "an", "additional"];
     if !tokens.iter().take(prefix.len()).zip(prefix).all(|(token, word)| token.is_word(word)) || tokens.len() < prefix.len() { return Ok(None); }
     let Some(as_at) = tokens.windows(6).position(|window| window.iter().zip(["as", "you", "cast", "a", "spell", "."]).all(|(token, word)|
-        if word == "." { token.kind == TokenKind::Period } else { token.is_word(word) })) else { return Ok(None); };
+        if word == "." { token.kind == TokenKind::Period } else { token.matches_word(word) })) else { return Ok(None); };
     let cost = crate::activation_and_restrictions::parse_compiler_activation_cost(&tokens[prefix.len()..as_at])?;
     let tail = &tokens[as_at + 6..];
     if tail.len() < 5 || !tail[0].is_word("if") || !tail[1].is_word("you") || !tail[2].is_word("do") || tail[3].kind != TokenKind::Comma { return Ok(None); }

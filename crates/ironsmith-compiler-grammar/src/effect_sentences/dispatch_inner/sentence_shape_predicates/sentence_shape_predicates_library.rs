@@ -7,7 +7,7 @@ pub(super) fn parse_prefix_then_look_at_top_exile_one(
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     // Locating candidate splits reads nothing; the follow-up parse claims.
     let then_positions = crate::word_claims::probe_only(|| {
-        (1..tokens.len()).filter(|idx| tokens[*idx].is_word("then")).collect::<Vec<_>>()
+        (1..tokens.len()).filter(|idx| tokens[*idx].matches_word("then")).collect::<Vec<_>>()
     });
     for then_idx in then_positions {
         let prefix = trim_edge_punctuation(&tokens[..then_idx]);
@@ -152,7 +152,7 @@ pub(super) fn parse_source_and_blocked_creatures_top_library_shuffle_sentence(
         let and_positions = operand
             .iter()
             .enumerate()
-            .filter(|(_, token)| token.is_word("and"))
+            .filter(|(_, token)| token.matches_word("and"))
             .map(|(index, _)| index)
             .collect::<Vec<_>>();
         let [and_idx] = and_positions.as_slice() else {

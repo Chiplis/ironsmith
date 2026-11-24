@@ -180,7 +180,7 @@ fn first_word(tokens: &[OwnedLexToken]) -> Option<&str> {
 }
 
 fn mentions_named_reference_tokens(tokens: &[OwnedLexToken]) -> bool {
-    tokens.iter().any(|token| token.is_word("named"))
+    tokens.iter().any(|token| token.matches_word("named"))
 }
 
 /// The string form's `named_source_enters_tail_lexed`: what follows "enters",

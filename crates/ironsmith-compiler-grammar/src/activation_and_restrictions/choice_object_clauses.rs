@@ -781,7 +781,7 @@ mod result_choice_tests;
 pub fn parse_hand_choice_then_shuffle_remainder(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    let Some(then) = tokens.iter().position(|token| token.is_word("then")) else {
+    let Some(then) = tokens.iter().position(|token| token.matches_word("then")) else {
         return Ok(None);
     };
     let first = trim_edge_punctuation(&tokens[..then]);
@@ -898,7 +898,7 @@ pub fn parse_coordinated_object_and_player_choice(
     let prefix = if tokens.first().is_some_and(|token| token.is_word("choose")) { 1 }
         else if tokens.len() >= 2 && tokens[0].is_word("you") && tokens[1].is_word("choose") { 2 }
         else { return Ok(None); };
-    let separators = tokens.iter().enumerate().filter(|(_, token)| token.is_word("and"))
+    let separators = tokens.iter().enumerate().filter(|(_, token)| token.matches_word("and"))
         .map(|(index, _)| index).collect::<Vec<_>>();
     let [separator] = separators.as_slice() else { return Ok(None); };
     if *separator <= prefix || *separator + 1 >= tokens.len() { return Ok(None); }

@@ -344,10 +344,10 @@ fn should_try_combined_static_tokens(
 
 fn is_pay_life_enters_static_line_lexed(tokens: &[OwnedLexToken]) -> bool {
     grammar::parse_prefix(tokens, grammar::phrase(&["as", "this"])).is_some()
-        && tokens.iter().any(|token| token.is_word("enter"))
-        && tokens.iter().any(|token| token.is_word("may"))
-        && tokens.iter().any(|token| token.is_word("pay"))
-        && tokens.iter().any(|token| token.is_word("life"))
+        && tokens.iter().any(|token| token.matches_word("enter"))
+        && tokens.iter().any(|token| token.matches_word("may"))
+        && tokens.iter().any(|token| token.matches_word("pay"))
+        && tokens.iter().any(|token| token.matches_word("life"))
 }
 
 #[derive(Debug, Clone)]
@@ -1411,7 +1411,7 @@ fn quoted_attachment_grant_token_replacements(
         // ..."): everything after the grant verb is the granted ability.
         if let Some(has_index) = tokens
             .iter()
-            .position(|token| token.is_word("has") || token.is_word("have"))
+            .position(|token| token.matches_word("has") || token.matches_word("have"))
             // "An opponent may have you draw" offers an action; it does
             // not grant an ability or change the source of later references.
             && !has_index.checked_sub(1).is_some_and(|index| tokens[index].is_word("may"))
@@ -5329,7 +5329,7 @@ fn try_push_chosen_abilities_grant_line(
     lines: &mut Vec<RecognizedLine>,
 ) -> Result<bool, CardTextError> {
     let tokens = crate::util::trim_edge_punctuation_tokens(&line.tokens);
-    let Some(verb) = tokens.iter().position(|token| token.is_any_word(&["have", "has"])) else {
+    let Some(verb) = tokens.iter().position(|token| token.matches_any_word(&["have", "has"])) else {
         return Ok(false);
     };
     if verb == 0
@@ -5870,7 +5870,7 @@ const QUOTED_GAIN_DECLINES: &[fn(&PreprocessedLine) -> Result<bool, CardTextErro
             .take_while(|token| token.kind != TokenKind::Quote);
         Ok(outer
             .clone()
-            .any(|token| token.is_any_word(&["has", "have"]))
+            .any(|token| token.matches_any_word(&["has", "have"]))
             && matches!(recognize_static_line(line), Ok(Some(_))))
     },
     // A continuous animation owns its characteristics and quoted grant as
@@ -6052,7 +6052,7 @@ fn try_push_complete_typed_statement(
                 .tokens
                 .iter()
                 .take_while(|token| token.kind != TokenKind::Quote)
-                .any(|token| token.is_any_word(&["has", "have"]))
+                .any(|token| token.matches_any_word(&["has", "have"]))
                 && matches!(recognize_static_line(static_probe_line), Ok(Some(_))))
             || crate::keyword_static::parse_attacked_player_can_attack_as_though_no_defender_line(
                 &static_probe_line.tokens,
@@ -6221,7 +6221,7 @@ fn parse_named_attachment_damage_grant(
     };
     let body = &line.info.source_tokens[start + 1..*end];
     // An explicit self-reference in the granted ability denotes its holder.
-    if body.iter().any(|t| t.is_word("this")) {
+    if body.iter().any(|t| t.matches_word("this")) {
         return Ok(None);
     }
     let body_words = crate::lexer::parser_token_word_refs(body);
@@ -6378,7 +6378,7 @@ fn parse_named_attachment_counter_release(
     let body = &line.info.source_tokens[start + 1..*end];
     // An explicit self-reference in the granted ability denotes its holder.
     // Leave mixed holder/attachment programs to the contextual general parser.
-    if body.iter().any(|t| t.is_word("this")) {
+    if body.iter().any(|t| t.matches_word("this")) {
         return Ok(None);
     }
     let Some(surface) = crate::util::authored_named_source_reference_surface(context, body) else {
@@ -6388,7 +6388,7 @@ fn parse_named_attachment_counter_release(
         let matches = body
             .iter()
             .enumerate()
-            .filter(|(_, t)| t.is_word(introducer))
+            .filter(|(_, t)| t.matches_word(introducer))
             .filter(|(i, _)| {
                 let reference = body[i + 1..]
                     .iter()

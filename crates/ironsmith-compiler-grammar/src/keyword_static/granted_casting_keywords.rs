@@ -157,7 +157,7 @@ pub fn parse_granted_casting_keyword_line(
     let tokens = trim_edge_punctuation(tokens);
     let Some(have_idx) = tokens
         .iter()
-        .position(|token| token.is_any_word(&["have", "has"]))
+        .position(|token| token.matches_any_word(&["have", "has"]))
     else {
         return Ok(None);
     };
@@ -238,7 +238,7 @@ pub fn parse_cast_from_zone_using_keyword_abilities_line(
     if !crate::word_primitives::parse_sequence_prefix(&words, &["you", "may", "cast"]) {
         return Ok(None);
     }
-    let Some(from_idx) = tokens.iter().position(|token| token.is_word("from")) else {
+    let Some(from_idx) = tokens.iter().position(|token| token.matches_word("from")) else {
         return Ok(None);
     };
     if from_idx <= 3 {
@@ -301,7 +301,7 @@ pub fn parse_granted_madness_line(
     let tokens = trim_edge_punctuation(tokens);
     let Some(has_idx) = tokens
         .iter()
-        .position(|token| token.is_any_word(&["have", "has"]))
+        .position(|token| token.matches_any_word(&["have", "has"]))
     else {
         return Ok(None);
     };
@@ -321,7 +321,7 @@ pub fn parse_granted_madness_line(
     }
     // "... that isn't on the battlefield" scopes the grant to the zones
     // listed above; the remaining words name the cards.
-    let Some(that_idx) = subject.iter().rposition(|token| token.is_word("that")) else {
+    let Some(that_idx) = subject.iter().rposition(|token| token.matches_word("that")) else {
         return Ok(None);
     };
     let scope_words = parser_token_word_refs(&subject[that_idx..]);

@@ -96,7 +96,7 @@ fn split_up_to_times_suffix(
         return None;
     };
     let max = crate::util::parse_number_word_u32(count).filter(|max| *max >= 2)?;
-    let up_index = trimmed.iter().rposition(|token| token.is_word("up"))?;
+    let up_index = trimmed.iter().rposition(|token| token.matches_word("up"))?;
     (up_index > 0).then(|| (max, &trimmed[..up_index], &trimmed[up_index..]))
 }
 
@@ -411,7 +411,7 @@ pub(super) fn parse_optional_other_player_token_copy(tokens: &[OwnedLexToken]) -
     // A trailing condition belongs to the instruction after "then", not
     // to the copy that produces the condition's result.
     let body = &tokens[start..];
-    let mut effects = if let Some(then) = body.iter().position(|token| token.is_word("then")) {
+    let mut effects = if let Some(then) = body.iter().position(|token| token.matches_word("then")) {
         let mut effects = parse_effect_chain_lexed(crate::util::trim_edge_punctuation_tokens(&body[..then]))?;
         effects.extend(parse_effect_chain_lexed(&body[then + 1..])?);
         effects
@@ -569,10 +569,10 @@ fn group_distributed_exile_instruction(
     }
     let exile_verbs = tokens
         .iter()
-        .filter(|token| token.is_any_word(&["exile", "exiles"]))
+        .filter(|token| token.matches_any_word(&["exile", "exiles"]))
         .count();
     let one_clause = !tokens.iter().any(|token| {
-        token.is_period() || token.is_any_word(&["then", "if", "unless", "where"])
+        token.is_period() || token.matches_any_word(&["then", "if", "unless", "where"])
     });
     fn exiles(effect: &EffectAst) -> bool {
         match effect {
@@ -930,7 +930,7 @@ fn parse_effect_chain_lexed_inner(
     // including inside a die-result row. Splitting its coordinating "and"
     // would leave a standalone spend-mana instruction with no permission.
     if crate::lexer::parser_token_word_refs(tokens).starts_with(&["you", "may"])
-        && tokens.iter().any(|token| token.is_word("spend"))
+        && tokens.iter().any(|token| token.matches_word("spend"))
         && let Some(effect) = parse_cast_or_play_tagged_clause(tokens)?
     {
         return Ok(vec![effect]);
@@ -990,7 +990,7 @@ fn parse_effect_chain_lexed_inner(
     if comma_then_segments.len() > 1
         && comma_then_segments
             .last()
-            .is_some_and(|segment| segment.iter().any(|token| token.is_word("unless")))
+            .is_some_and(|segment| segment.iter().any(|token| token.matches_word("unless")))
     {
         return parse_effect_chain_inner_lexed_unstacked(tokens, false);
     }
@@ -1002,11 +1002,11 @@ fn parse_effect_chain_lexed_inner(
         // group, not as the last two steps of a flat three-step chain.
         if let [head, tail] = comma_then_segments.as_slice()
             && effects.len() == 3
-            && !head.iter().any(|token| token.is_comma() || token.is_word("and"))
+            && !head.iter().any(|token| token.is_comma() || token.matches_word("and"))
             && !tail.iter().any(|token| token.is_comma())
-            && tail.iter().filter(|token| token.is_word("and")).count() == 1
-            && tail.iter().filter(|token| token.is_word("then")).count() <= 1
-            && !tail.iter().any(|token| token.is_any_word(&["if", "unless", "or"]))
+            && tail.iter().filter(|token| token.matches_word("and")).count() == 1
+            && tail.iter().filter(|token| token.matches_word("then")).count() <= 1
+            && !tail.iter().any(|token| token.matches_any_word(&["if", "unless", "or"]))
         {
             let pair = effects.split_off(1);
             effects.push(EffectAst::Coordinated {
@@ -1260,7 +1260,7 @@ fn parse_for_each_object_effect_chain_shape(
         let effects = if shape
             .effect_tokens
             .iter()
-            .any(|token| token.is_word("unless"))
+            .any(|token| token.matches_word("unless"))
         {
             match parse_sentence_unless_pays(SubjectVerbPrimitiveClause::new(shape.effect_tokens))?
             {
@@ -1287,7 +1287,7 @@ fn parse_for_each_object_effect_chain_shape(
     let effects = if shape
         .effect_tokens
         .iter()
-        .any(|token| token.is_word("unless"))
+        .any(|token| token.matches_word("unless"))
     {
         match parse_sentence_unless_pays(SubjectVerbPrimitiveClause::new(shape.effect_tokens))? {
             Some(effects) => effects,
@@ -1835,7 +1835,7 @@ pub fn append_missing_coordinated_return_discard_tail(
 fn matching_spell_cost_modifier_chain(tokens: &[OwnedLexToken]) -> Option<EffectAst> {
     // A coordinated chain ("..., then spells you cast ...") has another
     // action the single-sentence modifier reading would swallow.
-    if tokens.iter().any(|token| token.is_word("then")) {
+    if tokens.iter().any(|token| token.matches_word("then")) {
         return None;
     }
     super::dispatch_inner::lower_matching_spell_cost_reduction_sentence(
@@ -1858,7 +1858,7 @@ mod inner_chain_readings;
 /// instruction's terminal "equal to" amount. Restate the amount on the life
 /// clause so each coordinated action reads its own complete quantity.
 pub(super) fn expand_shared_life_equal_to_amount(tokens: &[OwnedLexToken]) -> Option<Vec<OwnedLexToken>> {
-    let and_idx = tokens.iter().position(|token| token.is_word("and"))?;
+    let and_idx = tokens.iter().position(|token| token.matches_word("and"))?;
     let head = &tokens[..and_idx];
     let (life, before_life) = head.split_last()?;
     // "You draw cards and lose life equal to the number of counters removed
@@ -1878,14 +1878,14 @@ pub(super) fn expand_shared_life_equal_to_amount(tokens: &[OwnedLexToken]) -> Op
     let tail = &tokens[and_idx + 1..];
     let equal_idx = tail
         .windows(2)
-        .rposition(|pair| pair[0].is_word("equal") && pair[1].is_word("to"))?;
+        .rposition(|pair| pair[0].matches_word("equal") && pair[1].matches_word("to"))?;
     let equal_tail = crate::util::trim_edge_punctuation_tokens(&tail[equal_idx..]);
     // Only a single terminal amount phrase is shared; a further coordinated
     // or sequenced action after it would make the scope ambiguous.
     if equal_tail.len() <= 2
         || equal_tail
             .iter()
-            .any(|token| token.is_any_word(&["and", "then"]) || token.is_comma())
+            .any(|token| token.matches_any_word(&["and", "then"]) || token.is_comma())
     {
         return None;
     }
@@ -1904,7 +1904,7 @@ fn parse_effect_chain_inner_lexed_unstacked(
     // its ", then" boundary is gone, so the named appositive is read here
     // before any comma splitter separates the name from its description.
     if tokens.first().is_some_and(|token| token.is_word("create"))
-        && tokens.iter().any(|token| token.is_word("then"))
+        && tokens.iter().any(|token| token.matches_word("then"))
         && let Some(effects) = chain_readings::parse_named_token_appositive_tokens(tokens)?
     {
         return Ok(effects);
@@ -1919,7 +1919,7 @@ fn parse_effect_chain_inner_lexed_unstacked(
     if let Some(effects) = super::fanout_family::parse_compound_damage_fanout_sentence(tokens)? {
         return Ok(effects);
     }
-    if let Some(split) = tokens.windows(2).position(|pair| pair[0].is_comma() && pair[1].is_word("then"))
+    if let Some(split) = tokens.windows(2).position(|pair| pair[0].is_comma() && pair[1].matches_word("then"))
         && crate::grammar::effects::control_copy_attach_shapes::parse_tagged_battlefield_partition_shape(&tokens[..split]).is_some()
     {
         let mut effects = vec![super::verb_handlers::parse_put_into_hand(&tokens[..split], None)?];
@@ -1984,7 +1984,7 @@ fn parse_effect_chain_inner_lexed_unstacked(
         if comma_then_segments.len() > 1
             && comma_then_segments
                 .last()
-                .is_some_and(|segment| segment.iter().any(|token| token.is_word("unless")))
+                .is_some_and(|segment| segment.iter().any(|token| token.matches_word("unless")))
         {
             return parse_effect_chain_inner_lexed_unstacked(tokens, false);
         }
@@ -1998,7 +1998,7 @@ fn parse_effect_chain_inner_lexed_unstacked(
     // before the comma splitter breaks the subject apart.
     if let Some(split) = tokens
         .windows(2)
-        .rposition(|pair| pair[0].is_comma() && pair[1].is_word("then"))
+        .rposition(|pair| pair[0].is_comma() && pair[1].matches_word("then"))
         && let Some(modifier) = matching_spell_cost_modifier_chain(&tokens[split + 2..])
     {
         let mut effects = parse_effect_chain_inner_lexed_unstacked(
@@ -2015,7 +2015,7 @@ fn parse_effect_chain_inner_lexed_unstacked(
     // otherwise split the quantifier from its body.
     if tokens.first().is_some_and(|token| token.is_word("for"))
         && tokens.get(1).is_some_and(|token| token.is_word("each"))
-        && tokens.iter().any(|token| token.is_word("unless"))
+        && tokens.iter().any(|token| token.matches_word("unless"))
         && let Ok(Some(effects)) = parse_for_each_object_effect_chain_shape(tokens)
     {
         return Ok(effects);
@@ -2046,7 +2046,7 @@ fn parse_effect_chain_inner_lexed_unstacked(
     };
     // The type categories in a type-count quantity form a noun list, not
     // separate actions. Parse the complete pump before comma coordination.
-    if effect_chain_tokens.iter().any(|token| token.is_any_word(&["get", "gets"]))
+    if effect_chain_tokens.iter().any(|token| token.matches_any_word(&["get", "gets"]))
         && super::for_each_helpers::parse_get_for_each_count_value(effect_chain_tokens)
             .ok().flatten().is_some_and(|value| matches!(value.unhinted(), Value::TypeCountOf(_)))
     {
@@ -2060,12 +2060,12 @@ fn parse_effect_chain_inner_lexed_unstacked(
     // Preserve them for the object-filter reader before coordination expands
     // elided clauses ("Auras, Equipment, and modified creatures ... gain").
     if matches!(find_verb(effect_chain_tokens), Some((Verb::Gain, _)))
-        && effect_chain_tokens.iter().take_while(|token| !token.is_any_word(&["gain", "gains"]))
+        && effect_chain_tokens.iter().take_while(|token| !token.matches_any_word(&["gain", "gains"]))
             .any(OwnedLexToken::is_comma)
         // A prohibition before the comma is an earlier action, not another
         // recipient in the grant's noun list.
-        && !effect_chain_tokens.iter().take_while(|token| !token.is_any_word(&["gain", "gains"]))
-            .any(|token| token.is_any_word(&["can't", "cant", "cannot"]))
+        && !effect_chain_tokens.iter().take_while(|token| !token.matches_any_word(&["gain", "gains"]))
+            .any(|token| token.matches_any_word(&["can't", "cant", "cannot"]))
         && let Some(mut grant) = super::gain_ability::parse_gain_ability_sentence(effect_chain_tokens)?
     {
         if let Some(duration) = &leading_duration {
@@ -2094,7 +2094,7 @@ fn parse_effect_chain_inner_lexed_unstacked(
             effect_chain_tokens
                 .iter()
                 .enumerate()
-                .filter(|(_, token)| token.is_word("or"))
+                .filter(|(_, token)| token.matches_word("or"))
                 .map(|(index, _)| index)
                 .collect::<Vec<_>>()
         });
@@ -2126,13 +2126,13 @@ fn parse_effect_chain_inner_lexed_unstacked(
     let lists_explicit_choice = effect_chain_tokens
         .windows(3)
         .position(|window| {
-            window[0].is_word("your") && window[1].is_word("choice") && window[2].is_word("of")
+            window[0].matches_word("your") && window[1].matches_word("choice") && window[2].matches_word("of")
         })
         .is_some_and(|choice_idx| {
             !effect_chain_tokens[..choice_idx].iter().any(OwnedLexToken::is_comma)
                 && !effect_chain_tokens
                     .iter()
-                    .any(|token| token.is_any_word(&["and", "then", "unless", "if"]))
+                    .any(|token| token.matches_any_word(&["and", "then", "unless", "if"]))
         });
     let mut coordination_plan = if lists_mana_combination
         || sacrifices_object_union
@@ -2155,7 +2155,7 @@ fn parse_effect_chain_inner_lexed_unstacked(
     };
     let has_verb_less_attack_permission = effect_chain_tokens
         .windows(2)
-        .any(|pair| pair[0].is_word("can") && pair[1].is_word("attack"));
+        .any(|pair| pair[0].matches_word("can") && pair[1].matches_word("attack"));
     if has_verb_less_attack_permission
         && split_segments_on_comma_effect_head_lexed(vec![effect_chain_tokens]).len() > 1
     {
@@ -2675,7 +2675,7 @@ fn parse_effect_chain_inner_lexed_unstacked(
         .is_some()
             // A remaining `then` tail is a compound instruction, so the
             // single-clause fast path cannot claim it as complete.
-            && !segment.iter().any(|token| token.is_word("then"))
+            && !segment.iter().any(|token| token.matches_word("then"))
             && let Ok(mut effect) = parse_effect_clause_lexed(&segment)
         {
             if let Some(context) = carried_context {
@@ -2783,7 +2783,7 @@ fn parse_effect_chain_inner_lexed_unstacked(
         // explicit copular grant head. `has` is deliberately not an effect
         // verb, so it must be read before the bare-keyword fallback prepends
         // another subject and grant verb. Quoted activated rules remain whole.
-        if segment.iter().take(3).any(|token| token.is_any_word(&["has", "have"]))
+        if segment.iter().take(3).any(|token| token.matches_any_word(&["has", "have"]))
             && let Some(mut effect) = parse_simple_gain_ability_clause_lexed(&segment)?
         {
             if let Some(duration) = &carried_duration {
@@ -3820,7 +3820,7 @@ pub fn bind_prevention_followup(effects: &mut Vec<EffectAst>, sentence: &[OwnedL
             }
             let Some(body_start) = sentence
                 .iter()
-                .position(|token| token.is_word("way"))
+                .position(|token| token.matches_word("way"))
                 .map(|idx| idx + 1)
             else {
                 return false;
@@ -4395,7 +4395,7 @@ pub fn bind_return_entry_tapped_if(
     {
         return false;
     }
-    let Some(enters) = tokens.iter().position(|token| token.is_word("enters")) else {
+    let Some(enters) = tokens.iter().position(|token| token.matches_word("enters")) else {
         return false;
     };
     if enters <= 2 {
@@ -4682,7 +4682,7 @@ pub(crate) fn parse_compound_subject_goaded_sentence(
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     let Some(goaded) = tokens
         .iter()
-        .position(|token| token.is_word(crate::keyword_forms::GOADED))
+        .position(|token| token.matches_word(crate::keyword_forms::GOADED))
     else {
         return Ok(None);
     };
@@ -4690,7 +4690,7 @@ pub(crate) fn parse_compound_subject_goaded_sentence(
         return Ok(None);
     }
     let subject = &tokens[..goaded - 1];
-    if !subject.iter().any(|token| token.is_word("and")) {
+    if !subject.iter().any(|token| token.matches_word("and")) {
         return Ok(None);
     }
     let mut targets = Vec::new();
@@ -4772,7 +4772,7 @@ pub(crate) fn parse_duration_goaded_and_restricted_sentence(
     let starts = after_goaded
         .iter()
         .enumerate()
-        .filter(|(_, token)| token.is_any_word(&["can't", "cant"]))
+        .filter(|(_, token)| token.matches_any_word(&["can't", "cant"]))
         .map(|(index, _)| index)
         .collect::<Vec<_>>();
     let mut restrictions = Vec::new();

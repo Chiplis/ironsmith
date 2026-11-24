@@ -1687,7 +1687,7 @@ pub(crate) fn split_trailing_counters_put_on_this_turn_clause(
         end -= 1;
     }
     let tokens = &tokens[..end];
-    let that = tokens.iter().rposition(|token| token.is_word("that"))?;
+    let that = tokens.iter().rposition(|token| token.matches_word("that"))?;
     if that == 0 {
         return None;
     }

@@ -19,7 +19,7 @@ fn synthetic_word(word: &str) -> OwnedLexToken {
 }
 
 fn parse_rewritten_effects(tokens: Vec<OwnedLexToken>) -> Result<Vec<EffectAst>, CardTextError> {
-    let shared_keyword_choice = tokens.iter().any(|token| token.is_word("gain"))
+    let shared_keyword_choice = tokens.iter().any(|token| token.matches_word("gain"))
         && crate::slice_primitives::find_window_by(&tokens, 2, |window| {
             window[0].is_word("choice") && window[1].is_word("of")
         })

@@ -8,7 +8,7 @@ pub(crate) fn parse(tokens:&[OwnedLexToken])->Result<Option<Vec<EffectAst>>,Card
     let operand=&tokens[1..tokens.len()-2];
     let reference=matches!(crate::lexer::parser_token_word_refs(operand).as_slice(),["it"]|["them"])
         || operand.first().is_some_and(|token|token.is_any_word(&["this","that","those","all","each"]));
-    let targeted=operand.iter().any(|token|token.is_word("target"));
+    let targeted=operand.iter().any(|token|token.matches_word("target"));
     let counted=operand.first().and_then(OwnedLexToken::as_word).is_some_and(|word|
         matches!(word,"a"|"an"|"any"|"up") || crate::util::parse_number_word_i32(word).is_some() || word.parse::<usize>().is_ok());
     if !reference && !targeted && !counted{return Ok(None);}

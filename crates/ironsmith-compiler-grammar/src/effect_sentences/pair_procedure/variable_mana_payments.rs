@@ -58,8 +58,8 @@ pub(super) fn read_failure_consequence(
     }
     let body = &tokens[comma + 1..];
     let Some(join) = body.windows(4).position(|part|
-        part[0].is_word("and") && part[1].is_word("at")
-            && part[2].is_word("the") && part[3].is_word("beginning"))
+        part[0].matches_word("and") && part[1].matches_word("at")
+            && part[2].matches_word("the") && part[3].matches_word("beginning"))
     else { return Ok(None); };
     let mut payment = crate::effect_sentences::parse_effect_sentence_lexed(head.lowered())?;
     if payment.len() != 1 { return Ok(None); }

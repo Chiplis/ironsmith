@@ -243,7 +243,7 @@ fn parse_can_block_additional_lexed<'a>(
     // clause (with an implicit "it" subject).
     if subject_tokens
         .iter()
-        .any(|token| token.is_period() || token.is_any_word(&["gets", "get", "gains", "gain"]))
+        .any(|token| token.is_period() || token.matches_any_word(&["gets", "get", "gains", "gain"]))
     {
         return Err(primitives::backtrack_err(
             "can block additional creature",

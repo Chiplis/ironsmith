@@ -88,7 +88,7 @@ pub fn parse_permission_subject_filter_tokens(
             && parse_subject_separator_fact(filter_tokens).is_none()
             && !filter_tokens
                 .iter()
-                .any(|token| token.is_word("permanent") || token.is_word("permanents"))
+                .any(|token| token.matches_word("permanent") || token.matches_word("permanents"))
         {
             filter.all_card_types = std::mem::take(&mut filter.card_types);
         }
@@ -130,7 +130,7 @@ fn parse_mixed_spell_disjunction_filter_tokens(
     let or_positions = tokens
         .iter()
         .enumerate()
-        .filter(|(_, token)| token.is_word("or"))
+        .filter(|(_, token)| token.matches_word("or"))
         .map(|(index, _)| index)
         .collect::<Vec<_>>();
     let [or_index] = or_positions.as_slice() else {
@@ -148,7 +148,7 @@ fn parse_mixed_spell_disjunction_filter_tokens(
     let right = strip_article(&tokens[*or_index + 1..]);
     let Some(noun) = right
         .last()
-        .filter(|token| token.is_word("spell") || token.is_word("spells"))
+        .filter(|token| token.matches_word("spell") || token.matches_word("spells"))
         .cloned()
     else {
         return Ok(None);
@@ -171,6 +171,8 @@ fn parse_mixed_spell_disjunction_filter_tokens(
     if left_filter.all_card_types.len() < 2 && right_filter.all_card_types.len() < 2 {
         return Ok(None);
     }
+    // The "or" joining the two spell arms, found by the scan above.
+    crate::word_claims::claim_tokens(&tokens[*or_index..=*or_index]);
     Ok(Some(ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
         any_of: vec![left_filter, right_filter],
         ..ironsmith_core::filter_model::ObjectFilterFields::from(ObjectFilter::default())

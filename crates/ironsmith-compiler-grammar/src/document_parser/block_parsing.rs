@@ -161,7 +161,7 @@ fn try_parse_tiered_shared_body_block(
         return Ok(None);
     }
     // The "Tiered" keyword names this block's structure (CR 702.183).
-    if let Some(head) = line.tokens.first().filter(|token| token.is_word("tiered")) {
+    if let Some(head) = line.tokens.first().filter(|token| token.matches_word("tiered")) {
         crate::word_claims::claim_tokens(std::slice::from_ref(head));
     }
     for label in tier_labels {
@@ -198,7 +198,7 @@ fn try_parse_chosen_keyword_cost_block(
         return Ok(None);
     }
     let cost = &tokens[..colon];
-    let Some(choose_idx) = cost.iter().rposition(|token| token.is_word("choose")) else {
+    let Some(choose_idx) = cost.iter().rposition(|token| token.matches_word("choose")) else {
         return Ok(None);
     };
     if choose_idx == 0 || !cost[choose_idx - 1].is_comma() {
@@ -221,7 +221,7 @@ fn try_parse_chosen_keyword_cost_block(
     }
     let body = &tokens[colon + 1..];
     let chosen_at = body.windows(3).position(|window| {
-        window[0].is_word("the") && window[1].is_word("chosen") && window[2].is_word("ability")
+        window[0].matches_word("the") && window[1].matches_word("chosen") && window[2].matches_word("ability")
     });
     if chosen_at.is_none() {
         return Ok(None);
@@ -270,6 +270,8 @@ fn try_parse_chosen_keyword_cost_block(
             flavor_label: None,
         });
     }
+    // The authored "choose" the synthetic "choose one" header stands for.
+    crate::word_claims::claim_tokens(&cost[choose_idx..=choose_idx]);
     let mut header_tokens = cost[..choose_idx - 1].to_vec();
     header_tokens.push(tokens[colon].clone());
     header_tokens.extend(crate::lexer::synthetic_word_tokens(["choose", "one"]));

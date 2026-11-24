@@ -99,7 +99,7 @@ pub fn parse_ability_choice_shape(tokens: &[OwnedLexToken]) -> Option<AbilityCho
             inside_quotes = !inside_quotes;
             false
         } else {
-            !inside_quotes && token.is_word("or")
+            !inside_quotes && token.matches_word("or")
         }
     });
     if explicit_choice_prefix.is_none() && !has_top_level_or {

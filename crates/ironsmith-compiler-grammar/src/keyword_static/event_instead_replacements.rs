@@ -547,7 +547,7 @@ fn leading_actor_before_instead(body: &[OwnedLexToken]) -> Option<usize> {
         .iter()
         .all(|token| token.as_word().is_some())
         .then_some(actor_len)
-        .filter(|&len| body[len].is_word("instead"))
+        .filter(|&len| body[len].matches_word("instead"))
 }
 
 pub fn parse_if_event_would_happen_instead_line(
@@ -642,7 +642,7 @@ pub fn parse_if_event_would_happen_instead_line(
         body.remove(0);
     }
     let modification_words = event_modification_words(&event);
-    if body.iter().any(|token| token.is_word("instead") || token.is_quote())
+    if body.iter().any(|token| token.matches_word("instead") || token.is_quote())
         || words_of(&body).iter().any(|word| {
             MODIFICATION_WORDS.contains(word) || modification_words.contains(word)
         })

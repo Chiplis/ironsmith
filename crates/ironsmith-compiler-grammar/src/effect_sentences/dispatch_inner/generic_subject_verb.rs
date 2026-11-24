@@ -123,10 +123,10 @@ fn parse_source_exiled_counted_return_remainder_to_owners_libraries(
     tokens: &[OwnedLexToken],
 ) -> Option<Vec<EffectAst>> {
     let split = tokens.iter().enumerate().find_map(|(idx, token)| {
-        (token.is_word("and")
-            && tokens.get(idx + 1).is_some_and(|next| next.is_word("put"))
-            && tokens.get(idx + 2).is_some_and(|next| next.is_word("the"))
-            && tokens.get(idx + 3).is_some_and(|next| next.is_word("rest")))
+        (token.matches_word("and")
+            && tokens.get(idx + 1).is_some_and(|next| next.matches_word("put"))
+            && tokens.get(idx + 2).is_some_and(|next| next.matches_word("the"))
+            && tokens.get(idx + 3).is_some_and(|next| next.matches_word("rest")))
         .then_some(idx)
     })?;
     let suffix_words = crate::lexer::token_word_refs(&tokens[split + 1..]);
@@ -2499,7 +2499,7 @@ pub(super) fn parse_generic_consult_reveal_until_battlefield_bottom_subject_verb
     // ..." (Fireflux Squad): the entering creature is also attacking.
     let battlefield_attacking = battlefield_tapped
         && followup_tokens.windows(3).any(|window| {
-            window[0].is_word("tapped") && window[1].is_word("and") && window[2].is_word("attacking")
+            window[0].matches_word("tapped") && window[1].matches_word("and") && window[2].matches_word("attacking")
         });
 
     let mut effects = parts.effects;
@@ -3085,11 +3085,13 @@ pub fn parse_choice_complement_subject_verb(
 
     let choice_clause = choice_clause.trimmed();
     let choice_tokens = choice_clause.tokens();
-    if let Some(suffix) = choice_tokens.windows(4).position(|tokens| tokens[0].is_word("of") && tokens[1].is_word("each") && tokens[2].is_word("permanent") && tokens[3].is_word("type"))
+    if let Some(suffix) = choice_tokens.windows(4).position(|tokens| tokens[0].matches_word("of") && tokens[1].matches_word("each") && tokens[2].matches_word("permanent") && tokens[3].matches_word("type"))
         && choice_tokens[suffix + 4..].iter().all(|token| token.as_word().is_none())
     {
         let mut filter = parse_object_filter(&choice_tokens[..suffix], false)?;
         filter.controller = Some(PlayerFilter::IteratedPlayer);
+        // "of each permanent type", found by the scan above: the keep slots.
+        crate::word_claims::claim_tokens(&choice_tokens[suffix..suffix + 4]);
         return Ok(Some(GenericChoiceComplementProgram {
             chooser_scope, base_filter: filter,
             keep_tag: crate::tag::CompilerReferenceTag::Keep.bind().into(),
@@ -3101,7 +3103,7 @@ pub fn parse_choice_complement_subject_verb(
     }
     if find_from_among(choice_tokens).is_none()
         && !crate::lexer::token_word_refs(choice_tokens).word_windows(4).any(|words| words == ["of", "each", "permanent", "type"])
-        && !choice_tokens.iter().any(|token| token.is_word("and"))
+        && !choice_tokens.iter().any(|token| token.matches_word("and"))
         && let Some((keep_count, count_used)) =
             crate::util::parse_choice_count_token_prefix_consumed(choice_tokens)
     {
@@ -3244,10 +3246,10 @@ pub fn parse_for_each_type_slot_choice_clause(
     let choice_tokens = trim_commas(&tokens[choose_idx + 1..]);
     let from_among = find_from_among(&choice_tokens);
     if from_among.is_none()
-        || !choice_tokens.iter().any(|token| token.is_word("and"))
+        || !choice_tokens.iter().any(|token| token.matches_word("and"))
         || choice_tokens
             .iter()
-            .any(|token| token.is_word("or") || token.is_word("and/or"))
+            .any(|token| token.matches_word("or") || token.matches_word("and/or"))
     {
         return Ok(None);
     }

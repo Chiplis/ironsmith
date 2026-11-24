@@ -461,16 +461,20 @@ impl OwnedLexToken {
         }
     }
 
-    /// Whether this token is the word `expected`. A match reads the word
-    /// (see `word_claims`).
-    pub fn is_word(&self, expected: &str) -> bool {
-        let matched = matches!(
+    fn word_eq(&self, expected: &str) -> bool {
+        matches!(
             self.kind,
             TokenKind::Word | TokenKind::Number | TokenKind::Tilde
         ) && self
             .parser_text
             .chars()
-            .eq(expected.chars().map(normalize_parser_char));
+            .eq(expected.chars().map(normalize_parser_char))
+    }
+
+    /// Whether this token is the word `expected`. A match reads the word
+    /// (see `word_claims`).
+    pub fn is_word(&self, expected: &str) -> bool {
+        let matched = self.word_eq(expected);
         if matched {
             crate::word_claims::claim_tokens(std::slice::from_ref(self));
         }
@@ -479,6 +483,18 @@ impl OwnedLexToken {
 
     pub fn is_any_word(&self, expected: &[&str]) -> bool {
         expected.iter().any(|word| self.is_word(word))
+    }
+
+    /// Whether this token is the word `expected`, without reading it: for
+    /// scans that look for a word (`position`, `any`, `find` ...). The reader
+    /// that goes on to use the found word claims it itself.
+    pub fn matches_word(&self, expected: &str) -> bool {
+        self.word_eq(expected)
+    }
+
+    /// `matches_word` for any of `expected`, without reading the word.
+    pub fn matches_any_word(&self, expected: &[&str]) -> bool {
+        expected.iter().any(|word| self.word_eq(word))
     }
 
     pub fn is_comma(&self) -> bool {

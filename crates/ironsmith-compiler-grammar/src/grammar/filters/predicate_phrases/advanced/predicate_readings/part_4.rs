@@ -358,7 +358,7 @@ pub(super) fn read_demonstrative_descriptor(
                 filter.entered_battlefield_controller = controller;
                 filter.zone = Some(Zone::Battlefield);
                 filter.set_entered_battlefield_explicit_surface(
-                    descriptor_clause.tokens().iter().any(|token| token.is_word("battlefield")),
+                    descriptor_clause.tokens().iter().any(|token| token.matches_word("battlefield")),
                 );
                 if antecedent_surface.is_some() {
                     filter.set_demonstrative_antecedent_surface(antecedent_surface);
@@ -735,16 +735,16 @@ pub(super) fn read_same_name_as_filter_predicate(
     // are a union, and "another" there excludes the referenced object itself.
     let union_split = filter_tokens
         .iter()
-        .position(|token| token.is_word("or"))
+        .position(|token| token.matches_word("or"))
         .filter(|&or_index| {
             !cast_this_turn
                 && or_index > 0
                 && filter_tokens
                     .get(or_index + 1)
-                    .is_some_and(|token| token.is_word("a") || token.is_word("an"))
+                    .is_some_and(|token| token.matches_word("a") || token.matches_word("an"))
                 && filter_tokens[or_index + 1..]
                     .iter()
-                    .all(|token| !token.is_word("or"))
+                    .all(|token| !token.matches_word("or"))
         });
     let union_filter = union_split.and_then(|or_index| {
         // The filter grammar leaves a leading "another"/"other" to its
@@ -780,6 +780,8 @@ pub(super) fn read_same_name_as_filter_predicate(
                 relation: TaggedOpbjectRelation::SameNameAsTagged,
             });
         }
+        // The "or" joining the two scoped arms, found by the scan above.
+        crate::word_claims::claim_tokens(&filter_tokens[or_index..=or_index]);
         Some(ObjectFilter::from(ironsmith_core::filter_model::ObjectFilterFields {
             any_of: vec![left, right],
             ..ironsmith_core::filter_model::ObjectFilterFields::from(ObjectFilter::default())

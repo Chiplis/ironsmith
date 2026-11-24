@@ -581,9 +581,15 @@ pub(super) fn creature_rules(
     .inspect(|_| {
         let _ = common::phrase_read(words, &["when", "this", "token", "dies"])
             || common::phrase_read(words, &["when", "token", "dies"]);
+        // "it deals": the dying token as the damage source.
+        if let Some(it) = source_tokens.windows(2).position(|pair| {
+            pair[0].matches_word("it") && pair[1].matches_word("deals")
+        }) {
+            crate::word_claims::claim_tokens(&source_tokens[it..=it]);
+        }
         // The event verb also by token span: the word-level claim above can
         // miss it when the word view's registration does not reach it.
-        if let Some(dies) = source_tokens.iter().position(|token| token.is_word("dies")) {
+        if let Some(dies) = source_tokens.iter().position(|token| token.matches_word("dies")) {
             crate::word_claims::claim_tokens(&source_tokens[dies..=dies]);
         }
     });

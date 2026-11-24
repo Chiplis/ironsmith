@@ -39,7 +39,7 @@ mod tests {
             let tokens = lex_line(text, 0).unwrap();
             let get = tokens
                 .iter()
-                .position(|token| token.is_any_word(&["get", "gets"]))
+                .position(|token| token.matches_any_word(&["get", "gets"]))
                 .unwrap();
             let clause = parse_anthem_clause(&tokens, get, tokens.len()).unwrap();
             let AnthemValue::Dynamic(power) = clause.power else {
@@ -111,7 +111,7 @@ mod scoped_tests {
         .unwrap();
         let get = tokens
             .iter()
-            .position(|token| token.is_word("gets"))
+            .position(|token| token.matches_word("gets"))
             .unwrap();
         let clause = parse_anthem_clause(&tokens, get, tokens.len()).unwrap();
         assert!(
@@ -132,7 +132,7 @@ mod scoped_tests {
         let tokens = crate::lexer::lex_line("Other creatures you control get +X/+X, where X is the number of counters on this creature.", 0).unwrap();
         let get = tokens
             .iter()
-            .position(|token| token.is_word("get"))
+            .position(|token| token.matches_word("get"))
             .unwrap();
         let clause = parse_anthem_clause(&tokens, get, tokens.len()).unwrap();
         assert!(

@@ -142,7 +142,7 @@ pub(super) fn open_chosen_color_become(
     let second = crate::util::trim_edge_punctuation_tokens(next.lowered());
     let Some(become_idx) = second
         .iter()
-        .position(|token| token.is_any_word(&["becomes", "become"]))
+        .position(|token| token.matches_any_word(&["becomes", "become"]))
     else {
         return Ok(None);
     };
@@ -168,6 +168,8 @@ pub(super) fn open_chosen_color_become(
         &second[..become_idx],
         &become_tokens,
     )?);
+    // The "become(s)" verb the scan above found.
+    crate::word_claims::claim_tokens(&second[become_idx..=become_idx]);
     Ok(Some(Pair::ChosenColorBecome(effects)))
 }
 

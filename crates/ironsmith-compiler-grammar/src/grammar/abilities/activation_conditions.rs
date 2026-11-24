@@ -241,6 +241,8 @@ struct SourcesDamageConditionShape<'a> {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct ControlledCreaturePowerShape<'a> {
     object_tokens: &'a [OwnedLexToken],
+    /// "with power", joining the creature to its comparison.
+    relation_tokens: &'a [OwnedLexToken],
     comparison_tokens: &'a [OwnedLexToken],
 }
 

@@ -978,6 +978,16 @@ pub fn parse_copy_activated_abilities_tokens(
             semantic_phrase(&["same", "name", "as", "thiss", "creature"]),
         ))
     });
+    // The relative "that" opening the negated relation is read with it.
+    if exclude_source_name
+        && let Some(that) = tokens.windows(3).position(|window| {
+            window[0].matches_word("that")
+                && window[1].matches_any_word(&["dont", "don't", "doesnt", "doesn't"])
+                && window[2].matches_word("have")
+        })
+    {
+        crate::word_claims::claim_tokens(&tokens[that..=that]);
+    }
 
     Some(CopyActivatedAbilitiesFact {
         marker_token,

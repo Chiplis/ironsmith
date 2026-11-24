@@ -2,10 +2,10 @@
 use super::*;
 pub fn parse_trigger_event_projection_line(tokens:&[OwnedLexToken])->Result<Option<StaticAbility>,CardTextError>{
  let clean=trim_edge_punctuation_tokens(tokens);
- let Some(action)=clean.iter().position(|t|t.is_word("attacking")) else{return Ok(None)};
+ let Some(action)=clean.iter().position(|t|t.matches_word("attacking")) else{return Ok(None)};
  if !is_source_reference_words(&parser_token_word_refs(&clean[..action])){return Ok(None)}
  let Some((_,subjects))=crate::grammar::primitives::parse_prefix(&clean[action+1..],crate::grammar::primitives::phrase(&["causes","abilities","of"])) else{return Ok(None)};
- let Some(split)=subjects.iter().position(|t|t.is_word("to")) else{return Ok(None)};
+ let Some(split)=subjects.iter().position(|t|t.matches_word("to")) else{return Ok(None)};
  let tail=&subjects[split..];let words=parser_token_word_refs(tail);
  if words!=["to","trigger","as","though","they","attacked"] && words!=["to","trigger","as","though","it","attacked"]{return Ok(None)}
  let filter=parse_object_filter_lexed(&subjects[..split],false)?;

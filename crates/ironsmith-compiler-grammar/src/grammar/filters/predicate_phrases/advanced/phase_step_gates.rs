@@ -968,7 +968,7 @@ fn parse_control_gate(tokens: &[OwnedLexToken]) -> Result<Option<PredicateAst>, 
     // permanent is a land, a Treefolk, or both.
     let mut filter = if let Some(split) = filter_tokens
         .iter()
-        .position(|token| token.is_word("and/or"))
+        .position(|token| token.matches_word("and/or"))
         .filter(|split| *split > 0 && *split + 1 < filter_tokens.len())
     {
         let mut left = parse_object_filter(&filter_tokens[..split], false)?;

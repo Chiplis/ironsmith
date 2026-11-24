@@ -200,8 +200,8 @@ pub(super) fn read_leading_result_prefix(
             .first()
             .is_some_and(|token| token.is_word("another"))
             && !get_then_gain_body.iter().any(|token| token.is_comma())
-            && get_then_gain_body.iter().any(|token| token.is_any_word(&["gets", "get"]))
-            && get_then_gain_body.iter().any(|token| token.is_any_word(&["gains", "gain"]))
+            && get_then_gain_body.iter().any(|token| token.matches_any_word(&["gets", "get"]))
+            && get_then_gain_body.iter().any(|token| token.matches_any_word(&["gains", "gain"]))
         {
             crate::effect_sentences::gain_ability::parse_gain_ability_sentence(get_then_gain_body)?
                 .filter(|effects| !effects.is_empty())
@@ -216,7 +216,7 @@ pub(super) fn read_leading_result_prefix(
                 .is_some_and(|token| token.is_word("the"))
             && get_then_gain_body
                 .iter()
-                .filter(|token| token.is_word("and"))
+                .filter(|token| token.matches_word("and"))
                 .count()
                 >= 2
         {

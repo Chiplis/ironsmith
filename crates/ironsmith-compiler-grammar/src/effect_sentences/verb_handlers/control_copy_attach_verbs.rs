@@ -163,7 +163,7 @@ fn compose_put_all_filtered_looked_cards_into_hand_rest_into_graveyard(
 /// A numeric quantity whose rounding clause follows the life noun.
 fn parse_half_quantified_life(tokens: &[OwnedLexToken]) -> Option<Value> {
     if !tokens.first()?.is_word("half") { return None; }
-    let life = tokens.iter().position(|token| token.is_word("life"))?;
+    let life = tokens.iter().position(|token| token.matches_word("life"))?;
     let base_tokens = &tokens[1..life];
     let (base, used) = parse_value(base_tokens)?;
     if used != base_tokens.len() { return None; }
@@ -175,8 +175,9 @@ fn parse_half_quantified_life(tokens: &[OwnedLexToken]) -> Option<Value> {
         ))),
         _ => return None,
     };
-    // The rounding after the life noun is the half's rounding.
-    crate::word_claims::claim_tokens(&tokens[life + 1..]);
+    // The life noun the scan above found, and the rounding after it (the
+    // half's rounding).
+    crate::word_claims::claim_tokens(&tokens[life..]);
     Some(value)
 }
 

@@ -67,7 +67,7 @@ pub(super) fn parse_destroy_target_and_attached_shape(
     // relation to the tagged target and its back-reference.
     if let Some(attached_at) = attached_tokens
         .windows(2)
-        .position(|pair| pair[0].is_word("attached") && pair[1].is_word("to"))
+        .position(|pair| pair[0].matches_word("attached") && pair[1].matches_word("to"))
     {
         crate::word_claims::claim_tokens(&attached_tokens[attached_at..]);
     }

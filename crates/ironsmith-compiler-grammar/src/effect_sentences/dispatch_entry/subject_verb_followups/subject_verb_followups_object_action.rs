@@ -303,7 +303,7 @@ fn parse_instead_replacement_sentence(
     {
         return Ok(None);
     }
-    let Some(instead_idx) = tokens.iter().rposition(|token| token.is_word("instead")) else {
+    let Some(instead_idx) = tokens.iter().rposition(|token| token.matches_word("instead")) else {
         return Ok(None);
     };
     let action_tokens = crate::util::trim_edge_punctuation_tokens(&tokens[..instead_idx]);

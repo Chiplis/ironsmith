@@ -95,7 +95,7 @@ pub(super) fn recognize_characteristics_mode(
     // The abilities after "with" keep their authored tokens, so a quoted
     // ability ("with haste and \"When this creature enters, ...\"") reaches
     // the create grammar intact.
-    let with_token = body.iter().position(|token| token.is_word("with"));
+    let with_token = body.iter().position(|token| token.matches_word("with"));
     let description_tokens = with_token.map_or(body, |idx| &body[..idx]);
     let description = crate::lexer::parser_token_word_refs(description_tokens);
     let Some((pt, characteristics)) = description.split_first() else {
@@ -151,6 +151,10 @@ pub(super) fn recognize_characteristics_mode(
     // characteristics were read into the template sentence parsed above,
     // which carries no authored spans of its own.
     crate::word_claims::claim_tokens(description_tokens);
+    // The become template restates the authored "with" as "and gains".
+    if let (Some(idx), CharacteristicsTemplate::BecomeUntilEndOfTurn(_)) = (with_token, template) {
+        crate::word_claims::claim_tokens(&body[idx..=idx]);
+    }
     let mode_text = render_original_text_for_token_slice(line, body)
         .unwrap_or_else(|| render_token_slice(body))
         .trim()

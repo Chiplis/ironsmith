@@ -374,9 +374,9 @@ fn read_who_clause(input: &ParticipantClause<'_>) -> Result<Option<EffectAst>, C
                         && matches!(filter_words[0], "a" | "an")
                         && filter_words[1..filter_words.len() - EXTREMUM.len()] == ["card"]
                         && let Some(that_idx) = effect_tokens.windows(3).position(|window| {
-                            window[0].is_word("that")
-                                && window[1].is_word("mana")
-                                && window[2].is_word("value")
+                            window[0].matches_word("that")
+                                && window[1].matches_word("mana")
+                                && window[2].matches_word("value")
                         })
                         && effect_words.windows(3).filter(|window| *window == ["that", "mana", "value"]).count() == 1
                     {

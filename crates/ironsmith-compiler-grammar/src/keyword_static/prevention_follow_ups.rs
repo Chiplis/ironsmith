@@ -208,7 +208,7 @@ pub fn parse_prevention_proposed_amount_follow_up_line(
         // and an opponent of your choice gains control of it." (Khârn the
         // Betrayer): `it` is the protected source itself.
         let tail = trim_edge_punctuation_tokens(tail);
-        let Some(it_index) = tail.iter().rposition(|token| token.is_word("it")) else {
+        let Some(it_index) = tail.iter().rposition(|token| token.matches_word("it")) else {
             return Ok(None);
         };
         let mut rewritten = tail[..it_index].to_vec();

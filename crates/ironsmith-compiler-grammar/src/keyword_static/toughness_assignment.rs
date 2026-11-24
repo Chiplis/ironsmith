@@ -63,7 +63,7 @@ fn parse_station_using_toughness_line(
     let tokens = crate::util::trim_edge_punctuation_tokens(tokens);
     let Some(verb) = tokens
         .iter()
-        .position(|token| token.is_word("stations") || token.is_word("station"))
+        .position(|token| token.matches_word("stations") || token.matches_word("station"))
     else {
         return Ok(None);
     };
@@ -131,7 +131,7 @@ pub(super) fn parse_filtered_toughness_assignment_line(
     if verb == 0
         || tokens[..verb]
             .iter()
-            .any(|token| token.is_word("target") || token.is_word("until") || token.is_word("may"))
+            .any(|token| token.matches_word("target") || token.matches_word("until") || token.matches_word("may"))
     {
         return Ok(None);
     }
@@ -141,7 +141,7 @@ pub(super) fn parse_filtered_toughness_assignment_line(
     // reader, which preserves both the P/T modifier and its granted rule.
     if subject_tokens
         .iter()
-        .any(|token| token.is_word("get") || token.is_word("gets"))
+        .any(|token| token.matches_word("get") || token.matches_word("gets"))
     {
         return Ok(None);
     }

@@ -91,7 +91,7 @@ fn parse_move_counted_counters(
     let rest = &tokens[used..];
     let Some(noun_idx) = rest
         .iter()
-        .position(|token| token.is_any_word(&["counter", "counters"]))
+        .position(|token| token.matches_any_word(&["counter", "counters"]))
     else {
         return Ok(None);
     };
@@ -130,8 +130,8 @@ fn parse_move_counted_counters(
     }
     // A plural donor phrase is the whole set. Choosing the amount for each
     // donor must not accidentally turn it into a choice of one permanent.
-    let plural_donors = !from_tokens.iter().any(|token| token.is_word("target"))
-        && from_tokens.iter().any(|token| token.is_any_word(&["creatures", "permanents", "artifacts", "lands"]));
+    let plural_donors = !from_tokens.iter().any(|token| token.matches_word("target"))
+        && from_tokens.iter().any(|token| token.matches_any_word(&["creatures", "permanents", "artifacts", "lands"]));
     if plural_donors {
         if matches!(count, ironsmith_core::effect::CounterMoveAmount::Exact(_)) {
             return Err(CardTextError::ParseError("a counted transfer from several donors needs a total distribution".into()));
@@ -141,10 +141,13 @@ fn parse_move_counted_counters(
         let filter = crate::object_filters::parse_object_filter(filter_tokens, false)?;
         let from = TargetAst::Object(filter.clone(), None, None);
         let to = parse_counter_move_destination(to_tokens, &from)?;
+        // The counter noun the scan above found.
+        crate::word_claims::claim_tokens(&rest[noun_idx..=noun_idx]);
         return Ok(Some(EffectAst::subject_verb_move_counters_from_all(counter_type, count, filter, to)));
     }
     let from = parse_target_phrase(from_tokens)?;
     let to = parse_counter_move_destination(to_tokens, &from)?;
+    crate::word_claims::claim_tokens(&rest[noun_idx..=noun_idx]);
     Ok(Some(EffectAst::subject_verb_move_counters_amount(
         counter_type,
         count,
@@ -211,7 +214,7 @@ pub fn parse_draw(
 ) -> Result<EffectAst, CardTextError> {
     // "you draw a card and chaos ensues" (Missy): the draw, then the
     // chaos keyword event (CR 309.6, 901.9).
-    if let Some(and_index) = tokens.iter().rposition(|token| token.is_word("and"))
+    if let Some(and_index) = tokens.iter().rposition(|token| token.matches_word("and"))
         && crate::lexer::parser_token_word_refs(&tokens[and_index + 1..])
             .starts_with(&["chaos", "ensues"])
         && crate::lexer::parser_token_word_refs(&tokens[and_index + 1..]).len() == 2
@@ -228,7 +231,7 @@ pub fn parse_draw(
             ],
         });
     }
-    if let Some(then_index) = tokens.iter().position(|token| token.is_word("then"))
+    if let Some(then_index) = tokens.iter().position(|token| token.matches_word("then"))
         && tokens.get(then_index + 1).is_some_and(|token| token.is_word("discard"))
         && crate::lexer::parser_token_word_refs(&tokens[then_index + 2..]).starts_with(&["cards", "equal", "to"])
     {
@@ -257,7 +260,7 @@ pub fn parse_draw(
         }
         return Ok(EffectAst::Sequence { effects: vec![draw, discard] });
     }
-    if let Some(then_index) = tokens.iter().position(|token| token.is_word("then"))
+    if let Some(then_index) = tokens.iter().position(|token| token.matches_word("then"))
         && crate::lexer::parser_token_word_refs(&tokens[then_index + 1..]) == ["discard", "one", "of", "them"]
     {
         let player = extract_subject_player(subject.clone()).unwrap_or(PlayerAst::Implicit);
@@ -841,7 +844,7 @@ pub fn parse_draw_equal_to_value(tokens: &[OwnedLexToken]) -> Result<Option<Valu
     // "draw cards equal to the damage dealt to target opponent this turn"
     // (Knollspine Dragon): a typed per-player damage total for this turn.
     if words.starts_with(&["equal", "to"])
-        && let Some(equal) = tokens.iter().position(|token| token.is_word("equal"))
+        && let Some(equal) = tokens.iter().position(|token| token.matches_word("equal"))
         && let Some((value, used)) = parse_value(&tokens[equal + 2..])
         && used == tokens.len() - equal - 2
         && matches!(value, Value::DamageDealtToPlayersThisTurn(_))
@@ -1540,7 +1543,7 @@ fn parse_move_one_of_each_absent_kind(
     ) else {
         return Ok(None);
     };
-    let Some(from_index) = after_prefix.iter().position(|token| token.is_word("from")) else {
+    let Some(from_index) = after_prefix.iter().position(|token| token.matches_word("from")) else {
         return Ok(None);
     };
     let after_from = &after_prefix[from_index + 1..];
@@ -1554,6 +1557,8 @@ fn parse_move_one_of_each_absent_kind(
     }
     let from = parse_target_phrase(from_tokens)?;
     let to = parse_counter_move_destination(to_tokens, &from)?;
+    // The "from" naming the donor, located above.
+    crate::word_claims::claim_tokens(&after_prefix[from_index..=from_index]);
     Ok(Some(EffectAst::subject_verb_move_counters_amount(
         crate::object::CounterType::PlusOnePlusOne,
         ironsmith_core::effect::CounterMoveAmount::OneOfEachKindAbsentFromRecipient,

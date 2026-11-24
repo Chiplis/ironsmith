@@ -471,7 +471,7 @@ fn stack_object_would_act_objects(
     if action != PriorEffectAction::Returned {
         return Some(tokens);
     }
-    let to = tokens.iter().rposition(|token| token.is_word("to"))?;
+    let to = tokens.iter().rposition(|token| token.matches_word("to"))?;
     let [owner @ .., hand] = &tokens[to + 1..] else {
         return None;
     };
@@ -496,7 +496,7 @@ fn stack_object_would_cause_actor(
     if !cause.is_word("cause") {
         return None;
     }
-    let to = rest.iter().position(|token| token.is_word("to"))?;
+    let to = rest.iter().position(|token| token.matches_word("to"))?;
     let player = match crate::util::parse_subject(&rest[..to]) {
         SubjectAst::Player(player) => player,
         _ => return None,
@@ -539,7 +539,7 @@ pub(super) fn read_stack_object_would_act_predicate(
     };
     let Some(action) = STACK_OBJECT_WOULD_ACTIONS
         .into_iter()
-        .find(|action| verb.is_word(action.base_verb()))
+        .find(|action| verb.matches_word(action.base_verb()))
     else {
         return Ok(None);
     };
@@ -552,6 +552,8 @@ pub(super) fn read_stack_object_would_act_predicate(
     let Ok(object) = parse_object_filter_lexed(object_tokens, false) else {
         return Ok(None);
     };
+    // The action verb matched against the action list above.
+    crate::word_claims::claim_tokens(std::slice::from_ref(verb));
     let mut filter = ObjectFilter::default();
     let mut would = WouldActOn::new(action, object);
     would.actor = actor;
@@ -655,7 +657,7 @@ pub(super) const READINGS: &[Reading] = &[
                 // or-if split binds looser than this conjunction.
                 && !predicate_tokens
                     .windows(2)
-                    .any(|pair| pair[0].is_word("or") && pair[1].is_word("if"))
+                    .any(|pair| pair[0].matches_word("or") && pair[1].matches_word("if"))
         },
         read: |input| input.outcome(read_implicit_subject_and_predicate(input)),
     },

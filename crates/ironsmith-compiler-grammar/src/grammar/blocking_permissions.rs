@@ -35,7 +35,7 @@ fn parse_lexed<'a>(input: &mut LexStream<'a>) -> ModalResult<BlockingCapacityCla
     if subject_tokens.iter().any(|token| {
         token.is_period()
             || token.is_comma()
-            || token.is_any_word(&["gets", "get", "has", "have", "gains", "gain", "and"])
+            || token.matches_any_word(&["gets", "get", "has", "have", "gains", "gain", "and"])
     }) {
         return Err(primitives::backtrack_err(
             "blocking capacity",

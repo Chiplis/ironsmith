@@ -295,7 +295,7 @@ pub(super) fn read_keyword_mechanic(
     // Simultaneity belongs to the complete phase instruction, before generic
     // conjunction splitting. Unknown multi-action shapes must not lose it.
     if tokens.first().is_some_and(|token| token.is_word("simultaneously"))
-        && tokens.iter().any(|token| token.is_any_word(&["phase", "phases"]))
+        && tokens.iter().any(|token| token.matches_any_word(&["phase", "phases"]))
     {
         return match parse_keyword_mechanic_clause(tokens)? {
             Some(effect) => Ok(Some(vec![effect])),

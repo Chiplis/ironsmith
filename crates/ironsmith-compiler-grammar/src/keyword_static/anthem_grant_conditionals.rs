@@ -60,7 +60,7 @@ fn parse_attached_subject_controller_condition(
     if !matches!(words.as_slice(), ["its", "controller", "has", ..]) {
         return Ok(None);
     }
-    let Some(controller_idx) = tokens.iter().position(|token| token.is_word("controller")) else {
+    let Some(controller_idx) = tokens.iter().position(|token| token.matches_word("controller")) else {
         return Ok(None);
     };
     let mut rewritten = crate::lexer::synthetic_word_tokens(&["that", "player"]);
@@ -147,7 +147,7 @@ pub fn parse_carried_conditional_anthem_grant_line(
         shape.additional_toughness,
         Some(condition.clone()),
     );
-    additional.additional_surface = tokens.iter().any(|token| token.is_word("additional"));
+    additional.additional_surface = tokens.iter().any(|token| token.matches_word("additional"));
     let mut result = vec![
         build_anthem_static_ability(&base).into(),
         build_anthem_static_ability(&additional).into(),
@@ -168,7 +168,7 @@ pub fn parse_quoted_activated_ability_grant_line(
     let mut quoted = false;
     let Some(has) = tokens.iter().position(|token| {
         if token.is_quote() { quoted = !quoted; false }
-        else { !quoted && token.is_any_word(&["has", "have"]) }
+        else { !quoted && token.matches_any_word(&["has", "have"]) }
     }) else { return Ok(None); };
     let mut tail = &tokens[has + 1..];
     while tail.last().is_some_and(|token| matches!(token.kind,
@@ -868,14 +868,14 @@ pub fn parse_matching_are_goaded_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbilityAst>, CardTextError> {
     let tokens = trim_edge_punctuation(tokens);
-    let Some(are) = tokens.iter().position(|token| token.is_word("are")) else {
+    let Some(are) = tokens.iter().position(|token| token.matches_word("are")) else {
         return Ok(None);
     };
     if crate::lexer::token_word_refs(&tokens[are..]) != ["are", crate::keyword_forms::GOADED] {
         return Ok(None);
     }
     let subject = &tokens[..are];
-    let mut filter = if let Some(with) = subject.iter().position(|token| token.is_word("with")) {
+    let mut filter = if let Some(with) = subject.iter().position(|token| token.matches_word("with")) {
         let words = crate::lexer::token_word_refs(&subject[with + 1..]);
         if words.starts_with(&["the", "same"]) && !words.starts_with(&["the", "same", "name", "as"])
         {
@@ -4440,14 +4440,14 @@ fn parse_per_item_conditional_grant_list_line(
         return Ok(None);
     }
     let body = trim_edge_punctuation(tokens);
-    let Some(has_idx) = body.iter().position(|token| token.is_any_word(&["has", "have"])) else {
+    let Some(has_idx) = body.iter().position(|token| token.matches_any_word(&["has", "have"])) else {
         return Ok(None);
     };
     let subject = &body[..has_idx];
     if subject.is_empty()
         || subject
             .iter()
-            .any(|token| token.is_comma() || token.is_any_word(&["if", "as", "and"]))
+            .any(|token| token.is_comma() || token.matches_any_word(&["if", "as", "and"]))
     {
         return Ok(None);
     }
@@ -4469,15 +4469,15 @@ fn parse_per_item_conditional_grant_list_line(
     }
     let mut abilities = Vec::new();
     for item in items {
-        let Some(if_idx) = item.iter().position(|token| token.is_word("if")) else {
+        let Some(if_idx) = item.iter().position(|token| token.matches_word("if")) else {
             return Ok(None);
         };
         let ability = &item[..if_idx];
         let condition = &item[if_idx + 1..];
         if ability.is_empty()
-            || ability.iter().any(|token| token.is_any_word(&["and", "or", "if"]))
+            || ability.iter().any(|token| token.matches_any_word(&["and", "or", "if"]))
             || !condition.first().is_some_and(|token| token.is_word("you"))
-            || condition.iter().skip(1).any(|token| token.is_word("if"))
+            || condition.iter().skip(1).any(|token| token.matches_word("if"))
         {
             return Ok(None);
         }
@@ -4521,7 +4521,7 @@ pub fn parse_filter_has_granted_ability_line(
     if let Some(abilities)=parse_quoted_alternative_method_grant(tokens)? {return Ok(Some(abilities));}
     // A malformed protection grant is rejected before any sentence-boundary
     // decline, so no other reader can trim its delimiters away.
-    if tokens.iter().any(|token| token.is_word("protection")) {
+    if tokens.iter().any(|token| token.matches_word("protection")) {
         crate::clause_support::validate_protection_static_line(tokens)?;
     }
 
@@ -4608,7 +4608,7 @@ pub fn parse_filter_has_granted_ability_line(
         // hypothetical `have` without such a grant is inapplicable.
         !subject
             .iter()
-            .any(|token| token.is_any_word(&["has", "have"]))
+            .any(|token| token.matches_any_word(&["has", "have"]))
     }) {
         return Ok(None);
     }
@@ -6593,7 +6593,7 @@ fn parse_quoted_alternative_method_grant(tokens:&[OwnedLexToken])->Result<Option
     let mut quoted=false;
     let Some(verb)=tokens.iter().position(|token| {
         if token.kind==TokenKind::Quote {quoted=!quoted;return false;}
-        !quoted && token.is_any_word(&["has","have"])
+        !quoted && token.matches_any_word(&["has","have"])
     }) else{return Ok(None)};
     // Recipient name/rules-text operands precede the grant verb and cannot
     // serve as the executable grant's marker or opening quote.

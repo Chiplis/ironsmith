@@ -864,6 +864,13 @@ fn strip_search_library_color_count_phrase_lexed(
             };
             let mut stripped = trim_commas(&trimmed[..cursor]).to_vec();
             stripped.extend_from_slice(&trim_commas(&rest[consumed..]));
+            // "a creature card that's exactly that many colors plus one": the
+            // relative copula introduces the color count read here.
+            if let Some(copula) = cursor.checked_sub(1).map(|index| &trimmed[index])
+                && copula.matches_any_word(&["that's", "thats", "that’s"])
+            {
+                crate::word_claims::claim_tokens(std::slice::from_ref(copula));
+            }
 
             let colors_expr = crate::effect::Value::ColorsAmong(
                 crate::target::ObjectFilter::tagged(crate::tag::CompilerReferenceTag::It.bind()),

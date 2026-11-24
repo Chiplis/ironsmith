@@ -170,7 +170,7 @@ mod tests {
             let nodes = follow_up.all_effects();
             let [crate::cards::builders::EffectAst::WithExiledSpell { effects }] = nodes.as_slice()
             else { panic!("expected the callback to bind the exiled spell") };
-            let body_start = tokens.iter().position(|token| token.is_word("and")).unwrap() + 1;
+            let body_start = tokens.iter().position(|token| token.matches_word("and")).unwrap() + 1;
             let authored = crate::clause_support::parse_effect_sentences_lexed(&tokens[body_start..]).unwrap();
             assert_eq!(*effects, authored);
         }

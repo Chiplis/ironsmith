@@ -198,7 +198,7 @@ pub fn parse_object_filter_with_grammar_entrypoint(
     // "lands that can produce {C}" (The Source): a trailing mana-capability
     // clause narrows the head noun phrase. Without this the clause's words
     // were silently left out of the filter ("seven or more lands").
-    if let Some(that) = tokens.iter().rposition(|token| token.is_word("that"))
+    if let Some(that) = tokens.iter().rposition(|token| token.matches_word("that"))
         && that > 0
         && tokens.get(that + 1).is_some_and(|token| token.is_any_word(&["can", "could"]))
         && tokens.get(that + 2).is_some_and(|token| token.is_word("produce"))
@@ -284,12 +284,12 @@ pub fn parse_object_filter_with_grammar_entrypoint(
         }));
     }
     if let Some((index, introducer_len)) = tokens.iter().enumerate().find_map(|(index, token)| {
-        if token.is_word("that's") || token.is_word("thats") {
+        if token.matches_word("that's") || token.matches_word("thats") {
             Some((index, 1))
-        } else if token.is_word("that")
+        } else if token.matches_word("that")
             && tokens
                 .get(index + 1)
-                .is_some_and(|next| next.is_word("is") || next.is_word("are"))
+                .is_some_and(|next| next.matches_word("is") || next.matches_word("are"))
         {
             Some((index, 2))
         } else {

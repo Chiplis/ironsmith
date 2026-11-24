@@ -9,7 +9,7 @@ pub fn parse_base_toughness_only_line(
     let tokens = trim_edge_punctuation(tokens);
     let Some(have_idx) = tokens
         .iter()
-        .position(|token| token.is_any_word(&["have", "has"]))
+        .position(|token| token.matches_any_word(&["have", "has"]))
     else {
         return Ok(None);
     };
@@ -23,7 +23,7 @@ pub fn parse_base_toughness_only_line(
         return Ok(None);
     };
     let subject_tokens = &tokens[..have_idx];
-    if subject_tokens.iter().any(|token| token.is_word("target")) {
+    if subject_tokens.iter().any(|token| token.matches_word("target")) {
         return Ok(None);
     }
     let subject = parse_anthem_subject(subject_tokens)?;

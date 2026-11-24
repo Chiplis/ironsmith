@@ -2313,14 +2313,15 @@ pub fn graveyard_cast_with_exile_replacement_and_surcharge(
     // "a card of the other type" relative to the triggering instant or
     // sorcery spell: an instant or sorcery card sharing no card type with it.
     let other_type_start = target_filter_tokens.windows(4).position(|window| {
-        window[0].is_word("of")
-            && window[1].is_word("the")
-            && window[2].is_word("other")
-            && window[3].is_word("type")
+        window[0].matches_word("of")
+            && window[1].matches_word("the")
+            && window[2].matches_word("other")
+            && window[3].matches_word("type")
     });
-    if let Some(start) = other_type_start {
-        target_filter_tokens.drain(start..start + 4);
-    }
+    let other_type_tokens: Vec<OwnedLexToken> = match other_type_start {
+        Some(start) => target_filter_tokens.drain(start..start + 4).collect(),
+        None => Vec::new(),
+    };
     let Ok(mut filter) = parse_object_filter_lexed(&target_filter_tokens, false) else {
         return Ok(None);
     };
@@ -2333,6 +2334,8 @@ pub fn graveyard_cast_with_exile_replacement_and_surcharge(
             crate::tag::CompilerReferenceTag::Triggering.key(),
             TaggedOpbjectRelation::SharesNoCardTypeWithTagged,
         );
+        // "of the other type", removed above: the shares-no-type relation.
+        crate::word_claims::claim_tokens(&other_type_tokens);
     }
     let spell_card = filter
         .card_types

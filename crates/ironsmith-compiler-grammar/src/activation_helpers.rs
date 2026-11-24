@@ -231,7 +231,7 @@ fn parse_add_x_of_one_mana_symbol_choice(
     // trailing binding is read here.
     let where_idx = tokens
         .iter()
-        .position(|token| token.is_word("where"))
+        .position(|token| token.matches_word("where"))
         .unwrap_or(tokens.len());
     let arms_tokens = &tokens[..where_idx];
     let mut symbols = Vec::new();
@@ -585,7 +585,7 @@ pub fn parse_add_mana(
     if !fixed_output.has_explicit_symbol
         && let Some(for_each_idx) = tokens
             .windows(2)
-            .position(|pair| pair[0].is_word("for") && pair[1].is_word("each"))
+            .position(|pair| pair[0].matches_word("for") && pair[1].matches_word("each"))
         && crate::lexer::token_word_refs(&tokens[..for_each_idx])
             .ends_with(&["mana", "of", "the", "chosen", "color"])
         && let Some(per) = parse_dynamic_cost_modifier_value(&tokens[for_each_idx..])?
@@ -668,7 +668,7 @@ pub fn parse_add_mana(
         // names the chosen-color output this reading builds.
         let body = tokens
             .first()
-            .filter(|token| token.is_word("add"))
+            .filter(|token| token.matches_word("add"))
             .map_or(tokens, |_| &tokens[1..]);
         let _ = crate::grammar::primitives::match_word_prefix(
             body,
@@ -741,7 +741,7 @@ pub fn parse_add_mana(
         // names, rather than this ability's source.
         if matches!(amount, Value::Fixed(1))
             && let Some(for_idx) = tail_tokens.windows(2).position(|pair| {
-                pair[0].is_word("for") && pair[1].is_word("each")
+                pair[0].matches_word("for") && pair[1].matches_word("each")
             })
             && for_idx > 0
             && for_idx + 2 < tail_tokens.len()
@@ -758,6 +758,8 @@ pub fn parse_add_mana(
                 per_filter.other = false;
                 per_filter = per_filter.not_tagged(crate::tag::CompilerReferenceTag::Triggering.key());
             }
+            // The "for each" repeating the mana per matching land.
+            crate::word_claims::claim_tokens(&tail_tokens[for_idx..for_idx + 2]);
             return Ok(EffectAst::subject_verb_add_mana_from_land_could_produce(
                 player,
                 Value::Count(per_filter),
@@ -927,7 +929,7 @@ pub fn parse_add_mana(
             // lead-in names the scaled amount this reading builds.
             let body = tokens
                 .first()
-                .filter(|token| token.is_word("add"))
+                .filter(|token| token.matches_word("add"))
                 .map_or(tokens, |_| &tokens[1..]);
             let _ = crate::grammar::primitives::match_word_prefix(body, &["an", "amount", "of"]);
             return Ok(EffectAst::subject_verb_add_mana_scaled(
@@ -959,7 +961,7 @@ pub fn parse_add_mana(
             // scaled amount this reading builds.
             let body = tokens
                 .first()
-                .filter(|token| token.is_word("add"))
+                .filter(|token| token.matches_word("add"))
                 .map_or(tokens, |_| &tokens[1..]);
             let _ = crate::grammar::primitives::match_word_prefix(body, &["an", "amount", "of"]);
             return Ok(EffectAst::subject_verb_add_mana_scaled(

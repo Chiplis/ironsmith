@@ -16,7 +16,7 @@ pub(super) fn parse(tokens: &[OwnedLexToken]) -> Result<Option<StaticAbility>, C
     let sentences = crate::grammar::structure::split_lexed_sentences(tokens);
     let Some(first) = sentences.first() else { return Ok(None); };
     let first = crate::util::trim_edge_punctuation_tokens(first);
-    let Some(cost) = first.iter().position(|token| token.is_any_word(&["cost", "costs"])) else {
+    let Some(cost) = first.iter().position(|token| token.matches_any_word(&["cost", "costs"])) else {
         return Ok(None);
     };
     let subject = &first[..cost];
@@ -77,7 +77,7 @@ pub(super) fn parse(tokens: &[OwnedLexToken]) -> Result<Option<StaticAbility>, C
         "that", "targets", ..,
     ] = subject_words.as_slice()
         && sentences.len() == 1
-        && let Some(targets_at) = subject.iter().position(|token| token.is_word("targets"))
+        && let Some(targets_at) = subject.iter().position(|token| token.matches_word("targets"))
         && targets_at + 1 < subject.len()
     {
         let filter = crate::grammar::filters::parse_object_filter_with_grammar_entrypoint_lexed(
@@ -112,7 +112,7 @@ pub(super) fn parse(tokens: &[OwnedLexToken]) -> Result<Option<StaticAbility>, C
             ),
         ));
     }
-    let Some(abilities) = subject.iter().position(|token| token.is_word("abilities")) else {
+    let Some(abilities) = subject.iter().position(|token| token.matches_word("abilities")) else {
         return Ok(None);
     };
     let kind = match words(&subject[..abilities]).as_slice() {
@@ -192,8 +192,8 @@ pub(super) fn parse(tokens: &[OwnedLexToken]) -> Result<Option<StaticAbility>, C
     if loyalty_scope
         && sentences.len() == 1
         && let ["an", "additional", .., "to", "activate"] = words(amount_tokens).as_slice()
-        && let Some(additional) = amount_tokens.iter().position(|token| token.is_word("additional"))
-        && let Some(to) = amount_tokens.iter().rposition(|token| token.is_word("to"))
+        && let Some(additional) = amount_tokens.iter().position(|token| token.matches_word("additional"))
+        && let Some(to) = amount_tokens.iter().rposition(|token| token.matches_word("to"))
         && to > additional + 1
     {
         let increase = parse_compiler_activation_cost(&amount_tokens[additional + 1..to])?;

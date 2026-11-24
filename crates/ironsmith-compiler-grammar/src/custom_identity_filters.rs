@@ -9,7 +9,7 @@ fn bare_payment_operand(tokens: &[OwnedLexToken], start: usize) -> Option<(Strin
     let tail = &tokens[start + 1..];
     let end = tail
         .iter()
-        .position(|token| token.is_any_word(&["you", "and", "or", "and/or"]))
+        .position(|token| token.matches_any_word(&["you", "and", "or", "and/or"]))
         .unwrap_or(tail.len());
     if tail.get(end).is_some_and(|token| token.is_word("you"))
         && !tail

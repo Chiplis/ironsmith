@@ -17,9 +17,9 @@ pub(super) fn propagate_leading_shared_set_modifiers(
 
     let leading_tokens = tokens.iter().take_while(|token| {
         !token.is_comma()
-            && !token.is_word("and")
-            && !token.is_word("or")
-            && !token.is_word("and/or")
+            && !token.matches_word("and")
+            && !token.matches_word("or")
+            && !token.matches_word("and/or")
     });
     let leading_words = leading_tokens
         .filter_map(OwnedLexToken::as_word)

@@ -36,7 +36,7 @@ pub fn parse_consult_traversal_shape(tokens: &[OwnedLexToken]) -> Option<Consult
     crate::word_claims::claim_tokens(&consult[until.clone()]);
     // "cards from the top of your library": the head is read whole when its
     // possessor is the traversing player.
-    if let Some(of) = library_head.iter().rposition(|token| token.is_word("of")) {
+    if let Some(of) = library_head.iter().rposition(|token| token.matches_word("of")) {
         let possessor: Vec<&str> = library_head[of + 1..library_head.len() - 1]
             .iter()
             .map(OwnedLexToken::parser_text)

@@ -603,7 +603,7 @@ fn tagged_filter_after_action(tokens: &[OwnedLexToken]) -> Option<&[OwnedLexToke
     if let Some(into) = crate::word_claims::probe_only(|| {
         filter
             .iter()
-            .position(|token| token.is_word("into") || token.is_word("onto"))
+            .position(|token| token.matches_word("into") || token.matches_word("onto"))
     }) && into > 0
     {
         // The restated destination is read here.

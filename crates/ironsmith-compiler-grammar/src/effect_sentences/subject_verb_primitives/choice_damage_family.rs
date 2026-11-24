@@ -655,7 +655,7 @@ pub fn parse_sentence_random_hand_reveal_then_loses_mana_value_life(
     let tokens = clause.tokens();
     let Some(split) = tokens
         .windows(2)
-        .position(|pair| pair[0].is_comma() && pair[1].is_word("then"))
+        .position(|pair| pair[0].is_comma() && pair[1].matches_word("then"))
     else {
         return Ok(None);
     };
@@ -717,7 +717,7 @@ fn parse_unless_any_player_has_source_deal_damage(
     clause: SubjectVerbPrimitiveClause<'_>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     let tokens = crate::util::trim_edge_punctuation_tokens(clause.tokens());
-    let Some(unless) = tokens.iter().position(|token| token.is_word("unless")) else {
+    let Some(unless) = tokens.iter().position(|token| token.matches_word("unless")) else {
         return Ok(None);
     };
     if unless == 0 {

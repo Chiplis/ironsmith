@@ -281,7 +281,7 @@ fn parse_self_maximum_blockers_rule(
     named_token: Option<&str>,
 ) -> Option<TokenEmbeddedRuleShape> {
     let negation = tokens.iter().position(|token| {
-        token.is_any_word(&["cant", "can't", "cannot"])
+        token.matches_any_word(&["cant", "can't", "cannot"])
     })?;
     let subject = &tokens[..negation];
     if !token_rule_target_is_self(subject, named_token) {

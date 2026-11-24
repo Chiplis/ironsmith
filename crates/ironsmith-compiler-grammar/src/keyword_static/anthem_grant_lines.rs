@@ -339,9 +339,9 @@ pub fn parse_subject_has_keywords_and_negated_restriction_line(
         return Ok(None);
     }
     let Some(and_index) = ability_tokens.iter().enumerate().find_map(|(index, token)| {
-        (token.is_word("and")
+        (token.matches_word("and")
             && ability_tokens.get(index + 1).is_some_and(|next| {
-                next.is_word("can't") || next.is_word("cant") || next.is_word("cannot")
+                next.matches_word("can't") || next.matches_word("cant") || next.matches_word("cannot")
             }))
         .then_some(index)
     }) else {
@@ -573,7 +573,9 @@ pub fn parse_subject_cant_be_blocked_as_long_as_condition_line(
     }
     let subject_tokens = parsed.subject_tokens;
     let condition = parse_static_condition_clause(parsed.condition_tokens)?;
-    let condition = if tokens.iter().any(|token| token.is_word("unless")) {
+    let condition = if let Some(unless) = tokens.iter().find(|token| token.matches_word("unless")) {
+        // "can't be blocked unless ...": the negated condition.
+        crate::word_claims::claim_tokens(std::slice::from_ref(unless));
         PredicateAst::Not(Box::new(condition))
     } else {
         condition
@@ -1018,7 +1020,7 @@ fn split_union_grant_subjects(
         && subject_tokens.get(1).is_some_and(OwnedLexToken::is_comma)
     {
         let right = trim_commas(&subject_tokens[2..]);
-        if right.iter().any(|token| token.is_word("and")) {
+        if right.iter().any(|token| token.matches_word("and")) {
             let (right_subject, losses) =
                 crate::parse_loss::capture(|| parse_anthem_subject(&right));
             if let Ok(right_subject) = right_subject {
@@ -1174,7 +1176,7 @@ fn parse_you_and_subject_protection_grant_line(
     if words.len() < 3 || words[0] != "you" || words[1] != "and" {
         return Ok(None);
     }
-    let Some(and_index) = tokens.iter().position(|token| token.is_word("and")) else {
+    let Some(and_index) = tokens.iter().position(|token| token.matches_word("and")) else {
         return Ok(None);
     };
     let rest = &tokens[and_index + 1..];
@@ -1640,7 +1642,7 @@ pub fn parse_granted_keyword_static_line(
     }
     // A malformed protection grant is rejected before any sentence-boundary
     // decline, so no other reader can trim its delimiters away.
-    if tokens.iter().any(|token| token.is_word("protection")) {
+    if tokens.iter().any(|token| token.matches_word("protection")) {
         crate::clause_support::validate_protection_static_line(tokens)?;
     }
     if static_grant_has_outer_sentence_boundary(tokens) {
@@ -1672,7 +1674,7 @@ pub fn parse_granted_keyword_static_line(
     // A copular animation bundle ("..., it's a 0/0 creature in addition to
     // its other types and it has annihilator 2.") owns its trailing grant;
     // reading only the `has` tail would drop the type and P/T change.
-    if tokens.iter().any(|token| token.is_word("addition"))
+    if tokens.iter().any(|token| token.matches_word("addition"))
         && matches!(
             crate::keyword_static::parse_filter_is_pt_creature_in_addition_and_has_line(tokens),
             Ok(Some(_))
@@ -1797,7 +1799,7 @@ fn parse_granted_keyword_static_line_inner(
         // hypothetical `have` without such a grant is inapplicable.
         !subject
             .iter()
-            .any(|token| token.is_any_word(&["has", "have"]))
+            .any(|token| token.matches_any_word(&["has", "have"]))
     }) {
         return Ok(None);
     }
@@ -1808,13 +1810,13 @@ fn parse_granted_keyword_static_line_inner(
         if token.kind == TokenKind::Quote {
             inside_quotes = !inside_quotes;
         }
-        !inside_quotes && token.is_word("where")
+        !inside_quotes && token.matches_word("where")
     });
     // A keyword owns its complete local X definition. Only the earlier
     // grant threshold may consume this binding at the outer grant level.
     let keyword_owned_definition = tokens.iter().enumerate().any(|(index, token)| {
-        token.is_any_word(&["bolster", "mobilize"])
-            && !tokens[..index].iter().any(|token| token.is_word("x"))
+        token.matches_any_word(&["bolster", "mobilize"])
+            && !tokens[..index].iter().any(|token| token.matches_word("x"))
             && crate::grammar::keyword_action_costs::parse_dynamic_keyword_amount_tokens(&tokens[index..])
                 .is_some_and(|shape| shape.definition.is_some())
     });
@@ -2580,7 +2582,7 @@ pub fn parse_filtered_blocker_count_restriction_line(
     let tokens = trim_commas(tokens);
     let Some(cant_idx) = tokens
         .iter()
-        .position(|token| token.is_any_word(&["can't", "cant", "cannot"]))
+        .position(|token| token.matches_any_word(&["can't", "cant", "cannot"]))
     else {
         return Ok(None);
     };
@@ -2946,7 +2948,7 @@ pub fn parse_anthem_and_attached_control_line(
     let control = trim_edge_punctuation_tokens(control);
     let Some(control_subject) = attached_grammar::parse_you_control_attached_tokens(control)
         else { return Ok(None); };
-    let Some(gets) = pump.iter().position(|token| token.is_any_word(&["gets", "get"]))
+    let Some(gets) = pump.iter().position(|token| token.matches_any_word(&["gets", "get"]))
         else { return Ok(None); };
     let (condition, start) = parse_anthem_prefix_condition(pump, gets)?;
     let subject = trim_commas(&pump[start..gets]);
@@ -2979,7 +2981,7 @@ pub fn parse_anthem_and_doesnt_untap_line(
     let pump_clause = trim_edge_punctuation_tokens(pump_clause);
     let Some(gets_idx) = pump_clause
         .iter()
-        .position(|token| token.is_any_word(&["gets", "get"]))
+        .position(|token| token.matches_any_word(&["gets", "get"]))
     else {
         return Ok(None);
     };
@@ -3447,7 +3449,7 @@ pub fn parse_source_counter_threshold_keyword_and_subtype_line(
 
     let subject_tokens = trim_commas(&tokens[subject_start..have_token_idx]);
     if subject_tokens.is_empty()
-        || subject_tokens.iter().any(|token| token.is_any_word(&["get", "gets", "is", "are"]))
+        || subject_tokens.iter().any(|token| token.matches_any_word(&["get", "gets", "is", "are"]))
     {
         // A coordinated pump or color change before "has" belongs to its
         // complete compound reader, rather than to this grant-only subject.
@@ -3594,7 +3596,7 @@ pub fn parse_anthem_subject(tokens: &[OwnedLexToken]) -> Result<AnthemSubjectAst
     let subject_words = crate::lexer::parser_token_word_refs(tokens);
     // An explicit source joined to other matching objects is a union, not
     // an intersection of `source` and `other` on one recipient filter.
-    if let Some(and) = tokens.iter().position(|token| token.is_word("and"))
+    if let Some(and) = tokens.iter().position(|token| token.matches_word("and"))
         && is_source_reference_words(&crate::lexer::parser_token_word_refs(&tokens[..and]))
         && tokens.get(and + 1).is_some_and(|token| token.is_word("other"))
     {
@@ -3780,7 +3782,7 @@ fn source_and_condition_counted_subject(
     };
     let and_idx = subject_tokens
         .iter()
-        .position(|token| token.is_word("and"))?;
+        .position(|token| token.matches_word("and"))?;
     let left = trim_commas(&subject_tokens[..and_idx]);
     let right_words = crate::lexer::parser_token_word_refs(&subject_tokens[and_idx + 1..]);
     if !matches!(right_words.as_slice(), ["those", _]) {
@@ -4066,8 +4068,8 @@ pub fn parse_static_condition_clause(
     // It is not a past-event receipt or a property of the granting source.
     let bounded = crate::util::trim_edge_punctuation_tokens(tokens);
     if let Some(copula) = bounded.windows(3).position(|part|
-        part[0].is_any_word(&["is", "are"]) && part[1].is_word("exiled")
-            && part[2].is_any_word(&["by", "with"]))
+        part[0].matches_any_word(&["is", "are"]) && part[1].matches_word("exiled")
+            && part[2].matches_any_word(&["by", "with"]))
         && copula > 0
     {
         let reference = &bounded[copula + 3..];
@@ -4185,10 +4187,10 @@ pub fn parse_static_condition_clause(
     if matches!(clause_words.get(..3), Some(["you", "control", "a" | "an"]))
         && let Some(and_idx) = tokens.iter().enumerate().position(|(idx, token)| {
             idx > 3
-                && token.is_word("and")
+                && token.matches_word("and")
                 && tokens
                     .get(idx + 1)
-                    .is_some_and(|next| next.is_word("a") || next.is_word("an"))
+                    .is_some_and(|next| next.matches_word("a") || next.matches_word("an"))
         })
     {
         let left_tokens = trim_edge_punctuation(&tokens[..and_idx]);
@@ -4201,6 +4203,8 @@ pub fn parse_static_condition_clause(
             parse_static_condition_clause(&left_tokens),
             parse_static_condition_clause(&right_tokens),
         ) {
+            // The "and" joining the two requirements, found by the scan above.
+            crate::word_claims::claim_tokens(&tokens[and_idx..=and_idx]);
             return Ok(PredicateAst::And(Box::new(left), Box::new(right)));
         }
     }
@@ -4211,14 +4215,14 @@ pub fn parse_static_condition_clause(
     // "you control a land creature or a land entered the battlefield under
     // your control this turn" (Earth Rumble Wrestlers): a right-hand clause
     // with its own subject and verb is also a separate condition.
-    if let Some(or_index) = tokens.iter().position(|token| token.is_word("or"))
+    if let Some(or_index) = tokens.iter().position(|token| token.matches_word("or"))
         && or_index > 0
         && tokens.get(or_index + 1).is_some_and(|token| {
             token.is_word("there")
                 || token.is_word("you")
                 || (token.is_any_word(&["a", "an", "another"])
                     && tokens[or_index + 2..].iter().any(|token| {
-                        token.is_any_word(&[
+                        token.matches_any_word(&[
                             "entered", "is", "are", "was", "were", "attacked", "died", "left",
                         ])
                     }))
@@ -4229,6 +4233,8 @@ pub fn parse_static_condition_clause(
         && let Ok(left) = parse_static_condition_clause(&tokens[..or_index])
         && let Ok(right) = parse_static_condition_clause(&tokens[or_index + 1..])
     {
+        // The "or" joining the two conditions, found by the scan above.
+        crate::word_claims::claim_tokens(&tokens[or_index..=or_index]);
         return Ok(PredicateAst::Or(Box::new(left), Box::new(right)));
     }
 
@@ -4812,7 +4818,7 @@ fn parse_conjoined_static_condition_clause(tokens: &[OwnedLexToken]) -> Option<P
 fn parse_subject_elided_serial_static_condition(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
     const VERBS: &[&str] = &["is", "are", "has", "have"];
     let tokens = trim_edge_punctuation(tokens);
-    let verb = tokens.iter().position(|token| token.is_any_word(VERBS))?;
+    let verb = tokens.iter().position(|token| token.matches_any_word(VERBS))?;
     if verb == 0 {
         return None;
     }
@@ -4921,12 +4927,12 @@ fn source_counter_count_expression(
 /// the modifier applies once per A plus once per B, i.e. per (A + B).
 fn repeated_modifier_for_each_sum(tail: &[OwnedLexToken], modifier: &str) -> Option<Value> {
     let and_idx = tail.windows(4).position(|window| {
-        window[0].is_word("and")
+        window[0].matches_word("and")
             && window[1]
                 .as_word()
                 .is_some_and(|word| word.eq_ignore_ascii_case(modifier))
-            && window[2].is_word("for")
-            && window[3].is_word("each")
+            && window[2].matches_word("for")
+            && window[3].matches_word("each")
     })?;
     let first = &tail[..and_idx];
     let mut second = vec![tail[and_idx + 2].clone(), tail[and_idx + 3].clone()];
@@ -6650,7 +6656,7 @@ mod dynamic_anthem_tests {
         let tokens = lex_line(text, 0).expect("anthem fixture should lex");
         let get_idx = tokens
             .iter()
-            .position(|token| token.is_word("gets") || token.is_word("get"))
+            .position(|token| token.matches_word("gets") || token.matches_word("get"))
             .expect("get/gets token");
         parse_anthem_clause(&tokens, get_idx, tokens.len()).expect("anthem fixture should parse")
     }
@@ -6754,7 +6760,7 @@ mod dynamic_anthem_tests {
         .expect("nested token anthem should lex");
         let get_idx = tokens
             .iter()
-            .position(|token| token.is_word("gets"))
+            .position(|token| token.matches_word("gets"))
             .expect("gets token");
         let (clause, loss) =
             crate::parse_loss::capture(|| parse_anthem_clause(&tokens, get_idx, tokens.len()));
@@ -6777,7 +6783,7 @@ mod dynamic_anthem_tests {
         .expect("party anthem fixture should lex");
         let get_idx = tokens
             .iter()
-            .position(|token| token.is_word("gets"))
+            .position(|token| token.matches_word("gets"))
             .expect("gets token");
         let clause =
             parse_anthem_clause(&tokens, get_idx, tokens.len()).expect("party anthem should parse");
@@ -6915,7 +6921,7 @@ mod dynamic_anthem_tests {
             "This creature gets +X/+X, where X is the number of poison counters your opponents have nonsense.",
         ] {
             let tokens = lex_line(text, 0).unwrap();
-            let get_idx = tokens.iter().position(|token| token.is_word("gets")).unwrap();
+            let get_idx = tokens.iter().position(|token| token.matches_word("gets")).unwrap();
             assert!(parse_anthem_clause(&tokens, get_idx, tokens.len()).is_err(), "{text}");
         }
     }
@@ -6953,7 +6959,7 @@ mod dynamic_anthem_tests {
         .expect("sticker anthem fixture should lex");
         let get_idx = tokens
             .iter()
-            .position(|token| token.is_word("gets"))
+            .position(|token| token.matches_word("gets"))
             .expect("gets token");
         let clause = parse_anthem_clause(&tokens, get_idx, tokens.len())
             .expect("sticker anthem should parse");
@@ -6981,7 +6987,7 @@ mod dynamic_anthem_tests {
         .expect("controller-hand anthem fixture should lex");
         let get_idx = tokens
             .iter()
-            .position(|token| token.is_word("gets"))
+            .position(|token| token.matches_word("gets"))
             .expect("gets token");
         let clause = parse_anthem_clause(&tokens, get_idx, tokens.len())
             .expect("controller-hand anthem should parse");
@@ -7009,7 +7015,7 @@ mod dynamic_anthem_tests {
         .expect("controller-graveyard anthem fixture should lex");
         let get_idx = tokens
             .iter()
-            .position(|token| token.is_word("gets"))
+            .position(|token| token.matches_word("gets"))
             .expect("gets token");
         let clause = parse_anthem_clause(&tokens, get_idx, tokens.len())
             .expect("controller-graveyard anthem should parse");
@@ -7440,14 +7446,14 @@ pub fn parse_subject_has_keywords_and_attacks_each_combat_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {
     let tokens = trim_edge_punctuation(tokens);
-    let Some(has_idx) = tokens.iter().position(|token| token.is_any_word(&["has", "have"])) else {
+    let Some(has_idx) = tokens.iter().position(|token| token.matches_any_word(&["has", "have"])) else {
         return Ok(None);
     };
     if has_idx == 0 || tokens.iter().any(|token| token.kind == crate::lexer::TokenKind::Quote) {
         return Ok(None);
     }
     let Some(and_idx) = (has_idx + 1..tokens.len().saturating_sub(5)).find(|index| {
-        tokens[*index].is_word("and")
+        tokens[*index].matches_word("and")
             && crate::lexer::parser_token_word_refs(&tokens[index + 1..])
                 .as_slice()
                 .first()

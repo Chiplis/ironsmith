@@ -512,7 +512,7 @@ fn life_stakes_flip_process(sentences: &[&[OwnedLexToken]]) -> Result<Option<Vec
         stake_at(lost_words.as_slice(), 7), stake_at(lost_words.as_slice(), 13)];
     let Some(initial_stakes) = stakes[0] else { return Ok(None) };
     if stakes.iter().any(|stake| *stake != Some(initial_stakes)) { return Ok(None); }
-    let Some(target) = won.iter().position(|token| token.is_word("target")) else { return Ok(None) };
+    let Some(target) = won.iter().position(|token| token.matches_word("target")) else { return Ok(None) };
     let Some(opponent_tokens) = won.get(target..target + 2) else { return Ok(None) };
     let opponent = crate::util::parse_target_phrase(opponent_tokens)?;
     // All four sentences matched their exact shapes.
@@ -615,7 +615,7 @@ fn parse_coin_document(tokens: &[OwnedLexToken]) -> Result<Option<Vec<EffectAst>
         let ordinary_flip = kind == CoinFlipKind::Called && matches!(words.as_slice(),
             ["flip", "a" | "one", "coin"] | ["you", "flip", "a" | "one", "coin"]);
         let has_optional_continuation = sentences.iter().any(|sentence|
-            sentence.iter().any(|token| token.is_word("may")));
+            sentence.iter().any(|token| token.matches_word("may")));
         recognized |= effects.is_some() && !(ordinary_flip && has_optional_continuation);
         parsed.push(effects);
     }

@@ -184,7 +184,7 @@ pub fn parse_looked_move_action_shape(tokens: &[OwnedLexToken]) -> Option<Looked
         let attacking = contains_sequence_word(tail, "attacking");
         let controller = tail.iter().enumerate().find_map(|(index, token)| {
             token
-                .is_word("under")
+                .matches_word("under")
                 .then(|| parse_battlefield_controller_prefix(&tail[index..]))
                 .flatten()
                 .map(|shape| shape.controller)
@@ -256,7 +256,7 @@ pub fn parse_looked_hand_action_shape(
     // "... into your hand": the destination through its hand noun.
     if valid_tail
         && let Some(hand) = crate::word_claims::probe_only(|| {
-            tail.iter().position(|token| token.is_word("hand"))
+            tail.iter().position(|token| token.matches_word("hand"))
         })
     {
         crate::word_claims::claim_tokens(&tail[..=hand]);

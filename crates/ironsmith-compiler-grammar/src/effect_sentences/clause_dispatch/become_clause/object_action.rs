@@ -11,8 +11,8 @@ pub fn parse_become_clause(
     // possessive before "other" names the same object as the subject and is
     // read as "its", exactly as the contracted-copula reading does.
     if rest_tokens.iter().enumerate().any(|(index, token)| {
-        token.is_any_word(&["his", "her"])
-            && rest_tokens.get(index + 1).is_some_and(|next| next.is_word("other"))
+        token.matches_any_word(&["his", "her"])
+            && rest_tokens.get(index + 1).is_some_and(|next| next.matches_word("other"))
     }) {
         let normalized: Vec<OwnedLexToken> = rest_tokens
             .iter()
@@ -76,7 +76,7 @@ pub fn parse_become_clause(
             };
             // A declared target is chosen once; the second change names the
             // same object through the first change's reference.
-            let target = if subject_core.iter().any(|token| token.is_word("target")) {
+            let target = if subject_core.iter().any(|token| token.matches_word("target")) {
                 TargetAst::Tagged(crate::tag::CompilerReferenceTag::It.bind(), None)
             } else {
                 parse_target_phrase(&subject_core)?
@@ -385,10 +385,10 @@ pub fn parse_become_clause(
         .position(|window| window == ["and", "has", "base", "power"])
         && !become_body_tokens.windows(5).any(|window| {
             window[0].is_comma()
-                && window[1].is_word("and")
-                && window[2].is_word("has")
-                && window[3].is_word("base")
-                && window[4].is_word("power")
+                && window[1].matches_word("and")
+                && window[2].matches_word("has")
+                && window[3].matches_word("base")
+                && window[4].matches_word("power")
         })
     {
         become_words_vec.remove(index + 1);
@@ -970,10 +970,10 @@ pub fn parse_become_clause(
             };
             let mut remove_all_abilities = false;
             if let Some(index) = suffix_tokens.windows(4).position(|window| {
-                window[0].is_word("and")
-                    && window[1].is_any_word(&["lose", "loses"])
-                    && window[2].is_word("all")
-                    && window[3].is_word("abilities")
+                window[0].matches_word("and")
+                    && window[1].matches_any_word(&["lose", "loses"])
+                    && window[2].matches_word("all")
+                    && window[3].matches_word("abilities")
             }) && crate::util::trim_edge_punctuation_tokens(&suffix_tokens[index + 4..])
                 .is_empty()
             {
@@ -985,7 +985,7 @@ pub fn parse_become_clause(
                 if token.kind == TokenKind::Quote {
                     quote_depth = !quote_depth;
                 }
-                (!quote_depth && token.is_word("named")).then_some(index)
+                (!quote_depth && token.matches_word("named")).then_some(index)
             });
             let name_override = if let Some(index) = name_start {
                 let name_tokens =
@@ -1111,7 +1111,7 @@ pub fn parse_become_clause(
             .position(|word| *word == "with")
             .filter(|index| *index > 0)
         {
-            let Some(with_token) = become_body_tokens.iter().position(|token| token.is_word("with"))
+            let Some(with_token) = become_body_tokens.iter().position(|token| token.matches_word("with"))
             else {
                 return Err(CardTextError::ParseError(format!(
                     "unsupported implied-creature animation suffix (clause: '{}')",
@@ -1218,7 +1218,7 @@ pub fn parse_become_clause(
                 let ability_tokens = trim_separators(ability_tokens);
                 let ability_tokens = if ability_tokens
                     .first()
-                    .is_some_and(|token| token.is_word("and"))
+                    .is_some_and(|token| token.matches_word("and"))
                 {
                     trim_separators(&ability_tokens[1..])
                 } else {
@@ -1227,8 +1227,8 @@ pub fn parse_become_clause(
                 // "..., and it gains crew 2 and \"...\"" (Captain Rex
                 // Nebula): the animated object is the grant's subject.
                 let ability_tokens = if ability_tokens.len() > 2
-                    && ability_tokens[0].is_word("it")
-                    && ability_tokens[1].is_any_word(&["gains", "has"])
+                    && ability_tokens[0].matches_word("it")
+                    && ability_tokens[1].matches_any_word(&["gains", "has"])
                 {
                     &ability_tokens[2..]
                 } else {
@@ -1264,7 +1264,7 @@ pub fn parse_become_clause(
         };
         // "a Rhino with base power and toughness 4/4": "with" attaches the
         // stated base size.
-        if let Some(with) = base_pt_tokens.iter().position(|token| token.is_word("with"))
+        if let Some(with) = base_pt_tokens.iter().position(|token| token.matches_word("with"))
             && base_pt_tokens.get(with + 1).is_some_and(|token| token.is_word("base"))
         {
             crate::word_claims::claim_tokens(&base_pt_tokens[with..=with]);

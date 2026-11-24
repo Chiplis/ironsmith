@@ -116,7 +116,7 @@ pub fn parse_looked_card_into_hand_shape(
     }
     // "... into your hand": the destination through its hand noun.
     if let Some(hand) = crate::word_claims::probe_only(|| {
-        tail.iter().position(|token| token.is_word("hand"))
+        tail.iter().position(|token| token.matches_word("hand"))
     }) {
         crate::word_claims::claim_tokens(&tail[..=hand]);
     }

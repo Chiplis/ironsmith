@@ -283,7 +283,7 @@ pub fn has_extended_effect_head_tokens(tokens: &[OwnedLexToken]) -> bool {
         // conjunction extending the previous counter-placement recipient.
         || (tokens.first().is_some_and(|token| token.is_word("perform"))
             && tokens.get(1).is_some_and(|token| token.is_word("the"))
-            && tokens.iter().skip(3).any(|token| token.is_word("action")))
+            && tokens.iter().skip(3).any(|token| token.matches_word("action")))
         || parse_prevent_next_damage(tokens)
         || parse_prevent_all_damage(tokens)
         || crate::grammar::effects::clause_pattern_shapes::parse_can_attack_no_defender_subject_tokens(tokens).is_some()

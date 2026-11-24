@@ -18,7 +18,7 @@ const DISCARDED_TAG_PREFIX: &str = "discarded_for_entry_counters";
 
 fn split_condition(sentence: &[OwnedLexToken]) -> Option<(&[OwnedLexToken], Vec<String>)> {
     let tokens = crate::util::trim_edge_punctuation_tokens(sentence);
-    let if_idx = tokens.iter().position(|token| token.is_word("if"))?;
+    let if_idx = tokens.iter().position(|token| token.matches_word("if"))?;
     let condition = crate::lexer::parser_token_word_refs(&tokens[if_idx + 1..])
         .into_iter()
         .map(str::to_string)
@@ -105,7 +105,7 @@ pub(super) fn bind_discarded_keyword_entry_counter(
     // "a card discarded this way has <keyword>": the condition, whose
     // keyword is re-read above as a synthetic filter.
     let trimmed = crate::util::trim_edge_punctuation_tokens(sentence);
-    if let Some(if_idx) = trimmed.iter().position(|token| token.is_word("if")) {
+    if let Some(if_idx) = trimmed.iter().position(|token| token.matches_word("if")) {
         crate::word_claims::claim_tokens(&trimmed[if_idx..]);
     }
     effects.push(EffectAst::Conditionals(ConditionalEffectAst::Conditional {

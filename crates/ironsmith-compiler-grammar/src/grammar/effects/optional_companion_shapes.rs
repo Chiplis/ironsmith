@@ -156,7 +156,7 @@ fn optional_companion_separator(tokens: &[OwnedLexToken]) -> Option<usize> {
 fn explicit_target_phrase_count(tokens: &[OwnedLexToken]) -> usize {
     tokens
         .iter()
-        .filter(|token| token.is_word("target"))
+        .filter(|token| token.matches_word("target"))
         .count()
 }
 
@@ -211,7 +211,7 @@ pub fn parse_shared_subject_optional_companion_shape(
     let action_tokens = trim_lexed_commas(&companion_and_action[action_word_idx..]);
     if companion_tokens.is_empty()
         || action_tokens.is_empty()
-        || !companion_tokens.iter().any(|token| token.is_word("target"))
+        || !companion_tokens.iter().any(|token| token.matches_word("target"))
     {
         return None;
     }

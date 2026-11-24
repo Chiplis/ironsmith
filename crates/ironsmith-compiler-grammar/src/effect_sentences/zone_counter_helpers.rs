@@ -322,12 +322,12 @@ fn parse_counter_target_phrase(tokens: &[OwnedLexToken]) -> Result<TargetAst, Ca
 pub(super) fn has_counter_placement_head(tokens: &[OwnedLexToken]) -> bool {
     let Some(counter) = tokens
         .iter()
-        .position(|token| token.is_any_word(&["counter", "counters"]))
+        .position(|token| token.matches_any_word(&["counter", "counters"]))
     else {
         return false;
     };
     // A counter on entry belongs to a zone move, not to a counter-placement action.
-    !tokens[..counter].iter().any(|token| token.is_word("onto"))
+    !tokens[..counter].iter().any(|token| token.matches_word("onto"))
 }
 
 /// "put an everything counter on each of up to one target land and up to one
@@ -337,7 +337,7 @@ pub(super) fn has_counter_placement_head(tokens: &[OwnedLexToken]) -> bool {
 fn parse_put_counters_on_two_independent_targets(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    let Some(on_idx) = tokens.iter().position(|token| token.is_word("on")) else {
+    let Some(on_idx) = tokens.iter().position(|token| token.matches_word("on")) else {
         return Ok(None);
     };
     let mut start = on_idx + 1;
@@ -357,7 +357,7 @@ fn parse_put_counters_on_two_independent_targets(
     let and_positions = target_phrase
         .iter()
         .enumerate()
-        .filter(|(_, token)| token.is_word("and"))
+        .filter(|(_, token)| token.matches_word("and"))
         .map(|(index, _)| index)
         .collect::<Vec<_>>();
     let [and_idx] = and_positions.as_slice() else {
@@ -376,7 +376,7 @@ fn parse_put_counters_on_two_independent_targets(
         || !opens_target(second)
         || target_phrase
             .iter()
-            .any(|token| token.is_comma() || token.is_any_word(VERBS))
+            .any(|token| token.is_comma() || token.matches_any_word(VERBS))
     {
         return Ok(None);
     }
@@ -397,14 +397,14 @@ fn parse_put_counters_on_two_independent_targets(
 fn parse_put_counters_on_object_and_each_filter(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    let Some(on_idx) = tokens.iter().position(|token| token.is_word("on")) else {
+    let Some(on_idx) = tokens.iter().position(|token| token.matches_word("on")) else {
         return Ok(None);
     };
     let target_phrase = crate::util::trim_edge_punctuation_tokens(&tokens[on_idx + 1..]);
     let and_positions = target_phrase
         .iter()
         .enumerate()
-        .filter(|(_, token)| token.is_word("and"))
+        .filter(|(_, token)| token.matches_word("and"))
         .map(|(index, _)| index)
         .collect::<Vec<_>>();
     let [and_idx] = and_positions.as_slice() else {
@@ -415,9 +415,9 @@ fn parse_put_counters_on_object_and_each_filter(
     if first.is_empty()
         || !second.first().is_some_and(|token| token.is_word("each"))
         || second.get(1).is_some_and(|token| token.is_word("of"))
-        || first.iter().any(|token| token.is_any_word(&["each", "for", "then"]))
+        || first.iter().any(|token| token.matches_any_word(&["each", "for", "then"]))
         || target_phrase.iter().any(|token| {
-            token.is_comma() || token.is_any_word(&["for", "then", "if", "unless", "instead"])
+            token.is_comma() || token.matches_any_word(&["for", "then", "if", "unless", "instead"])
         })
     {
         return Ok(None);
@@ -441,7 +441,7 @@ pub fn parse_put_counters_with_subject_chosen_target(
 ) -> Option<EffectAst> {
     let choice = crate::grammar::choices::parse_possessive_object_choice_tokens(tokens)?;
     if choice.actor != crate::grammar::choices::PossessiveObjectChoiceActor::SubjectPlayer
-        || !choice.object_tokens.iter().any(|token| token.is_word("target"))
+        || !choice.object_tokens.iter().any(|token| token.matches_word("target"))
     {
         return None;
     }
@@ -493,7 +493,7 @@ pub fn parse_put_counters(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTex
     // Declare it with that chooser through the delegated TargetOnly, then
     // put the counters on the declared object through its tag.
     if let Some(choice) = crate::grammar::choices::parse_possessive_object_choice_tokens(tokens)
-        && choice.object_tokens.iter().any(|token| token.is_word("target"))
+        && choice.object_tokens.iter().any(|token| token.matches_word("target"))
         && let Some(chooser) = match choice.actor {
             crate::grammar::choices::PossessiveObjectChoiceActor::DefendingPlayer => {
                 Some(PlayerAst::Defending)
@@ -611,12 +611,12 @@ pub fn parse_put_counters(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTex
     if let crate::recognition::ParseOutcome::Match(matched) =
         crate::grammar::effects::coordination::recognize_coordination(coordination_tokens)
         && matched.value.members.len() > 1
-        && (tokens.iter().any(|token| token.is_word("then"))
+        && (tokens.iter().any(|token| token.matches_word("then"))
             || matched.value.members.iter().skip(1).any(|member| {
                 member
                     .tokens
                     .first()
-                    .is_some_and(|token| token.is_any_word(&["tap", "untap", "attach"]))
+                    .is_some_and(|token| token.matches_any_word(&["tap", "untap", "attach"]))
             }))
         && matched.value.members.iter().skip(1).any(|member| {
             super::find_verb(member.tokens).is_some_and(|(_, index)| {
@@ -625,7 +625,7 @@ pub fn parse_put_counters(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTex
                         && member
                             .tokens
                             .first()
-                            .is_some_and(|token| token.is_word("then")))
+                            .is_some_and(|token| token.matches_word("then")))
             })
         })
     {
@@ -649,14 +649,14 @@ pub fn parse_put_counters(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTex
     }
     let tokens = if let Some(entry) = tokens
         .windows(2)
-        .position(|pair| pair[0].is_word("enters") && pair[1].is_word("with"))
+        .position(|pair| pair[0].matches_word("enters") && pair[1].matches_word("with"))
         && crate::util::is_source_reference_words(&crate::lexer::token_word_refs(&tokens[..entry]))
     {
         &tokens[entry + 2..]
     } else {
         tokens
     };
-    if tokens.iter().filter(|token| token.is_word("if")).count() > 1
+    if tokens.iter().filter(|token| token.matches_word("if")).count() > 1
         && let crate::recognition::ParseOutcome::Match(matched) =
             crate::grammar::effects::coordination::recognize_coordination(tokens)
         && matched.value.members.len() > 1
@@ -670,7 +670,7 @@ pub fn parse_put_counters(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTex
             if !clause
                 .leading_tokens
                 .iter()
-                .any(|token| token.is_any_word(&["counter", "counters"]))
+                .any(|token| token.matches_any_word(&["counter", "counters"]))
             {
                 break;
             }
@@ -725,7 +725,7 @@ pub fn parse_put_counters(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTex
     // its own counter kind: the referential value is only the amount.
     let names_own_counter_kind = rest
         .iter()
-        .position(|token| token.is_any_word(&["counter", "counters"]))
+        .position(|token| token.matches_any_word(&["counter", "counters"]))
         .is_some_and(|index| parse_counter_type_from_tokens(&rest[..=index]).is_some());
     if let Value::CountersOn(spec, None) = count_value.unhinted()
         && !names_own_counter_kind
@@ -750,7 +750,7 @@ pub fn parse_put_counters(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTex
     // noun, so the remaining words hold no descriptor at all.
     let descriptor_end = rest
         .iter()
-        .position(|token| token.is_any_word(&["counter", "counters"]))
+        .position(|token| token.matches_any_word(&["counter", "counters"]))
         .map(|index| index + 1)
         .unwrap_or(0);
     let counter_type =
@@ -837,10 +837,10 @@ pub fn parse_put_counters(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTex
         let mut filter_tokens = filter_tokens;
         if let Some(for_idx) = filter_tokens.iter().enumerate().position(|(idx, token)| {
             idx > 0
-                && token.is_word("for")
+                && token.matches_word("for")
                 && filter_tokens
                     .get(idx + 1)
-                    .is_some_and(|next| next.is_any_word(&["each", "every"]))
+                    .is_some_and(|next| next.matches_any_word(&["each", "every"]))
         }) {
             let count_words = crate::lexer::token_word_refs(&filter_tokens[for_idx..]);
             if let Some((per, used)) = crate::util::parse_for_each_count_value_words(&count_words)

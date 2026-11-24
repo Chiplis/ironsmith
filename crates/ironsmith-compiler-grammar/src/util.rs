@@ -183,7 +183,7 @@ pub fn recognize_transformed_source_return_pronoun(
     fn authored_return_surface(
         tokens: &[OwnedLexToken],
     ) -> Option<crate::target::SourceReferenceSurface> {
-        if !tokens.iter().any(|token| token.is_word("exile")) {
+        if !tokens.iter().any(|token| token.matches_word("exile")) {
             return None;
         }
         crate::grammar::source_surface_shapes::parse_unique_pronoun_operand_after(tokens, "return")
@@ -293,7 +293,7 @@ pub fn recognize_unique_source_action_surface(
     ) -> Option<SourceReferenceSurface> {
         if tokens
             .iter()
-            .filter(|token| token.is_word(action_word))
+            .filter(|token| token.matches_word(action_word))
             .count()
             != 1
         {

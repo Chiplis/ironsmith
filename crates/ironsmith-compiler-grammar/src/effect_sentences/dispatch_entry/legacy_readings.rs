@@ -642,7 +642,7 @@ fn leading_duration_with_recurring_delayed_trigger(
     // standalone triggered line, the delayed body's anaphor has no antecedent
     // and fell back to the source. It names the restriction's one target.
     let mut delayed_effects = delayed_effects;
-    if tokens[..split].iter().any(|token| token.is_word("target")) {
+    if tokens[..split].iter().any(|token| token.matches_word("target")) {
         use ironsmith_core::tag::TagKeyWalk;
         let it = crate::tag::CompilerReferenceTag::It.as_str();
         let targeted = crate::tag::CompilerReferenceTag::Targeted0.key();
@@ -993,7 +993,7 @@ fn read_conditional_sentence_family(
             )?
     {
         // The result prefix's leading "if".
-        if let Some(head) = tokens.first().filter(|token| token.is_word("if")) {
+        if let Some(head) = tokens.first().filter(|token| token.matches_word("if")) {
             crate::word_claims::claim_tokens(std::slice::from_ref(head));
         }
         return Ok(Some(vec![EffectAst::Conditionals(

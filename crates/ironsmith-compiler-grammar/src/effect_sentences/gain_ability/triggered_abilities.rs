@@ -62,7 +62,7 @@ fn parse_quantified_player_shared_resource_chain(
         crate::word_claims::claim_tokens(&segment[verb_idx..=verb_idx]);
     }
     // The conjunctions joining the members.
-    for token in tokens.iter().filter(|token| token.is_word("and")) {
+    for token in tokens.iter().filter(|token| token.matches_word("and")) {
         crate::word_claims::claim_tokens(std::slice::from_ref(token));
     }
     let effects = vec![EffectAst::Coordinated {
@@ -89,6 +89,7 @@ fn parse_granted_trigger_simple_sentence_sequence(
         return Ok(None);
     }
     let mut effects = Vec::with_capacity(sentences.len());
+    let mut verbs = Vec::with_capacity(sentences.len());
     for sentence in sentences {
         let sentence = crate::util::trim_edge_punctuation_tokens(sentence);
         if sentence
@@ -114,7 +115,10 @@ fn parse_granted_trigger_simple_sentence_sequence(
             Some(SubjectAst::Player(PlayerAst::You)),
             sentence.get(verb_idx + 1..).unwrap_or_default(),
         )?);
+        verbs.push(&sentence[verb_idx..=verb_idx]);
     }
+    // Each "you <verb>" sentence's verb, found by `find_verb` above.
+    verbs.into_iter().for_each(crate::word_claims::claim_tokens);
     Ok(Some(effects))
 }
 
@@ -366,7 +370,7 @@ fn parse_granted_composable_event_trigger(
         .is_some_and(|token| token.is_word("put"))
         && effect_tokens
             .iter()
-            .any(|token| token.is_word("counter") || token.is_word("counters"))
+            .any(|token| token.matches_word("counter") || token.matches_word("counters"))
     {
         vec![super::super::zone_counter_helpers::parse_put_counters(
             effect_tokens,
@@ -792,7 +796,7 @@ fn parse_granted_activated_or_triggered_ability_for_gain_remaining(
                     // A surface-shaped restriction is not necessarily executable.
                     // Never remove an unknown condition and grant an unrestricted ability.
                     let conditional = sentence.windows(2)
-                        .any(|words| words[0].is_word("only") && words[1].is_word("if"));
+                        .any(|words| words[0].matches_word("only") && words[1].matches_word("if"));
                     if (restriction.timing.is_none() && restriction.condition.is_none()
                         && restriction.text_only_condition.is_none()
                         && restriction.mana_usage_restriction.is_none())

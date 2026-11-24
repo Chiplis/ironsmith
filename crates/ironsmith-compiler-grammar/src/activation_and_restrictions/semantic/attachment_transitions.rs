@@ -46,7 +46,7 @@ pub(super) fn parse_attachment_transition_trigger(
     // the comparison's operand is the attachment participant of the same
     // event, bound at match time as `TRIGGER_ATTACHMENT_TAG`.
     let attachment_mana_value_tail = recipient_tokens.iter().position(|token| {
-        token.is_word("with")
+        token.matches_word("with")
     }).filter(|&with_at| {
         let tail = crate::lexer::parser_token_word_refs(&recipient_tokens[with_at..])
             .join(" ")

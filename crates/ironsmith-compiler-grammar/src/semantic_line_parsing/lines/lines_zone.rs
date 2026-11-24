@@ -51,7 +51,7 @@ pub fn exact_atomic_return_as_aura_bundle(
                 return None;
             }
             (!in_quote
-                && token.is_word("and")
+                && token.matches_word("and")
                 && matches!(
                     token_word_refs(&aura_sentence[idx + 1..]).as_slice(),
                     ["it", "loses", "all", "other", "abilities"]

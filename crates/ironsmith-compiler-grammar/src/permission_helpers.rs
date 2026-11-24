@@ -2307,7 +2307,7 @@ fn next_turn_permission_grant_duration(
     // the untap step (CR 502.4), so the permission ends with your next
     // turn's start.
     if tokens.iter().enumerate().any(|(index, token)| {
-        token.is_word("until") && crate::grammar::primitives::parse_prefix(
+        token.matches_word("until") && crate::grammar::primitives::parse_prefix(
             &tokens[index..],
             crate::grammar::primitives::phrase(&[
                 "until", "the", "beginning", "of", "your", "next", "upkeep",
@@ -2924,7 +2924,7 @@ pub fn parse_cast_or_play_tagged_clause(
     // In a resolving permission, "as long as you control ..." supplies
     // its duration. This differs from "... if you control ...", which gates
     // each use of a permission retained for an independently stated duration.
-    if let Some(as_long) = tokens.windows(3).position(|part| part[0].is_word("as") && part[1].is_word("long") && part[2].is_word("as"))
+    if let Some(as_long) = tokens.windows(3).position(|part| part[0].matches_word("as") && part[1].matches_word("long") && part[2].matches_word("as"))
         && as_long > 0
     {
         let start = as_long + 3;
@@ -2974,7 +2974,7 @@ pub fn parse_cast_or_play_tagged_clause(
     // "For as long as they remain exiled, you may play them if you control a
     // Wizard." (Flameshape): a lasting permission over the exiled cards
     // gated on a trailing control condition.
-    if let Some(if_idx) = tokens.iter().rposition(|token| token.is_word("if"))
+    if let Some(if_idx) = tokens.iter().rposition(|token| token.matches_word("if"))
         && if_idx > 0
         && tokens.get(if_idx + 1).is_some_and(|token| token.is_word("you"))
         && tokens.get(if_idx + 2).is_some_and(|token| token.is_any_word(&["control", "controls"]))
@@ -2987,6 +2987,8 @@ pub fn parse_cast_or_play_tagged_clause(
         && let Ok(predicate) =
             crate::grammar::filters::parse_condition_predicate_lexed(&tokens[if_idx + 1..])
     {
+        // The "if" the permission was split from its condition at.
+        crate::word_claims::claim_tokens(&tokens[if_idx..=if_idx]);
         return Ok(Some(EffectAst::Conditionals(ConditionalEffectAst::Conditional {
             predicate,
             if_true: vec![EffectAst::SubjectVerb(permission)],

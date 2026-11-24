@@ -97,7 +97,7 @@ pub fn parse_attached_gets_and_has_ability_line(
     // An attached subject may coordinate its bonus and keyword with a
     // color/type assignment. Keep all three predicates on the same host.
     if !tokens.iter().any(OwnedLexToken::is_quote)
-        && let Some(and_index) = tokens.windows(2).position(|pair| pair[0].is_word("and") && pair[1].is_word("is"))
+        && let Some(and_index) = tokens.windows(2).position(|pair| pair[0].matches_word("and") && pair[1].matches_word("is"))
         && and_index > shape.and_token
     {
         let mut transform = tokens[..shape.get_token].to_vec();

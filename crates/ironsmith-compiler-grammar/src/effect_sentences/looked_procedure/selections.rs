@@ -168,7 +168,7 @@ pub(super) fn selection_shape(
             "contextual-controller viewed collection entry requires an actor-owned selection program".into(),
         ));
     }
-    if sentence.lowered().iter().any(|token| token.is_word("rest")) {
+    if sentence.lowered().iter().any(|token| token.matches_word("rest")) {
         return Ok(None);
     }
     if let Some((chooser, battlefield_filter, tapped, hand_filter)) =
@@ -367,7 +367,7 @@ fn spell_put_from_among(
     let and_or_branches = (!all_matching
         && aggregate_constraint.is_none()
         && choice_count == ChoiceCount::up_to(1)
-        && put.tail.iter().any(|token| token.is_word("and/or")))
+        && put.tail.iter().any(|token| token.matches_word("and/or")))
     .then(|| looked_card_choice_filter_branches(&filter))
     .flatten();
     let chose_by_branch = and_or_branches.is_some();

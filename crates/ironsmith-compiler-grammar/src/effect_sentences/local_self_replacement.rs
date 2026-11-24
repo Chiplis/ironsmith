@@ -11,7 +11,7 @@ pub(super) fn read(tokens: &[OwnedLexToken]) -> Result<Option<Vec<EffectAst>>, C
     } else { tokens };
     if tokens.iter().any(|token| token.kind == TokenKind::Period) { return Ok(None); }
     // A locator: finding the replacement marker reads nothing yet.
-    let Some(index) = crate::word_claims::probe_only(|| tokens.iter().position(|token| token.is_word("instead"))) else { return Ok(None); };
+    let Some(index) = crate::word_claims::probe_only(|| tokens.iter().position(|token| token.matches_word("instead"))) else { return Ok(None); };
     let action = &tokens[..index];
     let words = crate::lexer::parser_token_word_refs(action);
     let counter = words.starts_with(&["counter", "that", "spell"]);
@@ -20,7 +20,7 @@ pub(super) fn read(tokens: &[OwnedLexToken]) -> Result<Option<Vec<EffectAst>>, C
     // counter-unless-pays replacement of the preceding counter instruction.
     let counter_unless = counter
         && words.starts_with(&["counter", "that", "spell", "unless", "its", "controller", "pays"])
-        && tokens.iter().filter(|token| token.is_word("instead")).count() == 1
+        && tokens.iter().filter(|token| token.matches_word("instead")).count() == 1
         && tokens.get(index + 1).is_some_and(|token| token.is_word("if"));
     if counter_unless {
         crate::word_claims::claim_tokens(&tokens[index..=index]);
@@ -44,7 +44,7 @@ pub(super) fn read(tokens: &[OwnedLexToken]) -> Result<Option<Vec<EffectAst>>, C
     // symbol or a second replacement marker must not disappear in a fallback.
     if (counter && words.as_slice() != ["counter", "that", "spell"])
         || tokens.iter().any(|token| !matches!(token.kind, TokenKind::Word | TokenKind::Number))
-        || tokens.iter().filter(|token| token.is_word("instead")).count() != 1
+        || tokens.iter().filter(|token| token.matches_word("instead")).count() != 1
         || !tokens.get(index + 1).is_some_and(|token| token.is_word("if"))
     {
         return Err(CardTextError::ParseError("incomplete trailing local replacement".into()));

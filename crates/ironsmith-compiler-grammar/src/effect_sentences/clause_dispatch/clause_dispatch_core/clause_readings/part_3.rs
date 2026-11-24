@@ -691,13 +691,26 @@ fn choose_land_of_each_basic_land_type(
     chooser: PlayerAst,
 ) -> Option<Vec<EffectAst>> {
     let words = crate::lexer::token_word_refs(tokens);
+    // "of each basic land type": the per-type choice, read here (the
+    // filter reads only the basic-land-type qualifier).
     if !filter.has_basic_land_type
-        || !crate::word_primitives::sequence_occurs(
+        || crate::word_primitives::parse_sequence_start(
             &words,
             &["of", "each", "basic", "land", "type"],
         )
+        .is_none()
     {
         return None;
+    }
+    // "of each basic land type": one choice per type below.
+    if let Some(at) = tokens.windows(5).position(|window| {
+        window[0].matches_word("of")
+            && window[1].matches_word("each")
+            && window[2].matches_word("basic")
+            && window[3].matches_word("land")
+            && window[4].matches_word("type")
+    }) {
+        crate::word_claims::claim_tokens(&tokens[at..at + 5]);
     }
     let mut base = filter.clone();
     base.has_basic_land_type = false;
@@ -737,7 +750,7 @@ fn choose_land_of_each_basic_land_type(
 /// implicit tag replace rather than accumulate.
 fn choose_one_object_of_each_color(tokens: &[OwnedLexToken]) -> Option<Vec<EffectAst>> {
     let index = tokens.windows(3).position(|window| {
-        window[0].is_word("of") && window[1].is_word("each") && window[2].is_word("color")
+        window[0].matches_word("of") && window[1].matches_word("each") && window[2].matches_word("color")
     })?;
     if tokens
         .get(index + 3)
@@ -758,6 +771,8 @@ fn choose_one_object_of_each_color(tokens: &[OwnedLexToken]) -> Option<Vec<Effec
     if !count.is_single() || base.colors.is_some() {
         return None;
     }
+    // "of each color", stripped above: one choice per color below.
+    crate::word_claims::claim_tokens(&tokens[index..index + 3]);
     let chosen = crate::util::helper_tag_for_tokens(tokens, "chosen");
     // "That player ... chooses one card of each color from it" inside a
     // per-player body: "it" is the participant's own hand. Every slot must
@@ -1062,7 +1077,7 @@ pub(super) fn read_target_only(input: &Clause<'_>) -> Result<Option<EffectAst>, 
     }
     // "target creature must block this turn" is the block requirement
     // "target creature blocks this turn if able" (CR 509.1c).
-    if let Some(must) = tokens.iter().position(|token| token.is_word("must"))
+    if let Some(must) = tokens.iter().position(|token| token.matches_word("must"))
         && must > 0
         && crate::lexer::parser_token_word_refs(&tokens[must..]) == ["must", "block", "this", "turn"]
     {

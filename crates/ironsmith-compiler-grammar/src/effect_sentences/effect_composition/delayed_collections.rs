@@ -114,7 +114,7 @@ pub(super) fn parse_retained_spell_copy_bundle(
     {
         return Ok(None);
     }
-    let Some(with_idx) = exile_sentence.iter().position(|token| token.is_word("with")) else {
+    let Some(with_idx) = exile_sentence.iter().position(|token| token.matches_word("with")) else {
         return Ok(None);
     };
     let after_with = &exile_sentence[with_idx + 1..];
@@ -124,7 +124,7 @@ pub(super) fn parse_retained_spell_copy_bundle(
     let kind_tokens = &after_with[used..];
     let Some(counter_idx) = kind_tokens
         .iter()
-        .position(|token| token.is_word("counters") || token.is_word("counter"))
+        .position(|token| token.matches_word("counters") || token.matches_word("counter"))
     else {
         return Ok(None);
     };
@@ -148,7 +148,7 @@ pub(super) fn parse_retained_spell_copy_bundle(
     {
         return Ok(None);
     }
-    let Some(remove_idx) = upkeep_sentence.iter().position(|token| token.is_word("remove")) else {
+    let Some(remove_idx) = upkeep_sentence.iter().position(|token| token.matches_word("remove")) else {
         return Ok(None);
     };
     let remove_tokens = &upkeep_sentence[remove_idx..];
@@ -174,7 +174,7 @@ pub(super) fn parse_retained_spell_copy_bundle(
     {
         return Ok(None);
     }
-    let Some(no_idx) = copy_sentence.iter().position(|token| token.is_word("no")) else {
+    let Some(no_idx) = copy_sentence.iter().position(|token| token.matches_word("no")) else {
         return Ok(None);
     };
     if crate::util::parse_counter_type_from_tokens(&copy_sentence[no_idx + 1..]) != Some(kind) {

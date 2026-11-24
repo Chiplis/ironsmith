@@ -85,7 +85,7 @@ fn parse_cross_zone_target_swap(
     }
     let Some(and_idx) = declare
         .windows(2)
-        .position(|pair| pair[0].is_word("and") && pair[1].is_word("target"))
+        .position(|pair| pair[0].matches_word("and") && pair[1].matches_word("target"))
     else {
         return Ok(None);
     };

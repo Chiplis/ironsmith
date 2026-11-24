@@ -170,7 +170,7 @@ pub fn parse_cost_reduced_by_for_each_followup(tokens: &[OwnedLexToken]) -> Opti
         crate::util::trim_statement_separators(tokens),
         &["this", "cost", "is", "reduced", "by"],
     )?;
-    let for_each = rest.iter().position(|token| token.is_word("for"))?;
+    let for_each = rest.iter().position(|token| token.matches_word("for"))?;
     let (operand, count_tokens) = rest.split_at(for_each);
     let per = generic_discount(operand)?;
     let count_words = TokenWordView::new(count_tokens).word_refs();

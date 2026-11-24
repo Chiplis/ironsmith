@@ -22,7 +22,7 @@ pub fn parse_target_phrase_inner(tokens: &[OwnedLexToken]) -> Result<TargetAst, 
     // declaration; it does not introduce a separate object-filter domain.
     if let Some(((), rest)) = primitives::parse_prefix(
         tokens, primitives::phrase(&["each", "of"]).void(),
-    ) && rest.iter().any(|token| token.is_any_word(&["target", "targets"]))
+    ) && rest.iter().any(|token| token.matches_any_word(&["target", "targets"]))
     {
         let target = parse_target_phrase_inner(rest)?;
         if matches!(&target, TargetAst::WithCount(..) | TargetAst::WithCountValue(..)) {
@@ -147,7 +147,7 @@ pub fn parse_target_phrase_inner(tokens: &[OwnedLexToken]) -> Result<TargetAst, 
     // This qualification constrains the announced targets. Keep the choice
     // in the target predicate, rather than appending a resolution-time choice.
     let choice_phrase = ["of", "the", "creature", "type", "of", "your", "choice"];
-    if tokens.iter().any(|token| token.is_word("target"))
+    if tokens.iter().any(|token| token.matches_word("target"))
         && let Some(choice_start) = tokens.windows(choice_phrase.len()).position(|window| {
             window
                 .iter()
@@ -1147,6 +1147,15 @@ pub fn parse_target_phrase_inner(tokens: &[OwnedLexToken]) -> Result<TargetAst, 
     if reference_shapes::is_source_from_your_graveyard(&remaining_words) {
         let mut source_filter = ObjectFilter::source().in_zone(Zone::Graveyard);
         source_filter.owner = Some(PlayerFilter::You);
+        // The exact "this <noun> from your graveyard": the origin and its
+        // owner are the zone and owner set here.
+        if let [this @ ("this" | "thiss"), noun @ ("card" | "creature" | "permanent"), origin @ ..] =
+            remaining_words.as_slice()
+            && origin == ["from", "your", "graveyard"]
+        {
+            crate::word_claims::claim_words(&[*this, *noun]);
+            crate::word_claims::claim_words(origin);
+        }
         if let Some(surface) = source_reference_surface_for_words(&remaining_words)
             .or_else(|| this_source_surface_for_words(&remaining_words))
         {
@@ -1159,6 +1168,14 @@ pub fn parse_target_phrase_inner(tokens: &[OwnedLexToken]) -> Result<TargetAst, 
     }
     if reference_shapes::is_source_from_exile(&remaining_words) {
         let mut source_filter = ObjectFilter::source().in_zone(Zone::Exile);
+        // The exact "this <noun> from exile": the origin is the zone set here.
+        if let [this @ ("this" | "thiss"), noun @ ("card" | "creature" | "permanent" | "source"), origin @ ..] =
+            remaining_words.as_slice()
+            && origin == ["from", "exile"]
+        {
+            crate::word_claims::claim_words(&[*this, *noun]);
+            crate::word_claims::claim_words(origin);
+        }
         if let Some(surface) = source_reference_surface_for_words(&remaining_words)
             .or_else(|| this_source_surface_for_words(&remaining_words))
         {
@@ -1624,7 +1641,7 @@ pub fn parse_target_phrase_inner(tokens: &[OwnedLexToken]) -> Result<TargetAst, 
     // quantifier of this untargeted selection, read here, not by the filter.
     let mut selection_owned: Vec<&OwnedLexToken> = Vec::new();
     if !explicit_target {
-        selection_owned.extend(remaining.first().filter(|token| token.is_word("each")));
+        selection_owned.extend(remaining.first().filter(|token| token.matches_word("each")));
         // "attach this Aura to a land of their choice" (Kudzu, Steam Vines):
         // an untargeted selection is already made by the acting player, whom
         // the caller binds as chooser, so "of their choice" restates it. A

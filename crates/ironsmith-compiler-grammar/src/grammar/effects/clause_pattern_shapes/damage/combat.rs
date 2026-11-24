@@ -62,9 +62,13 @@ fn parse_scoped_all_damage<'a>(input: &mut LexStream<'a>) -> WResult<RedirectNex
         }
         _ => return Err(bad()),
     };
-    if left.iter().any(|token| token.is_word("turn") || token.is_word("until") || token.is_word("may")) { return Err(bad()); }
-    let (recipient, source) = match left.iter().position(|token| token.is_word("by")) {
-        Some(index) => (left[..index].to_vec(), Some(left[index + 1..].to_vec())),
+    if left.iter().any(|token| token.matches_word("turn") || token.matches_word("until") || token.matches_word("may")) { return Err(bad()); }
+    let (recipient, source) = match left.iter().position(|token| token.matches_word("by")) {
+        Some(index) => {
+            // The "by" separating recipient from source, read here.
+            crate::word_claims::claim_tokens(&left[index..=index]);
+            (left[..index].to_vec(), Some(left[index + 1..].to_vec()))
+        }
         None => (left, None),
     };
     if recipient.is_empty() || source.as_ref().is_some_and(|source| source.is_empty() || has_source_of_your_choice(source)) { return Err(bad()); }

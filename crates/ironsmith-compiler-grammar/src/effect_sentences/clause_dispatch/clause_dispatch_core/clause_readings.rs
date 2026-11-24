@@ -79,13 +79,13 @@ const CLAUSE_READINGS: &[Reading] = &[
     Reading {
         id: RuleId::new("play-with-hand-revealed"),
         head: HeadDiscriminator::Any,
-        admits: |input| input.tokens.iter().any(|token| token.is_word("revealed")),
+        admits: |input| input.tokens.iter().any(|token| token.matches_word("revealed")),
         read: |input| input.outcome(crate::effect_sentences::hand_reveal_clause::parse(input.tokens)),
     },
     Reading {
         id: RuleId::new("clear-suspected-designation"),
         head: HeadDiscriminator::Any,
-        admits: |input| input.tokens.iter().any(|token| token.is_word(crate::keyword_forms::SUSPECTED)),
+        admits: |input| input.tokens.iter().any(|token| token.matches_word(crate::keyword_forms::SUSPECTED)),
         read: |input| input.outcome(super::super::suspected::parse_clear_suspected_clause(input.tokens)),
     },
     Reading {

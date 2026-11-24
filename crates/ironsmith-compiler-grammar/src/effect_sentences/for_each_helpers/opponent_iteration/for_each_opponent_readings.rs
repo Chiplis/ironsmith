@@ -680,7 +680,7 @@ fn read_actor_return_clause(
         // "Each opponent returns ... to its owner's hand, then discards a
         // card" (Dispersal): the participant's chained "then <verb>" action
         // is a sibling of the return, not part of the destination phrase.
-        let then_index = body.iter().position(|token| token.is_word("then"));
+        let then_index = body.iter().position(|token| token.matches_word("then"));
         let (return_body, continuation) = match then_index {
             Some(index) => (&body[..index], Some(&body[index + 1..])),
             None => (body, None),

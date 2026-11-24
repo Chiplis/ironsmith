@@ -93,6 +93,10 @@ pub(super) fn preserve_relative_characteristic_list_surface(
     if !filter.any_of.is_empty() {
         return;
     }
+    // "a commander that's a creature or planeswalker": the relative copula
+    // links the head to the characteristic list rebuilt below.
+    let copula_len = if matches!(words[relation_start], "that's" | "thats") { 1 } else { 2 };
+    crate::word_claims::claim_words(&words[relation_start..relation_start + copula_len]);
 
     let prefix_words = &words[..relation_start];
     let prefix_card_types = prefix_words

@@ -90,10 +90,10 @@ pub(super) fn read_leading_may_additional_land_plays(
                 && effect_tokens.len() > 3
             {
                 let stripped = &effect_tokens[..effect_tokens.len() - 3];
-                if let Some(to_idx) = stripped.iter().rposition(|token| token.is_word("to"))
+                if let Some(to_idx) = stripped.iter().rposition(|token| token.matches_word("to"))
                     && stripped[to_idx + 1..]
                         .iter()
-                        .any(|token| token.is_word("target"))
+                        .any(|token| token.matches_word("target"))
                     && let Ok(target) = parse_target_phrase(&stripped[to_idx + 1..])
                 {
                     delegated_target_declaration = Some(EffectAst::subject_verb(
@@ -118,7 +118,7 @@ pub(super) fn read_leading_may_additional_land_plays(
             && !matches!(player, PlayerAst::You | PlayerAst::Implicit)
             && effect_tokens.first().is_some_and(|token| token.is_word("target"))
             && let Some(choice_idx) = effect_tokens.windows(3).position(|window| {
-                window[0].is_word("of") && window[1].is_word("their") && window[2].is_word("choice")
+                window[0].matches_word("of") && window[1].matches_word("their") && window[2].matches_word("choice")
             })
             && choice_idx > 1
             && choice_idx + 3 < effect_tokens.len()

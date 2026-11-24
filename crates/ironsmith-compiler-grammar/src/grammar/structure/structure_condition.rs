@@ -47,6 +47,8 @@ pub(super) fn split_trailing_predicate_clause_lexed<'a>(
     {
         predicate = PredicateAst::TargetWasKicked;
     }
+    // The keyword that opens the predicate just read, claimed with it.
+    crate::word_claims::claim_tokens(&tokens[split_idx..=split_idx]);
 
     Some(TrailingIfClauseSpec {
         leading_tokens,

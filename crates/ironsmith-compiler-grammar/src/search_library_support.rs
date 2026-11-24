@@ -94,7 +94,7 @@ pub fn parse_search_library_disjunction_filter(
     if let Some(filter) = parse_land_quality_union_filter(filter_tokens) {
         return Some(filter);
     }
-    let uses_and_or = filter_tokens.iter().any(|token| token.is_word("and/or"));
+    let uses_and_or = filter_tokens.iter().any(|token| token.matches_word("and/or"));
     let segments = if uses_and_or {
         let mut segments = Vec::new();
         let mut start = 0usize;
@@ -198,9 +198,9 @@ pub fn parse_restriction_duration_lexed(
     // except by ...". Retain that exception when removing the time clause.
     if let Some(at) = crate::word_claims::probe_only(|| {
         tokens.windows(3).position(|part|
-            part[0].is_word("this") && part[1].is_word("turn") && part[2].is_word("except"))
+            part[0].matches_word("this") && part[1].matches_word("turn") && part[2].matches_word("except"))
     })
-        && crate::word_claims::probe_only(|| tokens[..at].iter().any(|token| token.is_word("blocked")))
+        && crate::word_claims::probe_only(|| tokens[..at].iter().any(|token| token.matches_word("blocked")))
     {
         // "this turn": the duration removed here.
         crate::word_claims::claim_tokens(&tokens[at..at + 2]);

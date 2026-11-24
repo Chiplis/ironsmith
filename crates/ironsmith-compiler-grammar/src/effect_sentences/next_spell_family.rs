@@ -214,7 +214,7 @@ fn parse_next_creature_entry_followup(tokens:&[OwnedLexToken])->Result<Option<Ve
     if quoted{return Ok(None)}
     // A generic event subject makes ordinary `it` bind the entrant, while
     // `this permanent` in the body still names the issuing ability's source.
-    let Some(that)=tail.iter().position(|token|token.is_word("that"))else{return Ok(None)};
+    let Some(that)=tail.iter().position(|token|token.matches_word("that"))else{return Ok(None)};
     let mut event=tail.to_vec();event[that]=OwnedLexToken::word("a",event[that].span);
     let span=event.first().map(|token|token.span).unwrap();
     event.insert(0,OwnedLexToken::new(TokenKind::Quote,"\"",span));

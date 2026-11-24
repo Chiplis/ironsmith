@@ -429,7 +429,7 @@ fn all_magic_colors() -> crate::color::ColorSet {
 /// Check the original punctuation before generic splitters can erase an
 /// empty protection-list component.
 fn invalid_protection_list_delimiters(tokens: &[OwnedLexToken]) -> bool {
-    if !tokens.iter().any(|token| token.is_word("protection")) { return false; }
+    if !tokens.iter().any(|token| token.matches_word("protection")) { return false; }
     let body = if tokens.last().is_some_and(|token|
         token.kind == crate::lexer::TokenKind::Period)
     { &tokens[..tokens.len() - 1] } else { tokens };
@@ -497,7 +497,7 @@ pub fn validate_protection_static_line(tokens: &[OwnedLexToken]) -> Result<(), C
         let mut has_protection = false;
         let end = tail.iter().position(|token| {
             if token.is_quote() { quoted_tail = !quoted_tail; }
-            if !quoted_tail && token.is_word("protection") { has_protection = true; }
+            if !quoted_tail && token.matches_word("protection") { has_protection = true; }
             !quoted_tail && token.kind == crate::lexer::TokenKind::Period
         }).unwrap_or(tail.len());
         // A static grant cannot become an imperative action midway through
@@ -1487,7 +1487,7 @@ fn parse_triggered_line_lexed_inner(tokens: &[OwnedLexToken]) -> Result<LineAst,
     // origin qualifier into the trigger clause itself. Split at the comma that
     // completes the origin condition so the qualifier is not re-modeled as a
     // conditional effect wrapper.
-    if tokens.iter().any(|token| token.is_word("entered")) {
+    if tokens.iter().any(|token| token.matches_word("entered")) {
         let mut inside_quotes = false;
         for (separator_idx, separator) in tokens.iter().enumerate() {
             if separator.kind == crate::lexer::TokenKind::Quote {

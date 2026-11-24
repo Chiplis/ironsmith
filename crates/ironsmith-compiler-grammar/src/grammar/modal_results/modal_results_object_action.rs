@@ -56,8 +56,8 @@ fn exact_creation_result(tokens:&[OwnedLexToken])->Option<IfResultPredicate> {
         crate::word_claims::claim_tokens(tokens);
         crate::target::ObjectFilter::default()
     } else {
-        let verb_index=tokens.iter().position(|token|token.is_any_word(&["create","created"]))?;
-        let end=tokens.iter().rposition(|token|token.is_word("this"))?;
+        let verb_index=tokens.iter().position(|token|token.matches_any_word(&["create","created"]))?;
+        let end=tokens.iter().rposition(|token|token.matches_word("this"))?;
         let mut start = verb_index + 1;
         // The result reader owns an existential determiner. The ordinary
         // object-filter reader receives the complete descriptor alone, just
@@ -654,6 +654,33 @@ pub fn parse_if_result_predicate_lexed_tokens(
         && has_phrase(&normalized, &["creature"])
         && ends_with_phrase(&normalized, &["this", "way"])
     {
+        // The subject names the recipient the excess must be dealt to, as in
+        // "excess damage is dealt to <recipient> this way" above.
+        if let Some(is) = tokens.windows(4).position(|window| {
+            window[0].matches_word("is")
+                && window[1].matches_word("dealt")
+                && window[2].matches_word("excess")
+                && window[3].matches_word("damage")
+        }) {
+            let mut start = usize::from(tokens.first().is_some_and(|token| token.matches_word("if")));
+            let article = start;
+            if tokens.get(start).is_some_and(|token| token.matches_any_word(&["the", "a", "an"])) {
+                start += 1;
+            }
+            if start < is
+                && !tokens[start].matches_any_word(&["that", "those", "it", "them"])
+                && let Ok(filter) =
+                    crate::grammar::filters::parse_object_filter_with_grammar_entrypoint_lexed(
+                        &tokens[start..is],
+                        false,
+                    )
+            {
+                // "[the] <recipient> is dealt excess damage this way".
+                crate::word_claims::claim_tokens(&tokens[article..start]);
+                crate::word_claims::claim_tokens(&tokens[is..]);
+                return Some(IfResultPredicate::ExcessDamageDealtToObjectMatching(filter));
+            }
+        }
         return Some(IfResultPredicate::ExcessDamageDealt);
     }
     if word_count == 6

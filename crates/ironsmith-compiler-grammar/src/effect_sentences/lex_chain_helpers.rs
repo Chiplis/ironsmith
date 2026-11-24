@@ -34,7 +34,7 @@ pub fn lists_mana_combination_without_chain_boundary(tokens: &[OwnedLexToken]) -
     // A locator: finding the mana-combination list reads nothing.
     let Some(start) = crate::word_claims::probe_only(|| {
         tokens.windows(3).position(|window| {
-            window[0].is_word("any") && window[1].is_word("combination") && window[2].is_word("of")
+            window[0].matches_word("any") && window[1].matches_word("combination") && window[2].matches_word("of")
         })
     }) else {
         return false;
@@ -44,7 +44,7 @@ pub fn lists_mana_combination_without_chain_boundary(tokens: &[OwnedLexToken]) -
         .enumerate()
         .skip(start + 3)
         .any(|(index, token)| {
-            token.is_word("and")
+            token.matches_word("and")
                 && find_verb_lexed(&tokens[index + 1..]).is_some_and(|(_, word_index)| word_index == 0)
         })
 }
@@ -64,8 +64,8 @@ pub fn is_counter_placement_recipient_arm_lexed(
     previous.first().is_some_and(|token| token.is_any_word(&["put", "puts"]))
         && previous
             .iter()
-            .position(|token| token.is_any_word(&["counter", "counters"]))
-            .is_some_and(|counter| previous[counter + 1..].iter().any(|token| token.is_word("on")))
+            .position(|token| token.matches_any_word(&["counter", "counters"]))
+            .is_some_and(|counter| previous[counter + 1..].iter().any(|token| token.matches_word("on")))
         && segment.first().is_some_and(|token| token.is_word("each"))
         && !segment.get(1).is_some_and(|token| token.is_word("of"))
         && find_verb_lexed(segment).is_none()

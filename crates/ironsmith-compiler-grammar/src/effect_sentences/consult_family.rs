@@ -135,7 +135,7 @@ pub(crate) fn parse_consult_traversal_sentence_with_player(
         ] {
             if words.len() > suffix.len()
                 && words.ends_with(suffix)
-                && let Some(with_index) = filter_tokens.iter().rposition(|token| token.is_word("with"))
+                && let Some(with_index) = filter_tokens.iter().rposition(|token| token.matches_word("with"))
             {
                 // The comparison suffix is read here as the antecedent relation.
                 crate::word_claims::claim_tokens(&filter_tokens[with_index..]);

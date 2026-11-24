@@ -428,7 +428,7 @@ fn read_for_each_counter_removed_unless_pays(
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     let tokens = crate::util::trim_edge_punctuation_tokens(input.tokens);
     if crate::lexer::split_lexed_sentences(tokens).len() != 1
-        || !tokens.iter().any(|token| token.is_word("unless"))
+        || !tokens.iter().any(|token| token.matches_word("unless"))
     {
         return Ok(None);
     }
@@ -544,7 +544,7 @@ fn read_unless_control_flow(
     // alternative. Route a grammar-proven control-flow plan before the broad
     // damage and target primitives can accept only the leading action and
     // silently discard its postcondition.
-    if tokens.iter().any(|token| token.is_word("unless"))
+    if tokens.iter().any(|token| token.matches_word("unless"))
         && !effect_grammar::chain_splitting::has_authored_comma_then_surface_tokens(tokens)
         && matches!(
             effect_grammar::control_flow::recognize_control_flow(tokens),
@@ -660,7 +660,7 @@ fn read_leading_discard(
     if tokens.first().is_some_and(|token| token.is_word("discard"))
         && !tokens
             .iter()
-            .any(|token| token.is_word("if") || token.is_word("unless"))
+            .any(|token| token.matches_word("if") || token.matches_word("unless"))
         && !super::super::super::lex_chain_helpers::has_explicit_comma_then_boundary_lexed(tokens)
         // "Discard a card and sacrifice a creature": a coordinated second
         // action is its own instruction, not a trailing discard qualifier.

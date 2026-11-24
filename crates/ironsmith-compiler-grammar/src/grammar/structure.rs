@@ -355,7 +355,7 @@ pub fn classify_statement_line_family_lexed(
     // Impostor): the as-enters program's body is a complete emblem payload.
     if tokens.first().is_some_and(|token| token.is_word("as"))
         && tokens.get(1).is_some_and(|token| token.is_word("this"))
-        && let Some(enters_idx) = tokens.iter().position(|token| token.is_word("enters"))
+        && let Some(enters_idx) = tokens.iter().position(|token| token.matches_word("enters"))
         && tokens.get(enters_idx + 1).is_some_and(|token| token.is_comma())
         && super::effects::emblem_shapes::parse_emblem_payload_tokens(&tokens[enters_idx + 2..])
             .is_some()
@@ -1184,7 +1184,7 @@ pub fn split_trailing_if_clause_lexed<'a>(
     // A yes/no probe: the coordination only decides whether to split here,
     // and the readers of each member read its words ("put it onto the
     // battlefield with X additional +1/+1 counters on it if X", Vision Quest).
-    if tokens.iter().filter(|token| token.is_word("if")).count() > 1
+    if tokens.iter().filter(|token| token.matches_word("if")).count() > 1
         && let crate::recognition::ParseOutcome::Match(matched) =
             crate::word_claims::probe_only(|| {
                 super::effects::coordination::recognize_coordination(tokens)
@@ -1194,7 +1194,7 @@ pub fn split_trailing_if_clause_lexed<'a>(
             .value
             .members
             .iter()
-            .all(|member| member.tokens.iter().any(|token| token.is_word("if")))
+            .all(|member| member.tokens.iter().any(|token| token.matches_word("if")))
         // "destroy target artifact if <A> or if <B>": a later member that is
         // only a condition alternates the trailing predicate; it is not a
         // second conditional instruction.
@@ -1203,7 +1203,7 @@ pub fn split_trailing_if_clause_lexed<'a>(
                 .tokens
                 .iter()
                 .find(|token| token.as_word().is_some())
-                .is_some_and(|token| token.is_word("if"))
+                .is_some_and(|token| token.matches_word("if"))
         })
     {
         return None;

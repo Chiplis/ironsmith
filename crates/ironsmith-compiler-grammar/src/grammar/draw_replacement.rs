@@ -255,8 +255,8 @@ mod tests {
             let parsed = parse_draw_replacement_program(&lex_line(text, 0).unwrap()).unwrap();
             assert!(!parsed.optional && !parsed.skip);
             assert_eq!(parsed.player, DrawReplacementPlayer::You);
-            assert!(!parsed.body.iter().any(|token| token.is_word("instead")));
-            assert!(parsed.body.iter().any(|token| token.is_word("bottom")));
+            assert!(!parsed.body.iter().any(|token| token.matches_word("instead")));
+            assert!(parsed.body.iter().any(|token| token.matches_word("bottom")));
         }
     }
     #[test]
@@ -310,7 +310,7 @@ mod tests {
                 .first()
                 .is_some_and(|token| token.is_word("until"))
         );
-        assert!(!parsed.body.iter().any(|token| token.is_word("skip")));
+        assert!(!parsed.body.iter().any(|token| token.matches_word("skip")));
     }
     #[test]
     fn empty_library_and_first_draw_exception_remain_separate_matcher_gates() {
@@ -319,6 +319,6 @@ mod tests {
         assert!(!parsed.except_first_of_draw_step);
         let parsed = parse_draw_replacement_program(&lex_line("If a player would draw a card except the first one they draw in each of their draw steps, that player discards a card instead. If the player discards a card this way, they draw a card. If the player doesn't discard a card this way, they mill a card.", 0).unwrap()).unwrap();
         assert!(!parsed.empty_library && parsed.except_first_of_draw_step);
-        assert!(parsed.body.iter().any(|token| token.is_word("mill")));
+        assert!(parsed.body.iter().any(|token| token.matches_word("mill")));
     }
 }

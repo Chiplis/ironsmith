@@ -629,7 +629,7 @@ fn read_until_turned_face_down_become(
     ) {
         return Ok(None);
     }
-    let Some(becomes_idx) = tokens.iter().position(|token| token.is_word("becomes")) else {
+    let Some(becomes_idx) = tokens.iter().position(|token| token.matches_word("becomes")) else {
         return Ok(None);
     };
     let effect = super::super::clause_dispatch::parse_become_clause(

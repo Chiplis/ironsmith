@@ -73,7 +73,7 @@ pub fn split_coordinated_choose_target_clauses(
     tokens
         .iter()
         .enumerate()
-        .filter(|(_, token)| token.is_word("and"))
+        .filter(|(_, token)| token.matches_word("and"))
         .find_map(|(idx, _)| {
             let head = trim_lexed_commas(&tokens[..idx]);
             let tail = trim_lexed_commas(&tokens[idx + 1..]);
@@ -82,7 +82,7 @@ pub fn split_coordinated_choose_target_clauses(
             // The second declaration names its own chooser ("that opponent
             // chooses", "you choose"), unlike "choose target A and target B".
             let named_chooser = second.chooser != ChooseTargetChooserShape::AbilityController
-                || tail.first().is_some_and(|token| token.is_word("you"));
+                || tail.first().is_some_and(|token| token.matches_word("you"));
             named_chooser.then_some((head, tail))
         })
 }

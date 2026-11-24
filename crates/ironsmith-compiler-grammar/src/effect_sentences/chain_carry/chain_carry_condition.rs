@@ -53,7 +53,7 @@ pub fn parse_effect_clause_with_trailing_if_lexed(
         token.is_comma()
             && tokens
                 .get(index + 1)
-                .is_some_and(|next| next.is_word("then"))
+                .is_some_and(|next| next.matches_word("then"))
     });
     let may_have_embedded_followup = crate::word_primitives::sequence_occurs(&words, &["if"])
         && comma_then
@@ -99,7 +99,7 @@ pub fn parse_effect_clause_with_trailing_if_lexed(
             .is_some_and(|if_index| {
                 tokens[if_index + 1..]
                     .iter()
-                    .any(|token| token.is_word("exactly"))
+                    .any(|token| token.matches_word("exactly"))
             });
     if exact_predicate_surface
         && let PredicateAst::ValueComparison {

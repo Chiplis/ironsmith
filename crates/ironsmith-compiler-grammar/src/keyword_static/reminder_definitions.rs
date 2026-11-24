@@ -168,7 +168,7 @@ fn parse_owned(tokens: &[OwnedLexToken]) -> Option<Vec<StaticAbilityAst>> {
     // A reciprocal blocking restriction is two ordinary relations. The
     // referenced ability belongs to the other creature's filter; it is not
     // granted to this source by parsing its definition.
-    if let Some(can) = tokens.iter().position(|token| token.is_word("can"))
+    if let Some(can) = tokens.iter().position(|token| token.matches_word("can"))
         && source(&crate::lexer::token_word_refs(&tokens[..can]))
         && crate::lexer::token_word_refs(&tokens[can..]).starts_with(&[
             "can", "block", "or", "be", "blocked", "by", "only", "creatures", "with",
@@ -315,7 +315,7 @@ fn parse_owned(tokens: &[OwnedLexToken]) -> Option<Vec<StaticAbilityAst>> {
     }
     // Counter-producing damage is an operation shared by definitions, not
     // a grant of either Wither or Infect. Parse the counter kind explicitly.
-    if let Some(deals) = tokens.iter().position(|token| token.is_word("deals"))
+    if let Some(deals) = tokens.iter().position(|token| token.matches_word("deals"))
         && (source(&crate::lexer::token_word_refs(&tokens[..deals])) || crate::lexer::token_word_refs(&tokens[..deals]) == ["this"])
     {
         let tail = crate::lexer::render_token_slice(&tokens[deals..]);
@@ -451,7 +451,7 @@ fn parse_owned(tokens: &[OwnedLexToken]) -> Option<Vec<StaticAbilityAst>> {
         )]);
     }
 
-    let can = tokens.iter().position(|token| token.is_word("can"))?;
+    let can = tokens.iter().position(|token| token.matches_word("can"))?;
     if !source(&crate::lexer::token_word_refs(&tokens[..can])) {
         return None;
     }

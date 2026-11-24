@@ -28,7 +28,7 @@ fn operand_end(tokens: &[OwnedLexToken], start: usize) -> usize {
                         matches!(
                             token.kind,
                             TokenKind::Comma | TokenKind::Period | TokenKind::Semicolon
-                        ) || token.is_word("then")
+                        ) || token.matches_word("then")
                     })
                     .map_or(tokens.len(), |offset| title_start + offset);
                 if crate::lexer::is_authored_proper_name_phrase(&tokens[title_start..title_end]) {

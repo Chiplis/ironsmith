@@ -73,13 +73,13 @@ pub(super) fn parse(tokens: &[OwnedLexToken]) -> Result<Option<Vec<EffectAst>>, 
         return Ok(mana_rule(prefix, body)?.map(|effect| vec![effect]));
     }
     let Some(split) = (1..body.len()).find(|&index| {
-        body[index].is_word("and")
+        body[index].matches_word("and")
             && body
                 .get(index + 1)
-                .is_some_and(|token| token.is_any_word(&["whenever", "if"]))
+                .is_some_and(|token| token.matches_any_word(&["whenever", "if"]))
             && body[index + 1..]
                 .iter()
-                .any(|token| token.is_word("mana"))
+                .any(|token| token.matches_word("mana"))
     }) else {
         return Ok(None);
     };

@@ -224,7 +224,7 @@ pub fn leading_condition_boundary_comma(tokens: &[OwnedLexToken]) -> Option<usiz
         };
         let middle_arms = &tokens[first + 1..comma];
         if middle_arms.iter().any(|token| {
-            token.is_any_word(&["get", "gets", "has", "have", "can", "cant", "can't"])
+            token.matches_any_word(&["get", "gets", "has", "have", "can", "cant", "can't"])
         }) {
             return Some(first);
         }

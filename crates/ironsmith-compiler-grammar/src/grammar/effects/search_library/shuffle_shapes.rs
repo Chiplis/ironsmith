@@ -31,6 +31,8 @@ pub struct SearchShuffleObjectShape<'a> {
     pub owner_subject_target_tokens: Option<Vec<OwnedLexToken>>,
     /// An owner-subject draw that precedes the shuffle in this same sentence.
     pub owner_subject_draw_tokens: Option<&'a [OwnedLexToken]>,
+    /// The "draws" verb before `owner_subject_draw_tokens`.
+    pub owner_subject_draw_verb: Option<&'a [OwnedLexToken]>,
     pub possessive_owner_subject: bool,
     pub target_tokens: &'a [OwnedLexToken],
     pub trailing_tokens: &'a [OwnedLexToken],
@@ -271,17 +273,18 @@ pub fn parse_shuffle_object_shape_lexed(
     let subject_tokens = trim_lexed_commas(&clause[..shuffle_idx]);
     // "The owner of <target> draws N cards, then shuffles it ...":
     // the draw is an instruction, not part of the target's object filter.
-    let (subject_tokens, owner_subject_draw_tokens) =
+    let (subject_tokens, owner_subject_draw_tokens, owner_subject_draw_verb) =
         if primitives::parse_prefix(subject_tokens, owner_of_prefix).is_some()
             && subject_tokens.last().is_some_and(|token| token.is_word("then"))
-            && let Some(draw_idx) = subject_tokens.iter().position(|token| token.is_word("draws"))
+            && let Some(draw_idx) = subject_tokens.iter().position(|token| token.matches_word("draws"))
         {
             (
                 trim_lexed_commas(&subject_tokens[..draw_idx]),
                 Some(trim_lexed_commas(&subject_tokens[draw_idx + 1..subject_tokens.len() - 1])),
+                Some(&subject_tokens[draw_idx..=draw_idx]),
             )
         } else {
-            (subject_tokens, None)
+            (subject_tokens, None, None)
         };
     let owner_of_subject_target = primitives::parse_prefix(subject_tokens, owner_of_prefix)
         .map(|(_, rest)| trim_lexed_commas(rest).to_vec());
@@ -352,6 +355,7 @@ pub fn parse_shuffle_object_shape_lexed(
         subject_tokens,
         owner_subject_target_tokens,
         owner_subject_draw_tokens,
+        owner_subject_draw_verb,
         possessive_owner_subject,
         target_tokens,
         trailing_tokens: trim_lexed_commas(after_library),

@@ -403,7 +403,7 @@ pub fn parse_shuffle_graveyard_into_library_sentence(
             // the whole hand plus a filtered graveyard subset, one shuffle.
             let and_token = target_tokens
                 .iter()
-                .position(|token| token.is_word("and"))
+                .position(|token| token.matches_word("and"))
                 .expect("matched hand-and conjunction");
             let mut graveyard_target = parse_target_phrase(&target_tokens[and_token + 1..])?;
             apply_shuffle_subject_graveyard_owner_context(&mut graveyard_target, subject);
@@ -550,6 +550,10 @@ pub fn parse_shuffle_object_into_library_sentence(
                     draw_tokens,
                     Some(SubjectAst::Player(PlayerAst::ItsOwner)),
                 )?;
+                // The owner's "draws" the shape split off.
+                if let Some(verb) = shape.owner_subject_draw_verb {
+                    crate::word_claims::claim_tokens(verb);
+                }
                 let tag = helper_tag_for_tokens(tokens, "owner_subject_object");
                 let shuffle = EffectAst::subject_verb_shuffle_objects_into_owner_library(
                     TargetAst::Tagged(tag.clone(), span_from_tokens(target_tokens)),

@@ -112,7 +112,7 @@ pub fn parse_for_each_opponent_clause(
     let quantified_unless_payment = if outer
         .inner_tokens
         .iter()
-        .any(|token| token.is_word("unless"))
+        .any(|token| token.matches_word("unless"))
     {
         let normalized = if outer.participant_is_actor {
             prepend_that_player_subject(outer.inner_tokens)
@@ -147,7 +147,7 @@ pub fn parse_for_each_opponent_clause(
     }
     if participant_chooses {
         if outer.participant_is_actor
-            && !outer.inner_tokens.iter().any(|token| token.is_word("you"))
+            && !outer.inner_tokens.iter().any(|token| token.matches_word("you"))
         {
             bind_quantified_participant_actor(&mut effects);
         }

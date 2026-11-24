@@ -5,7 +5,7 @@ use super::*;
 pub(super) fn read(tokens: &[OwnedLexToken]) -> Result<Option<PredicateAst>, CardTextError> {
     let tokens = crate::util::trim_edge_punctuation_tokens(tokens);
     if !tokens.first().is_some_and(|token| token.is_word("each")) { return Ok(None); }
-    let Some(has) = tokens.iter().position(|token| token.is_word("has")) else { return Ok(None); };
+    let Some(has) = tokens.iter().position(|token| token.matches_word("has")) else { return Ok(None); };
     if has < 2 || !tokens.get(has + 1).is_some_and(|token| token.is_word("custom"))
         || !tokens.get(has + 2).is_some_and(|token| token.is_word("keyword")) { return Ok(None); }
     let name = &tokens[has + 3..];

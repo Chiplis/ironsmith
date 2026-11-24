@@ -23,7 +23,7 @@ pub fn parse_recipient_optional_spell_cost_line(
     let price = if matches!(&header_refs[lead.len()..], ["mana", "equal", "to", "this", "spell's" | "spells", "mana", "value"]) {
         GrantedOptionalCostPrice::GenericManaValue
     } else {
-        let Some(pay) = header.iter().position(|token| token.is_word("pay")) else {
+        let Some(pay) = header.iter().position(|token| token.matches_word("pay")) else {
             return Ok(None);
         };
         let price_tokens = &header[pay + 1..];

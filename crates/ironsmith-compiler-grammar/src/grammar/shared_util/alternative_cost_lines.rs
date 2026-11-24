@@ -608,7 +608,7 @@ pub fn parse_self_bound_alternative_price(tokens: &[OwnedLexToken]) -> Result<Op
         return Ok(None);
     }
     let start = view.token_start_indices()[5] + 1;
-    let if_index = tokens[start..].iter().position(|token| token.is_word("if")).map(|index| index + start);
+    let if_index = tokens[start..].iter().position(|token| token.matches_word("if")).map(|index| index + start);
     let mut additional_payment = None;
     let condition = if let Some(index) = if_index {
         let tail = &tokens[index + 1..];
@@ -633,6 +633,10 @@ pub fn parse_self_bound_alternative_price(tokens: &[OwnedLexToken]) -> Result<Op
     let mut total_cost = crate::activation_and_restrictions::parse_compiler_activation_cost(cost_tokens)?;
     if let Some(additional) = additional_payment {
         total_cost = conjoin_total_costs(&total_cost, &additional);
+    }
+    // The "if" opening the condition or the additional payment.
+    if let Some(index) = if_index {
+        crate::word_claims::claim_tokens(&tokens[index..=index]);
     }
     Ok(Some(AlternativeCastingMethod::Composed {
         name: "Parsed alternative cost".into(), total_cost, condition, prototype_power_toughness: None, uses_land_play: false, instructions: Default::default(),

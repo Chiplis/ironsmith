@@ -77,7 +77,7 @@ fn grant_that_ability(
     let tokens = trim_period(sentence.lowered());
     let gain_idx = tokens
         .iter()
-        .position(|token| token.is_any_word(&["gain", "gains"]))?;
+        .position(|token| token.matches_any_word(&["gain", "gains"]))?;
     let subject_tokens = trim_lexed_commas(&tokens[..gain_idx]);
     if subject_tokens.is_empty() {
         return None;
@@ -189,6 +189,14 @@ pub(super) fn continue_with(
     ) else {
         return Ok(false);
     };
+    // The grant's "gain(s)", found by the scan in `grant_that_ability`.
+    let tokens = trim_period(sentence.lowered());
+    if let Some(gain_idx) = tokens
+        .iter()
+        .position(|token| token.matches_any_word(&["gain", "gains"]))
+    {
+        crate::word_claims::claim_tokens(&tokens[gain_idx..=gain_idx]);
+    }
     group.effects.push(effect);
     group.closed = true;
     group.consumed += 1;

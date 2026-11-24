@@ -104,7 +104,7 @@ fn split_list_items(tokens: &[OwnedLexToken]) -> Vec<&[OwnedLexToken]> {
         // "a and b" / "a or b" without a serial comma.
         if let Some(idx) = piece
             .iter()
-            .position(|token| token.is_any_word(&["and", "or"]))
+            .position(|token| token.matches_any_word(&["and", "or"]))
         {
             items.push(trim(&piece[..idx]));
             items.push(trim(&piece[idx + 1..]));
@@ -152,7 +152,7 @@ fn random_kind_choice_tokens(tokens: &[OwnedLexToken]) -> Option<RandomKindChoic
         (false, tail)
     } else { (true, rest) };
     let from = rest.windows(2).position(|pair| {
-        pair[0].is_word("from") && pair[1].is_word("among")
+        pair[0].matches_word("from") && pair[1].matches_word("among")
     })?;
     let qualifier = trim(&rest[..from]);
     let list = trim(&rest[from + 2..]);

@@ -830,9 +830,9 @@ pub fn parse_recipient_power_definition_tokens(tokens: &[OwnedLexToken]) -> bool
 /// The prefix still has to be parsed as a complete, independent keyword list.
 pub fn dynamic_keyword_tail_start(tokens: &[OwnedLexToken]) -> Option<usize> {
     tokens.iter().enumerate().find_map(|(index, token)| {
-        (token.is_any_word(&["bolster", "mobilize"])
-            && tokens.get(index + 1).is_some_and(|token| token.is_word("x"))
-            && (index == 0 || tokens[index - 1].is_word("and")
+        (token.matches_any_word(&["bolster", "mobilize"])
+            && tokens.get(index + 1).is_some_and(|token| token.matches_word("x"))
+            && (index == 0 || tokens[index - 1].matches_word("and")
                 || tokens[index - 1].is_comma()
                 || tokens[index - 1].kind == crate::lexer::TokenKind::Semicolon))
             .then_some(index)

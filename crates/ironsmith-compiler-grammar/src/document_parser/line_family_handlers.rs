@@ -1690,7 +1690,7 @@ fn source_has_where_x_ward_tail(tokens: &[OwnedLexToken]) -> Option<&[OwnedLexTo
     let tail = crate::grammar::semantic_lowering::parse_source_keyword_tail_tokens(tokens)?
         .ability_tokens;
     (tail.first().is_some_and(|token| token.is_word("ward"))
-        && tail.iter().any(|token| token.is_word("where")))
+        && tail.iter().any(|token| token.matches_word("where")))
     .then_some(tail)
 }
 

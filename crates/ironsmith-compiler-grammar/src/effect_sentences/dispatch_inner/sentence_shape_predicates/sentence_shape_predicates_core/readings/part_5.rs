@@ -373,7 +373,7 @@ pub(super) fn read_you_and_players_each_chain(
         .find(|(index, token)| {
             // "you and each opponent each ...": the quantifier of the
             // second subject is not the distributive "each".
-            (token.is_word("each") && *index > 2) || token.is_word("may")
+            (token.matches_word("each") && *index > 2) || token.matches_word("may")
         })
         .map(|(index, _)| index)
     else {

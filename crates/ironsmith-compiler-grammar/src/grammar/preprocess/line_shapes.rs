@@ -281,7 +281,7 @@ pub fn parse_resolution_timing_tail_tokens(
         primitives::find_prefix(tokens, || primitives::phrase(&["as", "it", "resolves"]))?;
     // The timing is semantic for a replacement of the resolving spell's
     // graveyard move. Removing it turns registration into immediate exile.
-    if tokens[..tail_index].iter().any(|token| token.is_word("instead")) {
+    if tokens[..tail_index].iter().any(|token| token.matches_word("instead")) {
         return None;
     }
     if tokens

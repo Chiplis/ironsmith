@@ -594,7 +594,7 @@ fn parse_exile_top_library_then_play_bundle(
     let optional_exile = verb_idx > 0
         && exile_sentence[..verb_idx]
             .iter()
-            .any(|token| token.is_word("may"));
+            .any(|token| token.matches_word("may"));
     if optional_exile {
         let mut exile_effect = exile_effect;
         // The chooser ("you may") now carries the actor; the inner exile is

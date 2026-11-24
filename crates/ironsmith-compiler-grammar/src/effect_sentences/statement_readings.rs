@@ -835,7 +835,7 @@ fn read_simple_gain_ability(
         && !shape
             .subject_tokens
             .iter()
-            .any(|token| token.is_any_word(&["has", "have", "get", "gets"]))
+            .any(|token| token.matches_any_word(&["has", "have", "get", "gets"]))
         && super::lex_chain_helpers::split_effect_chain_on_and_lexed(sentence).len() == 1
         && super::lex_chain_helpers::split_segments_on_comma_then_lexed(vec![sentence]).len() == 1
         && let Some(effects) = super::gain_ability::parse_gain_ability_sentence(sentence)?
@@ -852,7 +852,7 @@ fn read_trailing_if_clause(input: &Statement<'_>) -> Result<Option<Vec<EffectAst
     if input
         .sentence
         .iter()
-        .filter(|token| token.is_word("if"))
+        .filter(|token| token.matches_word("if"))
         .count()
         >= 2
     {
@@ -1462,7 +1462,7 @@ fn parse_result_consequence_get_then_gain(
     // Only the three-way "gets X and gains A and B" coordination needs the
     // shared owner; a definite description subject ("the creature you
     // control") must keep its reference binding from the generic reading.
-    if body.iter().filter(|token| token.is_word("and")).count() < 2
+    if body.iter().filter(|token| token.matches_word("and")).count() < 2
         || body.first().is_some_and(|token| token.is_word("the"))
     {
         return Ok(None);

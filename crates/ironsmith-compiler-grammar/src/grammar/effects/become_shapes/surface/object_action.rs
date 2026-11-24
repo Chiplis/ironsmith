@@ -499,16 +499,16 @@ pub fn parse_become_body_surface_shape(tokens: &[OwnedLexToken]) -> BecomeBodySu
     // ability quoted, 'an Aura with "enchant creature put onto the
     // battlefield with Necromancy"'.
     let aura_frame = if body_tokens.first().is_some_and(|token| token.is_word("aura")) {
-        body_tokens.iter().position(|token| token.is_word("with")).and_then(|with| {
+        body_tokens.iter().position(|token| token.matches_word("with")).and_then(|with| {
             let before = &body_tokens[1..with];
             if before.is_empty() {
-                Some((&body_tokens[with..with], &body_tokens[with + 1..]))
+                Some((with, &body_tokens[with..with], &body_tokens[with + 1..]))
             } else if before.last().is_some_and(|token| token.is_word("enchantment")) {
-                Some((&before[..before.len() - 1], &body_tokens[with + 1..]))
+                Some((with, &before[..before.len() - 1], &body_tokens[with + 1..]))
             } else { None }
         })
     } else { None };
-    let aura = aura_frame.and_then(|(additional_subtype_tokens, tail)| {
+    let aura = aura_frame.and_then(|(with, additional_subtype_tokens, tail)| {
         let tail = match tail.first() {
             Some(token) if token.kind == crate::TokenKind::Quote => &tail[1..],
             _ => tail,
@@ -520,6 +520,8 @@ pub fn parse_become_body_surface_shape(tokens: &[OwnedLexToken]) -> BecomeBodySu
             .position(|token| token.kind == crate::TokenKind::Quote)
             .unwrap_or(enchant_tokens.len());
         let enchant_filter_tokens = &enchant_tokens[..filter_end];
+        // The "with" introducing the Aura's enchant ability.
+        crate::word_claims::claim_tokens(&body_tokens[with..=with]);
         Some(BecomeAuraShape {
             additional_subtype_tokens,
             attachment_you_control: permission_shapes::prefix_tokens(

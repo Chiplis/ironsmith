@@ -289,7 +289,7 @@ fn parse_body(tokens: &[OwnedLexToken]) -> Result<Option<EffectAst>, CardTextErr
     }) else {
         return Ok(None);
     };
-    if deal_idx == 0 || rest[..deal_idx].iter().any(|token| token.is_word("each")) {
+    if deal_idx == 0 || rest[..deal_idx].iter().any(|token| token.matches_word("each")) {
         return Ok(None);
     }
     let recipient = if primitives::parse_all(
@@ -316,7 +316,7 @@ fn parse_body(tokens: &[OwnedLexToken]) -> Result<Option<EffectAst>, CardTextErr
     .is_ok()
     {
         prevented_source_controller()
-    } else if after_deal.iter().any(|token| token.is_word("target")) {
+    } else if after_deal.iter().any(|token| token.matches_word("target")) {
         crate::util::parse_target_phrase(after_deal)?
     } else {
         return Ok(None);

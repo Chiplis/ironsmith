@@ -133,7 +133,7 @@ fn read_complete(tokens: &[OwnedLexToken]) -> Option<ThisSpellCostCondition> {
             operator,
             amount,
         )
-    } else if let Some(was) = tokens.iter().position(|token| token.is_word("was")) {
+    } else if let Some(was) = tokens.iter().position(|token| token.matches_word("was")) {
         if was >= 3
             && words_are(
                 &tokens[was..],

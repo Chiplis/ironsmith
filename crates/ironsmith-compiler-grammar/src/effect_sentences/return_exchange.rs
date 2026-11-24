@@ -8,7 +8,7 @@ pub(crate) fn parse_return_with_event_timing(
     if !tokens.first().is_some_and(|token| token.is_word("return")) {
         return Ok(None);
     }
-    let Some(when_idx) = tokens.iter().position(|token| token.is_word("when")) else {
+    let Some(when_idx) = tokens.iter().position(|token| token.matches_word("when")) else {
         return Ok(None);
     };
     if when_idx <= 1 {

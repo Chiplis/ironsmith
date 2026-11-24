@@ -461,8 +461,8 @@ fn put_from_shown_hand(sentence: &SentenceInput, owner: PlayerFilter) -> Option<
     let tokens = sentence.lowered();
     let from_it = tokens
         .windows(2)
-        .position(|pair| pair[0].is_word("from") && pair[1].is_word("it"))?;
-    if !tokens.iter().any(|token| token.is_word("put")) {
+        .position(|pair| pair[0].matches_word("from") && pair[1].matches_word("it"))?;
+    if !tokens.iter().any(|token| token.matches_word("put")) {
         return None;
     }
     let mut stripped = tokens[..from_it].to_vec();

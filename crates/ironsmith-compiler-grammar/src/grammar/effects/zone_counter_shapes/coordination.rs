@@ -27,7 +27,7 @@ fn has_static_counter_placement_head(tokens: &[OwnedLexToken]) -> bool {
     !trim_shape_edges(target).is_empty()
         && !body[..on_index]
             .iter()
-            .any(|token| token.is_any_word(&["and", "or", "then"]))
+            .any(|token| token.matches_any_word(&["and", "or", "then"]))
         && super::parse_counter_descriptor_shape(&body[..on_index]).is_some()
 }
 
@@ -93,7 +93,7 @@ mod tests {
             shape
                 .first_tokens
                 .iter()
-                .filter(|token| token.is_word("and"))
+                .filter(|token| token.matches_word("and"))
                 .count(),
             1
         );

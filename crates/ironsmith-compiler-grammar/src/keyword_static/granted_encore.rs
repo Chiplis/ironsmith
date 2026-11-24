@@ -14,7 +14,7 @@ pub fn parse_granted_encore_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbilityAst>, CardTextError> {
     let tokens = trim_edge_punctuation(tokens);
-    let Some(encore_idx) = tokens.iter().position(|token| token.is_word("encore")) else {
+    let Some(encore_idx) = tokens.iter().position(|token| token.matches_word("encore")) else {
         return Ok(None);
     };
     if encore_idx < 2 || !tokens[encore_idx - 1].is_any_word(&["have", "has"]) {
@@ -49,6 +49,8 @@ pub fn parse_granted_encore_line(
     if filter.zone != Some(Zone::Graveyard) {
         return Ok(None);
     }
+    // The granted keyword the scan above found.
+    crate::word_claims::claim_tokens(&tokens[encore_idx..=encore_idx]);
     Ok(Some(StaticAbilityAst::GrantKeywordAction {
         filter,
         action: KeywordAction::EncoreFromSourceCost { mana_value_generic },

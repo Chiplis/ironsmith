@@ -1815,10 +1815,10 @@ fn read_pay_to_end_this_effect(
     {
         return Ok(None);
     }
-    let Some(pay_idx) = tokens.iter().position(|token| token.is_word("pay")) else {
+    let Some(pay_idx) = tokens.iter().position(|token| token.matches_word("pay")) else {
         return Ok(None);
     };
-    let Some(to_idx) = tokens.iter().rposition(|token| token.is_word("to")) else {
+    let Some(to_idx) = tokens.iter().rposition(|token| token.matches_word("to")) else {
         return Ok(None);
     };
     if to_idx <= pay_idx + 1 {

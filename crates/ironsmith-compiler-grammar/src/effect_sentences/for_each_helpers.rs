@@ -39,7 +39,7 @@ pub(crate) fn parse_imperative_optional_participant(tokens: &[OwnedLexToken]) ->
     let words = crate::lexer::parser_token_word_refs(body);
     if words.starts_with(&["you", "may", "cast"])
         && words.ends_with(&["without", "paying", "its", "mana", "cost"])
-        && let Some(from) = body.iter().position(|token| token.is_word("from"))
+        && let Some(from) = body.iter().position(|token| token.matches_word("from"))
         && matches!(crate::lexer::parser_token_word_refs(&body[from..]).as_slice(),
             ["from", "that", "players" | "player's", "graveyard", "without", "paying", "its", "mana", "cost"])
         && let Some(filter) = participant_scopes::player_filter(participant.scope)
@@ -99,7 +99,7 @@ fn has_independent_participant_continuation(tokens: &[OwnedLexToken]) -> bool {
         crate::recognition::ParseOutcome::Match(plan)
             if plan.value.members.iter().skip(1).any(|member| member.head.is_some_and(|head|
                 matches!(head.actor, ClauseActorHeadAst::Controller | ClauseActorHeadAst::Player)
-                    && !member.tokens.first().is_some_and(|token| token.is_word("that"))
+                    && !member.tokens.first().is_some_and(|token| token.matches_word("that"))
             ))
     )
 }
@@ -381,10 +381,10 @@ pub fn parse_has_base_power_toughness_clause(
     // Coordinate a source's color/type change with its size assignment.
     if let Some(and_index) = tokens
         .windows(2)
-        .position(|pair| pair[0].is_word("and") && pair[1].is_any_word(&["has", "have"]))
+        .position(|pair| pair[0].matches_word("and") && pair[1].matches_any_word(&["has", "have"]))
         && let Some(become_index) = tokens[..and_index]
             .iter()
-            .position(|token| token.is_any_word(&["becomes", "become"]))
+            .position(|token| token.matches_any_word(&["becomes", "become"]))
     {
         let mut size_tokens = tokens[..become_index].to_vec();
         size_tokens.extend_from_slice(&tokens[and_index + 1..]);
@@ -412,16 +412,18 @@ pub fn parse_has_base_power_toughness_clause(
     // types" (Allosaurus Shepherd): both halves apply to the same subject for
     // the same duration.
     if let Some(and_idx) = tokens.windows(2).position(|pair| {
-        pair[0].is_word("and") && (pair[1].is_word("becomes") || pair[1].is_word("become"))
+        pair[0].matches_word("and") && (pair[1].matches_word("becomes") || pair[1].matches_word("become"))
     }) && let Some(has_idx) = tokens[..and_idx]
         .iter()
-        .position(|token| token.is_word("has") || token.is_word("have"))
+        .position(|token| token.matches_word("has") || token.matches_word("have"))
         && let Some(set_pt) = parse_has_base_power_toughness_clause(&tokens[..and_idx])?
     {
         let become_effect = super::clause_dispatch::parse_become_clause(
             &tokens[..has_idx],
             &tokens[and_idx + 2..],
         )?;
+        // "and become(s)", found by the scan above.
+        crate::word_claims::claim_tokens(&tokens[and_idx..and_idx + 2]);
         return Ok(Some(EffectAst::Sequence {
             effects: vec![set_pt, become_effect],
         }));
@@ -430,10 +432,10 @@ pub fn parse_has_base_power_toughness_clause(
     // can't be blocked this turn" (Riverfall Mimic): the restriction is a
     // second action of the same subject with its own authored duration.
     if let Some(and_idx) = tokens.windows(2).position(|pair| {
-        pair[0].is_word("and") && pair[1].is_any_word(&["can't", "cant", "cannot"])
+        pair[0].matches_word("and") && pair[1].matches_any_word(&["can't", "cant", "cannot"])
     }) && let Some(has_idx) = tokens[..and_idx]
         .iter()
-        .position(|token| token.is_word("has") || token.is_word("have"))
+        .position(|token| token.matches_word("has") || token.matches_word("have"))
         && has_idx > 0
         && let Some(set_pt) = parse_has_base_power_toughness_clause(&tokens[..and_idx])?
     {
@@ -441,6 +443,8 @@ pub fn parse_has_base_power_toughness_clause(
         restriction_tokens.extend_from_slice(&tokens[and_idx + 1..]);
         let mut effects = vec![set_pt];
         effects.extend(parse_effect_chain(&restriction_tokens)?);
+        // The "and" joining the two actions, found by the scan above.
+        crate::word_claims::claim_tokens(&tokens[and_idx..=and_idx]);
         return Ok(Some(EffectAst::Sequence { effects }));
     }
     let Some(shape) = for_each_shapes::parse_base_power_toughness_clause_shape(tokens)? else {
@@ -906,7 +910,7 @@ fn tagged_predicate(filter_tokens: Option<&[OwnedLexToken]>) -> Option<Predicate
         if filter.zone == Some(crate::zone::Zone::Battlefield)
             && rest
                 .iter()
-                .any(|token| token.is_word("card") || token.is_word("cards"))
+                .any(|token| token.matches_word("card") || token.matches_word("cards"))
         {
             filter.zone = None;
         }
@@ -928,7 +932,7 @@ fn tagged_predicate(filter_tokens: Option<&[OwnedLexToken]>) -> Option<Predicate
     if filter.zone == Some(crate::zone::Zone::Battlefield)
         && filter_tokens
             .iter()
-            .any(|token| token.is_word("card") || token.is_word("cards"))
+            .any(|token| token.matches_word("card") || token.matches_word("cards"))
     {
         filter.zone = None;
     }
@@ -949,7 +953,7 @@ fn tagged_past_action_predicate(
     let mut predicate = tagged_predicate(filter_tokens)?;
     if action_tokens
         .iter()
-        .any(|token| token.is_word("sacrificed"))
+        .any(|token| token.matches_word("sacrificed"))
         && let PredicateAst::Player(PlayerPredicateAst::PlayerTaggedObjectMatches { mode, .. }) =
             &mut predicate
     {
@@ -1032,7 +1036,7 @@ fn parse_quantified_participant_actor_program(
     if let Some(expanded) = super::chain_carry::expand_shared_life_equal_to_amount(tokens) {
         return parse_quantified_participant_actor_program(&expanded);
     }
-    if tokens.iter().any(|token| token.is_word("rest")) {
+    if tokens.iter().any(|token| token.matches_word("rest")) {
         let normalized = prepend_that_player_subject(tokens);
         if let Some(effects) = crate::activation_and_restrictions::choice_object_clauses::parse_hand_choice_then_shuffle_remainder(&normalized)? {
             return Ok(Some(effects));

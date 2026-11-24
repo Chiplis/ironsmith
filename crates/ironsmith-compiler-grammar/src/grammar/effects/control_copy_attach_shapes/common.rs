@@ -86,7 +86,7 @@ pub fn has_relative_collection_entry_controller(tokens: &[OwnedLexToken]) -> boo
     // inside a recognizable contextual suffix must not evade the rejection.
     let words = crate::lexer::parser_token_word_refs(tokens);
     permission_shapes::contains_tokens(tokens, &["from", "among"])
-        && tokens.iter().any(|token| token.is_word("battlefield"))
+        && tokens.iter().any(|token| token.matches_word("battlefield"))
         && crate::word_primitives::any_sequence_occurs(&words, &[
             &["under", "their", "control"],
             &["under", "that", "player", "control"],

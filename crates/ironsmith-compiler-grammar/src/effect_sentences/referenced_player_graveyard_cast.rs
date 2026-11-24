@@ -132,7 +132,7 @@ pub(super) fn parse(tokens: &[OwnedLexToken]) -> Result<Option<EffectAst>, CardT
         return Ok(None);
     };
     // The origin is the last "from <player's> graveyard this turn".
-    let Some(from) = rest.iter().rposition(|token| token.is_word("from")) else {
+    let Some(from) = rest.iter().rposition(|token| token.matches_word("from")) else {
         return Ok(None);
     };
     let subject_tokens = trim_lexed_commas(&rest[..from]);

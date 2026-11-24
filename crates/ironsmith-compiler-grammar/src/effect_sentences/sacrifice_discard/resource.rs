@@ -215,8 +215,8 @@ pub fn parse_sacrifice(
     // "sacrifice another creature or an artifact": one permanent that is
     // either, not one of each.
     if !opponent_chooses_object
-        && let Some(or_index) = tokens.iter().position(|token| token.is_word("or"))
-        && tokens.iter().filter(|token| token.is_word("or")).count() == 1
+        && let Some(or_index) = tokens.iter().position(|token| token.matches_word("or"))
+        && tokens.iter().filter(|token| token.matches_word("or")).count() == 1
         && tokens
             .first()
             .is_some_and(|token| token.is_any_word(&["a", "an", "another"]))

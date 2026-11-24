@@ -370,7 +370,7 @@ fn spell_cast_mana_source_filter(
 ) -> Result<Option<ObjectFilter>, CardTextError> {
     if !trigger_parse_tokens
         .iter()
-        .any(|token| token.is_word("cast"))
+        .any(|token| token.matches_word("cast"))
     {
         return Ok(None);
     }
@@ -1354,7 +1354,7 @@ fn parse_statement_to_chunks_impl(
         && !assertion
             .subject
             .iter()
-            .any(|token| token.is_word("target"))
+            .any(|token| token.matches_word("target"))
         && let Some(abilities) = parse_static_ability_ast_line_lexed(&line.info.source_tokens)?
     {
         return Ok(vec![LineAst::StaticAbilities(abilities)]);
@@ -2457,13 +2457,13 @@ fn conditional_predicate_has_implicit_object_surface(sentence: &[OwnedLexToken])
     let predicate_end = crate::slice_primitives::select_position(sentence, OwnedLexToken::is_comma)
         .unwrap_or(sentence.len());
     let predicate = &sentence[1..predicate_end];
-    predicate.iter().any(|token| token.is_word("it"))
+    predicate.iter().any(|token| token.matches_word("it"))
         || predicate
             .first()
             .is_some_and(|token| token.is_word("target"))
         || predicate.windows(2).any(|pair| {
-            pair[0].is_word("that")
-                && pair[1].is_any_word(&[
+            pair[0].matches_word("that")
+                && pair[1].matches_any_word(&[
                     "card",
                     "creature",
                     "object",

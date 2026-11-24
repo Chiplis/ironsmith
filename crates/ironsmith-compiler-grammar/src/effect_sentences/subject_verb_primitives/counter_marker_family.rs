@@ -507,7 +507,7 @@ pub fn parse_gets_then_fights_sentence(
     };
     // A later player's optional fight is a separate action with its own
     // control-flow envelope, not part of the preceding pump amount.
-    if shape.pump_tokens.iter().any(|token| token.is_word("may")) {
+    if shape.pump_tokens.iter().any(|token| token.matches_word("may")) {
         return Ok(None);
     }
     let pump_effect = parse_effect_clause(shape.pump_tokens)?;
@@ -1006,7 +1006,7 @@ fn parse_shared_counter_target_with_dynamic_member(
     };
     // The recipient follows the last "on"; a dynamic amount may itself
     // mention "on" ("equal to the number of counters on it").
-    let on = body.iter().rposition(|token| token.is_word("on"))?;
+    let on = body.iter().rposition(|token| token.matches_word("on"))?;
     let (descriptors, target_tokens) = (&body[..on], body.get(on + 1..)?);
     if target_tokens.is_empty() || descriptors.is_empty() {
         return None;
@@ -1036,7 +1036,7 @@ fn parse_shared_counter_target_with_dynamic_member(
             && opens_descriptor(&descriptors[index + separator_len..])
             && descriptors[start..index]
                 .iter()
-                .any(|token| token.is_any_word(&["counter", "counters"]))
+                .any(|token| token.matches_any_word(&["counter", "counters"]))
         {
             members.push(&descriptors[start..index]);
             separators.push(&descriptors[index..index + separator_len]);
@@ -1054,7 +1054,7 @@ fn parse_shared_counter_target_with_dynamic_member(
         || !members.iter().any(|member| is_dynamic(member))
         || members
             .iter()
-            .any(|member| !member.iter().any(|token| token.is_any_word(&["counter", "counters"])))
+            .any(|member| !member.iter().any(|token| token.matches_any_word(&["counter", "counters"])))
     {
         return None;
     }

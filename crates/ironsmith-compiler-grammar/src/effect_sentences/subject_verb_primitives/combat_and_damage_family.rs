@@ -135,7 +135,7 @@ pub fn parse_sentence_must_attack_filter_this_turn(
     if subject_tokens.is_empty()
         || subject_tokens
             .iter()
-            .any(|token| token.is_any_word(&["target", "chosen", "choice"]))
+            .any(|token| token.matches_any_word(&["target", "chosen", "choice"]))
     {
         return Ok(None);
     }
@@ -188,7 +188,7 @@ pub fn parse_sentence_goad_requirement_filter(
     if subject_tokens.is_empty()
         || subject_tokens
             .iter()
-            .any(|token| token.is_any_word(&["target", "chosen", "choice", "that", "it"]))
+            .any(|token| token.matches_any_word(&["target", "chosen", "choice", "that", "it"]))
     {
         return Ok(None);
     }
@@ -679,8 +679,8 @@ pub fn parse_distribute_counters_sentence(
         let tokens = amount_clause.tokens();
         let equal_idx = tokens
             .windows(2)
-            .position(|pair| pair[0].is_word("equal") && pair[1].is_word("to"));
-        let among_idx = tokens.iter().position(|token| token.is_word("among"));
+            .position(|pair| pair[0].matches_word("equal") && pair[1].matches_word("to"));
+        let among_idx = tokens.iter().position(|token| token.matches_word("among"));
         match (equal_idx, among_idx) {
             (Some(equal_idx), Some(among_idx)) if equal_idx + 2 < among_idx => {
                 let value_tokens = &tokens[equal_idx + 2..among_idx];
@@ -784,7 +784,7 @@ pub fn parse_distribute_counters_sentence(
             clause.text()
         )));
     }
-    let target = if target_phrase.tokens().iter().any(|token| token.is_word("target")) {
+    let target = if target_phrase.tokens().iter().any(|token| token.matches_word("target")) {
         parse_target_phrase(target_phrase.tokens())?
     } else {
         // "Among any number of creatures" chooses recipients at resolution;
@@ -856,7 +856,7 @@ fn parse_distribute_stickers(tokens: &[OwnedLexToken]) -> Result<Option<EffectAs
         return Ok(None);
     };
     let filter_tokens = &target_tokens[used_count..];
-    if filter_tokens.is_empty() || filter_tokens.iter().any(|token| token.is_word("target")) {
+    if filter_tokens.is_empty() || filter_tokens.iter().any(|token| token.matches_word("target")) {
         return Ok(None);
     }
     let mut filter = parse_object_filter(filter_tokens, false)?;
@@ -931,7 +931,7 @@ pub fn parse_sentence_transform_with_followup(
     // source reader would otherwise accept the whole tail as "this creature"
     // and drop the second instruction.
     if tail_clause.is_none()
-        && let Some(and_idx) = target_clause.tokens().iter().position(|token| token.is_word("and"))
+        && let Some(and_idx) = target_clause.tokens().iter().position(|token| token.matches_word("and"))
         && and_idx > 0
         && and_idx + 1 < target_clause.tokens().len()
         && matches!(

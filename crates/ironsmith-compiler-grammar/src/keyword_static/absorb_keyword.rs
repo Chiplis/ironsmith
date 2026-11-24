@@ -42,7 +42,7 @@ pub fn parse_absorb_keyword_line(
     }
     let Some(have_idx) = tokens
         .iter()
-        .position(|token| token.is_any_word(&["have", "has"]))
+        .position(|token| token.matches_any_word(&["have", "has"]))
     else {
         return Ok(None);
     };

@@ -310,11 +310,11 @@ pub(super) fn disjunction_is_inside_targets_clause(tokens: &[OwnedLexToken]) -> 
     // attachment clause rather than splitting the Aura selector.
     let Some(targets) = tokens
         .windows(2)
-        .position(|window| window[0].is_word("that") && window[1].is_any_word(&["targets", "target"]))
+        .position(|window| window[0].matches_word("that") && window[1].matches_any_word(&["targets", "target"]))
         .or_else(|| {
             tokens
                 .windows(2)
-                .position(|window| window[0].is_word("attached") && window[1].is_word("to"))
+                .position(|window| window[0].matches_word("attached") && window[1].matches_word("to"))
         })
     else {
         return false;
@@ -322,7 +322,7 @@ pub(super) fn disjunction_is_inside_targets_clause(tokens: &[OwnedLexToken]) -> 
     let mut ors = tokens
         .iter()
         .enumerate()
-        .filter(|(_, token)| token.is_word("or"))
+        .filter(|(_, token)| token.matches_word("or"))
         .map(|(index, _)| index)
         .peekable();
     ors.peek().is_some() && ors.all(|index| index > targets)
@@ -332,7 +332,7 @@ pub(super) fn disjunction_is_inside_targets_clause(tokens: &[OwnedLexToken]) -> 
 /// `blue mana symbols` for a blue spell or discard a bare target arity.
 pub(super) fn read_quantified_spell_suffix(tokens: &[OwnedLexToken], other: bool) -> Result<Option<ObjectFilter>, CardTextError> {
     let Some((with, count, tail)) = tokens.iter().enumerate().find_map(|(with, token)| {
-        if !token.is_word("with") { return None; }
+        if !token.matches_word("with") { return None; }
         let (count, tail) = crate::grammar::primitives::parse_prefix(
             &tokens[with + 1..], crate::grammar::leaf::parse_leaf_choice_count_prefix_lexed,
         )?;
@@ -414,7 +414,7 @@ mod cast_quantity_filter_tests {
 /// The label is data; ordinary characteristic and zone grammar owns the prefix.
 pub(super) fn read_source_collection_suffix(tokens: &[OwnedLexToken], other: bool) -> Result<Option<ObjectFilter>, CardTextError> {
     let Some(start) = tokens.windows(2).position(|pair|
-        pair[0].is_word("from") && pair[1].is_word("the")) else { return Ok(None); };
+        pair[0].matches_word("from") && pair[1].matches_word("the")) else { return Ok(None); };
     let suffix = &tokens[start + 2..];
     if suffix.len() < 2 || !suffix.last().is_some_and(|token| token.is_word("collection")) {
         return Ok(None);

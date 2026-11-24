@@ -63,7 +63,7 @@ mod tests {
     #[test]
     fn complete_later_permission_belongs_inside_the_replacement_program() {
         let tokens = lex_line("The next time they would draw a card this turn, instead they exile the top card of their library. They may play it this turn.", 0).unwrap();
-        let shape = parse_timed_draw_replacement(&tokens).unwrap(); assert!(shape.body.iter().any(|token| token.is_word("play")));
+        let shape = parse_timed_draw_replacement(&tokens).unwrap(); assert!(shape.body.iter().any(|token| token.matches_word("play")));
         assert_eq!(parser_token_word_refs(shape.player), ["they"]);
     }
     #[test]

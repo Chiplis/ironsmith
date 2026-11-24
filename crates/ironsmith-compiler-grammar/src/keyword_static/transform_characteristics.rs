@@ -5,7 +5,7 @@ pub(super) fn parse(tokens: &[OwnedLexToken]) -> Option<StaticAbility> {
     let tokens = trim_edge_punctuation_tokens(tokens);
     let words = parser_token_word_refs(tokens);
     if !words.starts_with(&["as", "this"]) { return None; }
-    let transforms = tokens.iter().position(|token| token.is_word("transforms"))?;
+    let transforms = tokens.iter().position(|token| token.matches_word("transforms"))?;
     if !tokens.get(transforms + 1)?.is_word("into") { return None; }
     for comma in transforms + 2..tokens.len() {
         if !tokens[comma].is_comma() { continue; }

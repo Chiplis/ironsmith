@@ -29,7 +29,7 @@ pub(crate) fn read(
         return Ok(None);
     };
     let second_tokens = second.lowered();
-    let Some(add_idx) = second_tokens.iter().position(|token| token.is_word("add")) else {
+    let Some(add_idx) = second_tokens.iter().position(|token| token.matches_word("add")) else {
         return Ok(None);
     };
     let head = crate::lexer::parser_token_word_refs(&second_tokens[..add_idx]);

@@ -774,7 +774,7 @@ fn parse_granted_ability_component_for_gain(
                         && shape
                             .body_tokens
                             .first()
-                            .is_some_and(|token| token.is_any_word(&["when", "whenever", "at"]))
+                            .is_some_and(|token| token.matches_any_word(&["when", "whenever", "at"]))
                 })
                 .map(|shape| {
                     shape
@@ -820,7 +820,7 @@ fn parse_granted_ability_component_for_gain_unlabeled(
     let ability_tokens = if authored_as_quoted_ability {
         crate::grammar::effects::labeled_dispatch::parse_leading_effect_label_tokens(&ability_tokens)
             .filter(|shape| shape.kind != crate::grammar::effects::labeled_dispatch::LeadingEffectLabelKind::SupportedProcedure
-                && shape.body_tokens.first().is_some_and(|token| token.is_any_word(&["when", "whenever", "at"])))
+                && shape.body_tokens.first().is_some_and(|token| token.matches_any_word(&["when", "whenever", "at"])))
             .map_or_else(|| ability_tokens.clone(), |shape| {
                 // The label is the granted ability's presentation label.
                 crate::word_claims::claim_tokens(shape.label_tokens);
@@ -1666,7 +1666,7 @@ pub fn parse_granted_abilities_for_token_definition(
         )
         .filter(|shape| {
             let colon = shape.body_tokens.iter().position(|token| token.kind == TokenKind::Colon);
-            let intro = shape.body_tokens.first().is_some_and(|token| token.is_any_word(&["when", "whenever", "at"]));
+            let intro = shape.body_tokens.first().is_some_and(|token| token.matches_any_word(&["when", "whenever", "at"]));
             intro || colon.is_none()
         })
         .map_or(ability_tokens, |shape| shape.body_tokens);
@@ -2104,7 +2104,7 @@ pub fn parse_simple_gain_ability_clause_lexed(
 
 fn parse_activated_ability_snapshot_grant(tokens: &[OwnedLexToken]) -> Result<Option<EffectAst>, CardTextError> {
     let tokens = crate::util::trim_edge_punctuation_tokens(tokens);
-    let Some(gain) = tokens.iter().position(|token| token.is_any_word(&["gain", "gains"])) else { return Ok(None); };
+    let Some(gain) = tokens.iter().position(|token| token.matches_any_word(&["gain", "gains"])) else { return Ok(None); };
     let rest = &tokens[gain + 1..];
     if gain == 0 || rest.len() < 9
         || !rest.iter().take(4).zip(["all", "activated", "abilities", "of"]).all(|(token, word)| token.is_word(word))
@@ -2115,6 +2115,8 @@ fn parse_activated_ability_snapshot_grant(tokens: &[OwnedLexToken]) -> Result<Op
     let each_recipient = tokens[0].is_any_word(&["each", "all"]);
     let target = parse_target_phrase(&tokens[..gain])?;
     let source = parse_target_phrase(&rest[4..rest.len() - 4])?;
+    // The "gain(s)" verb the scan above found.
+    crate::word_claims::claim_tokens(&tokens[gain..=gain]);
     Ok(Some(EffectAst::subject_verb(crate::cards::builders::SubjectVerbRoleAst::Actor, PlayerAst::You,
         SubjectVerbActionAst::Grants(crate::cards::builders::GrantActionAst::GrantActivatedAbilitiesFrom {
             target, source, duration: Until::EndOfTurn, each_recipient, symbol_as_any_color: None,
@@ -2266,7 +2268,7 @@ fn parse_complete_source_base_pt_assignment(tokens: &[OwnedLexToken]) -> Result<
     // subject; do not swallow it as part of a size assignment's noun phrase.
     if subject
         .iter()
-        .any(|token| token.is_any_word(&["become", "becomes"]))
+        .any(|token| token.matches_any_word(&["become", "becomes"]))
     {
         return Ok(None);
     }
@@ -2292,11 +2294,11 @@ pub(super) fn parse_copular_base_characteristic_assignment(
     if tokens.first().is_some_and(|token| token.is_any_word(&["if", "when", "whenever", "unless", "until", "at", "as"])) {
         return Ok(None);
     }
-    let Some(has) = tokens.iter().position(|token| token.is_any_word(&["has", "have"])) else {
+    let Some(has) = tokens.iter().position(|token| token.matches_any_word(&["has", "have"])) else {
         return Ok(None);
     };
     if has == 0 || tokens[..has].iter().any(|token| token.is_period() || token.is_comma()
-        || token.is_any_word(&["may", "put", "puts", "gain", "gains", "become", "becomes"])) {
+        || token.matches_any_word(&["may", "put", "puts", "gain", "gains", "become", "becomes"])) {
         return Ok(None);
     }
     let rest = &tokens[has + 1..];
@@ -2313,14 +2315,14 @@ pub(super) fn parse_copular_base_characteristic_assignment(
     let Some(marker_len) = marker_len else { return Ok(None); };
     let mut value = &rest[marker_len..];
     // A following grant belongs to the compound sentence owner.
-    if value.iter().any(|token| token.is_any_word(&["gain", "gains", "has", "have", "lose", "loses"])) {
+    if value.iter().any(|token| token.matches_any_word(&["gain", "gains", "has", "have", "lose", "loses"])) {
         return Ok(None);
     }
     // "has base power 1 or base toughness 1" (Vhati il-Dal) is a choice
     // between two single-axis settings, owned by `parse_has_base_power_clause`.
     if value
         .windows(2)
-        .any(|pair| pair[0].is_word("or") && pair[1].is_word("base"))
+        .any(|pair| pair[0].matches_word("or") && pair[1].matches_word("base"))
     {
         return Ok(None);
     }
@@ -2360,6 +2362,8 @@ pub(super) fn parse_copular_base_characteristic_assignment(
     // The copular subject is an explicit recipient, not a newly inferred
     // possessive or collection derived from the synthetic characteristic head.
     preserve_recipient(&mut effect, &recipient);
+    // The copula "has"/"have" the scan above found.
+    crate::word_claims::claim_tokens(&tokens[has..=has]);
     Ok(Some(effect))
 }
 
@@ -3064,14 +3068,14 @@ fn with_inline_creature_type_choice(
 /// with later timestamps in the same resolution.
 fn parse_gain_then_lose_other_abilities(tokens: &[OwnedLexToken]) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     let tokens = crate::util::trim_edge_punctuation_tokens(tokens);
-    let Some(tail) = tokens.windows(5).rposition(|words| words[0].is_word("and")
-        && words[1].is_any_word(&["lose", "loses"]) && words[2].is_word("all")
-        && words[3].is_word("other") && words[4].is_word("abilities")) else { return Ok(None); };
+    let Some(tail) = tokens.windows(5).rposition(|words| words[0].matches_word("and")
+        && words[1].matches_any_word(&["lose", "loses"]) && words[2].matches_word("all")
+        && words[3].matches_word("other") && words[4].matches_word("abilities")) else { return Ok(None); };
     if tail + 5 != tokens.len() { return Ok(None); }
     let prefix = &tokens[..tail];
     // Duration-bearing variants need to carry that duration to the removal.
-    if prefix.iter().any(|token| token.is_any_word(&["until", "during", "for"])) { return Ok(None); }
-    let Some(gain) = prefix.iter().position(|token| token.is_any_word(&["gain", "gains"])) else { return Ok(None); };
+    if prefix.iter().any(|token| token.matches_any_word(&["until", "during", "for"])) { return Ok(None); }
+    let Some(gain) = prefix.iter().position(|token| token.matches_any_word(&["gain", "gains"])) else { return Ok(None); };
     let subject = &prefix[..gain];
     let target = if let Some(source) = source_target_from_subject_tokens(subject) { source }
         else {
@@ -3081,6 +3085,8 @@ fn parse_gain_then_lose_other_abilities(tokens: &[OwnedLexToken]) -> Result<Opti
             tagged_subject_target(subject)?
         };
     let Some(mut grants) = parse_gain_ability_sentence_inner(prefix)? else { return Ok(None); };
+    // "and lose(s) all other abilities", found by the scan above.
+    crate::word_claims::claim_tokens(&tokens[tail..tail + 5]);
     let mut effects = vec![EffectAst::subject_verb_remove_abilities_from_target(target, Vec::new(), Until::Forever)];
     effects.append(&mut grants);
     Ok(Some(vec![EffectAst::Sequence { effects }]))
@@ -3098,7 +3104,7 @@ pub fn split_pronoun_ability_and_type_pair(
     let (head, rest) = tokens.split_first()?;
     let pair_at = |second: &str| {
         rest.windows(2)
-            .position(|pair| pair[0].is_word("and") && pair[1].is_word(second))
+            .position(|pair| pair[0].matches_word("and") && pair[1].matches_word(second))
     };
     let (has_tail, descriptor) = if head.is_word("it") && rest.first()?.is_word("has") {
         let and = pair_at("is")?;
@@ -3164,12 +3170,12 @@ pub fn parse_pronoun_ability_and_type_pair(
                 };
                 !inside(has_tail) && !inside(descriptor)
             })
-            .filter(|token| token.is_any_word(&["it", "it's", "it’s", "has", "and", "is"]))
+            .filter(|token| token.matches_any_word(&["it", "it's", "it’s", "has", "and", "is"]))
             .cloned()
             .collect::<Vec<_>>()
             .as_slice(),
     );
-    if let Some(article) = descriptor.first().filter(|token| token.is_any_word(&["a", "an"])) {
+    if let Some(article) = descriptor.first().filter(|token| token.matches_any_word(&["a", "an"])) {
         crate::word_claims::claim_tokens(std::slice::from_ref(article));
     }
     Ok(Some(vec![ability_effect, become_effect]))
@@ -3246,9 +3252,9 @@ fn parse_player_no_maximum_hand_size_while_controlled(
 }
 
 pub(crate) fn parse_keyword_loss_with_prohibition(tokens: &[OwnedLexToken]) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    let Some(lose) = tokens.iter().position(|token| token.is_any_word(&["lose", "loses"])) else { return Ok(None); };
-    let Some(and) = tokens.windows(2).position(|pair| pair[0].is_word("and")
-        && pair[1].is_any_word(&["cant", "can't", "cannot"])) else { return Ok(None); };
+    let Some(lose) = tokens.iter().position(|token| token.matches_any_word(&["lose", "loses"])) else { return Ok(None); };
+    let Some(and) = tokens.windows(2).position(|pair| pair[0].matches_word("and")
+        && pair[1].matches_any_word(&["cant", "can't", "cannot"])) else { return Ok(None); };
     if and <= lose + 1 { return Ok(None); }
     let tail = &tokens[and + 2..];
     let (used, mode) = if tail.first().is_some_and(|token| token.is_word("have")) {
@@ -3389,7 +3395,7 @@ pub(crate) fn parse_mana_cost_keyword_grant(
         = price_words.as_slice() else { return Ok(None); };
     if !matches!(*keyword, "encore" | "harmonize" | "embalm") { return Ok(None); }
     let grant = trim_edge_punctuation(grant);
-    let Some(gain) = grant.iter().position(|token| token.is_any_word(&["gain", "gains"])) else {
+    let Some(gain) = grant.iter().position(|token| token.matches_any_word(&["gain", "gains"])) else {
         return Ok(None);
     };
     if gain == 0 || crate::lexer::parser_token_word_refs(&grant[gain + 1..])
@@ -3524,7 +3530,7 @@ pub(crate) fn split_anaphor_pair_subject_sentences(
     }
     let subject = &tokens[..subject_end];
     if subject.iter().any(|token| {
-        token.is_comma() || token.is_any_word(&["target", "if", "or", "may", "unless"])
+        token.is_comma() || token.matches_any_word(&["target", "if", "or", "may", "unless"])
     }) {
         return None;
     }
@@ -3556,7 +3562,7 @@ pub(crate) fn split_anaphor_pair_subject_sentences(
     let and_positions = subject
         .iter()
         .enumerate()
-        .filter(|(_, token)| token.is_word("and"))
+        .filter(|(_, token)| token.matches_word("and"))
         .map(|(index, _)| index)
         .collect::<Vec<_>>();
     let [and_idx] = and_positions.as_slice() else {
@@ -3572,7 +3578,7 @@ pub(crate) fn split_anaphor_pair_subject_sentences(
     // recipient noun phrase; the gain reader splits that sentence itself.
     if subject
         .iter()
-        .any(|token| token.is_any_word(&["is", "are", "it's", "they're", "theyre"]))
+        .any(|token| token.matches_any_word(&["is", "are", "it's", "they're", "theyre"]))
         || matches!(
             crate::lexer::token_word_refs(left).as_slice(),
             ["its", crate::keyword_forms::GOADED | "tapped" | "untapped", ..]
@@ -3772,9 +3778,9 @@ fn parse_current_identity_grant_condition_suffix(tokens:&[OwnedLexToken])->Resul
         if quotes.is_empty()&&crate::word_claims::probe_only(||token.is_word("only")&&tokens.get(index+1).is_some_and(|next|next.is_word("while"))){split=Some(index);}
     }
     let Some(split)=split else{return Ok(None);};
-    if !crate::word_claims::probe_only(||tokens[..split].iter().any(|token|token.is_any_word(&["gain","gains","have","has"]))) {return Ok(None);}
+    if !crate::word_claims::probe_only(||tokens[..split].iter().any(|token|token.matches_any_word(&["gain","gains","have","has"]))) {return Ok(None);}
     let condition=&tokens[split+2..];
-    let Some(has)=condition.iter().position(|token|token.is_word("has"))else{return Err(CardTextError::ParseError("current grant condition requires an object and a property".into()));};
+    let Some(has)=condition.iter().position(|token|token.matches_word("has"))else{return Err(CardTextError::ParseError("current grant condition requires an object and a property".into()));};
     let subject=crate::lexer::parser_token_word_refs(&condition[..has]);
     let reference=match subject.as_slice(){
         ["the","exiled","card"]=>crate::tag::CompilerReferenceTag::PriorExiledCard,
@@ -3905,10 +3911,10 @@ pub(crate) fn parse_conditional_keyword_snapshot_grant(tokens:&[OwnedLexToken])-
         if token.kind==TokenKind::Quote {quoted=!quoted;return None;}
         (!quoted).then_some(index)
     }).collect();
-    let Some(gain)=outside.iter().copied().find(|index|tokens[*index].is_any_word(&["gain","gains"]))else{return Ok(None);};
-    let Some(until)=outside.iter().copied().find(|index|tokens[*index].is_word("until"))else{return Ok(None);};
-    let Some(condition)=outside.iter().copied().find(|index|tokens[*index].is_word("if"))else{return Ok(None);};
-    let Some(had)=outside.iter().copied().find(|index|tokens[*index].is_word("had"))else{return Ok(None);};
+    let Some(gain)=outside.iter().copied().find(|index|tokens[*index].matches_any_word(&["gain","gains"]))else{return Ok(None);};
+    let Some(until)=outside.iter().copied().find(|index|tokens[*index].matches_word("until"))else{return Ok(None);};
+    let Some(condition)=outside.iter().copied().find(|index|tokens[*index].matches_word("if"))else{return Ok(None);};
+    let Some(had)=outside.iter().copied().find(|index|tokens[*index].matches_word("had"))else{return Ok(None);};
     if gain==0||until<=gain+1||condition!=until+4||had<=condition+1
         || !tokens[until..condition].iter().zip(["until","end","of","turn"]).all(|(token,word)|token.is_word(word)){return Ok(None);}
     let Some(keywords)=snapshot_keyword_ids(&tokens[gain+1..until])else{return Ok(None);};

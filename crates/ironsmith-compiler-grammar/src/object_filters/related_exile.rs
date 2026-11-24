@@ -16,8 +16,8 @@ fn host(tokens:&[OwnedLexToken])->Result<ChooseSpec,CardTextError>{
 }
 pub(super) fn read(tokens:&[OwnedLexToken],other:bool)->Result<Option<ObjectFilter>,CardTextError>{
     let clean=crate::util::trim_edge_punctuation_tokens(tokens);
-    let Some(linked)=clean.iter().position(|token|token.is_word("linked"))else{return Ok(None)};
-    let Some(under)=clean.windows(2).rposition(|pair|pair[0].is_word("under")&&pair[1].is_word("the"))else{return Ok(None)};
+    let Some(linked)=clean.iter().position(|token|token.matches_word("linked"))else{return Ok(None)};
+    let Some(under)=clean.windows(2).rposition(|pair|pair[0].matches_word("under")&&pair[1].matches_word("the"))else{return Ok(None)};
     if linked==0||under<=linked||under+3>=clean.len()||!clean.last().is_some_and(|token|token.is_word("relationship")){return Ok(None);}
     let name=&clean[under+2..clean.len()-1];
     if name.iter().any(|token|token.kind!=crate::lexer::TokenKind::Word){return Ok(None);}
@@ -34,7 +34,7 @@ pub(super) fn read(tokens:&[OwnedLexToken],other:bool)->Result<Option<ObjectFilt
     }
     // The collection belongs to each candidate host, not to this ability's source.
     if under!=linked+1{return Ok(None);}
-    let Some(with)=clean[..linked].iter().rposition(|token|token.is_word("with"))else{return Ok(None)};
+    let Some(with)=clean[..linked].iter().rposition(|token|token.matches_word("with"))else{return Ok(None)};
     if with==0||with+1>=linked{return Ok(None);}
     let mut member_start=with+1;
     let words=crate::lexer::parser_token_word_refs(&clean[member_start..linked]);

@@ -18,7 +18,7 @@ pub(super) fn completes_source_operand(
         let tail = tail.trim_start();
         let tail = if matches!(surface, crate::front_end::SelfReferenceSurface::This) {
             let Some(tokens) = stage_tokens(tail) else { return false; };
-            if let Some(noun) = tokens.first().filter(|token| token.is_any_word(&[
+            if let Some(noun) = tokens.first().filter(|token| token.matches_any_word(&[
                 "permanent", "creature", "artifact", "enchantment", "land", "planeswalker", "battle", "spell",
             ])) {
                 tail.get(noun.span.end..).unwrap_or("").trim_start()

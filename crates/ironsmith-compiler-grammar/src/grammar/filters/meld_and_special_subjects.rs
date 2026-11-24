@@ -115,7 +115,7 @@ fn graveyard_threshold_owner_player(owner: GraveyardThresholdOwner) -> PlayerAst
 fn tokens_contain_type_marker(tokens: &[OwnedLexToken]) -> bool {
     tokens
         .iter()
-        .any(|token| token.is_any_word(&["type", "types"]))
+        .any(|token| token.matches_any_word(&["type", "types"]))
 }
 
 fn non_article_tokens_are_card_or_cards(tokens: &[OwnedLexToken]) -> bool {
@@ -178,7 +178,7 @@ pub(super) fn parse_graveyard_threshold_predicate(
         .is_some()
             || raw_filter_tokens
                 .iter()
-                .any(|token| token.is_word("and/or"));
+                .any(|token| token.matches_word("and/or"));
 
     let player = graveyard_threshold_owner_player(shape.owner);
     if constrained_player.is_some_and(|expected| expected != player) {

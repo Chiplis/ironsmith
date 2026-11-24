@@ -119,7 +119,7 @@ pub(crate) fn parse_perform(tokens: &[OwnedLexToken]) -> Option<EffectAst> {
             let start = *view.token_start_indices().get(action + 2)?;
             // ", then <instruction>" ends the operand: a following
             // instruction is never part of the participant phrase.
-            if tokens[start..].iter().any(|token| token.is_word("then")) { return None; }
+            if tokens[start..].iter().any(|token| token.matches_word("then")) { return None; }
             Some(crate::util::parse_target_phrase(&tokens[start..]).ok()?)
         } else { return None; };
     if prior_action.is_some() { crate::word_claims::claim_tokens(tokens); }

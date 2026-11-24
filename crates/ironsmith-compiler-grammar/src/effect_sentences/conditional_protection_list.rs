@@ -10,8 +10,8 @@ pub(super) fn parse(tokens: &[OwnedLexToken]) -> Result<Option<Vec<EffectAst>>, 
     let tokens = crate::util::trim_edge_punctuation_tokens(tokens);
     // "... gain(s) protection" — the shared head.
     let Some(protection) = (1..tokens.len()).find(|&index| {
-        tokens[index].is_word("protection")
-            && tokens[index - 1].is_any_word(&["gain", "gains", "has", "have"])
+        tokens[index].matches_word("protection")
+            && tokens[index - 1].matches_any_word(&["gain", "gains", "has", "have"])
     }) else {
         return Ok(None);
     };
@@ -44,7 +44,7 @@ pub(super) fn parse(tokens: &[OwnedLexToken]) -> Result<Option<Vec<EffectAst>>, 
         if !item.first().is_some_and(|token| token.is_word("from")) {
             return Ok(None);
         }
-        let Some(if_index) = item.iter().position(|token| token.is_word("if")) else {
+        let Some(if_index) = item.iter().position(|token| token.matches_word("if")) else {
             return Ok(None);
         };
         let condition = &item[if_index + 1..];
@@ -58,6 +58,8 @@ pub(super) fn parse(tokens: &[OwnedLexToken]) -> Result<Option<Vec<EffectAst>>, 
         let mut grant = head.to_vec();
         grant.extend_from_slice(&item[..if_index]);
         let granted = super::parse_effect_chain_lexed(&grant)?;
+        // The "if" this item was split at.
+        crate::word_claims::claim_tokens(&item[if_index..=if_index]);
         effects.push(EffectAst::Conditionals(ConditionalEffectAst::Conditional {
             predicate,
             if_true: granted,

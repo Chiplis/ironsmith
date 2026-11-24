@@ -114,7 +114,7 @@ pub fn parse_bottom_order(tokens: &[OwnedLexToken]) -> Option<LibraryBottomOrder
     let claim_order = |first: &str| {
         if let Some(index) = tokens
             .windows(2)
-            .position(|pair| pair[0].is_word(first) && pair[1].is_word("order"))
+            .position(|pair| pair[0].matches_word(first) && pair[1].matches_word("order"))
         {
             let mut start = index;
             if start > 0 && tokens[start - 1].is_word("a") {

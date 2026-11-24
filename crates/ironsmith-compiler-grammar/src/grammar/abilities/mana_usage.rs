@@ -743,12 +743,12 @@ fn parse_generic_mana_transaction(tokens: &[OwnedLexToken]) -> Option<ManaUsageR
 /// The instruction after the spent-to-cast spell phrase, when it is a
 /// self-contained effect with no back-reference to the paid spell.
 fn parse_mana_spend_followup_effect(tokens: &[OwnedLexToken]) -> Option<EffectAst> {
-    let cast = tokens.iter().position(|token| token.is_word("cast"))?;
+    let cast = tokens.iter().position(|token| token.matches_word("cast"))?;
     let comma = cast + 1 + tokens[cast + 1..].iter().position(OwnedLexToken::is_comma)?;
     let effect_tokens = trim_lexed_commas(&tokens[comma + 1..]);
     if effect_tokens.is_empty()
         || effect_tokens.iter().any(|token| {
-            token.is_any_word(&[
+            token.matches_any_word(&[
                 "it", "its", "that", "those", "them", "they", "their", "spell", "ability",
             ])
         })
@@ -766,13 +766,13 @@ fn parse_mana_spend_followup_effect(tokens: &[OwnedLexToken]) -> Option<EffectAs
 /// The spell noun phrase of "when that mana is spent to cast <spell>, ...":
 /// the tokens after `cast` up to the first comma, ending in `spell`.
 fn parse_mana_spent_cast_spell_filter(tokens: &[OwnedLexToken]) -> Option<ObjectFilter> {
-    let cast = tokens.iter().position(|token| token.is_word("cast"))?;
+    let cast = tokens.iter().position(|token| token.matches_word("cast"))?;
     let tail = &tokens[cast + 1..];
     let end = tail.iter().position(OwnedLexToken::is_comma)?;
     let spell_tokens = &tail[..end];
     // "a spell with mana value 6 or greater" (Gilanra): the spell noun may be
     // followed by its qualifiers.
-    if !spell_tokens.iter().any(|token| token.is_word("spell")) {
+    if !spell_tokens.iter().any(|token| token.matches_word("spell")) {
         return None;
     }
     let mut filter = parse_spell_filter_with_grammar_entrypoint(spell_tokens);

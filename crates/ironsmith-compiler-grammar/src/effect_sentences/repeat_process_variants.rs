@@ -54,7 +54,7 @@ fn is_keyword_value(tokens: &[OwnedLexToken]) -> bool {
         && tokens.iter().all(|token| token.kind == TokenKind::Word)
         && !tokens
             .iter()
-            .any(|token| token.is_any_word(&["counter", "counters"]))
+            .any(|token| token.matches_any_word(&["counter", "counters"]))
         // Named counters accept arbitrary words, so they cannot establish
         // that a repeat value is a keyword (e.g. "an enchantment").
         && crate::keyword_static::parse_ability_line(tokens).is_some()
@@ -450,8 +450,8 @@ pub(super) fn read_inline_return_for_types(
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     let tokens = strip_sentence_edges(tokens);
     let Some(split) = tokens.windows(5).position(|part|
-        part[0].is_word("then") && part[1].is_word("repeats")
-        && part[2].is_word("this") && part[3].is_word("process") && part[4].is_word("for"))
+        part[0].matches_word("then") && part[1].matches_word("repeats")
+        && part[2].matches_word("this") && part[3].matches_word("process") && part[4].matches_word("for"))
     else { return Ok(None); };
     let base = trim_lexed_commas(&tokens[..split]);
     let words = crate::lexer::parser_token_word_refs(base);

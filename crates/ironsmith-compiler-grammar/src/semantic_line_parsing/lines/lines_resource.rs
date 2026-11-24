@@ -69,7 +69,7 @@ pub fn try_parse_optional_waterbend_additional_cost(
 fn spelled_out_behold_cost_tokens(tokens: &[OwnedLexToken]) -> Option<(Vec<OwnedLexToken>, usize)> {
     let start = tokens
         .iter()
-        .position(|token| token.is_word("reveal") || token.is_word("choose"))?;
+        .position(|token| token.matches_word("reveal") || token.matches_word("choose"))?;
     let words = crate::lexer::token_word_refs(&tokens[start..]);
     let subtype = match words.as_slice() {
         [

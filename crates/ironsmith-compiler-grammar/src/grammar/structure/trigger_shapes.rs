@@ -285,11 +285,11 @@ fn restate_all_listed_keyword_actions_done(
         _ => return None,
     };
     let done = effects_tokens.windows(5).position(|window| {
-        window[0].is_word("done")
-            && window[1].is_word("all")
-            && window[2].is_word(count_word)
-            && window[3].is_word("this")
-            && window[4].is_word("turn")
+        window[0].matches_word("done")
+            && window[1].matches_word("all")
+            && window[2].matches_word(count_word)
+            && window[3].matches_word("this")
+            && window[4].matches_word("turn")
     })?;
     let mut rewritten = effects_tokens[..done].to_vec();
     for (index, word) in past.iter().enumerate() {
@@ -299,6 +299,8 @@ fn restate_all_listed_keyword_actions_done(
         rewritten.push(OwnedLexToken::synthetic_word(*word));
     }
     rewritten.extend_from_slice(&effects_tokens[done + 3..]);
+    // "done all <count>": the listed past-tense actions restate it.
+    crate::word_claims::claim_tokens(&effects_tokens[done..done + 3]);
     Some(rewritten)
 }
 

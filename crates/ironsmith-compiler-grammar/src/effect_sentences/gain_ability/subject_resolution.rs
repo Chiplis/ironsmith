@@ -23,11 +23,11 @@ pub(super) fn parse_gain_ability_sentence_with_subject(
         );
         if pronoun_state_head
             && let Some(and_idx) = (2..tokens.len().saturating_sub(2)).find(|&idx| {
-                tokens[idx].is_word("and")
-                    && tokens[idx + 1].is_word("it")
-                    && tokens[idx + 2].is_any_word(&["gains", "gain"])
+                tokens[idx].matches_word("and")
+                    && tokens[idx + 1].matches_word("it")
+                    && tokens[idx + 2].matches_any_word(&["gains", "gain"])
             })
-            && !tokens[..and_idx].iter().any(|token| token.is_any_word(&["gains", "gain"]))
+            && !tokens[..and_idx].iter().any(|token| token.matches_any_word(&["gains", "gain"]))
         {
             let mut effects = parse_effect_chain(&tokens[..and_idx])?;
             if !effects.is_empty()
@@ -44,7 +44,7 @@ pub(super) fn parse_gain_ability_sentence_with_subject(
         if pronoun_state_head
             && words.iter().any(|word| *word == crate::keyword_forms::GOADED)
             && let Some(gain_idx) = (2..tokens.len())
-                .find(|&idx| tokens[idx].is_any_word(&["gains", "gain"]))
+                .find(|&idx| tokens[idx].matches_any_word(&["gains", "gain"]))
             && tokens[gain_idx - 1].is_word("game")
         {
             let mut effects = parse_effect_chain(&tokens[..gain_idx])?;
@@ -192,7 +192,7 @@ pub(super) fn parse_gain_ability_sentence_with_subject(
         if matches!(subject_verb, Verb::Tap | Verb::Untap)
             && tokens[subject_start_token_idx..gain_token_idx]
                 .iter()
-                .any(|token| token.is_word("and"))
+                .any(|token| token.matches_word("and"))
         {
             return Ok(None);
         }
@@ -1183,7 +1183,7 @@ pub(super) fn parse_gain_ability_sentence_with_subject(
             // "each creature you control gets +2/+2 and gains trample" (Full
             // Steam Ahead): the set quantifier belongs to this grant-to-all
             // reading, which applies to every matching object.
-            let set_quantifier = real_subject_tokens.first().filter(|token| token.is_word("each"));
+            let set_quantifier = real_subject_tokens.first().filter(|token| token.matches_word("each"));
             crate::word_claims::with_caller_owned(set_quantifier, || {
                 parse_object_filter(real_subject_tokens, false)
             })
@@ -1348,7 +1348,7 @@ fn you_and_controlled_permanents_subject(tokens: &[OwnedLexToken]) -> Option<Obj
     if !you.is_word("you")
         || !and.is_word("and")
         || rest.is_empty()
-        || rest.iter().any(|token| token.is_word("target"))
+        || rest.iter().any(|token| token.matches_word("target"))
     {
         return None;
     }

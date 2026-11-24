@@ -38,15 +38,19 @@ fn parse_lexed<'a>(input: &mut LexStream<'a>) -> WResult<StaticDamageRedirection
         .map(|((), _)| ()).take().parse_next(input)?;
     primitives::kw("instead").parse_next(input)?;
     primitives::sentence_end().parse_next(input)?;
-    let (recipient, source) = match recipients_and_source.iter().position(|token| token.is_word("by")) {
-        Some(index) => (&recipients_and_source[..index], Some(&recipients_and_source[index + 1..])),
+    let (recipient, source) = match recipients_and_source.iter().position(|token| token.matches_word("by")) {
+        Some(index) => {
+            // The "by" separating recipient from source, read here.
+            crate::word_claims::claim_tokens(&recipients_and_source[index..=index]);
+            (&recipients_and_source[..index], Some(&recipients_and_source[index + 1..]))
+        }
         None => (recipients_and_source, None),
     };
     Ok(StaticDamageRedirectionShape { untapped_source, combat_only, noncombat_only: false, excess_only: false, recipient, source, destination })
 }
 pub fn parse_static_damage_redirection(tokens: &[OwnedLexToken]) -> Option<StaticDamageRedirectionShape<'_>> {
     // Prevent duration/trailing instructions from being mistaken for filters.
-    if tokens.iter().any(|token| token.is_word("turn") || token.is_word("until") || token.is_word("may")) { return None; }
+    if tokens.iter().any(|token| token.matches_word("turn") || token.matches_word("until") || token.matches_word("may")) { return None; }
     primitives::probe_all(tokens, parse_excess_lexed, "persistent excess damage redirection")
         .or_else(|| primitives::probe_all(tokens, parse_lexed, "persistent damage redirection"))
 }

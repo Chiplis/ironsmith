@@ -48,7 +48,7 @@ fn is_spell_mana_cost_tail(words: &[&str], keyword: &str) -> bool {
 /// Strip a trailing "as you cast them|it" from a "gain(s)" grant: a keyword a
 /// spell gains as it is cast is the same grant as one it has (CR 601.2b).
 fn strip_as_you_cast_tail(tokens: &[OwnedLexToken]) -> Option<&[OwnedLexToken]> {
-    let as_idx = tokens.iter().rposition(|token| token.is_word("as"))?;
+    let as_idx = tokens.iter().rposition(|token| token.matches_word("as"))?;
     let words = parser_token_word_refs(&tokens[as_idx..]);
     let complete = crate::word_primitives::parse_sequence_complete(
         &words,
@@ -85,7 +85,7 @@ pub fn parse_granted_spell_keyword_line(
     let tokens = trim_edge_punctuation(tokens);
     let Some(verb_idx) = tokens
         .iter()
-        .position(|token| token.is_any_word(&["have", "has", "gain", "gains"]))
+        .position(|token| token.matches_any_word(&["have", "has", "gain", "gains"]))
     else {
         return Ok(None);
     };

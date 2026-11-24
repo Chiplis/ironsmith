@@ -22,11 +22,11 @@ fn limit(tokens: &[OwnedLexToken]) -> Option<(crate::object::CounterType, u32)> 
         token.is_word(word) || (word == "can't" && (token.is_word("cant") || token.is_word("cannot")))
     }) { return None; }
     let noun = tokens.iter().enumerate().skip(prefix.len())
-        .find(|(_, token)| token.is_word("counters"))?.0;
+        .find(|(_, token)| token.matches_word("counters"))?.0;
     let counter = crate::grammar::filters::parse_counter_type_from_tokens(&tokens[prefix.len()..=noun])?;
     let tail = tokens.get(noun + 1..)?;
     if !tail.first()?.is_word("on") { return None; }
-    let to = tail.iter().position(|token| token.is_word("to"))?;
+    let to = tail.iter().position(|token| token.matches_word("to"))?;
     if !source(&tail[1..to]) { return None; }
     let rest = tail.get(to..)?;
     if rest.len() < 5 || !rest.iter().zip(["to", "be", "greater", "than"]).all(|(token, word)| token.is_word(word)) {

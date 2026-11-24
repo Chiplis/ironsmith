@@ -217,7 +217,7 @@ pub(super) fn pre_rule_conditional_entry_modifier_followup(
         Ok(predicate) => predicate,
         Err(_) => {
             let words = crate::lexer::parser_token_word_refs(predicate_tokens);
-            let Some(is_idx) = predicate_tokens.iter().position(|token| token.is_word("is")) else {
+            let Some(is_idx) = predicate_tokens.iter().position(|token| token.matches_word("is")) else {
                 return Ok(None);
             };
             if !matches!(words.as_slice(), ["that", "card", "is", ..]) {

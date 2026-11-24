@@ -386,7 +386,7 @@ pub fn parse_power_damage_shape(
     }
     if tokens
         .iter()
-        .filter(|token| token.is_any_word(&["deal", "deals"]))
+        .filter(|token| token.matches_any_word(&["deal", "deals"]))
         .count()
         > 1
     {
@@ -520,7 +520,7 @@ pub fn parse_fight_shape(tokens: &[OwnedLexToken]) -> Option<FightShape<'_>> {
     // independent fight with the trailing condition as its opponent.
     if left
         .windows(2)
-        .any(|pair| pair[0].is_word("before") && pair[1].is_word("it"))
+        .any(|pair| pair[0].matches_word("before") && pair[1].matches_word("it"))
     {
         return None;
     }

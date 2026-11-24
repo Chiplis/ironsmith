@@ -43,7 +43,7 @@ fn find_coordination_verb_tokens(tokens: &[OwnedLexToken]) -> Option<ChainVerbMa
         // red" must not become a new executable characteristic-setting arm.
         if subject
             .last()
-            .is_some_and(|token| token.is_any_word(&["that", "which", "who"]))
+            .is_some_and(|token| token.matches_any_word(&["that", "which", "who"]))
         {
             return None;
         }
@@ -378,7 +378,7 @@ pub fn recognize_coordination_clause_facts(tokens: &[OwnedLexToken]) -> Coordina
     let significant = tokens
         .iter()
         .filter(|token| !token.parser_word_pieces().is_empty())
-        .skip_while(|token| token.is_word("then") || token.is_word("and"))
+        .skip_while(|token| token.matches_word("then") || token.matches_word("and"))
         .collect::<Vec<_>>();
     let first = significant.first().copied();
     CoordinationClauseFacts {
@@ -463,7 +463,7 @@ pub fn recognize_coordination(tokens: &[OwnedLexToken]) -> ParseOutcome<Coordina
     }
     // A complete aggregate amount owns its selector connectives. Prove the
     // amount before considering those words as omitted executable actions.
-    let aggregate_amount = tokens.iter().position(|token| token.is_word("damage"))
+    let aggregate_amount = tokens.iter().position(|token| token.matches_word("damage"))
         .and_then(|start| {
             let damage = &tokens[start..];
             crate::grammar::effects::combat_shapes::parse_combat_damage_equal_shape_lexed(damage)
@@ -472,7 +472,7 @@ pub fn recognize_coordination(tokens: &[OwnedLexToken]) -> ParseOutcome<Coordina
                     .map(|shape| shape.amount_clause_tokens))
         })
         .filter(|amount| {
-            if amount.iter().any(|token| token.is_word("target")) {
+            if amount.iter().any(|token| token.matches_word("target")) {
                 return false;
             }
             let (value, loss) = crate::parse_loss::capture(||
@@ -485,10 +485,10 @@ pub fn recognize_coordination(tokens: &[OwnedLexToken]) -> ParseOutcome<Coordina
     let capped_amount = tokens
         .windows(3)
         .position(|head| {
-            head[0].is_word("equal") && head[1].is_word("to") && head[2].is_word("the")
+            head[0].matches_word("equal") && head[1].matches_word("to") && head[2].matches_word("the")
         })
         .map(|start| &tokens[start + 2..])
-        .filter(|amount| amount.iter().any(|token| token.is_word("before")))
+        .filter(|amount| amount.iter().any(|token| token.matches_word("before")))
         .and_then(|amount| {
             let end = amount.iter().rposition(|token| {
                 !matches!(
@@ -543,7 +543,7 @@ pub fn recognize_coordination(tokens: &[OwnedLexToken]) -> ParseOutcome<Coordina
                 .is_some_and(|token| token.is_word("in"))
             && tokens[member_start..candidate.start]
                 .iter()
-                .any(|token| token.is_word("in"))
+                .any(|token| token.matches_word("in"))
         {
             continue;
         }
@@ -579,7 +579,7 @@ pub fn recognize_coordination(tokens: &[OwnedLexToken]) -> ParseOutcome<Coordina
             reaches_among
                 && tokens[candidate.end..]
                     .iter()
-                    .find(|token| token.kind != crate::lexer::TokenKind::Comma && !token.is_word("or"))
+                    .find(|token| token.kind != crate::lexer::TokenKind::Comma && !token.matches_word("or"))
                     .is_some_and(is_count_word)
         } {
             continue;
@@ -608,7 +608,7 @@ pub fn recognize_coordination(tokens: &[OwnedLexToken]) -> ParseOutcome<Coordina
         if candidate.operator == CoordinationOperatorAst::Or
             && tokens[member_start..candidate.start]
                 .iter()
-                .any(|token| token.is_word("unless"))
+                .any(|token| token.matches_word("unless"))
         {
             continue;
         }
@@ -842,7 +842,7 @@ fn classify_boundary<'a>(
         return None;
     }
     if candidate.operator == CoordinationOperatorAst::And
-        && before.windows(2).any(|words| words[0].is_word("difference") && words[1].is_word("between"))
+        && before.windows(2).any(|words| words[0].matches_word("difference") && words[1].matches_word("between"))
         && before.last().is_some_and(|token| token.is_any_word(&["power", "toughness"]))
         && after.first().is_some_and(|token| token.is_word("its"))
         && after.get(1).is_some_and(|token| token.is_any_word(&["power", "toughness"]))
@@ -892,7 +892,7 @@ fn classify_boundary<'a>(
         if before.last().is_some_and(type_word)
             && after_head.is_some_and(type_word)
             && before.iter().any(|token| {
-                token.is_any_word(&["isnt", "isn't", "arent", "aren't", "thats", "that's"])
+                token.matches_any_word(&["isnt", "isn't", "arent", "aren't", "thats", "that's"])
             })
         {
             return None;
@@ -901,7 +901,7 @@ fn classify_boundary<'a>(
         // controls loses all abilities" (Azure Beastbinder): a serial type
         // list right after "target" is one target's selector.
         if after_head.is_some_and(type_word)
-            && let Some(target) = before.iter().rposition(|token| token.is_word("target"))
+            && let Some(target) = before.iter().rposition(|token| token.matches_word("target"))
             && target + 1 < before.len()
             && before[target + 1..]
                 .iter()
@@ -919,7 +919,7 @@ fn classify_boundary<'a>(
     ) && before
         .last()
         .is_some_and(|token| token.is_any_word(&["hand", "graveyard"]))
-        && before.iter().any(|token| token.is_any_word(&["shuffle", "shuffles"]))
+        && before.iter().any(|token| token.matches_any_word(&["shuffle", "shuffles"]))
     {
         let head = if after.first().is_some_and(|token| token.is_word("and")) {
             &after[1..]
@@ -1016,7 +1016,7 @@ fn classify_boundary<'a>(
             .is_some_and(|token| token.kind == TokenKind::ManaGroup)
         && before
             .iter()
-            .rposition(|token| token.is_any_word(&["roll", "rolls"]))
+            .rposition(|token| token.matches_any_word(&["roll", "rolls"]))
             .is_some_and(|roll| {
                 crate::grammar::effects::misc_action_shapes::parse_roll_die_prefix_tokens(
                     &before[roll + 1..],
@@ -1043,13 +1043,13 @@ fn classify_boundary<'a>(
     if candidate.operator == CoordinationOperatorAst::Or
         && before
             .iter()
-            .any(|token| token.is_any_word(&["sacrifice", "sacrifices"]))
+            .any(|token| token.matches_any_word(&["sacrifice", "sacrifices"]))
         && after
             .first()
             .is_some_and(|token| token.is_any_word(&["a", "an", "another"]))
         && !after.iter().any(|token| {
             token.kind == TokenKind::Comma
-                || token.is_any_word(&["sacrifice", "sacrifices", "then", "and", "or"])
+                || token.matches_any_word(&["sacrifice", "sacrifices", "then", "and", "or"])
         })
     {
         // "sacrifice another creature or an artifact" sacrifices one
@@ -1093,7 +1093,7 @@ fn classify_boundary<'a>(
         after.first().is_some_and(characteristic_adjective)
             && before
                 .iter()
-                .rposition(|token| token.is_word("target"))
+                .rposition(|token| token.matches_word("target"))
                 .is_some_and(|target| {
                     target + 1 < before.len()
                         && before[target + 1..]
@@ -1111,8 +1111,8 @@ fn classify_boundary<'a>(
         && before.first().is_some_and(|token| token.is_any_word(&["put", "puts"]))
         && before
             .iter()
-            .position(|token| token.is_any_word(&["counter", "counters"]))
-            .is_some_and(|counter| before[counter + 1..].iter().any(|token| token.is_word("on")))
+            .position(|token| token.matches_any_word(&["counter", "counters"]))
+            .is_some_and(|counter| before[counter + 1..].iter().any(|token| token.matches_word("on")))
         && after.first().is_some_and(|token| token.is_word("each"))
         && !after.get(1).is_some_and(|token| token.is_word("of"))
         && super::chain_splitting::find_chain_verb_tokens(after).is_none()
@@ -1172,7 +1172,7 @@ fn classify_boundary<'a>(
         && super::chain_splitting::is_token_creation_context_tokens(before)
         && before
             .iter()
-            .any(|token| token.is_word("copy") || token.is_word("copies"))
+            .any(|token| token.matches_word("copy") || token.matches_word("copies"))
         && after.first().is_some_and(|token| token.is_word("except"))
         && after.get(1).is_some_and(|token| {
             token.is_word("it") || token.is_word("its") || token.is_word("their")
@@ -1203,7 +1203,7 @@ fn classify_boundary<'a>(
             )
         }) || before
             .iter()
-            .any(|token| token.is_word("choose") || token.is_word("chooses")))
+            .any(|token| token.matches_word("choose") || token.matches_word("chooses")))
     {
         // Serial card-type domains remain one operand of the action even
         // when an arm carries a qualifier: `all artifacts, enchantments, and
@@ -1245,8 +1245,8 @@ fn classify_boundary<'a>(
             duration.is_some_and(|shape| {
                 shape.rest.is_empty()
                     && (index == 0
-                        || before[index - 1].is_word("and")
-                        || before[index - 1].is_word("then"))
+                        || before[index - 1].matches_word("and")
+                        || before[index - 1].matches_word("then"))
             })
         })
     {
@@ -1373,7 +1373,7 @@ fn classify_boundary<'a>(
     if candidate.operator == CoordinationOperatorAst::Comma
         && before
             .iter()
-            .any(|token| token.is_word("choose") || token.is_word("chooses"))
+            .any(|token| token.matches_word("choose") || token.matches_word("chooses"))
         && after
             .first()
             .and_then(OwnedLexToken::as_word)
@@ -1398,7 +1398,7 @@ fn classify_boundary<'a>(
         return None;
     }
     if candidate.operator == CoordinationOperatorAst::Comma
-        && before.iter().any(|token| token.is_word("target"))
+        && before.iter().any(|token| token.matches_word("target"))
         && before
             .last()
             .and_then(OwnedLexToken::as_word)
@@ -1593,8 +1593,8 @@ fn classify_boundary<'a>(
         && verb.is_word("exile")
         && super::independently_counted_exile_operands(left, after)
         && [left, after].into_iter().all(|operand| {
-            operand.iter().any(|token| token.is_any_word(&["card", "cards"]))
-                && !operand.iter().any(|token| token.is_any_word(&["target", "targets"]))
+            operand.iter().any(|token| token.matches_any_word(&["card", "cards"]))
+                && !operand.iter().any(|token| token.matches_any_word(&["target", "targets"]))
         })
     {
         return None;
@@ -1648,7 +1648,7 @@ fn boundary_continues_shuffle_zone_list(
     if before_words.iter().any(|word| matches!(*word, "shuffle" | "shuffles"))
         && before_words.last().is_some_and(|word| matches!(*word, "hand" | "graveyard"))
         && after.first().is_some_and(|token| token.is_any_word(&["each", "all"]))
-        && let Some(into) = after.iter().position(|token| token.is_word("into"))
+        && let Some(into) = after.iter().position(|token| token.matches_word("into"))
         && into > 0
         && crate::object_filters::parse_object_filter(&after[..into], false).is_ok()
     {
@@ -1938,8 +1938,8 @@ fn comma_continues_for_each_object_filter(
     let after_contains_later_serial_boundary = after.iter().enumerate().any(|(index, token)| {
         token.kind == TokenKind::Comma
             && after.get(index + 1).is_some_and(|next| {
-                next.is_word("and")
-                    || next.is_word("or")
+                next.matches_word("and")
+                    || next.matches_word("or")
                     || next.parser_text().eq_ignore_ascii_case("and/or")
             })
     });
@@ -2067,7 +2067,7 @@ fn sacrifices_object_union(tokens: &[OwnedLexToken]) -> bool {
     let mut ors = tokens
         .iter()
         .enumerate()
-        .filter(|(_, token)| token.is_word("or"))
+        .filter(|(_, token)| token.matches_word("or"))
         .map(|(index, _)| index);
     let (Some(or_index), None) = (ors.next(), ors.next()) else {
         return false;

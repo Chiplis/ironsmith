@@ -448,7 +448,7 @@ fn parse_conditional_mode_change(
         .iter()
         .enumerate()
         .skip(base_choose_idx + 1)
-        .find_map(|(idx, token)| token.is_word("if").then_some(idx))
+        .find_map(|(idx, token)| token.matches_word("if").then_some(idx))
     else {
         return Ok(None);
     };
@@ -464,16 +464,17 @@ fn parse_conditional_mode_change(
         .iter()
         .enumerate()
         .skip(comma_idx + 1)
-        .find_map(|(idx, token)| token.is_word("choose").then_some(idx))
+        .find_map(|(idx, token)| token.matches_word("choose").then_some(idx))
     else {
         return Ok(None);
     };
-    if !tokens[change_choose_idx + 1..]
+    let Some(instead_idx) = tokens[change_choose_idx + 1..]
         .iter()
-        .any(|token| token.is_word("instead"))
-    {
+        .position(|token| token.matches_word("instead"))
+        .map(|idx| change_choose_idx + 1 + idx)
+    else {
         return Ok(None);
-    }
+    };
 
     let selection = if tokens.get(change_choose_idx + 1).is_some_and(|token| token.is_word("up"))
         && tokens.get(change_choose_idx + 2).is_some_and(|token| token.is_word("to"))
@@ -545,6 +546,11 @@ fn parse_conditional_mode_change(
         && crate::lexer::parser_token_word_refs(&tokens[comma_idx + 1..change_choose_idx]) == ["you"]
     {
         crate::word_claims::claim_tokens(&tokens[comma_idx + 1..change_choose_idx]);
+    }
+    // The "if" that opens the condition, the changed "choose" and its
+    // "instead": the words this reading was located by.
+    for idx in [if_idx, change_choose_idx, instead_idx] {
+        crate::word_claims::claim_tokens(&tokens[idx..=idx]);
     }
     Ok(Some(ParsedConditionalModeChange {
         condition,

@@ -283,10 +283,10 @@ fn parse_object_filter_inner_unchecked(
                     .iter()
                     .enumerate()
                     .find_map(|(index, token)| {
-                        (token.is_word("other")
+                        (token.matches_word("other")
                             && target_filter_tokens
                                 .get(index + 1)
-                                .is_some_and(|next| next.is_word("than")))
+                                .is_some_and(|next| next.matches_word("than")))
                         .then(|| source_reference_tail_prefix(&target_filter_tokens[index + 2..]))
                         .flatten()
                         .and_then(|(consumed, surface)| {
@@ -523,8 +523,8 @@ fn parse_object_filter_inner_unchecked(
     // identity, exactly like "other than that creature".
     let different_at = base_tokens
         .iter()
-        .position(|token| !token.is_word("a") && !token.is_word("an"))
-        .filter(|index| *index <= 1 && base_tokens[*index].is_word("different"));
+        .position(|token| !token.matches_word("a") && !token.matches_word("an"))
+        .filter(|index| *index <= 1 && base_tokens[*index].matches_word("different"));
     if let Some(index) = different_at
         && base_tokens.len() > index + 1
     {
@@ -1783,9 +1783,15 @@ fn parse_object_filter_inner_unchecked(
         let relation = crate::filter::PowerToughnessRelation::PowerGreaterThanToughness;
         filter.power_toughness_relation = Some(relation);
         clear_redundant_power_toughness_axis_filter(&mut filter, relation);
-    } else if parse_phrase_choice_anywhere(&clause_words, POWER_TOUGHNESS_NOT_EQUAL_PHRASES)
-        .is_some()
+    } else if let Some(fact) =
+        parse_phrase_choice_anywhere(&clause_words, POWER_TOUGHNESS_NOT_EQUAL_PHRASES)
     {
+        // "creature whose power and toughness aren't equal": the relative
+        // possessive introducing the relation.
+        let start = fact.span.start;
+        if start >= 1 && clause_words[start - 1] == "whose" {
+            crate::word_claims::claim_words(&clause_words[start - 1..start]);
+        }
         filter.power_toughness_relation = Some(crate::filter::PowerToughnessRelation::NotEqual);
     }
     // "creature cards that each have mana value X": a relative clause on a
@@ -2109,7 +2115,7 @@ fn parse_object_filter_inner_unchecked(
         {
             filter.didnt_attack_this_turn = true;
             filter.attacked_this_turn = false;
-            if let Some(attack) = segment_tokens.iter().rposition(|token| token.is_word("attack"))
+            if let Some(attack) = segment_tokens.iter().rposition(|token| token.matches_word("attack"))
                 && attack > 0
                 && segment_tokens[attack - 1].is_any_word(&["didn't", "didnt"])
             {

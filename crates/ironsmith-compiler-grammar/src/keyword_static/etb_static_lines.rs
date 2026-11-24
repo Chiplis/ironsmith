@@ -75,7 +75,7 @@ fn etb_starts_with_trigger_intro_after_label(tokens: &[OwnedLexToken]) -> bool {
 
 pub fn parse_enters_under_chosen_control_line(tokens: &[OwnedLexToken]) -> Result<Option<StaticAbility>,CardTextError> {
     let tokens=trim_edge_punctuation(tokens);
-    let Some(enters)=tokens.iter().position(|token|token.is_word("enters")) else {return Ok(None);};
+    let Some(enters)=tokens.iter().position(|token|token.matches_word("enters")) else {return Ok(None);};
     if !starts_with_etb_source_reference(&tokens[..enters]) {return Ok(None);}
     let words=crate::grammar::primitives::TokenWordView::new(&tokens[enters+1..]).to_word_refs();
     let words=words.strip_prefix(&["the","battlefield"]).unwrap_or(&words);
@@ -84,8 +84,8 @@ pub fn parse_enters_under_chosen_control_line(tokens: &[OwnedLexToken]) -> Resul
         ["under","the","control","of","a","player","of","your","choice"] => PlayerFilter::Any,
         _ => return Ok(None),
     };
-    // "under the control of an opponent of your choice": read whole.
-    crate::word_claims::claim_tokens(&tokens[enters + 1..]);
+    // "enters under the control of an opponent of your choice": read whole.
+    crate::word_claims::claim_tokens(&tokens[enters..]);
     Ok(Some(StaticAbility::enters_under_chosen_control(players)))
 }
 
@@ -564,7 +564,7 @@ fn parse_enters_with_distinct_counter_kinds(
         return None;
     };
     let kinds = crate::util::parse_number_word_u32(count).filter(|kinds| *kinds >= 2)?;
-    let among = tokens.iter().position(|token| token.is_word("among"))?;
+    let among = tokens.iter().position(|token| token.matches_word("among"))?;
     let rest = &tokens[among + 1..];
     let mut counter_types: Vec<CounterType> = Vec::new();
     let mut item_start = 0;
@@ -1380,7 +1380,7 @@ pub fn parse_where_x_is_fixed_plus_reference_value(tokens: &[OwnedLexToken]) -> 
             !matches!(
                 captured.reference_kind,
                 EtbReferenceValueKind::TaggedCreatureManaValue
-            ) || tokens.iter().any(|token| token.is_word("sacrificed"));
+            ) || tokens.iter().any(|token| token.matches_word("sacrificed"));
         if refers_to_sacrificed_creature {
             value.with_surface_hint(ValueSurfaceHint::SacrificedObject(
                 ironsmith_core::SacrificedObjectKind::Creature,
@@ -3778,7 +3778,7 @@ fn parse_filtered_enters_with_counter_line(tokens: &[OwnedLexToken]) -> Option<S
     let tokens = trim_edge_punctuation(tokens);
     let enter_idx = tokens
         .iter()
-        .position(|token| token.is_any_word(&["enter", "enters"]))?;
+        .position(|token| token.matches_any_word(&["enter", "enters"]))?;
     let subject_tokens = trim_commas(&tokens[..enter_idx]);
     if subject_tokens.is_empty()
         || starts_with_etb_source_reference(&subject_tokens)
@@ -3830,21 +3830,27 @@ fn parse_enters_with_additional_counter_for_each_value(
     // permanent is not on the battlefield yet, so "already" adds no predicate
     // beyond the controller relation it qualifies.
     if tokens.windows(3).any(|window| {
-        window[0].is_word("you") && window[1].is_word("already") && window[2].is_word("control")
+        window[0].matches_word("you") && window[1].matches_word("already") && window[2].matches_word("control")
     }) {
-        let filtered = tokens
-            .iter()
-            .enumerate()
-            .filter(|(index, token)| {
-                !(token.is_word("already")
-                    && *index > 0
-                    && tokens[*index - 1].is_word("you")
-                    && tokens.get(*index + 1).is_some_and(|next| next.is_word("control")))
-            })
-            .map(|(_, token)| token.clone())
-            .collect::<Vec<_>>();
-        return Ok(parse_dynamic_cost_modifier_value(&filtered)?
-            .map(|value| value.with_surface_hint(ValueSurfaceHint::AlreadyControlled)));
+        let mut filtered = Vec::with_capacity(tokens.len());
+        let mut already = Vec::new();
+        for (index, token) in tokens.iter().enumerate() {
+            if token.matches_word("already")
+                && index > 0
+                && tokens[index - 1].matches_word("you")
+                && tokens.get(index + 1).is_some_and(|next| next.matches_word("control"))
+            {
+                already.push(token.clone());
+            } else {
+                filtered.push(token.clone());
+            }
+        }
+        let value = parse_dynamic_cost_modifier_value(&filtered)?;
+        if value.is_some() {
+            // The "already" the surface hint records.
+            crate::word_claims::claim_tokens(&already);
+        }
+        return Ok(value.map(|value| value.with_surface_hint(ValueSurfaceHint::AlreadyControlled)));
     }
 
     parse_dynamic_cost_modifier_value(tokens)
@@ -4249,7 +4255,7 @@ pub fn parse_as_enters_becomes_characteristics_for_filter_line(
     // shared helper; every executable token outside them still must match.
     if let Some(without_reminders)=crate::util::strip_parenthetical_tokens_checked(tokens) {
         let clean=crate::util::trim_edge_punctuation_tokens(&without_reminders);
-        if let Some(enter)=clean.iter().position(|token|token.is_any_word(&["enter","enters"])) {
+        if let Some(enter)=clean.iter().position(|token|token.matches_any_word(&["enter","enters"])) {
             let tail=crate::lexer::parser_token_word_refs(&clean[enter+1..]);
             if tail == ["face", "down"] || tail == ["face-down"] {
                 let filter=parse_object_filter(&clean[..enter],false)?;

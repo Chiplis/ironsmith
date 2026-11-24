@@ -26,6 +26,8 @@ pub struct ForEachTargetSubjectShape<'a> {
 pub struct ForEachTargetPlayersShape<'a> {
     pub count: ChoiceCount,
     pub target_tokens: &'a [OwnedLexToken],
+    /// The distributive `each` between the players and their action.
+    pub each_token: &'a OwnedLexToken,
     pub effect_tokens: &'a [OwnedLexToken],
 }
 

@@ -472,7 +472,7 @@ fn parse_source_zone_predicate(tokens: &[OwnedLexToken]) -> Option<PredicateAst>
     }
     if let Some(relation) = parse_copula_relation_clauses(tokens)
         && is_source_reference_clause(relation.subject_clause)
-        && let Some(or) = relation.tail_clause.tokens().iter().position(|token| token.is_word("or"))
+        && let Some(or) = relation.tail_clause.tokens().iter().position(|token| token.matches_word("or"))
     {
         let tail = relation.tail_clause.tokens();
         let branch = |location: &[OwnedLexToken]| {
@@ -484,6 +484,8 @@ fn parse_source_zone_predicate(tokens: &[OwnedLexToken]) -> Option<PredicateAst>
         if or > 0 && or + 1 < tail.len()
             && let (Some(left), Some(right)) = (branch(&tail[..or]), branch(&tail[or + 1..]))
         {
+            // The "or" joining the two zones, found by the scan above.
+            crate::word_claims::claim_tokens(&tail[or..=or]);
             return Some(PredicateAst::Or(Box::new(left), Box::new(right)));
         }
     }
@@ -1227,7 +1229,7 @@ fn parse_source_started_turn_state_shape(tokens: &[OwnedLexToken]) -> Option<Pre
     }
     let subject_end = tokens
         .iter()
-        .position(|token| token.is_word("started"))?;
+        .position(|token| token.matches_word("started"))?;
     if !is_source_state_subject_clause(LexedClause::new(&tokens[..subject_end])) {
         return None;
     }
@@ -2983,11 +2985,11 @@ fn parse_you_control_conjoined_predicate(
     if tail_clause
         .tokens()
         .iter()
-        .any(|token| token.is_word("and/or"))
+        .any(|token| token.matches_word("and/or"))
         || tail_clause
             .tokens()
             .windows(2)
-            .any(|window| window[0].is_word("and") && window[1].is_word("or"))
+            .any(|window| window[0].matches_word("and") && window[1].matches_word("or"))
     {
         return None;
     }
@@ -3184,7 +3186,7 @@ fn parse_player_controls_predicate(
     // capture below.  The shared possession parser is intentionally tolerant
     // and can normalize singular `exactly one` to an existential control
     // condition, which is not equivalent for intervening-if triggers.
-    let has_authored_exact_count = tokens.iter().any(|token| token.is_word("exactly"));
+    let has_authored_exact_count = tokens.iter().any(|token| token.matches_word("exactly"));
     // "you control a creature with the journeyed status": the tolerant
     // possession grammar has no custom-status operand and would drop it;
     // the complete object-filter reader below owns that qualifier.
@@ -4489,8 +4491,8 @@ fn parse_repeated_and_predicate(
         if left_tokens.is_empty() || right_tokens.is_empty() {
             continue;
         }
-        if left_tokens.iter().any(|token| token.is_word(AND_WORD))
-            || right_tokens.iter().any(|token| token.is_word(AND_WORD))
+        if left_tokens.iter().any(|token| token.matches_word(AND_WORD))
+            || right_tokens.iter().any(|token| token.matches_word(AND_WORD))
         {
             continue;
         }

@@ -182,7 +182,7 @@ pub(super) fn read_for_each_object_effect(
             && used == count_words.len()
             && !matches!(count.unhinted(), Value::Count(_))
             && !(matches!(count.unhinted(), Value::PendingPriorEffectMetric(_))
-                && shape.effect_tokens.iter().any(|token| token.is_word("it") || token.is_word("its")))
+                && shape.effect_tokens.iter().any(|token| token.matches_word("it") || token.matches_word("its")))
         {
             if let Some(effect) = distinct_power_choice(&count, shape.effect_tokens)? {
                 return Ok(Some(vec![effect]));
@@ -490,8 +490,8 @@ pub(super) fn read_quoted_ability_conditional(
         .filter(|token| token.kind == crate::lexer::TokenKind::Quote)
         .count()
         >= 2
-        && tokens.iter().any(|token| token.is_word("becomes"))
-        && tokens.iter().any(|token| token.is_word("gains"));
+        && tokens.iter().any(|token| token.matches_word("becomes"))
+        && tokens.iter().any(|token| token.matches_word("gains"));
     // A leading conditional owns the whole sentence. Do not let a quoted
     // ability's inner verbs make the broad gain parser consume the unsplit
     // condition and body; the conditional route below parses the body with

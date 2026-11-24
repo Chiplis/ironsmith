@@ -64,11 +64,11 @@ fn price(tokens: &[OwnedLexToken]) -> Result<Option<ironsmith_core::TotalCost<cr
 
 pub(crate) fn replacement_price_suffix(tokens: &[OwnedLexToken]) -> Result<Option<(&[OwnedLexToken], ironsmith_core::TotalCost<crate::model::CompilerCost>)>, CardTextError> {
     let tokens = crate::util::trim_edge_punctuation_tokens(tokens);
-    let Some(by) = tokens.iter().position(|token| token.is_word("by")) else { return Ok(None); };
+    let Some(by) = tokens.iter().position(|token| token.matches_word("by")) else { return Ok(None); };
     let tail = &tokens[by + 1..];
     let Some(replacement) = tail.windows(2).position(|pair|
-        (pair[0].is_word("rather") && pair[1].is_word("than"))
-        || (pair[0].is_word("instead") && pair[1].is_word("of"))) else { return Ok(None); };
+        (pair[0].matches_word("rather") && pair[1].matches_word("than"))
+        || (pair[0].matches_word("instead") && pair[1].matches_word("of"))) else { return Ok(None); };
     let ending = crate::lexer::parser_token_word_refs(&tail[replacement + 2..]);
     if !matches!(ending.as_slice(), ["paying" | "pay", "its", "mana", "cost"] | ["its", "mana", "cost"]) {
         return Ok(None);
@@ -76,6 +76,9 @@ pub(crate) fn replacement_price_suffix(tokens: &[OwnedLexToken]) -> Result<Optio
     let price = price(&tail[..replacement])?;
     if price.is_some() {
         crate::word_claims::claim_words(&ending);
+        // "by" and "rather than" / "instead of": the replacement located above.
+        crate::word_claims::claim_tokens(&tokens[by..=by]);
+        crate::word_claims::claim_tokens(&tail[replacement..replacement + 2]);
     }
     Ok(price.map(|price| (&tokens[..by], price)))
 }
@@ -213,7 +216,7 @@ pub(crate) fn parse_control_source_priced_permission(
     }
     let rest = &tokens[HEAD.len()..];
     let Some(may) = rest.windows(3).position(|window| {
-        window[0].is_word("you") && window[1].is_word("may") && window[2].is_word("cast")
+        window[0].matches_word("you") && window[1].matches_word("may") && window[2].matches_word("cast")
     }) else {
         return Ok(None);
     };
@@ -227,7 +230,7 @@ pub(crate) fn parse_control_source_priced_permission(
     let mut body = trim_lexed_commas(&rest[may + 3..]);
     let mut x_is_mana_value = false;
     let mut read_tails: Vec<&[OwnedLexToken]> = Vec::new();
-    if let Some(where_index) = body.iter().rposition(|token| token.is_word("where"))
+    if let Some(where_index) = body.iter().rposition(|token| token.matches_word("where"))
         && token_word_refs(&body[where_index..]) == ["where", "x", "is", "its", "mana", "value"]
     {
         read_tails.push(&body[where_index..]);
@@ -289,7 +292,9 @@ pub(crate) fn parse_control_source_priced_permission(
         *alternative_cost = Some(price);
         *alternative_cost_x_is_mana_value = x_is_mana_value;
     }
-    // The "where X is its mana value" and "during your turn" tails read above.
+    // The "where X is its mana value" and "during your turn" tails read
+    // above, and the "you may cast" permission the scan found.
     read_tails.into_iter().for_each(crate::word_claims::claim_tokens);
+    crate::word_claims::claim_tokens(&rest[may..may + 3]);
     Ok(Some(effect))
 }

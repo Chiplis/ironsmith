@@ -385,7 +385,7 @@ fn revealed_to_graveyard(sentence: &SentenceInput, all_tag: &TagKey) -> Option<E
     else {
         return None;
     };
-    if !tokens.iter().any(|token| token.is_word("revealed"))
+    if !tokens.iter().any(|token| token.matches_word("revealed"))
         || !tokens
             .iter()
             .any(|token| matches!(token.as_word(), Some("card" | "cards")))

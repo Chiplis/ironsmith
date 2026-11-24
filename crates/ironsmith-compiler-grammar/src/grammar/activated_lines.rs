@@ -309,6 +309,16 @@ pub fn parse_activated_devotion_value_tokens(
     let player =
         parse_devotion_owner(&owner_words).ok_or(ActivatedDevotionParseError::UnsupportedPlayer)?;
 
+    // "equal to your devotion": the comparison right before the owner.
+    fn claim_equal_to_lead(head: &[OwnedLexToken]) {
+        if let Some(equal) = head.windows(2).rposition(|pair| {
+            pair[0].matches_word("equal") && pair[1].matches_word("to")
+        }) && head.len() - (equal + 2) <= 2
+        {
+            crate::word_claims::claim_tokens(&head[equal..equal + 2]);
+        }
+    }
+
     let after_devotion = &tokens[devotion_token + 1..];
     let Some((relative_to, _, _)) =
         primitives::find_prefix(after_devotion, || primitives::kw("to"))
@@ -323,6 +333,7 @@ pub fn parse_activated_devotion_value_tokens(
         .is_ok()
     {
         crate::word_claims::claim_words(&color_words[..2]);
+        claim_equal_to_lead(&tokens[..devotion_token]);
         return Ok(Some(Value::DevotionToChosenColor(player)));
     }
 
@@ -341,6 +352,7 @@ pub fn parse_activated_devotion_value_tokens(
     }
     // "devotion to black [and red]": the colors read.
     crate::word_claims::claim_words(&color_words[..end]);
+    claim_equal_to_lead(&tokens[..devotion_token]);
     Ok(Some(Value::devotion_to_colors(player, colors)))
 }
 

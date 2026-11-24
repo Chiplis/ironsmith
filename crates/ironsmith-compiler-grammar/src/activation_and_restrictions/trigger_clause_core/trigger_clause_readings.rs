@@ -225,7 +225,7 @@ fn read_shared_subject_dies_or_deals_damage(
     input: &TriggerClause<'_>,
 ) -> Result<Option<TriggerSpec>, CardTextError> {
     let tokens = input.tokens;
-    let Some(dies_idx) = tokens.iter().position(|token| token.is_word("dies")) else {
+    let Some(dies_idx) = tokens.iter().position(|token| token.matches_word("dies")) else {
         return Ok(None);
     };
     if dies_idx == 0
@@ -317,7 +317,7 @@ fn read_while_qualified_event(
         // `while` makes the qualifier belong to the last event only; the
         // repeated-intro union reading owns that shape.
         && !tokens[..while_idx].windows(2).any(|pair| {
-            pair[0].is_word("and") && pair[1].is_any_word(&["when", "whenever", "at"])
+            pair[0].matches_word("and") && pair[1].matches_any_word(&["when", "whenever", "at"])
         })
     {
         let trigger_tokens = trim_edge_punctuation(&tokens[..while_idx]);

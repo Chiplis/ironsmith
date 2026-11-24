@@ -22,7 +22,7 @@ pub(super) fn leading_object_target_condition(
     let comma = tokens.iter().position(OwnedLexToken::is_comma)?;
     let verb = tokens[..comma]
         .iter()
-        .position(|token| token.is_word("has"))?;
+        .position(|token| token.matches_word("has"))?;
     // "target" plus at least one noun word.
     if verb < 3 {
         return None;
@@ -32,7 +32,7 @@ pub(super) fn leading_object_target_condition(
     // quantity predicates and their own declaration.
     if noun
         .iter()
-        .any(|token| token.is_any_word(&["player", "players", "opponent", "opponents", "spell"]))
+        .any(|token| token.matches_any_word(&["player", "players", "opponent", "opponents", "spell"]))
     {
         return None;
     }
@@ -92,14 +92,14 @@ pub(super) fn leading_definite_reference_condition(
     let comma = tokens.iter().position(OwnedLexToken::is_comma)?;
     let consequence = &tokens[comma + 1..];
     // A replacement ("..., <action> instead") belongs to its own readers.
-    if consequence.iter().any(|token| token.is_word("instead")) {
+    if consequence.iter().any(|token| token.matches_word("instead")) {
         return None;
     }
     // "the" plus at least one noun word before the descriptor.
-    let verb = (3..comma).find(|&index| tokens[index].is_any_word(DESCRIPTOR_HEADS))?;
+    let verb = (3..comma).find(|&index| tokens[index].matches_any_word(DESCRIPTOR_HEADS))?;
     let noun = &tokens[2..verb];
     if noun.iter().any(|token| {
-        token.is_any_word(&["player", "players", "opponent", "opponents", "turn", "number"])
+        token.matches_any_word(&["player", "players", "opponent", "opponents", "turn", "number"])
     }) {
         return None;
     }

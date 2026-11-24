@@ -124,7 +124,7 @@ pub fn parse_discard_trigger_card_filter(
     let claim_card_noun = || {
         if let Some(noun) = remainder
             .iter()
-            .find(|token| token.is_word("card") || token.is_word("cards"))
+            .find(|token| token.matches_word("card") || token.matches_word("cards"))
         {
             crate::word_claims::claim_tokens(std::slice::from_ref(noun));
         }
@@ -321,8 +321,13 @@ pub fn parse_subtype_list_enters_trigger_filter_lexed(
     let (controller, subject_end) = subtype_list_controller_suffix(&words);
 
     let mut subtypes = Vec::new();
+    let mut connectors = Vec::new();
     for word in &words[..subject_end] {
-        if trigger_subject_grammar::trigger_word_is_connector(word) || matches!(*word, "a" | "an") {
+        if trigger_subject_grammar::trigger_word_is_connector(word) {
+            connectors.push(*word);
+            continue;
+        }
+        if matches!(*word, "a" | "an") {
             continue;
         }
         let subtype = parse_subtype_flexible(word)?;
@@ -338,9 +343,11 @@ pub fn parse_subtype_list_enters_trigger_filter_lexed(
     filter.subtypes = subtypes;
     filter.controller = controller;
     filter.other = other;
-    if tokens.iter().any(|token| token.is_word("and/or")) {
+    if tokens.iter().any(|token| token.matches_word("and/or")) {
         filter.set_union_connective(crate::filter::ObjectFilterUnionConnective::AndOr);
     }
+    // The list connectors skipped above join the subtype alternatives.
+    crate::word_claims::claim_words(&connectors);
     Some(filter)
 }
 
@@ -410,6 +417,12 @@ fn parse_source_or_filter_trigger_subject_filter_lexed(
         }
         Some("and") => filter.set_conjunctive_set_surface(true),
         _ => {}
+    }
+    // The connective joining the source and the alternative filter.
+    if let Some(connector) =
+        subject_words.get(shape.connector_word..shape.connector_word + shape.connector_words)
+    {
+        crate::word_claims::claim_words(connector);
     }
     Ok(Some(filter))
 }
@@ -833,10 +846,10 @@ pub(crate) fn spell_cast_using_mana_source_filter(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<ObjectFilter>, CardTextError> {
     let Some(using) = tokens.iter().enumerate().position(|(index, token)| {
-        token.is_word("using")
-            && tokens.get(index + 1).is_some_and(|next| next.is_word("mana"))
-            && tokens.get(index + 2).is_some_and(|next| next.is_word("produced"))
-            && tokens.get(index + 3).is_some_and(|next| next.is_word("by"))
+        token.matches_word("using")
+            && tokens.get(index + 1).is_some_and(|next| next.matches_word("mana"))
+            && tokens.get(index + 2).is_some_and(|next| next.matches_word("produced"))
+            && tokens.get(index + 3).is_some_and(|next| next.matches_word("by"))
     }) else {
         return Ok(None);
     };
@@ -847,13 +860,14 @@ pub(crate) fn spell_cast_using_mana_source_filter(
         return Ok(None);
     }
     let source_words = crate::lexer::token_word_refs(source);
-    Ok(Some(
-        if let Some(surface) = crate::util::this_source_surface_for_words(&source_words) {
-            ObjectFilter::source_with_surface(surface)
-        } else {
-            crate::object_filters::parse_object_filter_lexed(source, false)?
-        },
-    ))
+    let filter = if let Some(surface) = crate::util::this_source_surface_for_words(&source_words) {
+        ObjectFilter::source_with_surface(surface)
+    } else {
+        crate::object_filters::parse_object_filter_lexed(source, false)?
+    };
+    // "using mana produced by", found by the scan above.
+    crate::word_claims::claim_tokens(&tokens[using..using + 4]);
+    Ok(Some(filter))
 }
 
 /// The player who casts or copies: "another player" / "a player other than
@@ -928,7 +942,7 @@ pub fn parse_spell_activity_trigger(
         && !clause_words[cast + 1..clause_words.len() - 1]
             .iter()
             .any(|word| matches!(*word, "spell" | "spells" | "card" | "cards"))
-        && let Some(card_index) = tokens.iter().rposition(|token| token.is_word("card"))
+        && let Some(card_index) = tokens.iter().rposition(|token| token.matches_word("card"))
     {
         let mut rewritten = tokens.to_vec();
         rewritten[card_index] = OwnedLexToken::word("spell".to_string(), tokens[card_index].span);
@@ -945,6 +959,8 @@ pub fn parse_spell_activity_trigger(
         {
             let mut filter = filter.unwrap_or_default();
             filter.physical_card = true;
+            // The authored "card" the rewrite replaced: the physical-card restriction.
+            crate::word_claims::claim_tokens(&tokens[card_index..=card_index]);
             return Ok(Some(TriggerSpec::SpellCast {
                 filter: Some(filter),
                 mana_source_filter,
@@ -1137,7 +1153,7 @@ pub fn parse_spell_activity_trigger(
                     ([possessive, ordinal, rest @ ..], Some(ordinal_word))
                         if (possessive.is_word("your") || possessive.is_word("their"))
                             && ordinal.is_word(ordinal_word)
-                            && rest.iter().any(|token| token.is_word("or")) =>
+                            && rest.iter().any(|token| token.matches_word("or")) =>
                     {
                         rest
                     }
@@ -1155,7 +1171,7 @@ pub fn parse_spell_activity_trigger(
                 owned.extend(
                     filter_tokens
                         .iter()
-                        .filter(|token| token.is_word(crate::keyword_forms::KICKED)),
+                        .filter(|token| token.matches_word(crate::keyword_forms::KICKED)),
                 );
                 // "you cast your next instant or sorcery spell this turn"
                 // (Twinferno): the possessive restates the caster.
@@ -1169,9 +1185,9 @@ pub fn parse_spell_activity_trigger(
                 // "a spell from their hand" (Possibility Storm): the cast
                 // origin and its owner are read by the origin filter below.
                 if filter_facts.origin.is_some()
-                    && let Some(from) = filter_tokens.iter().position(|token| token.is_word("from"))
+                    && let Some(from) = filter_tokens.iter().position(|token| token.matches_word("from"))
                     && let Some(zone) = filter_tokens[from..].iter().position(|token| {
-                        token.is_any_word(&["hand", "graveyard", "exile", "library"])
+                        token.matches_any_word(&["hand", "graveyard", "exile", "library"])
                     })
                 {
                     owned.extend(&filter_tokens[from..=from + zone]);
@@ -1539,7 +1555,7 @@ pub fn parse_cast_this_way_cost_reduction_sentence(tokens: &[OwnedLexToken]) -> 
     if !(it.is_word("it") || it.is_word("that")) || !costs.is_word("costs") {
         return None;
     }
-    let less = rest.iter().position(|token| token.is_word("less"))?;
+    let less = rest.iter().position(|token| token.matches_word("less"))?;
     if less == 0
         || crate::lexer::parser_token_word_refs(&rest[less..]) != ["less", "to", "cast", "this", "way"]
     {
@@ -1769,7 +1785,7 @@ pub fn strip_embedded_token_rules_text(tokens: &[OwnedLexToken]) -> Vec<OwnedLex
             let keyword_tail = &tail[1..];
             let declaration = crate::grammar::effects::parse_attachment_clause_tokens(keyword_tail)
                 .map(|shape| shape.prefix_tokens).unwrap_or(keyword_tail);
-            if !stripped.iter().any(|token| token.is_word("with"))
+            if !stripped.iter().any(|token| token.matches_word("with"))
                 && (crate::word_claims::probe_only(|| crate::clause_support::parse_ability_line_lexed(declaration)).is_some()
                     // Equip is an activated keyword ability (CR 702.6a), not
                     // a keyword action; its typed line reader owns it.
@@ -2687,7 +2703,7 @@ fn cast_count_qualifier_tokens<'a>(
         owned.extend(&tokens[..2]);
         start = 2;
     } else if let Some(ordinal) = ordinal_word
-        && let Some(token) = tokens.iter().find(|token| token.is_word(ordinal))
+        && let Some(token) = tokens.iter().find(|token| token.matches_word(ordinal))
     {
         owned.push(token);
     }
@@ -2704,9 +2720,10 @@ fn cast_count_qualifier_tokens<'a>(
     {
         owned.extend([when, turn]);
     }
-    // "the first noncreature spell of a turn" (Nullstone Gargoyle).
+    // "the first noncreature spell of a turn" (Nullstone Gargoyle), "your
+    // third spell in a turn" (Vance's Blasting Cannons).
     if let [.., of, a, turn] = tokens
-        && of.is_word("of")
+        && of.is_any_word(&["of", "in"])
         && a.is_word("a")
         && turn.is_word("turn")
     {

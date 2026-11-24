@@ -849,7 +849,7 @@ pub fn parse_tagged_enters_additional_tokens_with_x(
     let x_index = tokens
         .windows(3)
         .position(|window| {
-            window[0].is_word("with") && window[1].is_word("x") && window[2].is_word("additional")
+            window[0].matches_word("with") && window[1].matches_word("x") && window[2].matches_word("additional")
         })
         .map(|index| index + 1);
     match x_index {
@@ -858,7 +858,11 @@ pub fn parse_tagged_enters_additional_tokens_with_x(
             numbered[index] = crate::lexer::synthetic_word_tokens(&["two"])
                 .into_iter()
                 .next()?;
-            parse_tagged_enters_additional_tokens(&numbered).map(|shape| (shape, true))
+            let shape = parse_tagged_enters_additional_tokens(&numbered)?;
+            // The authored X the stand-in count replaced, read with the
+            // shape like its other words.
+            crate::word_claims::claim_tokens(&tokens[index..=index]);
+            Some((shape, true))
         }
         None => parse_tagged_enters_additional_tokens(tokens).map(|shape| (shape, false)),
     }

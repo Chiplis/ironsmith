@@ -41,7 +41,7 @@ pub(super) fn parse_grouped_hand_cost(
         if !prefix
             .rest
             .iter()
-            .any(|token| token.is_word("card") || token.is_word("cards"))
+            .any(|token| token.matches_word("card") || token.matches_word("cards"))
         {
             return Err(error());
         }

@@ -275,7 +275,7 @@ pub fn parse_library_origin_source_pump_unblockable_triggered_line(
     // mistakes the trigger's `creature card in your library` for its subject.
     let Some(and_idx) = split.after.iter().enumerate().find_map(|(idx, token)| {
         let tail = crate::lexer::parser_token_word_refs(&split.after[idx + 1..]);
-        (token.is_word("and")
+        (token.matches_word("and")
             && crate::word_primitives::parse_any_sequence_complete(
                 &tail,
                 &[

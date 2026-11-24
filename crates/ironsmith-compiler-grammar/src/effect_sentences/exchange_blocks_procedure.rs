@@ -44,7 +44,7 @@ pub(super) fn open(
         "blocking", "it", "and", "is", "blocking", "the", "other", "attacking", "creature",
     ];
     if check_words == expected_attacker_exchange {
-        let Some(those) = check_tokens.iter().position(|token| token.is_word("those")) else {
+        let Some(those) = check_tokens.iter().position(|token| token.matches_word("those")) else {
             return Ok(None);
         };
         let Some(pair_tokens) = check_tokens.get(those..those + 2) else {
@@ -74,7 +74,7 @@ pub(super) fn open(
     if words(reblock.lowered()) != expected_reblock {
         return Ok(None);
     }
-    let Some(those) = check_tokens.iter().position(|token| token.is_word("those")) else {
+    let Some(those) = check_tokens.iter().position(|token| token.matches_word("those")) else {
         return Ok(None);
     };
     let Some(pair_tokens) = check_tokens.get(those..those + 2) else {

@@ -26,7 +26,7 @@ pub(super) fn split_shared_object_verb_pairs(
             .position(OwnedLexToken::is_period)
             .map_or(tokens.len(), |idx| start + idx);
         let sentence = &tokens[start..end];
-        if is_pair_head(sentence) && !sentence.iter().any(|token| token.is_word("target")) {
+        if is_pair_head(sentence) && !sentence.iter().any(|token| token.matches_word("target")) {
             let object = &sentence[3..];
             let separator = tokens
                 .get(end)

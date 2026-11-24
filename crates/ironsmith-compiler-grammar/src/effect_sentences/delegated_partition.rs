@@ -165,7 +165,7 @@ pub(super) fn parse_conditional_delegated_graveyard_partition_program(
     let subset_tag = crate::tag::CompilerDerivedTag::DelegatedSubset.key(&pool_tag);
 
     let condition = sentences[1];
-    let return_idx = condition.iter().position(|token| token.is_word("return"))?;
+    let return_idx = condition.iter().position(|token| token.matches_word("return"))?;
     let predicate = crate::grammar::primitives::probe_shape(
         crate::grammar::structure::parse_predicate_with_grammar_entrypoint_lexed(
             &condition[1..return_idx],

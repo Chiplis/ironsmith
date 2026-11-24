@@ -128,7 +128,7 @@ pub fn parse_short_self_reference_name_tokens(name: &str, tokens: &[OwnedLexToke
 
     // An epithet can follow a multiword name. Keep that entire name rather
     // than replacing its first word and leaving a spurious subject noun.
-    if let Some(title) = tokens.iter().position(|token| token.is_word("the"))
+    if let Some(title) = tokens.iter().position(|token| token.matches_word("the"))
         && title >= 2
         && !tokens[title - 1].is_any_word(&["of", "and", "in", "on", "to", "from", "with", "at"])
         && let Some(alias) = trimmed.get(..tokens[title].span.start)

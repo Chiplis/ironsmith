@@ -272,7 +272,7 @@ pub fn parse_branch_scoped_object_filter_union_lexed(
         token.is_comma()
             && tokens
                 .get(index + 1)
-                .is_some_and(|next| next.is_word("where"))
+                .is_some_and(|next| next.matches_word("where"))
     }) {
         return None;
     }
@@ -301,9 +301,9 @@ pub fn parse_branch_scoped_object_filter_union_lexed(
         return None;
     }
 
-    let has_plain_or = tokens.iter().any(|token| token.is_word("or"));
-    let has_and_or = tokens.iter().any(|token| token.is_word("and/or"));
-    let has_plain_and = tokens.iter().any(|token| token.is_word("and"));
+    let has_plain_or = tokens.iter().any(|token| token.matches_word("or"));
+    let has_and_or = tokens.iter().any(|token| token.matches_word("and/or"));
+    let has_plain_and = tokens.iter().any(|token| token.matches_word("and"));
     let comma_segments = split_lexed_slices_on_comma(tokens);
     let segments = if comma_segments.len() >= 2 {
         comma_segments
@@ -393,10 +393,10 @@ pub fn parse_branch_scoped_object_filter_union_lexed(
         && segments[..segments.len() - 1].iter().all(|segment| {
             segment.len() <= 2
                 && !segment.iter().any(|token| {
-                    token.is_word("with")
-                        || token.is_word("without")
-                        || token.is_word("that")
-                        || token.is_word("you")
+                    token.matches_word("with")
+                        || token.matches_word("without")
+                        || token.matches_word("that")
+                        || token.matches_word("you")
                 })
         });
     let authored_arm_count = segments.len();
@@ -696,7 +696,7 @@ pub fn parse_domain_union_object_filter_lexed(
         any_of: branches,
         ..ironsmith_core::filter_model::ObjectFilterFields::from(ObjectFilter::default())
     });
-    if tokens.iter().any(|token| token.is_word("and/or")) {
+    if tokens.iter().any(|token| token.matches_word("and/or")) {
         union.set_union_connective(ObjectFilterUnionConnective::AndOr);
     }
     Some(union)

@@ -12,8 +12,8 @@ pub(super) fn parse(tokens: &[OwnedLexToken]) -> Result<Option<EffectAst>, CardT
         &["would", "be", "destroyed", "this", "turn", "instead", "tap", "it", "remove", "it", "from", "combat", "and", "remove", "all", "damage", "marked", "on", "it"][..],
     ].iter().any(|tail| words.ends_with(tail));
     if words.starts_with(&["the", "next", "time"]) && full_recovery {
-        let time = tokens.iter().position(|token| token.is_word("time")).unwrap();
-        let would = tokens.iter().position(|token| token.is_word("would")).unwrap();
+        let time = tokens.iter().position(|token| token.matches_word("time")).unwrap();
+        let would = tokens.iter().position(|token| token.matches_word("would")).unwrap();
         if would > time + 1 {
             let target = crate::util::parse_target_phrase(&tokens[time + 1..would])?;
             claim_frame(tokens, time, would);
@@ -28,17 +28,17 @@ pub(super) fn parse(tokens: &[OwnedLexToken]) -> Result<Option<EffectAst>, CardT
     {
         return Ok(None);
     }
-    let Some(time) = tokens.iter().position(|token| token.is_word("time")) else {
+    let Some(time) = tokens.iter().position(|token| token.matches_word("time")) else {
         return Ok(None);
     };
-    let Some(would) = tokens.iter().position(|token| token.is_word("would")) else {
+    let Some(would) = tokens.iter().position(|token| token.matches_word("would")) else {
         return Ok(None);
     };
     if would <= time + 1 {
         return Ok(None);
     }
     let subject = &tokens[time + 1..would];
-    if !subject.iter().any(|token| token.is_word("target")) {
+    if !subject.iter().any(|token| token.matches_word("target")) {
         return Ok(None);
     }
     let target = crate::util::parse_target_phrase(subject)?;

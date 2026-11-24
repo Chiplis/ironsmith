@@ -137,7 +137,7 @@ pub(super) fn parse(tokens: &[OwnedLexToken]) -> Result<Option<Vec<EffectAst>>, 
     }
     // Another independent target declaration needs its own discourse binding;
     // this complete-program reading deliberately does not guess between them.
-    if tail.iter().any(|token| token.is_word("target")) {
+    if tail.iter().any(|token| token.matches_word("target")) {
         return Ok(None);
     }
     let EffectAst::SubjectVerb(subject) = &declaration else {

@@ -21,10 +21,10 @@ pub(super) fn branch_has_scoped_state(filter: &ObjectFilter) -> bool {
 
 pub(super) fn contains_other_than_exclusion(tokens: &[OwnedLexToken]) -> bool {
     tokens.iter().enumerate().any(|(index, token)| {
-        token.is_word("other")
+        token.matches_word("other")
             && tokens
                 .get(index + 1)
-                .is_some_and(|next| next.is_word("than"))
+                .is_some_and(|next| next.matches_word("than"))
     })
 }
 
@@ -258,7 +258,7 @@ pub fn parse_elided_shared_domain_union(
         // it cannot be erased while distributing the shared outer locations.
         if tokens[after_second..]
             .iter()
-            .any(|token| token.is_any_word(&["in", "on", "from"]))
+            .any(|token| token.matches_any_word(&["in", "on", "from"]))
         {
             continue;
         }
@@ -285,7 +285,7 @@ pub fn parse_elided_shared_domain_union(
             && tail.get(1).is_some_and(|token| token.is_word("are"))
             && let Some(or) = tail
                 .windows(2)
-                .position(|pair| pair[0].is_word("or") && pair[1].is_word("are"))
+                .position(|pair| pair[0].matches_word("or") && pair[1].matches_word("are"))
         {
             let Some(mut domain) = leading_scope.clone() else {
                 continue;
@@ -377,7 +377,7 @@ pub fn parse_elided_shared_domain_union(
                 // correction rather than being silently erased.
                 if tokens[after_second..]
                     .iter()
-                    .any(|token| token.is_any_word(&["in", "on", "from"]))
+                    .any(|token| token.matches_any_word(&["in", "on", "from"]))
                     || !clear_inferred_selector_domains(&mut outer)
                 {
                     continue;

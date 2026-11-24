@@ -652,7 +652,7 @@ pub fn parse_named_token_clause_tokens(tokens: &[OwnedLexToken]) -> Option<Named
     // is never a newly defined token's name.
     if tokens[..shape.clause.start]
         .iter()
-        .any(|token| token.is_word("except"))
+        .any(|token| token.matches_word("except"))
     {
         return None;
     }

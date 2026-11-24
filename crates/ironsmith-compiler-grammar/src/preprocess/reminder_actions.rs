@@ -419,7 +419,7 @@ pub(super) fn front_postposed_entry_trigger(text: &str) -> String {
         let words = crate::lexer::token_word_refs(sentence);
         if words.first() == Some(&"if") && words.ends_with(&["when", "it", "enters"])
             && let Some(comma) = sentence.iter().position(|token| token.is_comma())
-            && let Some(when) = sentence.iter().rposition(|token| token.is_word("when"))
+            && let Some(when) = sentence.iter().rposition(|token| token.matches_word("when"))
             && when > comma + 1
         {
             let condition = crate::lexer::render_token_slice(&sentence[1..comma]);

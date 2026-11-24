@@ -816,7 +816,7 @@ fn split_parse_line_variants(line: &str, line_tokens: &[OwnedLexToken]) -> Vec<S
         ) && second.first().is_some_and(|token| token.is_word("as"))
             && second.get(1).is_some_and(|token| token.is_word("it"))
             && second.get(2).is_some_and(|token| token.is_word("enters"))
-            && let Some(enters) = first.iter().position(|token| token.is_word("enters"))
+            && let Some(enters) = first.iter().position(|token| token.matches_word("enters"))
         {
             return vec![
                 format!("{}.", render_token_slice(first)),
@@ -831,7 +831,7 @@ fn split_parse_line_variants(line: &str, line_tokens: &[OwnedLexToken]) -> Vec<S
         let first = &line_tokens[..period];
         let second = &line_tokens[period + 1..];
         let second_words = crate::lexer::token_word_refs(second);
-        if let Some(escapes) = first.iter().position(|token| token.is_word("escapes"))
+        if let Some(escapes) = first.iter().position(|token| token.matches_word("escapes"))
             && escapes > 0
             && first.get(escapes + 1).is_some_and(|token| token.is_word("with"))
             && second_words.starts_with(&["when", "it", "enters", "this", "way"])
@@ -3804,7 +3804,7 @@ pub fn preprocess_document_with_provenance(
             if tokens[index].is_word("per")
                 && tokens[index - 1].is_word("once")
                 && tokens[index + 1].is_word("turn")
-                && tokens[..index].iter().any(|token| token.is_word("activate"))
+                && tokens[..index].iter().any(|token| token.matches_word("activate"))
             {
                 let span = tokens[index].span;
                 tokens[index] = OwnedLexToken::word("each", span);
@@ -4635,8 +4635,8 @@ fn authored_pronoun_retry_keeps_original_spans_and_literal_names() {
     for (before, after) in tokens.iter().zip(&rewritten) {
         assert_eq!(before.span, after.span);
     }
-    assert!(rewritten.iter().any(|token| token.is_word("it")));
-    assert!(!rewritten.iter().any(|token| token.is_word("she")));
+    assert!(rewritten.iter().any(|token| token.matches_word("it")));
+    assert!(!rewritten.iter().any(|token| token.matches_word("she")));
     let tokens = lex_line("Create a token named \"He\".", 0).unwrap();
     assert_eq!(rewrite_personal_pronouns_tokens(&tokens), tokens);
 }

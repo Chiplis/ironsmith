@@ -49,7 +49,7 @@ pub(crate) fn filter_clause(
         let mut quoted_name = false;
         let end = (start + 2..tokens.len()).find(|i| {
             if tokens[*i].kind == TokenKind::Quote { quoted_name = !quoted_name; return false; }
-            !quoted_name && tokens[*i].is_word("status")
+            !quoted_name && tokens[*i].matches_word("status")
         })?;
         let name = name(&tokens[start + 2..end])?;
         let mut base = tokens[..start].to_vec();
@@ -127,11 +127,11 @@ pub(crate) fn source_effect(tokens: &[OwnedLexToken]) -> Option<EffectAst> {
         // "the controllers of <tokens> just created": the tokens this
         // program just created, not an earlier antecedent ("those ...").
         let created=words(&tokens[4..split]).iter().any(|word|matches!(*word,"token"|"tokens"));
-        let named=created && tokens[4..split].iter().any(|token|token.is_word("named"));
+        let named=created && tokens[4..split].iter().any(|token|token.matches_word("named"));
         let sources=if named {
             // "tokens named Memory just created": lowering binds the name to
             // the token this instruction list created.
-            let named_at=(4..split).find(|index|tokens[*index].is_word("named"))?;
+            let named_at=(4..split).find(|index|tokens[*index].matches_word("named"))?;
             let name=tokens.get(named_at+1..split)?.iter().map(|token|token.parser_text()).collect::<Vec<_>>().join(" ");
             if name.is_empty(){return None;}
             crate::cards::builders::TargetAst::Object(ObjectFilter::default().token().named(name),None,None)
@@ -158,9 +158,9 @@ pub(crate) fn source_effect(tokens: &[OwnedLexToken]) -> Option<EffectAst> {
             })));
     }
     if words(tokens).starts_with(&["remove", "the"]) {
-        let end = tokens.iter().position(|token| token.is_word("status"))?;
+        let end = tokens.iter().position(|token| token.matches_word("status"))?;
         if !tokens.get(end + 1).is_some_and(|token| token.is_word("from")) { return None; }
-        let in_at = (end + 2..tokens.len()).find(|i| tokens[*i].is_word("in"))?;
+        let in_at = (end + 2..tokens.len()).find(|i| tokens[*i].matches_word("in"))?;
         let zone = match words(&tokens[in_at..]).as_slice() {
             ["in", "the", "command", "zone"] => crate::zone::Zone::Command,
             ["in", "exile"] => crate::zone::Zone::Exile,
@@ -276,9 +276,9 @@ fn source_collection_effect(tokens:&[OwnedLexToken])->Option<EffectAst>{
     let tokens=trimmed(tokens);
     if !tokens.first().is_some_and(|token|token.is_word("record")){return None;}
     let start=(1..tokens.len()).find(|index|words(&tokens[*index..(*index+2).min(tokens.len())])==["in","the"])?;
-    let collection=(start+2..tokens.len()).find(|index|tokens[*index].is_word("collection"))?;
+    let collection=(start+2..tokens.len()).find(|index|tokens[*index].matches_word("collection"))?;
     if !tokens.get(collection+1).is_some_and(|token|token.is_word("of")){return None;}
-    let while_at=(collection+2..tokens.len()).find(|index|tokens[*index].is_word("while"))?;
+    let while_at=(collection+2..tokens.len()).find(|index|tokens[*index].matches_word("while"))?;
     let label=name(&tokens[start+2..collection])?;
     let source_tag=match words(&tokens[collection+2..while_at]).as_slice(){
         ["this","card"|"permanent"|"object"]=>None,

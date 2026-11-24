@@ -683,8 +683,8 @@ pub fn parse_enters_or_escapes_instead_counters_line(
         return Ok(None);
     };
     if !last.is_word("instead")
-        || !escapes_body.iter().any(|token| token.is_word("escapes"))
-        || !enters.iter().any(|token| token.is_word("enters"))
+        || !escapes_body.iter().any(|token| token.matches_word("escapes"))
+        || !enters.iter().any(|token| token.matches_word("enters"))
     {
         return Ok(None);
     }

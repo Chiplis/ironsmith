@@ -273,7 +273,7 @@ pub(crate) fn parse_put_from_milled_cards_followup(
     if action_match.actor != LeadingMayActor::Default && choice_count == ChoiceCount::exactly(1) {
         choice_count = ChoiceCount::up_to(1);
     }
-    if action_tokens.iter().any(|token| token.is_word("milled")) {
+    if action_tokens.iter().any(|token| token.matches_word("milled")) {
         filter.set_prior_effect_action_surface(Some(ironsmith_core::PriorEffectAction::Milled));
     }
 
@@ -314,7 +314,7 @@ pub(crate) fn parse_put_from_milled_cards_followup(
             conditional_followup,
         )));
     }
-    let uses_and_or = action_tokens.iter().any(|token| token.is_word("and/or"));
+    let uses_and_or = action_tokens.iter().any(|token| token.matches_word("and/or"));
     let branch_filters = (uses_and_or && choice_count == ChoiceCount::up_to(1))
         .then(|| milled_choice_filter_branches(&filter))
         .flatten();

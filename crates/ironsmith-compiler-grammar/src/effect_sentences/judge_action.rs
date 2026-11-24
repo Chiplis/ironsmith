@@ -54,7 +54,7 @@ fn expand_sentence(tokens: &[OwnedLexToken]) -> Option<String> {
     }
     let verb = tokens
         .iter()
-        .position(|token| token.is_any_word(&["judge", "judges"]))?;
+        .position(|token| token.matches_any_word(&["judge", "judges"]))?;
     let words = crate::lexer::token_word_refs(&tokens[verb + 1..]);
     let prefix = &tokens[..verb];
     let prefix_words = crate::lexer::token_word_refs(prefix);
@@ -104,7 +104,7 @@ fn expand_sentence(tokens: &[OwnedLexToken]) -> Option<String> {
 /// complete named program; `None` when no sentence judges. Other sentences
 /// keep their authored tokens.
 pub(crate) fn expand(tokens: &[OwnedLexToken]) -> Option<Vec<OwnedLexToken>> {
-    if !tokens.iter().any(|token| token.is_any_word(&["judge", "judges", "backing"])) {
+    if !tokens.iter().any(|token| token.matches_any_word(&["judge", "judges", "backing"])) {
         return None;
     }
     let mut out = Vec::new();

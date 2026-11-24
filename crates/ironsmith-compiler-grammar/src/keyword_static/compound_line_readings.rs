@@ -639,7 +639,7 @@ fn declines_1(input: &StaticLine<'_>) -> bool {
                     matches!(
                         previous.kind,
                         TokenKind::Comma | TokenKind::Colon | TokenKind::Period
-                    ) || previous.is_word("then")
+                    ) || previous.matches_word("then")
                 }))
     });
     starts_executable_keyword_clause

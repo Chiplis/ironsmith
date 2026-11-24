@@ -151,6 +151,8 @@ pub fn parse_for_each_target_players_clause(
         let normalized = prepend_that_player_subject(shape.effect_tokens);
         parse_maybe_effects(&normalized, true, false)?
     };
+    // The distributive `each` this loop was split at.
+    crate::word_claims::claim_tokens(std::slice::from_ref(shape.each_token));
     Ok(Some(EffectAst::ForEach(
         ForEachEffectAst::ForEachTargetPlayers {
             count: shape.count,
@@ -277,7 +279,7 @@ pub fn parse_for_each_player_clause(
     }
     if participant_chooses {
         if outer.participant_is_actor
-            && !outer.inner_tokens.iter().any(|token| token.is_word("you"))
+            && !outer.inner_tokens.iter().any(|token| token.matches_word("you"))
         {
             bind_quantified_participant_actor(&mut effects);
         }
@@ -378,7 +380,7 @@ pub(super) fn read_matching_attachment_qualifier<'a>(
 ) -> Result<(), CardTextError> {
     let tokens = outer.inner_tokens;
     if !tokens.first().is_some_and(|token| token.is_word("with")) { return Ok(()); }
-    let Some(attached) = tokens.windows(3).position(|part| part[0].is_word("attached") && part[1].is_word("to") && part[2].is_word("them")) else { return Ok(()); };
+    let Some(attached) = tokens.windows(3).position(|part| part[0].matches_word("attached") && part[1].matches_word("to") && part[2].matches_word("them")) else { return Ok(()); };
     if attached <= 1 { return Ok(()); }
     let filter = parse_object_filter(&tokens[1..attached], false)?;
     if filter.zone.is_some_and(|zone| zone != crate::zone::Zone::Battlefield) { return Ok(()); }

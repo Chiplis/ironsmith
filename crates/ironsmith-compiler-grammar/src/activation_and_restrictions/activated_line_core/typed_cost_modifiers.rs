@@ -30,7 +30,7 @@ fn parse_typed_price(tokens: &[OwnedLexToken]) -> Result<Option<StaticAbility>, 
     let first = crate::util::trim_edge_punctuation_tokens(first);
     let Some(cost_index) = first
         .iter()
-        .position(|token| token.is_word("cost") || token.is_word("costs"))
+        .position(|token| token.matches_word("cost") || token.matches_word("costs"))
     else {
         return Ok(None);
     };

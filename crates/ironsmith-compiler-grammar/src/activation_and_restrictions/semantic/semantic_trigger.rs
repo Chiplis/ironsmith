@@ -648,7 +648,7 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
             && words.last() == Some(&"attacks")
             && matches!(words[0], "a" | "an" | "each" | "another")
             && words[1] == "saddled"
-            && let Some(saddled) = tokens.iter().position(|token| token.is_word("saddled"))
+            && let Some(saddled) = tokens.iter().position(|token| token.matches_word("saddled"))
             && let Some(attacks) = trigger_word_token_start(tokens, words.len() - 1)
             && saddled < attacks
         {
@@ -939,7 +939,7 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
                     .ends_with(&["using", "teamwork"]);
                 // Read the receipt first, so words in its name cannot add a
                 // modal or kicked condition to the cast event.
-                let using_custom = filter_tokens.iter().rposition(|t| t.is_word("using")).and_then(|start| {
+                let using_custom = filter_tokens.iter().rposition(|t| t.matches_word("using")).and_then(|start| {
                     crate::custom_identity_filters::bare_payment_name(&filter_tokens[start + 1..])
                         .map(|name| (start, name))
                 });
@@ -956,11 +956,16 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
                 // "a modal spell" (Riku of Many Paths, CR 700.2): a spell
                 // whose text offers modes; the adjective becomes a marker.
                 let modal_tokens: Vec<OwnedLexToken>;
-                let modal = filter_tokens.iter().any(|token| token.is_word("modal"));
+                let modal_words: Vec<OwnedLexToken> = filter_tokens
+                    .iter()
+                    .filter(|token| token.matches_word("modal"))
+                    .cloned()
+                    .collect();
+                let modal = !modal_words.is_empty();
                 let filter_tokens = if modal {
                     modal_tokens = filter_tokens
                         .iter()
-                        .filter(|token| !token.is_word("modal"))
+                        .filter(|token| !token.matches_word("modal"))
                         .cloned()
                         .collect();
                     modal_tokens.as_slice()
@@ -1014,11 +1019,11 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
                 // below.
                 let owned = filter_tokens
                     .iter()
-                    .filter(|token| token.is_word(crate::keyword_forms::KICKED))
+                    .filter(|token| token.matches_word(crate::keyword_forms::KICKED))
                     // "you cast your next instant or sorcery spell"
                     // (Twinferno): the possessive restates the caster.
                     .chain(filter_tokens.first().filter(|token| {
-                        token.is_word("your") && matches!(actor, PlayerFilter::You)
+                        token.matches_word("your") && matches!(actor, PlayerFilter::You)
                     }));
                 crate::word_claims::with_caller_owned(owned, || {
                     parse_object_filter_lexed(filter_tokens, other)
@@ -1040,6 +1045,8 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
                             filter.ability_markers.push(format!("using {keyword}"));
                         }
                         if modal {
+                            // The adjective the marker records.
+                            crate::word_claims::claim_tokens(&modal_words);
                             filter.ability_markers.push("modal".to_string());
                         }
                         // The event object is on the stack, but an authored
@@ -1499,7 +1506,7 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
         );
         if shared_subject_or_combat_damage {
             let or_idx =
-                enters_idx + 1 + tail.iter().position(|token| token.is_word("or")).unwrap();
+                enters_idx + 1 + tail.iter().position(|token| token.matches_word("or")).unwrap();
             let left_tokens = &tokens[..or_idx];
             let mut right_tokens = tokens[..enters_idx].to_vec();
             right_tokens.extend_from_slice(&tokens[or_idx + 1..]);
@@ -1608,7 +1615,7 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
     // attack or death approximation is allowed to swallow its neighbours.
     if let Some(comma) = tokens.iter().position(|token| token.is_comma())
         && comma > 1
-        && tokens.iter().any(|token| token.is_word("or"))
+        && tokens.iter().any(|token| token.matches_word("or"))
     {
         let verb = |token: &OwnedLexToken| token.is_any_word(&[
             "enters", "enter", "attacks", "attack", "blocks", "block", "dies", "die",
@@ -1731,7 +1738,7 @@ pub(super) fn parse_trigger_clause_lexed_unstacked(
     // Song): a serial keyword-action list whose final arm is a different
     // complete player action. Every arm shares the subject; the final arm is
     // read as its own complete clause with that subject restored.
-    if let Some(or_idx) = tokens.iter().rposition(|token| token.is_word("or"))
+    if let Some(or_idx) = tokens.iter().rposition(|token| token.matches_word("or"))
         && or_idx + 1 < tokens.len()
         && tokens
             .get(or_idx + 1)
@@ -7678,7 +7685,7 @@ fn parse_single_target_source_damages_its_target_lexed(
         SINGLE_TARGET_TAIL.iter().enumerate().all(|(offset, word)| {
             subject_tokens
                 .get(idx + offset)
-                .is_some_and(|token| token.is_word(word))
+                .is_some_and(|token| token.matches_word(word))
         })
     }) else {
         return Ok(None);
@@ -7689,7 +7696,7 @@ fn parse_single_target_source_damages_its_target_lexed(
     };
     let noun_matches = ["creature", "permanent", "planeswalker", "battle", "artifact", "enchantment", "land"]
         .iter()
-        .any(|noun| object_noun.is_word(noun) && recipient_noun.is_word(noun));
+        .any(|noun| object_noun.is_word(noun) && recipient_noun.matches_word(noun));
     if !noun_matches {
         return Ok(None);
     }
@@ -7704,6 +7711,10 @@ fn parse_single_target_source_damages_its_target_lexed(
     let source = source
         .targeting_only_object(target.clone())
         .target_count_exact(1);
+    // "that targets only a single <noun>" and the recipient noun, matched
+    // word by word above.
+    crate::word_claims::claim_tokens(&subject_tokens[tail_idx..]);
+    crate::word_claims::claim_tokens(std::slice::from_ref(recipient_noun));
     Ok(Some(TriggerSpec::DealsDamageTo {
         source,
         target,
@@ -7774,7 +7785,7 @@ pub(super) fn parse_ability_of_object_trigger_tail_lexed(
         ))
     })?;
     if filter_tokens.windows(3).any(|tokens| {
-        tokens[0].is_word("on") && tokens[1].is_word("the") && tokens[2].is_word("battlefield")
+        tokens[0].matches_word("on") && tokens[1].matches_word("the") && tokens[2].matches_word("battlefield")
     }) {
         filter.set_activation_source_battlefield_surface(true);
     }

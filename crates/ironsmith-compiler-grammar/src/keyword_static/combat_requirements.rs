@@ -274,7 +274,7 @@ mod tests {
 /// reader as attack/block requirements, including the exact Aura/Equipment host.
 pub fn parse_subject_must_be_blocked_if_able_line(tokens:&[OwnedLexToken])->Result<Option<Vec<StaticAbilityAst>>,CardTextError>{
     let tokens=crate::util::trim_edge_punctuation_tokens(tokens);
-    let Some(must)=tokens.iter().position(|token|token.is_word("must"))else{return Ok(None)};
+    let Some(must)=tokens.iter().position(|token|token.matches_word("must"))else{return Ok(None)};
     if crate::lexer::parser_token_word_refs(&tokens[must..]) != ["must","be","blocked","if","able"] {return Ok(None)}
     // The established intrinsic reader owns its complete source spelling.
     // It and this filtered-subject reader use different display surfaces;

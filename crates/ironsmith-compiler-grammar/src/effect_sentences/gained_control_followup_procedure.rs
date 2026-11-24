@@ -34,7 +34,7 @@ fn followup_body<'a>(
     }
     let way = tokens
         .windows(2)
-        .position(|window| window[0].is_word("this") && window[1].is_word("way"))?;
+        .position(|window| window[0].matches_word("this") && window[1].matches_word("way"))?;
     let object = crate::lexer::token_word_refs(tokens.get(5..way)?);
     let [article @ ("a" | "an"), noun] = object.as_slice() else {
         return None;

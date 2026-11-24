@@ -333,9 +333,9 @@ fn parse_independent_exile_pair(
             _ => None,
         }
     }
-    if !first_tokens.iter().any(|token| token.is_word("from"))
-        && first_tokens.iter().any(|token| token.is_word("card") || token.is_word("cards"))
-        && second_tokens.iter().any(|token| token.is_word("from"))
+    if !first_tokens.iter().any(|token| token.matches_word("from"))
+        && first_tokens.iter().any(|token| token.matches_word("card") || token.matches_word("cards"))
+        && second_tokens.iter().any(|token| token.matches_word("from"))
         && let Some(right) = card_filter(&mut second)
         && right.zone.is_some_and(|zone| matches!(zone, Zone::Hand | Zone::Graveyard | Zone::Exile | Zone::Library))
     {
@@ -380,14 +380,14 @@ fn parse_explicit_target_exile_pair(
     // each operand still names exactly one target.
     let single_target_operand = |branch: &[OwnedLexToken]| {
         branch.first().is_some_and(|token| token.is_word("target"))
-            && branch.iter().filter(|token| token.is_word("target")).count() == 1
+            && branch.iter().filter(|token| token.matches_word("target")).count() == 1
             && !branch.iter().any(|token| {
-                token.is_any_word(&[
+                token.matches_any_word(&[
                     "and", "then", "destroy", "exile", "return", "put", "copy", "cast",
                     "draw", "gain", "gains", "lose", "loses", "until",
                 ])
             })
-            && !branch.windows(2).any(|pair| pair[0].is_word("or") && pair[1].is_word("target"))
+            && !branch.windows(2).any(|pair| pair[0].matches_word("or") && pair[1].matches_word("target"))
     };
     if !single_target_operand(first_tokens) || !single_target_operand(second_tokens) {
         return Ok(None);
@@ -479,7 +479,7 @@ pub fn parse_exile_counted_target_players_graveyards(
 fn parse_exile_source_or_up_to_one_target(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<EffectAst>, CardTextError> {
-    let Some(or_index) = tokens.iter().position(|token| token.is_word("or")) else {
+    let Some(or_index) = tokens.iter().position(|token| token.matches_word("or")) else {
         return Ok(None);
     };
     let (source_tokens, target_tokens) = (&tokens[..or_index], &tokens[or_index + 1..]);
@@ -530,7 +530,7 @@ fn parse_exile_hand_card_or_chosen_object(
 ) -> Result<Option<EffectAst>, CardTextError> {
     let (tokens, until_source_leaves) = split_until_source_leaves_tail(tokens);
     let tokens = trim_commas(tokens);
-    let Some(or_index) = tokens.iter().position(|token| token.is_word("or")) else {
+    let Some(or_index) = tokens.iter().position(|token| token.matches_word("or")) else {
         return Ok(None);
     };
     let (card_tokens, chosen_tokens) = (&tokens[..or_index], &tokens[or_index + 1..]);
@@ -765,7 +765,7 @@ fn parse_exile_inner(
     // (Mysterio, Master of Illusion): a delayed exile of the tokens the
     // ability created, never an immediate exile of "those tokens when ...".
     if subject.is_none()
-        && let Some(when) = tokens.iter().position(|token| token.is_word("when"))
+        && let Some(when) = tokens.iter().position(|token| token.matches_word("when"))
         && matches!(
             crate::lexer::token_word_refs(&tokens[..when]).as_slice(),
             ["those", "tokens"] | ["that", "token"] | ["them"] | ["it"]
@@ -782,7 +782,7 @@ fn parse_exile_inner(
             )));
         }
     }
-    if let Some(equal) = tokens.iter().position(|token| token.is_word("equal")) {
+    if let Some(equal) = tokens.iter().position(|token| token.matches_word("equal")) {
         let tail = crate::lexer::token_word_refs(&tokens[equal..]);
         if tail.as_slice() == ["equal", "to", "the", "difference"] {
             let mut target = parse_target_phrase(&tokens[..equal])?;
@@ -834,7 +834,7 @@ fn parse_exile_inner(
         if let [first, .., "from", "each", "graveyard"] = words.as_slice()
             && matches!(*first, "a" | "an" | "one")
             && !words.contains(&"target")
-            && let Some(from_index) = tokens.iter().rposition(|token| token.is_word("from"))
+            && let Some(from_index) = tokens.iter().rposition(|token| token.matches_word("from"))
         {
             let mut rewritten = tokens[..from_index].to_vec();
             rewritten.extend(crate::lexer::synthetic_word_tokens([
@@ -854,7 +854,7 @@ fn parse_exile_inner(
             words.as_slice()
             && matches!(*first, "a" | "an" | "one")
             && !words.contains(&"target")
-            && let Some(from_index) = tokens.iter().rposition(|token| token.is_word("from"))
+            && let Some(from_index) = tokens.iter().rposition(|token| token.matches_word("from"))
         {
             let mut rewritten = tokens[..from_index].to_vec();
             rewritten.extend(crate::lexer::synthetic_word_tokens([
@@ -1066,8 +1066,8 @@ fn parse_exile_inner(
     // An explicitly exact, nontargeted selection is an indivisible operation.
     // Ordinary "exile two cards" still follows the usual do-as-much-as-possible
     // rule; "exile exactly two" cannot select a smaller set.
-    if target_tokens.iter().any(|token| token.is_word("exactly"))
-        && !target_tokens.iter().any(|token| token.is_word("target"))
+    if target_tokens.iter().any(|token| token.matches_word("exactly"))
+        && !target_tokens.iter().any(|token| token.matches_word("target"))
         && !until_source_leaves && !source_top_only && !source_bottom_only
         && let TargetAst::WithCount(inner, count) = &target
         && count.min > 0
@@ -1376,7 +1376,7 @@ pub fn parse_exile_all_and_all_graveyards(
     if !(words.ends_with(&["and", "all", "graveyards"]) || words.ends_with(&["and", "graveyards"])) {
         return Ok(None);
     }
-    let Some(and_idx) = filter_tokens.iter().rposition(|token| token.is_word("and")) else {
+    let Some(and_idx) = filter_tokens.iter().rposition(|token| token.matches_word("and")) else {
         return Ok(None);
     };
     let first_tokens = trim_commas(&filter_tokens[..and_idx]);
@@ -1422,7 +1422,7 @@ fn parse_mixed_target_and_all_exile_list(
             || effect_grammar::strip_exile_all_or_each_shape(&parts[0]).is_some()
             || parts[1..]
                 .iter()
-                .any(|part| part.iter().any(|token| token.is_word("attached")))
+                .any(|part| part.iter().any(|token| token.matches_word("attached")))
         {
             return Ok(None);
         }

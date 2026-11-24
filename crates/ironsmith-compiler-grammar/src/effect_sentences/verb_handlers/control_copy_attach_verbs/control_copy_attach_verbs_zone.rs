@@ -10,7 +10,7 @@ fn split_and_or_articled_card_pair(
     if !tokens.first().is_some_and(is_article) {
         return None;
     }
-    let and_or = tokens.iter().position(|token| token.is_word("and/or"))?;
+    let and_or = tokens.iter().position(|token| token.matches_word("and/or"))?;
     if and_or < 2
         || !tokens[and_or - 1].is_word("card")
         || !tokens.get(and_or + 1).is_some_and(is_article)
@@ -21,10 +21,10 @@ fn split_and_or_articled_card_pair(
         + 1
         + tokens[and_or + 1..]
             .iter()
-            .position(|token| token.is_word("card"))?;
+            .position(|token| token.matches_word("card"))?;
     let tail = &tokens[second_card + 1..];
     if !tail.first().is_some_and(|token| token.is_word("from"))
-        || !tail.iter().any(|token| token.is_word("onto"))
+        || !tail.iter().any(|token| token.matches_word("onto"))
     {
         return None;
     }
@@ -58,9 +58,9 @@ pub fn parse_put_into_hand(
     // battlefield from their hand". Move the complete bounded location in
     // front of `onto` so every native target/filter reader sees the same
     // source restriction. Do not accept arbitrary destination residue.
-    if let Some(onto) = tokens.iter().position(|token| token.is_word("onto"))
+    if let Some(onto) = tokens.iter().position(|token| token.matches_word("onto"))
         && let Some(from) = tokens.iter().enumerate().skip(onto + 1)
-            .find_map(|(index, token)| token.is_word("from").then_some(index))
+            .find_map(|(index, token)| token.matches_word("from").then_some(index))
     {
         let words = crate::lexer::token_word_refs(&tokens[from..]);
         let source_location = matches!(words.as_slice(),

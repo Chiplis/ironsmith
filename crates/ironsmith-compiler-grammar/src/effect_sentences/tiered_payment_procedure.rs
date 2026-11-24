@@ -31,12 +31,12 @@ fn is_word_any(token: &OwnedLexToken, words: &[&str]) -> bool {
 
 /// The `[pay, A..., or, B...]` split of a trailing "may pay {A} or {B}".
 fn split_tiered_costs(tokens: &[OwnedLexToken]) -> Option<(usize, usize)> {
-    let pay_idx = tokens.iter().rposition(|token| token.is_word("pay"))?;
+    let pay_idx = tokens.iter().rposition(|token| token.matches_word("pay"))?;
     if pay_idx == 0 || !tokens[pay_idx - 1].is_word("may") {
         return None;
     }
     let tail = &tokens[pay_idx + 1..];
-    let or_offset = tail.iter().position(|token| token.is_word("or"))?;
+    let or_offset = tail.iter().position(|token| token.matches_word("or"))?;
     let lesser = &tail[..or_offset];
     let greater = &tail[or_offset + 1..];
     let is_cost = |cost: &[OwnedLexToken]| {

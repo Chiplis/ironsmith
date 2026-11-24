@@ -518,7 +518,7 @@ fn preserve_named_source_entry_and_counter_exclusion(
         let (intro, end) = crate::word_claims::probe_only(|| {
             (
                 source.first().is_some_and(|token| token.is_any_word(&["when", "whenever"])),
-                source.iter().position(|token| token.is_word("enters")),
+                source.iter().position(|token| token.matches_word("enters")),
             )
         });
         if !intro {

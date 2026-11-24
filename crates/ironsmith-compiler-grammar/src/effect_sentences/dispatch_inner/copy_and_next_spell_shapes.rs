@@ -214,7 +214,7 @@ fn next_cast_spell_or_x_cost_ability_trigger_from_core(
     if !you.is_word("you") || !next.is_word("next") || !cast.is_word("cast") {
         return None;
     }
-    let or_idx = tokens.iter().rposition(|token| token.is_word("or"))?;
+    let or_idx = tokens.iter().rposition(|token| token.matches_word("or"))?;
     let tail = &tokens[or_idx + 1..];
     let tail_words = crate::lexer::token_word_refs(tail);
     let x_tail = match tail_words.as_slice() {
@@ -294,7 +294,7 @@ fn next_attack_trigger_from_core(trigger_core_tokens: &[OwnedLexToken]) -> Optio
     // owns its duration and whether the event repeats.
     if matches!(words.first(), Some(&"a") | Some(&"an"))
         && words.last() == Some(&"attacks")
-        && let Some(verb) = trigger_core_tokens.iter().rposition(|token| token.is_word("attacks"))
+        && let Some(verb) = trigger_core_tokens.iter().rposition(|token| token.matches_word("attacks"))
         && let Ok(filter) = parse_object_filter(&trigger_core_tokens[..verb], false)
     {
         crate::word_claims::claim_tokens(&trigger_core_tokens[verb..]);
@@ -1092,14 +1092,14 @@ fn declare_targeted_damage_source(
     }
     let target_idx = match trigger_core_tokens
         .iter()
-        .position(|token| token.is_word("target"))
+        .position(|token| token.matches_word("target"))
     {
         Some(idx @ (0 | 1)) => idx,
         _ => return Ok(None),
     };
     let Some(deals_idx) = trigger_core_tokens
         .iter()
-        .position(|token| token.is_word("deals"))
+        .position(|token| token.matches_word("deals"))
         .filter(|deals_idx| *deals_idx > target_idx + 1)
     else {
         return Ok(None);

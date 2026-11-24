@@ -69,7 +69,7 @@ pub(crate) fn parse(tokens: &[OwnedLexToken]) -> Result<Option<EffectAst>, CardT
     pos = next;
     let Some(counter_offset) = words[pos..]
         .iter()
-        .position(|(_, token)| token.is_word("counter"))
+        .position(|(_, token)| token.matches_word("counter"))
     else {
         return Ok(None);
     };

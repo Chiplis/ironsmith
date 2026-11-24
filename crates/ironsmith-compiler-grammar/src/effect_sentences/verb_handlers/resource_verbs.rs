@@ -392,7 +392,7 @@ fn parse_unlock_room_door(
     {
         let skip = tokens
             .iter()
-            .position(|token| token.is_word("of"))
+            .position(|token| token.matches_word("of"))
             .map(|idx| idx + 1)
             .unwrap_or(tokens.len());
         let target = crate::util::parse_target_phrase(&tokens[skip..])?;
@@ -997,7 +997,7 @@ fn parse_shuffle_zone_list_into_library(
     player: PlayerAst,
 ) -> Result<Option<EffectAst>, CardTextError> {
     let tokens = trim_edge_punctuation(tokens);
-    let Some(into_idx) = tokens.iter().position(|token| token.is_word("into")) else {
+    let Some(into_idx) = tokens.iter().position(|token| token.matches_word("into")) else {
         return Ok(None);
     };
     let destination = crate::lexer::token_word_refs(&tokens[into_idx + 1..]);
@@ -1008,7 +1008,7 @@ fn parse_shuffle_zone_list_into_library(
         return Ok(None);
     }
     let target_tokens = &tokens[..into_idx];
-    if !target_tokens.iter().any(|token| token.is_comma() || token.is_word("and")) {
+    if !target_tokens.iter().any(|token| token.is_comma() || token.matches_word("and")) {
         return Ok(None);
     }
     let Some(owner) =
@@ -1134,7 +1134,7 @@ pub fn parse_shuffle(
             // "this creature and target creature with a stun counter on it"
             // (Floodpits Drowner) names two independent operands; each is
             // shuffled into its own owner's library.
-            if let Some(and_idx) = target_tokens.iter().position(|token| token.is_word("and"))
+            if let Some(and_idx) = target_tokens.iter().position(|token| token.matches_word("and"))
                 && and_idx > 0
                 && and_idx + 1 < target_tokens.len()
                 && let Ok(first) = parse_target_phrase(&trim_commas(&target_tokens[..and_idx]))
@@ -1211,7 +1211,7 @@ pub fn parse_shuffle(
         } if !to_bottom
             && tokens
                 .iter()
-                .position(|token| token.is_word("into"))
+                .position(|token| token.matches_word("into"))
                 .and_then(|into| graveyard_origin_tail(tokens, into))
                 .is_some() =>
         {
@@ -1221,7 +1221,7 @@ pub fn parse_shuffle(
             // library"; a card a replacement put elsewhere stays there.
             let into = tokens
                 .iter()
-                .position(|token| token.is_word("into"))
+                .position(|token| token.matches_word("into"))
                 .expect("guarded above");
             let tail = graveyard_origin_tail(tokens, into).expect("guarded above");
             let mut with_origin = trim_commas(&tokens[..into]).to_vec();
@@ -1280,7 +1280,7 @@ pub fn parse_shuffle(
 /// tokens to append to the shuffled object's phrase.
 fn graveyard_origin_tail(tokens: &[OwnedLexToken], target_len: usize) -> Option<&[OwnedLexToken]> {
     let rest = tokens.get(target_len..)?;
-    let from = rest.iter().position(|token| token.is_word("from"))?;
+    let from = rest.iter().position(|token| token.matches_word("from"))?;
     let tail = crate::util::trim_edge_punctuation_tokens(&rest[from..]);
     let words = crate::lexer::token_word_refs(tail);
     (words.len() <= 5

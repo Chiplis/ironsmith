@@ -184,7 +184,7 @@ fn parse_borrowed_static_variant_chain(
 fn borrowed_variant_recipient(consequence: &[OwnedLexToken]) -> Option<ObjectFilter> {
     let verb = consequence
         .iter()
-        .position(|token| token.is_any_word(&["has", "have"]))?;
+        .position(|token| token.matches_any_word(&["has", "have"]))?;
     let subject = consequence.get(..verb)?;
     if subject.is_empty() {
         return None;

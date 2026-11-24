@@ -1264,7 +1264,7 @@ fn parse_attached_custom_keyword_grant_list(
     clause_text: &str,
 ) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {
     let has_marker = tokens.windows(3).any(|window| {
-        window[0].is_word("custom") && window[1].is_word("keyword") && window[2].is_quote()
+        window[0].matches_word("custom") && window[1].matches_word("keyword") && window[2].is_quote()
     });
     // A conditional suffix was split off the trimmed list; this reader only
     // owns the complete unconditional list.
@@ -1616,7 +1616,7 @@ pub fn parse_attached_has_keywords_and_is_goaded_line(
         .iter()
         .enumerate()
         .find_map(|(index, token)| {
-            (token.is_word("and")
+            (token.matches_word("and")
                 && has
                     .ability_tokens
                     .get(index + 1)
@@ -1624,7 +1624,7 @@ pub fn parse_attached_has_keywords_and_is_goaded_line(
                 && has
                     .ability_tokens
                     .get(index + 2)
-                    .is_some_and(|next| next.is_word(crate::keyword_forms::GOADED)))
+                    .is_some_and(|next| next.matches_word(crate::keyword_forms::GOADED)))
             .then_some(index)
         })
     else {
@@ -1650,6 +1650,8 @@ pub fn parse_attached_has_keywords_and_is_goaded_line(
     else {
         return Ok(None);
     };
+    // "and is/are goaded", found by the scan above.
+    crate::word_claims::claim_tokens(&has.ability_tokens[and_index..and_index + 3]);
     grants.push(
         crate::model::CompilerStaticAbilityCore::attached_goaded_by_source_controller(format!(
             "{} is goaded",
@@ -1689,9 +1691,9 @@ pub fn parse_attached_has_keywords_and_negated_restriction_line(
         return Ok(None);
     }
     let Some(and_index) = ability_tokens.iter().enumerate().find_map(|(index, token)| {
-        (token.is_word("and")
+        (token.matches_word("and")
             && ability_tokens.get(index + 1).is_some_and(|next| {
-                next.is_word("can't") || next.is_word("cant") || next.is_word("cannot")
+                next.matches_word("can't") || next.matches_word("cant") || next.matches_word("cannot")
             }))
         .then_some(index)
     }) else {
@@ -1968,7 +1970,7 @@ pub fn parse_attached_cant_attack_or_block_line(
     } = attached_grammar::split_attached_condition_suffix_tokens(tokens)
         && !ability_tokens
             .windows(2)
-            .any(|pair| pair[0].is_word("be") && pair[1].is_word("blocked"))
+            .any(|pair| pair[0].matches_word("be") && pair[1].matches_word("blocked"))
         && let Some(mut restriction) = parse_attached_cant_attack_or_block_line(&ability_tokens)?
         && let StaticAbilityAst::AttachedStaticAbilityGrant { condition, .. } = &mut restriction
         && condition.is_none()

@@ -520,7 +520,7 @@ pub fn parse_unattach(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextErr
     // "unattach an Equipment from a creature you control": the host is an
     // independent selection (the later "that creature" antecedent), and the
     // detached object must be attached to that host.
-    if let Some(from_idx) = object_tokens.iter().position(|token| token.is_word("from"))
+    if let Some(from_idx) = object_tokens.iter().position(|token| token.matches_word("from"))
         && from_idx > 0
         && from_idx + 1 < object_tokens.len()
     {
@@ -540,6 +540,8 @@ pub fn parse_unattach(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextErr
                     tag: (crate::tag::CompilerReferenceTag::It.bind()).into(),
                     relation: TaggedOpbjectRelation::AttachedToTaggedObject,
                 });
+            // The "from" naming the host the attachment is detached from.
+            crate::word_claims::claim_tokens(&object_tokens[from_idx..=from_idx]);
             return Ok(EffectAst::Sequence {
                 effects: vec![
                     EffectAst::subject_verb_target_only(host),
@@ -600,7 +602,7 @@ pub fn mark_damage_ast_unpreventable(effect: &mut EffectAst) {
 }
 
 pub fn parse_delegated_damage_target(tokens: &[OwnedLexToken]) -> Result<Option<EffectAst>, CardTextError> {
-    if !tokens.iter().any(|token| token.is_word("damage")) {
+    if !tokens.iter().any(|token| token.matches_word("damage")) {
         return Ok(None);
     }
     // Each member of a damage fanout owns its own target and chooser.
@@ -616,8 +618,8 @@ pub fn parse_delegated_damage_target(tokens: &[OwnedLexToken]) -> Result<Option<
     // Minotaur): an opponent announces the target (CR 115.4, 601.2c). The
     // delegated declaration precedes the damage, which reuses that same
     // declared target (the Pandemonium delegated-chooser shape).
-    if let Some(to_idx) = tokens.iter().rposition(|token| token.is_word("to"))
-        && tokens[to_idx + 1..].iter().any(|token| token.is_word("target"))
+    if let Some(to_idx) = tokens.iter().rposition(|token| token.matches_word("to"))
+        && tokens[to_idx + 1..].iter().any(|token| token.matches_word("target"))
         && let Some(choice) = crate::grammar::choices::parse_possessive_object_choice_tokens(
             &tokens[to_idx + 1..],
         )
@@ -626,7 +628,7 @@ pub fn parse_delegated_damage_target(tokens: &[OwnedLexToken]) -> Result<Option<
         let target = parse_target_phrase(&choice.object_tokens)?;
         let mut damage_tokens = tokens[..=to_idx].to_vec();
         damage_tokens.extend_from_slice(&choice.object_tokens);
-        let damage = if damage_tokens.iter().any(|token| token.is_any_word(&["deal", "deals"])) {
+        let damage = if damage_tokens.iter().any(|token| token.matches_any_word(&["deal", "deals"])) {
             // The document entry point supplies the source and verb; the verb
             // handler supplies only its body. Preserve the source in either route.
             EffectAst::Sequence { effects: crate::effect_sentences::parse_effect_sentence_lexed(&damage_tokens)? }
@@ -652,8 +654,8 @@ pub fn parse_delegated_damage_target(tokens: &[OwnedLexToken]) -> Result<Option<
 
 pub fn parse_deal_damage(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextError> {
     if let Some(and) = tokens.windows(3).position(|window|
-        window[0].is_word("and") && window[1].is_word("you")
-            && window[2].is_any_word(&["gain", "lose"]))
+        window[0].matches_word("and") && window[1].matches_word("you")
+            && window[2].matches_any_word(&["gain", "lose"]))
     {
         let mut effects = vec![parse_deal_damage(&tokens[..and])?];
         effects.extend(crate::effect_sentences::chain_carry::parse_effect_chain_lexed(&tokens[and + 1..])?);
@@ -667,7 +669,7 @@ pub fn parse_deal_damage(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardText
     }
     let trimmed = crate::util::trim_edge_punctuation_tokens(tokens);
     if !IN_COMPOUND_FANOUT.with(std::cell::Cell::get)
-        && trimmed.iter().any(|token| token.is_word("and"))
+        && trimmed.iter().any(|token| token.matches_word("and"))
     {
         let mut sentence = crate::lexer::synthetic_word_tokens(["this", "creature", "deals"]);
         sentence.extend_from_slice(trimmed);
@@ -895,7 +897,7 @@ fn parse_damage_each_opponent_controlling_more_than_you(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<EffectAst>, CardTextError> {
     let tokens = crate::util::trim_edge_punctuation_tokens(tokens);
-    let Some(damage_idx) = tokens.iter().position(|token| token.is_word("damage")) else {
+    let Some(damage_idx) = tokens.iter().position(|token| token.matches_word("damage")) else {
         return Ok(None);
     };
     const HEAD: &[&str] = &["to", "each", "opponent", "who", "controls", "more"];
@@ -910,7 +912,7 @@ fn parse_damage_each_opponent_controlling_more_than_you(
     }
     let rest = &after_damage[HEAD.len()..];
     let Some(than_idx) = rest.windows(2).position(|window| {
-        window[0].is_word("than") && window[1].is_word("you")
+        window[0].matches_word("than") && window[1].matches_word("you")
     }) else {
         return Ok(None);
     };
@@ -943,6 +945,8 @@ fn parse_damage_each_opponent_controlling_more_than_you(
         operator: crate::effect::ValueComparisonOperator::GreaterThan,
         right: Value::Count(yours),
     };
+    // "than you", found by the scan above: the comparison's right side.
+    crate::word_claims::claim_tokens(&rest[than_idx..than_idx + 2]);
     Ok(Some(EffectAst::ForEach(ForEachEffectAst::ForEachOpponent {
         effects: vec![EffectAst::Conditionals(
             crate::cards::builders::ConditionalEffectAst::Conditional {
@@ -1063,7 +1067,7 @@ fn parse_divided_damage_equal_to_amount(
 /// base with a typed turn-history count.
 fn parse_fixed_plus_turn_history_value(tokens: &[OwnedLexToken]) -> Option<Value> {
     let equal_idx = (0..tokens.len().saturating_sub(3))
-        .find(|&idx| tokens[idx].is_word("equal") && tokens[idx + 1].is_word("to"))?;
+        .find(|&idx| tokens[idx].matches_word("equal") && tokens[idx + 1].matches_word("to"))?;
     let base_token = tokens.get(equal_idx + 2)?;
     let base_word = base_token.parser_word_pieces().first()?.text.as_str();
     let base = crate::util::parse_number_word_u32(base_word)?;

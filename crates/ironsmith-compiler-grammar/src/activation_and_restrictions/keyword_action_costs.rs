@@ -614,7 +614,7 @@ fn without_rounding_comma(tokens: &[OwnedLexToken]) -> Vec<OwnedLexToken> {
             !(token.kind == crate::lexer::TokenKind::Comma
                 && tokens
                     .get(idx + 1)
-                    .is_some_and(|next| next.is_word("rounded")))
+                    .is_some_and(|next| next.matches_word("rounded")))
         })
         .map(|(_, token)| token.clone())
         .collect()
@@ -649,7 +649,7 @@ pub fn parse_payment_clause_as_total_cost(
             let mut quoted = false;
             trimmed.windows(2).position(|pair| {
                 if pair[0].kind == crate::lexer::TokenKind::Quote { quoted = !quoted; }
-                !quoted && pair[0].is_word("and") && pair[1].is_word("have")
+                !quoted && pair[0].matches_word("and") && pair[1].matches_word("have")
             })
         }
         && and_have > 1

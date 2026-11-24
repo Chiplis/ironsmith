@@ -480,7 +480,7 @@ fn object_filter_word_is_other_or_another(word: &str) -> bool {
 }
 
 fn preserve_union_surface(filter: &mut ObjectFilter, tokens: &[OwnedLexToken]) {
-    if tokens.iter().any(|token| token.is_word("and/or")) {
+    if tokens.iter().any(|token| token.matches_word("and/or")) {
         filter.set_union_connective(ObjectFilterUnionConnective::AndOr);
     }
 
@@ -512,7 +512,7 @@ fn preserve_union_surface(filter: &mut ObjectFilter, tokens: &[OwnedLexToken]) {
     });
     let has_disjunction = tokens
         .iter()
-        .any(|token| token.is_word("or") || token.is_word("and/or"));
+        .any(|token| token.matches_word("or") || token.matches_word("and/or"));
     if selector_member_count >= 2 && has_plain_and && !has_disjunction {
         // A shared terminal noun can flatten "instant and sorcery card" to
         // one executable filter. Retain the inclusive authored conjunction
@@ -808,10 +808,10 @@ fn parse_color_or_card_type_disjunction(
     other: bool,
     parse_rest: fn(&[OwnedLexToken], bool) -> Result<ObjectFilter, CardTextError>,
 ) -> Result<Option<ObjectFilter>, CardTextError> {
-    if tokens.iter().filter(|token| token.is_word("or")).count() != 1 {
+    if tokens.iter().filter(|token| token.matches_word("or")).count() != 1 {
         return Ok(None);
     }
-    let Some(or_idx) = tokens.iter().position(|token| token.is_word("or")) else {
+    let Some(or_idx) = tokens.iter().position(|token| token.matches_word("or")) else {
         return Ok(None);
     };
     if or_idx == 0 {
@@ -874,6 +874,8 @@ fn parse_color_or_card_type_disjunction(
         ObjectFilter::default().with_type(card_type),
     ];
     filter.set_union_connective(ObjectFilterUnionConnective::Or);
+    // `<color> or <card type>`, read word by word above.
+    crate::word_claims::claim_tokens(&tokens[color_idx..=type_idx]);
     Ok(Some(filter))
 }
 
@@ -970,7 +972,7 @@ pub fn has_shared_terminal_object_noun(tokens: &[OwnedLexToken]) -> bool {
     }
     if !tokens[..noun_idx]
         .iter()
-        .any(|token| token.is_word("and") || token.is_word("or") || token.is_word("and/or"))
+        .any(|token| token.matches_word("and") || token.matches_word("or") || token.matches_word("and/or"))
     {
         return false;
     }
@@ -1023,7 +1025,7 @@ fn has_requantified_comma_collection(tokens: &[OwnedLexToken]) -> bool {
     tokens.iter().filter(|token| token.is_comma()).count() >= 2
         && tokens
             .iter()
-            .filter(|token| token.is_word("all") || token.is_word("each"))
+            .filter(|token| token.matches_word("all") || token.matches_word("each"))
             .count()
             >= 2
 }
@@ -1645,11 +1647,11 @@ fn parse_terminal_different_name_filter(
 /// control.
 fn split_whose_controller_controls(
     tokens: &[OwnedLexToken],
-) -> Option<(&[OwnedLexToken], &[OwnedLexToken])> {
+) -> Option<(&[OwnedLexToken], &[OwnedLexToken], &[OwnedLexToken])> {
     let index = tokens.windows(3).position(|window| {
-        window[0].is_word("whose")
-            && window[1].is_word("controller")
-            && window[2].is_word("controls")
+        window[0].matches_word("whose")
+            && window[1].matches_word("controller")
+            && window[2].matches_word("controls")
     })?;
     let base = &tokens[..index];
     let mut controlled = &tokens[index + 3..];
@@ -1659,7 +1661,8 @@ fn split_whose_controller_controls(
     {
         controlled = &controlled[1..];
     }
-    (!base.is_empty() && !controlled.is_empty()).then_some((base, controlled))
+    (!base.is_empty() && !controlled.is_empty())
+        .then_some((base, &tokens[index..index + 3], controlled))
 }
 
 fn parse_whose_controller_controls_filter(
@@ -1667,11 +1670,13 @@ fn parse_whose_controller_controls_filter(
     other: bool,
     parse: fn(&[OwnedLexToken], bool) -> Result<ObjectFilter, CardTextError>,
 ) -> Result<Option<ObjectFilter>, CardTextError> {
-    let Some((base, controlled)) = split_whose_controller_controls(tokens) else {
+    let Some((base, relation, controlled)) = split_whose_controller_controls(tokens) else {
         return Ok(None);
     };
     let mut filter = parse(base, other)?;
     let mut controlled = parse(controlled, false)?;
+    // "whose controller controls": the relation the filter was split at.
+    crate::word_claims::claim_tokens(relation);
     controlled.zone = Some(Zone::Battlefield);
     filter.controller_controls = Some(Box::new(controlled));
     Ok(Some(filter))
@@ -1849,12 +1854,12 @@ pub(crate) fn split_source_relation_phrases(
     let mut kept = tokens.to_vec();
     let mut attacking_same_defender_as_source = false;
     if let Some(start) = kept.windows(6).position(|window| {
-        window[0].is_word("attacking")
-            && window[1].is_word("the")
-            && window[2].is_word("same")
-            && window[3].is_word("player")
-            && window[4].is_word("or")
-            && window[5].is_word("planeswalker")
+        window[0].matches_word("attacking")
+            && window[1].matches_word("the")
+            && window[2].matches_word("same")
+            && window[3].matches_word("player")
+            && window[4].matches_word("or")
+            && window[5].matches_word("planeswalker")
     }) {
         attacking_same_defender_as_source = true;
         crate::word_claims::claim_drained(kept.drain(start + 1..start + 6));
@@ -2080,7 +2085,7 @@ fn split_trailing_sector_qualifier(
         SectorPredicate::In(
             SectorName::ALL
                 .into_iter()
-                .find(|sector| tokens[end - 2].is_word(sector.word()))?,
+                .find(|sector| tokens[end - 2].matches_word(sector.word()))?,
         )
     };
     Some((&tokens[..end - 4], predicate))
@@ -2091,12 +2096,12 @@ fn split_trailing_sector_qualifier(
 /// members. Drop them so the characteristic disjunction reader owns the list.
 fn without_characteristic_list_commas(tokens: &[OwnedLexToken]) -> Option<Vec<OwnedLexToken>> {
     let position = tokens.windows(6).position(|window| {
-        window[0].is_word("power")
+        window[0].matches_word("power")
             && window[1].is_comma()
-            && window[2].is_word("toughness")
+            && window[2].matches_word("toughness")
             && window[3].is_comma()
-            && window[4].is_word("or")
-            && window[5].is_word("mana")
+            && window[4].matches_word("or")
+            && window[5].matches_word("mana")
     })?;
     let mut rewritten = tokens.to_vec();
     rewritten.remove(position + 3);
@@ -2239,7 +2244,61 @@ pub fn parse_object_filter(
     other: bool,
 ) -> Result<ObjectFilter, CardTextError> {
     let caller = std::panic::Location::caller();
-    crate::word_claims::audit_filter(tokens, caller, || parse_object_filter_unaudited(tokens, other))
+    crate::word_claims::audit_filter(tokens, caller, || {
+        read_relative_copulas(tokens, || parse_object_filter_unaudited(tokens, other))
+    })
+}
+
+/// Finite verbs that open a relative clause after "that": "creatures you
+/// control that entered this turn", "that shares a color with it", "that
+/// don't have the same name". A demonstrative "that" is never followed by one.
+const RELATIVE_CLAUSE_VERBS: &[&str] = &[
+    "entered", "has", "have", "had", "shares", "share", "attacked", "blocked", "dealt",
+    "died", "isn't", "isnt", "aren't", "arent", "don't", "dont", "doesn't", "doesnt",
+    "didn't", "didnt", "wasn't", "wasnt", "weren't", "werent", "was", "were",
+];
+
+/// "creature that's attacking you", "permanents you control that are
+/// creatures and/or Vehicles", "creatures that entered this turn": a
+/// relative pronoun (with its copula) only links the head noun to the
+/// predicate after it, so it is read exactly when the filter read that
+/// predicate's first word. The readers of the predicates locate the clause
+/// by scanning and leave the relative words themselves unclaimed.
+fn read_relative_copulas(
+    tokens: &[OwnedLexToken],
+    parse: impl FnOnce() -> Result<ObjectFilter, CardTextError>,
+) -> Result<ObjectFilter, CardTextError> {
+    let (result, claims) = crate::word_claims::observe(parse);
+    if result.is_err() || claims.is_empty() {
+        return result;
+    }
+    for (index, token) in tokens.iter().enumerate() {
+        let copula_len = if token.matches_any_word(&["that's", "thats", "that’s"]) {
+            1
+        } else if token.matches_word("that")
+            && tokens.get(index + 1).is_some_and(|next| next.matches_any_word(&["is", "are"]))
+        {
+            2
+        } else if index > 0
+            && token.matches_word("that")
+            && tokens.get(index + 1).is_some_and(|next| next.matches_any_word(RELATIVE_CLAUSE_VERBS))
+        {
+            1
+        } else {
+            continue;
+        };
+        // The predicate's first content word ("that's a Wolf": "Wolf").
+        if let Some(head) = tokens[index + copula_len..]
+            .iter()
+            .find(|token| !token.matches_any_word(&["a", "an", "the"]))
+            && head.as_word().is_some()
+            && head.span.end > head.span.start
+            && !claims.leaves_unread(std::slice::from_ref(head))
+        {
+            crate::word_claims::claim_tokens(&tokens[index..index + copula_len]);
+        }
+    }
+    result
 }
 
 /// "<head> [that] it can enchant": the head tokens before the Aura-legality
@@ -2266,8 +2325,8 @@ fn split_it_can_enchant_suffix(tokens: &[OwnedLexToken]) -> Option<&[OwnedLexTok
 /// relation among the chosen objects, independent of each object's own
 /// filter. A comparison ("... with <object>") has its own reader.
 fn parse_shared_card_type_selection_filter(tokens:&[OwnedLexToken],other:bool)->Option<Result<ObjectFilter,CardTextError>>{
-    let at=tokens.windows(5).position(|part|part[0].is_word("that")&&part[1].is_any_word(&["share","shares"])
-        &&part[2].is_word("a")&&part[3].is_word("card")&&part[4].is_word("type"))?;
+    let at=tokens.windows(5).position(|part|part[0].matches_word("that")&&part[1].matches_any_word(&["share","shares"])
+        &&part[2].matches_word("a")&&part[3].matches_word("card")&&part[4].matches_word("type"))?;
     if at==0 || tokens.get(at+5).is_some_and(|token|token.is_word("with")) {return None;}
     let mut base=tokens[..at].to_vec();
     base.extend_from_slice(&tokens[at+5..]);
@@ -2786,23 +2845,25 @@ pub(crate) fn split_enchanted_or_equipped_disjunction(
 }
 
 fn apply_phyrexian_mana_cost_predicate(filter: &mut ObjectFilter, tokens: &[OwnedLexToken]) {
-    if tokens.iter().enumerate().any(|(index, token)| {
+    if let Some(index) = tokens.iter().enumerate().position(|(index, token)| {
         token
             .mana_group_inner()
             .is_some_and(|inner| inner.eq_ignore_ascii_case("H"))
             && tokens
                 .get(index + 1)
-                .is_some_and(|token| token.is_word("in"))
+                .is_some_and(|token| token.matches_word("in"))
             && tokens
                 .get(index + 2)
-                .is_some_and(|token| token.is_word("its") || token.is_word("their"))
+                .is_some_and(|token| token.matches_word("its") || token.matches_word("their"))
             && tokens
                 .get(index + 3)
-                .is_some_and(|token| token.is_word("mana"))
+                .is_some_and(|token| token.matches_word("mana"))
             && tokens
                 .get(index + 4)
-                .is_some_and(|token| token.is_word("cost"))
+                .is_some_and(|token| token.matches_word("cost"))
     }) {
+        // "{H} in its mana cost": the symbol and its cost location.
+        crate::word_claims::claim_tokens(&tokens[index..index + 5]);
         filter.has_mana_cost = true;
         filter.has_phyrexian_mana_symbol = true;
     }
@@ -2889,7 +2950,7 @@ fn parse_object_filter_inner(
     preserve_union_surface(&mut filter, tokens);
     // "a red source you control": the generic noun adds no constraint, so no
     // grammar reads it; the filter it heads is the reading.
-    for token in tokens.iter().filter(|token| token.is_word("source") || token.is_word("sources")) {
+    for token in tokens.iter().filter(|token| token.matches_word("source") || token.matches_word("sources")) {
         crate::word_claims::claim_tokens(std::slice::from_ref(token));
     }
     preserve_controller_qualifier_order(&mut filter, tokens);
@@ -2909,8 +2970,36 @@ pub fn parse_object_filter_words(
 ) -> Result<ObjectFilter, CardTextError> {
     let caller = std::panic::Location::caller();
     crate::word_claims::audit_filter_words(word_refs, caller, || {
-        parse_object_filter_words_unaudited(word_refs, other)
+        read_relative_copula_words(word_refs, || parse_object_filter_words_unaudited(word_refs, other))
     })
+}
+
+/// [`read_relative_copulas`] for a filter given registered words.
+fn read_relative_copula_words(
+    words: &[&str],
+    parse: impl FnOnce() -> Result<ObjectFilter, CardTextError>,
+) -> Result<ObjectFilter, CardTextError> {
+    let (result, claims) = crate::word_claims::observe(parse);
+    if result.is_err() || claims.is_empty() {
+        return result;
+    }
+    for (index, word) in words.iter().enumerate() {
+        let copula_len = match (*word, words.get(index + 1).copied()) {
+            ("that's" | "thats" | "that’s", _) => 1,
+            ("that", Some("is" | "are")) => 2,
+            ("that", Some(next)) if index > 0 && RELATIVE_CLAUSE_VERBS.contains(&next) => 1,
+            _ => continue,
+        };
+        if let Some(head) = words[index + copula_len..]
+            .iter()
+            .find(|word| !matches!(**word, "a" | "an" | "the"))
+            && !crate::word_claims::word_spans(head).is_empty()
+            && !claims.leaves_words_unread(std::slice::from_ref(head))
+        {
+            crate::word_claims::claim_words(&words[index..index + copula_len]);
+        }
+    }
+    result
 }
 
 fn parse_object_filter_words_unaudited(
@@ -3065,7 +3154,9 @@ pub fn parse_object_filter_lexed(
     other: bool,
 ) -> Result<ObjectFilter, CardTextError> {
     let caller = std::panic::Location::caller();
-    crate::word_claims::audit_filter(tokens, caller, || parse_object_filter_lexed_unaudited(tokens, other))
+    crate::word_claims::audit_filter(tokens, caller, || {
+        read_relative_copulas(tokens, || parse_object_filter_lexed_unaudited(tokens, other))
+    })
 }
 
 fn split_cast_for_named_cost_suffix(tokens: &[OwnedLexToken]) -> Option<(&[OwnedLexToken], String)> {
@@ -3074,7 +3165,7 @@ fn split_cast_for_named_cost_suffix(tokens: &[OwnedLexToken]) -> Option<(&[Owned
         || label.kind != crate::lexer::TokenKind::Word
         || label.is_any_word(&["mana", "life", "alternative", "total", "additional", "full"])
         || !label.parser_text().chars().all(|ch| ch.is_ascii_alphabetic())
-        || !base.iter().any(|token| token.is_any_word(&["spell", "spells"]))
+        || !base.iter().any(|token| token.matches_any_word(&["spell", "spells"]))
     {
         return None;
     }
@@ -3096,7 +3187,7 @@ fn parse_unquoted_custom_keyword_filter(
         return None;
     }
     let start = tokens.windows(3).position(|window| {
-        window[0].is_any_word(&["with", "without"]) && window[1].is_word("custom") && window[2].is_word("keyword")
+        window[0].matches_any_word(&["with", "without"]) && window[1].matches_word("custom") && window[2].matches_word("keyword")
     })?;
     let name = tokens.get(start + 3)?;
     if start == 0
@@ -3143,7 +3234,7 @@ fn parse_object_filter_lexed_unaudited(
     if let Some(result)=parse_custom_identity_filter(tokens,other){return result;}
     if let Some(result) = parse_entry_reference_filter(tokens, other) { return result; }
     if let Some(result)=parse_shared_card_type_selection_filter(tokens,other){return result;}
-    if let Some(group)=tokens.windows(2).rposition(|pair|pair[0].is_word("in")&&pair[1].is_word("group")) {
+    if let Some(group)=tokens.windows(2).rposition(|pair|pair[0].matches_word("in")&&pair[1].matches_word("group")) {
         let tail=&tokens[group+2..];
         if let Some((_,owner))=crate::grammar::primitives::parse_prefix(tail,crate::grammar::primitives::phrase(&["owned","by"])) {
             let owner=crate::util::parse_target_phrase(owner)?;
@@ -3153,7 +3244,7 @@ fn parse_object_filter_lexed_unaudited(
             return Ok(filter);
         }
     }
-    if let Some(group)=tokens.windows(5).rposition(|tail|tail[0].is_word("in")&&tail[1].is_word("the")&&tail[2].is_word("same")&&tail[3].is_word("group")&&tail[4].is_word("as")) {
+    if let Some(group)=tokens.windows(5).rposition(|tail|tail[0].matches_word("in")&&tail[1].matches_word("the")&&tail[2].matches_word("same")&&tail[3].matches_word("group")&&tail[4].matches_word("as")) {
         let owner=crate::util::parse_target_phrase(&tokens[group+5..])?;
         let mut filter=parse_object_filter_lexed(&tokens[..group],other)?;
         filter.same_group_as=Some(Box::new(crate::model::ast::choose_spec_for_target(&owner)));

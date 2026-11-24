@@ -342,7 +342,7 @@ fn parse_independent_zone_domain_pair(tokens: &[OwnedLexToken]) -> Option<Object
     let mut ands = tokens
         .iter()
         .enumerate()
-        .filter(|(_, token)| token.is_word("and"));
+        .filter(|(_, token)| token.matches_word("and"));
     let (and_index, _) = ands.next()?;
     if ands.next().is_some() {
         return None;

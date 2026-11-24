@@ -1128,7 +1128,7 @@ fn parse_possessive_target_stat_difference_value(tokens: &[OwnedLexToken]) -> Op
     if !words.starts_with(&["the", "difference", "between"]) || words.len() != tokens.len() {
         return None;
     }
-    let and_idx = tokens.iter().position(|token| token.is_word("and"))?;
+    let and_idx = tokens.iter().position(|token| token.matches_word("and"))?;
     if and_idx <= 3 || and_idx + 1 >= tokens.len() {
         return None;
     }

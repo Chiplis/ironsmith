@@ -18,7 +18,7 @@ pub(super) fn parse(tokens: &[OwnedLexToken]) -> Result<Option<Vec<EffectAst>>, 
     ) else {
         return Ok(None);
     };
-    let Some(then_index) = tokens.iter().position(|token| token.is_word("then")) else {
+    let Some(then_index) = tokens.iter().position(|token| token.matches_word("then")) else {
         return Ok(None);
     };
     if then_index <= after_header {

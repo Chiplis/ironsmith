@@ -527,7 +527,7 @@ fn parse_there_are_filtered_cards(input: &mut LexStream<'_>) -> WResult<ParsedRe
     }
     if !tokens
         .iter()
-        .any(|token| token.is_word("card") || token.is_word("cards"))
+        .any(|token| token.matches_word("card") || token.matches_word("cards"))
     {
         return Err(primitives::backtrack_err("zone card count", "a card noun"));
     }

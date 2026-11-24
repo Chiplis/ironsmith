@@ -236,7 +236,7 @@ fn parse_conjunctive_negated_card_filter(
         || !tokens.iter().any(OwnedLexToken::is_comma)
         || tokens
             .iter()
-            .any(|token| token.is_word("or") || token.is_word("and/or"))
+            .any(|token| token.matches_word("or") || token.matches_word("and/or"))
         || !modifiers
             .iter()
             .all(|word| crate::word_primitives::parse_word_prefix(word, "non"))
@@ -374,7 +374,7 @@ fn parse_filter_disjunction(tokens: &[OwnedLexToken], words: &[&str]) -> Option<
         &mut filter,
         tokens,
     );
-    if tokens.iter().any(|token| token.is_word("and/or")) {
+    if tokens.iter().any(|token| token.matches_word("and/or")) {
         filter.set_union_connective(crate::filter::ObjectFilterUnionConnective::AndOr);
     }
     filter.set_explicit_union_branch_articles(explicit_branch_articles);
@@ -413,7 +413,7 @@ fn parse_generic_disjunction_filter(tokens: &[OwnedLexToken]) -> Option<ObjectFi
     }
     let mut filter = ObjectFilter::default();
     filter.any_of = branches;
-    if tokens.iter().any(|token| token.is_word("and/or")) {
+    if tokens.iter().any(|token| token.matches_word("and/or")) {
         filter.set_union_connective(crate::filter::ObjectFilterUnionConnective::AndOr);
     }
     Some(filter)

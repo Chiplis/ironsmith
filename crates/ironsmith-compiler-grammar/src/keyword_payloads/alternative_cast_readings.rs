@@ -825,7 +825,7 @@ pub(crate) fn add_spell_text_static(tokens: &[OwnedLexToken]) -> Result<Option<c
     let first = crate::util::trim_edge_punctuation_tokens(&sentences[0]);
     let words = crate::lexer::parser_token_word_refs(first);
     if !words.starts_with(&["as", "you", "cast", "an"]) && !words.starts_with(&["as", "you", "cast", "a"]) { return Ok(None); }
-    let Some(spell) = first.iter().position(|t| t.is_word("spell")) else { return Ok(None); };
+    let Some(spell) = first.iter().position(|t| t.matches_word("spell")) else { return Ok(None); };
     let quality = match crate::lexer::parser_token_word_refs(&first[4..spell]).as_slice() {
         ["instant", "or", "sorcery"] => ironsmith_core::SpliceQuality::InstantOrSorcery,
         ["arcane"] => ironsmith_core::SpliceQuality::Arcane,
@@ -855,7 +855,7 @@ pub(crate) fn add_spell_text_static(tokens: &[OwnedLexToken]) -> Result<Option<c
             // All label words are data and the complete bounded suffix is read;
             // punctuation cannot be dropped to infer a different identity.
             if sentence.iter().any(|token|!matches!(token.kind,crate::lexer::TokenKind::Word|crate::lexer::TokenKind::Dash)){return Ok(None);}
-            let name_start=sentence.iter().position(|token|token.is_word("named")).expect("matched named frame")+1;
+            let name_start=sentence.iter().position(|token|token.matches_word("named")).expect("matched named frame")+1;
             if sentence[name_start..].iter().any(|token|token.kind!=crate::lexer::TokenKind::Word){return Ok(None);}
             custom_keyword=Some(crate::lexer::render_token_slice(&sentence[name_start..]).trim().to_ascii_lowercase());continue;
         }

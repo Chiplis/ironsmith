@@ -17,7 +17,7 @@ pub(super) fn read(
         return Ok(None);
     }
     let tokens = second.lowered();
-    let Some(and) = tokens.iter().position(|token| token.is_word("and")) else {
+    let Some(and) = tokens.iter().position(|token| token.matches_word("and")) else {
         return Ok(None);
     };
     let head = &tokens[..and];

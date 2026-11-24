@@ -329,26 +329,26 @@ mod minimum_actual_color_tests {
 /// and independent remaining-toughness bound. No keyword identity is inferred.
 fn read_bounded_counter_payment(tokens: &[OwnedLexToken]) -> bool {
     let tokens = crate::util::trim_edge_punctuation_tokens(tokens);
-    let Some(put) = tokens.iter().position(|token| token.is_word("put")) else { return false; };
+    let Some(put) = tokens.iter().position(|token| token.matches_word("put")) else { return false; };
     let words = TokenWordView::new(&tokens[..put]).word_refs();
     if !matches!(words.as_slice(),
         ["for", "each", "generic", "mana", "in", "this", "spell's" | "spells", "total", "cost", "you", "may"]
         | ["for", "each", "generic", "mana", "in", "this", "spell", "s", "total", "cost", "you", "may"])
     { return false; }
-    let Some(counter) = tokens.iter().enumerate().skip(put+1).find_map(|(i,t)|t.is_word("counter").then_some(i)) else { return false; };
+    let Some(counter) = tokens.iter().enumerate().skip(put+1).find_map(|(i,t)|t.matches_word("counter").then_some(i)) else { return false; };
     let start = put + 1 + usize::from(tokens.get(put+1).is_some_and(|token| token.is_word("a")));
     if crate::grammar::filters::parse_counter_type_from_tokens(&tokens[start..counter]) != Some(ironsmith_core::CounterType::MinusOneMinusOne)
         || !tokens.get(counter+1).is_some_and(|token|token.is_word("on")) { return false; }
-    let Some(bound) = tokens.iter().enumerate().skip(counter+2).find_map(|(i,t)|t.is_any_word(&["with","up"]).then_some(i)) else { return false; };
+    let Some(bound) = tokens.iter().enumerate().skip(counter+2).find_map(|(i,t)|t.matches_any_word(&["with","up"]).then_some(i)) else { return false; };
     let Ok(filter) = crate::object_filters::parse_object_filter_lexed(&tokens[counter+2..bound],false) else { return false; };
     if filter != ironsmith_core::ObjectFilter::creature().controlled_by(ironsmith_core::PlayerFilter::You) { return false; }
-    let Some(rather) = tokens.iter().enumerate().skip(bound).find_map(|(i,t)|t.is_word("rather").then_some(i)) else { return false; };
+    let Some(rather) = tokens.iter().enumerate().skip(bound).find_map(|(i,t)|t.matches_word("rather").then_some(i)) else { return false; };
     if TokenWordView::new(&tokens[rather..]).word_refs() != ["rather","than","pay","that","mana"] { return false; }
     let bounds = &tokens[bound..rather];
     let short = TokenWordView::new(bounds).word_refs() == ["up","to","its","remaining","toughness"];
     let long = bounds.first().is_some_and(|t|t.is_word("with"))
         && bounds.get(1).is_some_and(|t|t.is_word("toughness"))
-        && bounds.iter().position(|t|t.is_word("or")).is_some_and(|or| {
+        && bounds.iter().position(|t|t.matches_word("or")).is_some_and(|or| {
             crate::util::parse_number_word_u32(&crate::lexer::render_token_slice(&bounds[2..or])) == Some(1)
                 && TokenWordView::new(&bounds[or..]).word_refs() == ["or","greater","and","less","damage","marked","on","it","than","its","toughness"]
         });

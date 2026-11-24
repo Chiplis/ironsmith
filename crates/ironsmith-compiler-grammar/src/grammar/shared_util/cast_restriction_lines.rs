@@ -31,10 +31,12 @@ pub fn parse_cast_this_spell_only(
     // instant or sorcery spell." (Suffocation): any typed static condition
     // gates casting (CR 601.3).
     if tail.first() == Some(&"if")
-        && let Some(if_idx) = tokens.iter().position(|token| token.is_word("if"))
+        && let Some(if_idx) = tokens.iter().position(|token| token.matches_word("if"))
         && let Some(condition) =
             crate::keyword_static::cast_only_if_condition(&tokens[if_idx + 1..])
     {
+        // The "if" opening the cast condition.
+        crate::word_claims::claim_tokens(&tokens[if_idx..=if_idx]);
         return Ok(Some(StaticAbility::this_spell_cast_restriction(
             Restriction::only_if(condition),
             crate::lexer::render_token_slice(tokens).trim().to_string(),

@@ -106,7 +106,7 @@ pub fn parse_token_template_replacement(tokens: &[OwnedLexToken]) -> Option<Toke
         // "instead choose a creature other than Esix and create that many
         // tokens that are copies of that creature" (Esix, Fractal Bloom).
         if leading_instead && let Some((_, rest)) = primitives::parse_prefix(body, primitives::kw("choose")) {
-            let split = rest.windows(2).position(|pair| pair[0].is_word("and") && pair[1].is_word("create"))?;
+            let split = rest.windows(2).position(|pair| pair[0].matches_word("and") && pair[1].matches_word("create"))?;
             if split == 0 { return None; }
             chosen_copy_source = Some(&rest[..split]);
             body = &rest[split + 1..];
@@ -140,6 +140,7 @@ pub fn parse_token_template_replacement(tokens: &[OwnedLexToken]) -> Option<Toke
         (TokenCreationTemplateMode::ReplaceEach, body)
     };
     let mut templates = Vec::new();
+    let mut separators = Vec::new();
     let mut choose_one = false;
     if addition.is_some() {
         templates.push(template_body);
@@ -153,18 +154,21 @@ pub fn parse_token_template_replacement(tokens: &[OwnedLexToken]) -> Option<Toke
             let mut quoted = false;
             let split = descriptor.iter().enumerate().find_map(|(index, token)| {
                 if token.is_quote() { quoted = !quoted; return None; }
-                if quoted || !(token.is_word("and") || token.is_word("or")) { return None; }
-                quantity(&descriptor[index + 1..]).map(|_| (index, token.is_word("or")))
+                if quoted || !(token.matches_word("and") || token.matches_word("or")) { return None; }
+                quantity(&descriptor[index + 1..]).map(|_| (index, token.matches_word("or")))
             });
             if let Some((index, alternative)) = split {
                 if !templates.is_empty() && choose_one != alternative { return None; }
                 choose_one = alternative;
+                separators.push(&descriptor[index..=index]);
                 templates.push(&descriptor[..index]); rest = &descriptor[index + 1..];
             } else { templates.push(descriptor); break; }
         }
     }
     if templates.iter().any(|template| template.is_empty()) { return None; }
     if chosen_copy_source.is_some() && (templates.len() != 1 || choose_one) { return None; }
+    // The "and"/"or" between recipes, found by the split scan above.
+    for separator in separators { crate::word_claims::claim_tokens(separator); }
     Some(TokenTemplateReplacement {
         source_descriptor, templates, mode, choose_one, optional, first_time_each_turn,
         first_time_each_of_your_turns, chosen_copy_source,

@@ -70,13 +70,15 @@ pub fn parse_onto_battlefield_destination_shape(
     }
     // "blocking that creature" (Aetherplasm): the blocked attacker.
     let mut blocking_tokens = None;
-    if let Some(index) = destination_tail.iter().position(|token| token.is_word("blocking"))
+    if let Some(index) = destination_tail.iter().position(|token| token.matches_word("blocking"))
         && destination_tail
             .get(index + 1)
             .is_some_and(|token| token.is_word("that") || token.is_word("it"))
     {
         let reference = destination_tail[index + 1..].to_vec();
         if reference.len() <= 2 {
+            // "blocking", found by the scan above.
+            crate::word_claims::claim_tokens(&destination_tail[index..=index]);
             blocking_tokens = Some(reference);
             destination_tail.truncate(index);
         }

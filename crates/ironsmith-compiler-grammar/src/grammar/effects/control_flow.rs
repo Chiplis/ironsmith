@@ -479,7 +479,7 @@ fn recognize_trailing_condition(
     // silently replace the payment with whatever predicate it can scrape.
     if condition_tokens
         .iter()
-        .any(|token| token.is_word("pays") || token.is_word("pay"))
+        .any(|token| token.matches_word("pays") || token.matches_word("pay"))
     {
         return None;
     }
@@ -509,7 +509,7 @@ fn is_face_down_return_if_then_turn_procedure(tokens: &[OwnedLexToken]) -> bool 
         .is_some_and(|token| token.is_word("return"))
         || !return_tokens
             .iter()
-            .any(|token| token.is_word("battlefield"))
+            .any(|token| token.matches_word("battlefield"))
         || primitives::find_prefix(return_tokens, || {
             primitives::phrase(&["face", "down"]).void()
         })
@@ -583,7 +583,7 @@ pub fn is_anaphoric_destroy_battlefield_guard(tokens: &[OwnedLexToken]) -> bool 
     matches!(
         terminal_head.form,
         ClauseHeadFormAst::Action(ClauseVerbAst::Destroy)
-    ) && terminal_tokens.iter().any(|token| token.is_word("that"))
+    ) && terminal_tokens.iter().any(|token| token.matches_word("that"))
 }
 
 fn wrap_body_semantics(
@@ -617,7 +617,7 @@ fn wrap_body_semantics(
     }
     let contains_permission = tokens
         .iter()
-        .any(|token| token.is_word("may") || token.is_word("can") || token.is_word("could"));
+        .any(|token| token.matches_word("may") || token.matches_word("can") || token.matches_word("could"));
     if contains_permission {
         let actor = match head.actor {
             ClauseActorHeadAst::Player if head.first_word == "opponent" => {

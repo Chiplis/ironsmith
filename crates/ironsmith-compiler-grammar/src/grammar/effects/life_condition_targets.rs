@@ -49,7 +49,7 @@ pub(super) fn target_prelude(
     // Only an authored target in this condition establishes a new choice.
     let authored_targets = predicate_tokens
         .iter()
-        .filter(|token| token.is_word("target"))
+        .filter(|token| token.matches_word("target"))
         .count();
     if authored_targets == 0 {
         return Ok(Vec::new());
@@ -67,7 +67,7 @@ pub(super) fn target_prelude(
         if token.is_quote() {
             quoted = !quoted;
         }
-        !quoted && token.is_word("instead")
+        !quoted && token.matches_word("instead")
     });
     if found.len() != 1 || outer_instead {
         return Err(CardTextError::ParseError(

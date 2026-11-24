@@ -11,9 +11,9 @@ use crate::lexer::parser_token_word_refs;
 /// Index of a "that number"/"the number" reference not followed by "of".
 fn reference_index(sentence: &[OwnedLexToken]) -> Option<usize> {
     (0..sentence.len().saturating_sub(1)).find(|&index| {
-        sentence[index].is_any_word(&["that", "the"])
-            && sentence[index + 1].is_word("number")
-            && !sentence.get(index + 2).is_some_and(|token| token.is_word("of"))
+        sentence[index].matches_any_word(&["that", "the"])
+            && sentence[index + 1].matches_word("number")
+            && !sentence.get(index + 2).is_some_and(|token| token.matches_word("of"))
     })
 }
 
@@ -42,6 +42,7 @@ pub(crate) fn read(
         return Ok(None);
     }
     let mut effects = Vec::new();
+    let mut references = Vec::new();
     for sentence in rest {
         let Some(index) = reference_index(sentence) else {
             return Ok(None);
@@ -50,9 +51,12 @@ pub(crate) fn read(
         substituted.extend_from_slice(quantity);
         substituted.extend_from_slice(&sentence[index + 2..]);
         effects.extend(super::parse_effect_sentence_lexed(&substituted)?);
+        references.extend_from_slice(&sentence[index..index + 2]);
     }
-    // "count" read as taking the count the later sentences substitute.
+    // "count" read as taking the count the later sentences substitute, and
+    // each "that number"/"the number" read as that count.
     let count = crate::util::trim_edge_punctuation_tokens(count);
     crate::word_claims::claim_tokens(&count[..1]);
+    crate::word_claims::claim_tokens(&references);
     Ok(Some(effects))
 }

@@ -84,7 +84,7 @@ pub fn parse_unquoted_emblem_action(
         .iter()
         .enumerate()
         .find_map(|(index, token)| {
-            if !token.is_word("then") {
+            if !token.matches_word("then") {
                 return None;
             }
             let previous = payload_tokens.get(index.saturating_sub(1))?;

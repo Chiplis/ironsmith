@@ -897,7 +897,7 @@ fn quantified_statement(
 /// player".
 fn rewrite_each_of_them(tokens: &[OwnedLexToken]) -> Option<Vec<OwnedLexToken>> {
     let start = tokens.windows(3).position(|window| {
-        window[0].is_word("each") && window[1].is_word("of") && window[2].is_word("them")
+        window[0].matches_word("each") && window[1].matches_word("of") && window[2].matches_word("them")
     })?;
     crate::word_claims::claim_tokens(&tokens[start..start + 3]);
     let mut rewritten = tokens[..start].to_vec();
@@ -1172,8 +1172,8 @@ pub(super) fn continue_with(
         // right after a quantified statement acts on the objects each
         // iteration produced, so it continues that iteration's body.
         if tokens.windows(2).any(|pair| {
-            pair[0].is_word("those")
-                && pair[1].is_any_word(&["creatures", "permanents", "cards", "artifacts", "lands"])
+            pair[0].matches_word("those")
+                && pair[1].matches_any_word(&["creatures", "permanents", "cards", "artifacts", "lands"])
         }) && group.last_group.is_some()
             && let Some(body) = last_iteration_body(&mut group.effects)
         {

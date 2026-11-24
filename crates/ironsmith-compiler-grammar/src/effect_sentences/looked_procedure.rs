@@ -426,7 +426,7 @@ mod optional_filtered_remainder_tests {
             crate::lexer::lex_line("You may put the rest into your graveyard", 2).unwrap(),
         ];
         let sentences: Vec<_> = tokens.iter().map(|line| SentenceInput::from_lexed(line)).collect();
-        let noun = tokens[1].iter().find(|token| token.is_word("card")).unwrap();
+        let noun = tokens[1].iter().find(|token| token.matches_word("card")).unwrap();
         let (effects, claims) = crate::word_claims::with_enforcement_options(true, true, || crate::word_claims::scoped(|| {
             let mut group = open(&sentences, 0).expect("look opens a viewed group");
             assert!(continue_with(&mut group, &sentences[1], &sentences[2..]).unwrap());

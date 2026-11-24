@@ -95,7 +95,7 @@ pub fn parse_combat_requirement_line(tokens: &[OwnedLexToken]) -> Option<CombatR
 fn clean_subject(tokens: &[OwnedLexToken]) -> bool {
     !tokens.iter().any(|token| {
         token.is_period() || token.kind == crate::lexer::TokenKind::Quote
-            || token.is_any_word(&["gets", "get", "has", "have", "gains", "gain", "and", "target"])
+            || token.matches_any_word(&["gets", "get", "has", "have", "gains", "gain", "and", "target"])
     })
 }
 

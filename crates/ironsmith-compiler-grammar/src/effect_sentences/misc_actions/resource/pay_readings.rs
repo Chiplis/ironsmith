@@ -364,7 +364,7 @@ fn read_disjunctive_pay(input: &PayClause<'_>) -> Result<Option<EffectAst>, Card
     let or_positions = tokens
         .iter()
         .enumerate()
-        .filter(|(_, token)| token.is_word("or"))
+        .filter(|(_, token)| token.matches_word("or"))
         .map(|(idx, _)| idx)
         .collect::<Vec<_>>();
     let [or_idx] = or_positions.as_slice() else {

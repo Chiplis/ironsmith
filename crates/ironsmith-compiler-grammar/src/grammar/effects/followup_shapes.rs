@@ -216,7 +216,7 @@ pub fn conditional_instead_restatement_action(tokens: &[OwnedLexToken]) -> Optio
     let tokens = super::split_labeled_effect_prefix_lexed(tokens).unwrap_or(tokens);
     let (condition, action) =
         crate::grammar::primitives::probe_all(tokens, shape, "conditional instead restatement")?;
-    (!condition.iter().any(|token| token.is_word("would"))).then_some(action)
+    (!condition.iter().any(|token| token.matches_word("would"))).then_some(action)
 }
 
 pub fn parse_create_more_prior_tokens(

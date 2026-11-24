@@ -41,7 +41,7 @@ pub fn parse_instead_followup_semantics_lexed<'a>(
 /// head ("If a creature would die this turn, ..."). True when a leading-if
 /// head ends at a comma without "would" and "would" occurs only after it.
 fn would_outside_conditional_head(tokens: &[&OwnedLexToken]) -> bool {
-    let Some(if_idx) = tokens.iter().position(|token| token.is_word("if")) else {
+    let Some(if_idx) = tokens.iter().position(|token| token.matches_word("if")) else {
         return false;
     };
     let Some(comma_offset) = tokens[if_idx..].iter().position(|token| token.is_comma()) else {
@@ -50,7 +50,7 @@ fn would_outside_conditional_head(tokens: &[&OwnedLexToken]) -> bool {
     let head = &tokens[if_idx..if_idx + comma_offset];
     !tokens[..if_idx + comma_offset]
         .iter()
-        .any(|token| token.is_word("would"))
+        .any(|token| token.matches_word("would"))
         && !head.is_empty()
 }
 

@@ -1217,7 +1217,7 @@ fn parse_distributive_compound_subject_filter(
         let segment = trim_commas(&tokens[start..end]);
         let filter_tokens = segment
             .first()
-            .filter(|token| token.is_word("each") || token.is_word("every"))
+            .filter(|token| token.matches_word("each") || token.matches_word("every"))
             .map(|_| &segment[1..])
             .unwrap_or(segment.as_slice());
         let Some(filter) = parse_subject_object_filter(filter_tokens)? else {
@@ -1615,7 +1615,7 @@ pub fn parse_negated_object_restriction_clause(
                 &["each", "of", "them"],
                 &["each", "of", "those", "creatures"],
             ],
-        ) && tokens[neg_end..].iter().any(|token| token.is_word("untap")))
+        ) && tokens[neg_end..].iter().any(|token| token.matches_word("untap")))
         {
             // "Tap up to one target creature ... Each of those creatures
             // doesn't untap": the distributive demonstrative names the same
@@ -1629,7 +1629,7 @@ pub fn parse_negated_object_restriction_clause(
             // "Each of those creatures doesn't untap ..." (Dread Wight): the
             // authored creature noun names the subject surface only; the
             // tagged identity stays the executable reference.
-            if tokens[neg_end..].iter().any(|token| token.is_word("untap"))
+            if tokens[neg_end..].iter().any(|token| token.matches_word("untap"))
                 && crate::word_primitives::parse_any_sequence_complete(
                     &subject_words,
                     &[
@@ -1872,7 +1872,12 @@ pub fn parse_negated_object_restriction_clause(
     // "can't attack Jaces you control" (Jace, Multiverse Architect): a ban
     // on choosing particular planeswalkers or battles as attack targets.
     if remainder_words.first() == Some(&"attack")
-        && !matches!(remainder_words.get(1), Some(&"you") | Some(&"alone") | None)
+        // "can't attack unless defending player controls an Island" (Veiled
+        // Serpent's granted rule) is a condition, not attacked permanents.
+        && !matches!(
+            remainder_words.get(1),
+            Some(&"you") | Some(&"alone") | Some(&"unless") | Some(&"if") | None
+        )
         // "its owner or planeswalkers its owner controls" names a player as
         // well; the typed tail below owns it.
         && restriction_grammar::parse_negated_object_tail_words(&remainder_words)
@@ -2042,7 +2047,7 @@ pub fn parse_negated_object_restriction_clause(
                         let keep = blocker_tokens
                             .iter()
                             .enumerate()
-                            .filter(|(_, token)| token.is_word("with"))
+                            .filter(|(_, token)| token.matches_word("with"))
                             .map(|(idx, _)| idx)
                             .last()
                             .unwrap_or(blocker_tokens.len());

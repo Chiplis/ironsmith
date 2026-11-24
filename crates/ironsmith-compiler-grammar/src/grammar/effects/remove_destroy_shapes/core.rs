@@ -6,7 +6,7 @@ fn parse_controller_dealt_combat_damage_by_source_filter(
 ) -> Option<(&[OwnedLexToken], &[OwnedLexToken])> {
     const RELATION: &[&str] = &["whose", "controller", "was", "dealt", "combat", "damage", "by"];
     let tokens = trim_lexed_commas(tokens);
-    let whose = tokens.iter().position(|token| token.is_word("whose"))?;
+    let whose = tokens.iter().position(|token| token.matches_word("whose"))?;
     let after = tokens.get(whose + RELATION.len()..)?;
     if crate::lexer::token_word_refs(&tokens[whose..whose + RELATION.len()]) != RELATION
         || after.len() < 3

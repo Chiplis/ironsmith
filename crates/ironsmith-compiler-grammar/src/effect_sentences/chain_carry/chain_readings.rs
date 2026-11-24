@@ -571,10 +571,10 @@ pub(super) fn parse_named_token_appositive_tokens(tokens: &[OwnedLexToken]) -> R
     let named_token_appositive = tokens.first().is_some_and(|token| token.is_word("create"))
         && crate::slice_primitives::select_position(tokens, OwnedLexToken::is_comma).is_some_and(
             |comma| {
-                !tokens[..comma].iter().any(|token| token.is_word("token"))
+                !tokens[..comma].iter().any(|token| token.matches_word("token"))
                     && tokens[comma + 1..]
                         .iter()
-                        .any(|token| token.is_word("token"))
+                        .any(|token| token.matches_word("token"))
             },
         );
     if named_token_appositive {
@@ -584,7 +584,7 @@ pub(super) fn parse_named_token_appositive_tokens(tokens: &[OwnedLexToken]) -> R
         let mut in_quote = false;
         let token_word = tokens.iter().position(|token| {
             if token.kind == crate::lexer::TokenKind::Quote { in_quote = !in_quote; }
-            !in_quote && (token.is_word("token") || token.is_word("tokens"))
+            !in_quote && (token.matches_word("token") || token.matches_word("tokens"))
         });
         let mut quoted = false;
         let then_split = tokens.iter().enumerate().position(|(index, token)| {
@@ -592,7 +592,7 @@ pub(super) fn parse_named_token_appositive_tokens(tokens: &[OwnedLexToken]) -> R
             !quoted
                 && token_word.is_some_and(|word| index > word)
                 && token.is_comma()
-                && tokens.get(index + 1).is_some_and(|next| next.is_word("then"))
+                && tokens.get(index + 1).is_some_and(|next| next.matches_word("then"))
                 && tokens.len() > index + 2
         });
         if let Some(split) = then_split {
@@ -609,8 +609,8 @@ pub(super) fn parse_named_token_appositive_tokens(tokens: &[OwnedLexToken]) -> R
             if token.kind == crate::lexer::TokenKind::Quote { quoted = !quoted; }
             !quoted
                 && token_word.is_some_and(|word| index > word)
-                && token.is_word("then")
-                && tokens.get(index + 1).is_some_and(|next| next.is_any_word(&["attach", "put", "tap", "untap", "exile", "sacrifice", "return", "draw"]))
+                && token.matches_word("then")
+                && tokens.get(index + 1).is_some_and(|next| next.matches_any_word(&["attach", "put", "tap", "untap", "exile", "sacrifice", "return", "draw"]))
         });
         if let Some(split) = bare_then {
             let mut effects = vec![super::super::creation_handlers::parse_create(&tokens[..split], None)?];
@@ -1374,7 +1374,7 @@ fn read_or_action_clause(input: &Chain<'_>) -> Result<Option<Vec<EffectAst>>, Ca
     // "in any combination of {U}, {B}, and/or {R}" (Relic of Sauron) lists
     // mana symbols; its "or" is not an action alternative.
     if tokens.windows(3).any(|window| {
-        window[0].is_word("any") && window[1].is_word("combination") && window[2].is_word("of")
+        window[0].matches_word("any") && window[1].matches_word("combination") && window[2].matches_word("of")
     }) {
         return Ok(None);
     }
@@ -1438,7 +1438,7 @@ fn read_coordinated_and_segments(
     // recipients. Let the exile reader retain the set's own conjunctions.
     if tokens.first().is_some_and(|token| token.is_word("exile"))
         && let Some(and_index) = tokens.windows(2)
-            .position(|pair| pair[0].is_word("and") && pair[1].is_word("each"))
+            .position(|pair| pair[0].matches_word("and") && pair[1].matches_word("each"))
         && and_index > 1
         && crate::util::is_source_reference_words(&crate::lexer::token_word_refs(&tokens[1..and_index]))
     {
@@ -1448,7 +1448,7 @@ fn read_coordinated_and_segments(
         // following action is its own effect, never part of the filter.
         if let Some(comma_index) = tokens[and_index..]
             .windows(2)
-            .position(|pair| pair[0].is_comma() && pair[1].is_word("then"))
+            .position(|pair| pair[0].is_comma() && pair[1].matches_word("then"))
             .map(|offset| and_index + offset)
             && comma_index + 2 < tokens.len()
         {
@@ -1477,15 +1477,15 @@ fn read_coordinated_and_segments(
     // A shown hand is a zone antecedent, distinct from the object antecedent
     // in a following same-name restriction. Expand only the bound zone phrase.
     if let Some(hand) = tokens.windows(3).position(|w| {
-        w[0].is_any_word(&["reveal", "reveals"]) && w[1].is_word("their") && w[2].is_word("hand")
+        w[0].matches_any_word(&["reveal", "reveals"]) && w[1].matches_word("their") && w[2].matches_word("hand")
     }) && let Some(from) = tokens[hand + 3..]
         .windows(2)
-        .position(|w| w[0].is_word("from") && w[1].is_word("it"))
+        .position(|w| w[0].matches_word("from") && w[1].matches_word("it"))
     {
         let from = hand + 3 + from;
         if tokens[hand + 3..from]
             .iter()
-            .any(|token| token.is_any_word(&["exile", "exiles"]))
+            .any(|token| token.matches_any_word(&["exile", "exiles"]))
         {
             let mut expanded = tokens[..from + 1].to_vec();
             expanded.extend(crate::lexer::synthetic_word_tokens(&["their", "hand"]));
@@ -1532,6 +1532,8 @@ fn read_coordinated_and_segments(
                     },
                 );
             }
+            // The pronoun "it", read as the shown hand it was expanded to.
+            crate::word_claims::claim_tokens(&tokens[from + 1..from + 2]);
             return Ok(Some(effects));
         }
     }
@@ -1641,8 +1643,8 @@ fn read_effect_and_delayed_schedule(
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     let tokens = input.tokens;
     let Some(and_idx) = (1..tokens.len()).find(|&idx| {
-        tokens[idx].is_word("and")
-            && tokens.get(idx + 1).is_some_and(|next| next.is_word("at"))
+        tokens[idx].matches_word("and")
+            && tokens.get(idx + 1).is_some_and(|next| next.matches_word("at"))
             && crate::grammar::effects::delayed_sentence_shapes::parse_delayed_schedule_sentence_shape(
                 &tokens[idx + 1..],
             )

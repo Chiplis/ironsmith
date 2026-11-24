@@ -226,7 +226,7 @@ pub fn parse_consult_move_bottom_shape(tokens: &[OwnedLexToken]) -> Option<Consu
     // and the remainder, not an entry modifier consumed by this shape.
     if tokens
         .iter()
-        .any(|token| token.is_any_word(&["attach", "attaches"]))
+        .any(|token| token.matches_any_word(&["attach", "attaches"]))
     {
         return None;
     }
@@ -268,13 +268,13 @@ pub fn parse_consult_move_bottom_shape(tokens: &[OwnedLexToken]) -> Option<Consu
         return None;
     }
     let attached_to_tokens =
-        if let Some(attached) = tokens.iter().position(|token| token.is_word("attached")) {
+        if let Some(attached) = tokens.iter().position(|token| token.matches_word("attached")) {
             if zone != Zone::Battlefield || !tokens.get(attached + 1)?.is_word("to") {
                 return None;
             }
             let start = attached + 2;
             let end = tokens[start..].iter().position(|token| {
-                token.kind == TokenKind::Comma || token.is_any_word(&["then", "and"])
+                token.kind == TokenKind::Comma || token.matches_any_word(&["then", "and"])
             })? + start;
             if end == start {
                 return None;

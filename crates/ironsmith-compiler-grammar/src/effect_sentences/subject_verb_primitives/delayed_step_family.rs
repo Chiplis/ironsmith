@@ -1084,7 +1084,7 @@ pub fn try_build_unless(
             let reduced_words = reduced_words.to_word_refs();
             if reduced_words.starts_with(&["pay", "its", "mana", "cost", "reduced", "by"])
                 && !before_delayed_step
-                && let Some(by) = action_clause.tokens().iter().position(|token| token.is_word("by"))
+                && let Some(by) = action_clause.tokens().iter().position(|token| token.matches_word("by"))
                 && let Ok(reduction) = crate::grammar::values::parse_mana_cost_tokens(
                     crate::util::trim_edge_punctuation_tokens(&action_clause.tokens()[by + 1..]),
                 )
@@ -1364,7 +1364,7 @@ fn implicit_become_object_template_with_abilities(
     {
         tokens = &tokens[1..];
     }
-    if !tokens.iter().any(|token| token.is_word("with")) {
+    if !tokens.iter().any(|token| token.matches_word("with")) {
         return Ok(None);
     }
     let singular = |word: &str| match word {
@@ -1400,7 +1400,7 @@ fn implicit_become_object_template_with_abilities(
     }
     // The template read the singular stand-ins for the authored plural type
     // nouns ("Food artifacts"); those authored nouns are what it read.
-    if let Some(with) = tokens.iter().position(|token| token.is_word("with")) {
+    if let Some(with) = tokens.iter().position(|token| token.matches_word("with")) {
         for token in &tokens[..with] {
             if token.as_word().and_then(singular).is_some() {
                 crate::word_claims::claim_tokens(std::slice::from_ref(token));

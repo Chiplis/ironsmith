@@ -156,7 +156,7 @@ pub fn parse_choice_complement_clause(tokens: &[OwnedLexToken]) -> Option<LexedC
     // "and" ("chooses five lands they control and sacrifices the rest").
     // Only try this surface when no `then` exists, so an `and` inside a
     // multi-slot choice list is never mistaken for the action boundary.
-    if tokens.iter().any(|token| token.is_word("then")) {
+    if tokens.iter().any(|token| token.matches_word("then")) {
         return None;
     }
     let and_atoms = [

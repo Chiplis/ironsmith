@@ -4,12 +4,12 @@ use crate::lexer::OwnedLexToken;
 pub fn parse(tokens:&[OwnedLexToken])->Result<Option<Vec<EffectAst>>,CardTextError>{
  let clean=crate::util::trim_edge_punctuation_tokens(tokens);
  if !clean.first().is_some_and(|token|token.is_word("group")){return Ok(None)}
- let so=clean.iter().position(|token|token.is_word("so")).unwrap_or(clean.len());
+ let so=clean.iter().position(|token|token.matches_word("so")).unwrap_or(clean.len());
  let rule=crate::lexer::token_word_refs(&clean[so..]);
  let owned=rule==["so","all","members","attack","and","block","if","any","member","or","the","owner","does","if","able"];
  let ownerless=rule==["so","all","members","attack","and","block","if","any","member","does","if","able"];
  if so<clean.len()&&!owned&&!ownerless{return Ok(None)}
- let body=&clean[1..so];let with=body.iter().position(|token|token.is_word("under"));
+ let body=&clean[1..so];let with=body.iter().position(|token|token.matches_word("under"));
  if so<clean.len()&&owned!=with.is_some(){return Ok(None)}
  let subject_tokens=if let Some(with)=with{&body[..with]}else{body};
  // "Group each token created this way": every member of the created set,

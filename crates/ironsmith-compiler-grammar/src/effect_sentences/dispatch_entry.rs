@@ -1325,7 +1325,7 @@ pub fn future_zone_replacement_from_sentence_tokens(tokens: &[OwnedLexToken]) ->
     // instead." (Forgotten Cellar): an instruction coordinated with a
     // one-turn replacement is both effects, in order.
     if let Some(split) = tokens.windows(3).position(|window| {
-        window[0].is_comma() && window[1].is_word("and") && window[2].is_word("if")
+        window[0].is_comma() && window[1].matches_word("and") && window[2].matches_word("if")
     }) && let Ok(Some(replacement)) =
         super::dispatch_inner::parse_zone_replacement_subject_verb(&tokens[split + 2..])
         && let Ok(mut effects) = super::parse_effect_sentence_lexed(&tokens[..split])
@@ -1540,7 +1540,7 @@ pub fn future_zone_replacement_from_sentence_tokens(tokens: &[OwnedLexToken]) ->
         // "it" reading below.
         if tokens.first().is_some_and(|token| token.is_word("if"))
             && !sentence_contains(tokens, CREATURE_OPPONENT_CONTROLS_WOULD_DIE_PHRASE)
-            && let Some(would) = tokens.iter().position(|token| token.is_word("would"))
+            && let Some(would) = tokens.iter().position(|token| token.matches_word("would"))
             && would > 2
             && tokens[1].is_any_word(&["a", "an"])
             && matches!(
@@ -1579,7 +1579,7 @@ pub fn future_zone_replacement_from_sentence_tokens(tokens: &[OwnedLexToken]) ->
             // "If that permanent would die this turn" (Essence Burn): the
             // demonstrative names the tagged object this replacement watches.
             if tokens.first().is_some_and(|token| token.is_word("if"))
-                && let Some(would) = tokens.iter().position(|token| token.is_word("would"))
+                && let Some(would) = tokens.iter().position(|token| token.matches_word("would"))
                 && matches!(
                     crate::lexer::token_word_refs(&tokens[1..would]).as_slice(),
                     ["it"] | ["that", "creature" | "permanent" | "card" | "planeswalker"]
@@ -2521,7 +2521,7 @@ pub(crate) fn where_x_value_from_tokens(tokens: &[OwnedLexToken]) -> Option<Valu
                     .map(|shape| shape.where_tokens)
             })
             .or_else(|| {
-                let index = tokens.iter().position(|token| token.is_word("where"))?;
+                let index = tokens.iter().position(|token| token.matches_word("where"))?;
                 (tokens.get(index + 1).is_some_and(|token| token.is_word("x"))
                     && tokens.get(index + 2).is_some_and(|token| token.is_word("is")))
                     .then_some(&tokens[index..])
@@ -3335,7 +3335,7 @@ pub(super) fn parse_effect_sentences_from_sentence_inputs(
             .is_some_and(|token| token.is_word("if"))
             && !authored_sentence
                 .iter()
-                .any(|token| token.is_word("instead"))
+                .any(|token| token.matches_word("instead"))
             && authored_sentence
                 .iter()
                 .any(|token| token.kind == TokenKind::ManaGroup)
@@ -5296,7 +5296,7 @@ fn parse_complete_simple_draw_sentence(
     }
     if tokens[..draw_idx].iter().any(|token| {
         token.kind == TokenKind::Comma
-            || token.is_any_word(&["if", "unless", "when", "whenever", "until", "then", "may"])
+            || token.matches_any_word(&["if", "unless", "when", "whenever", "until", "then", "may"])
     }) {
         return Ok(None);
     }
@@ -5454,7 +5454,7 @@ pub(crate) fn parse_complete_simple_subject_verb_sentence(
     {
         return Ok(None);
     }
-    if tokens[..gain_idx].iter().any(|token| token.is_word("may")) {
+    if tokens[..gain_idx].iter().any(|token| token.matches_word("may")) {
         // An optional action keeps its `may` scope; the may-aware chain
         // routes own the wrapper.
         return Ok(None);
@@ -5492,7 +5492,7 @@ pub(crate) fn parse_complete_simple_subject_verb_sentence(
             EffectAst::Sequence { effects: vec![EffectAst::subject_verb_target_only(target), effect] }
         } else { effect }));
     }
-    if gain_tokens.iter().any(|token| token.is_word("life")) {
+    if gain_tokens.iter().any(|token| token.matches_word("life")) {
         let effect = super::verb_handlers::parse_gain_life(gain_tokens, subject)?;
         return Ok(Some(if let Some(target) = random_subject {
             EffectAst::Sequence { effects: vec![EffectAst::subject_verb_target_only(target), effect] }
@@ -5577,7 +5577,7 @@ pub(super) fn parse_complete_simple_mill_sentence(
     };
     if tokens[..mill_idx].iter().any(|token| {
         token.kind == TokenKind::Comma
-            || token.is_any_word(&["may", "if", "unless", "when", "whenever", "then"])
+            || token.matches_any_word(&["may", "if", "unless", "when", "whenever", "then"])
     }) {
         return Ok(None);
     }
@@ -5986,6 +5986,8 @@ fn parse_complete_serial_create_statement(
             provenance: None,
         });
     }
+    // The shared "create(s)" each operand's synthetic verb stands for.
+    crate::word_claims::claim_tokens(&sentence[verb_token_idx..=verb_token_idx]);
     Ok(Some(vec![EffectAst::Coordination(
         crate::model::CoordinationAst {
             kind: crate::model::CoordinationKindAst::Conjunction,
@@ -6003,7 +6005,7 @@ pub(crate) fn parse_complete_create_statement(
     // A create verb inside an independently bounded program is not this
     // statement's outer action. Creator subjects cannot cross an unquoted
     // scope boundary; the owning reader parses its child program separately.
-    if let Some(create)=sentence.iter().position(|token|token.is_any_word(&["create","creates"])) {
+    if let Some(create)=sentence.iter().position(|token|token.matches_any_word(&["create","creates"])) {
         let mut quoted=false;
         if sentence[..create].iter().any(|token| {
             if token.kind==TokenKind::Quote {quoted=!quoted;return false;}
@@ -6030,7 +6032,7 @@ pub(crate) fn parse_complete_create_statement(
     // this statement's actor. Keep the enclosing grant intact.
     if let Some(create_idx) = sentence
         .iter()
-        .position(|token| token.is_any_word(&["create", "creates"]))
+        .position(|token| token.matches_any_word(&["create", "creates"]))
         && (sentence[..create_idx]
             .iter()
             .filter(|token| token.kind == TokenKind::Quote)
@@ -6039,7 +6041,7 @@ pub(crate) fn parse_complete_create_statement(
             == 1
             || sentence[..create_idx]
                 .iter()
-                .any(|token| token.is_any_word(&["choose", "chooses"])))
+                .any(|token| token.matches_any_word(&["choose", "chooses"])))
     {
         return Ok(None);
     }
@@ -6072,7 +6074,7 @@ pub(crate) fn parse_complete_create_statement(
             && sentences.first().is_some_and(|first| {
                 !first
                     .iter()
-                    .any(|token| token.is_any_word(&["create", "creates"]))
+                    .any(|token| token.matches_any_word(&["create", "creates"]))
             })
         {
             // The complete create program owns lines that begin with the
@@ -6215,6 +6217,8 @@ pub(crate) fn parse_complete_create_statement(
             .ends_with(&["or", "that", "player"]);
         let created =
             super::creation_handlers::parse_create(&parse_tokens[verb_idx..], Some(subject))?;
+        // The subject's "create(s)" verb, found by `find_verb` above.
+        crate::word_claims::claim_tokens(&parse_tokens[verb_idx..=verb_idx]);
         if controller_or_that_player {
             crate::word_claims::claim_tokens(&parse_tokens[verb_idx - 3..verb_idx]);
         }
@@ -6367,7 +6371,7 @@ pub(crate) fn parse_complete_get_pump_statement(
         || subject_body
             .iter()
             .any(|token| token.kind == TokenKind::Comma)
-        || subject_body.iter().any(|token| token.is_word("may"))
+        || subject_body.iter().any(|token| token.matches_word("may"))
     {
         // An optional pump keeps its `may` scope; the may-aware chain routes
         // own the wrapper.
@@ -6383,11 +6387,13 @@ pub(crate) fn parse_complete_get_pump_statement(
         )
         .map(|effects| effects.map(|effects| EffectAst::Sequence { effects }));
     }
-    if let Some(unless) = sentence.iter().position(|token| token.is_word("unless"))
+    if let Some(unless) = sentence.iter().position(|token| token.matches_word("unless"))
         && effect_grammar::parse_unless_pays_shape_tokens(&sentence[unless + 1..]).is_some()
         && let Some(pump) = parse_complete_get_pump_statement(&sentence[..unless])?
     {
         let (player, cost) = super::clause_primitives::parse_unless_pays_clause(&sentence[unless + 1..])?;
+        // The "unless" the pump was split from its payment at.
+        crate::word_claims::claim_tokens(&sentence[unless..=unless]);
         return Ok(Some(EffectAst::Conditionals(ConditionalEffectAst::UnlessPays {
             effects: vec![pump], player, cost, before_delayed_step: false,
         })));
@@ -6498,7 +6504,7 @@ fn parse_complete_compound_gain_statement_inner(
     // Independently conditioned modifiers retain one predicate per member.
     // Taking the final trailing-if as the whole sentence's envelope would
     // accidentally require both conditions for the first modifier.
-    if sentence.iter().filter(|token| token.is_word("if")).count() > 1
+    if sentence.iter().filter(|token| token.matches_word("if")).count() > 1
         && let ParseOutcome::Match(matched) =
             effect_grammar::coordination::recognize_coordination(sentence)
         && matched.value.members.len() > 1
@@ -6713,9 +6719,9 @@ pub(super) fn parse_flat_independent_statements(
     // them" reads the previous member's result, so it is not independent.
     if sentences.len() == 1 && crate::word_claims::probe_only(|| statements.iter().skip(1).any(|statement| {
         statement.windows(3).any(|window| {
-            window[0].is_word("from")
-                && window[1].is_word("among")
-                && window[2].is_any_word(&["them", "those"])
+            window[0].matches_word("from")
+                && window[1].matches_word("among")
+                && window[2].matches_any_word(&["them", "those"])
         })
     })) {
         return Ok(None);
@@ -7189,7 +7195,7 @@ fn parse_composable_typed_statements(
         sentence
             .iter()
             .find(|token| !token.is_comma())
-            .is_some_and(|token| token.is_word("otherwise"))
+            .is_some_and(|token| token.matches_word("otherwise"))
             || crate::word_claims::probe_only(|| {
                 subject_verb_followups::speed_floor_followup_minimum(sentence).is_some()
             })
@@ -7525,7 +7531,7 @@ pub(crate) fn parse_fight_with_before_modifier(
         crate::grammar::document_shapes::parse_statement_label_strip_tokens(modifier_tokens)
             .body_tokens;
     let Some(before) = modifier_tokens.windows(3).position(|window| {
-        window[0].is_word("before") && window[1].is_word("it") && window[2].is_word("fights")
+        window[0].matches_word("before") && window[1].matches_word("it") && window[2].matches_word("fights")
     }) else {
         return Ok(None);
     };
@@ -7538,7 +7544,7 @@ pub(crate) fn parse_fight_with_before_modifier(
     };
     let Some(gets) = modifier_tokens[..before]
         .iter()
-        .position(|token| token.is_word("gets"))
+        .position(|token| token.matches_word("gets"))
     else {
         return Ok(None);
     };
@@ -7600,6 +7606,9 @@ pub(crate) fn parse_fight_with_before_modifier(
         }
         _ => return Ok(None),
     }
+    // "before it fights", found by the scan above: the bonus is ordered
+    // before the fight.
+    crate::word_claims::claim_tokens(&modifier_tokens[before..before + 3]);
     Ok(Some(vec![
         EffectAst::TagReferenced {
             effect: Box::new(EffectAst::subject_verb_target_only(creature1)),
@@ -8243,7 +8252,7 @@ fn parse_for_each_of_those_players_who_didnt_discard(
     else {
         return Ok(None);
     };
-    let Some(discard_idx) = last[..comma].iter().position(|token| token.is_word("discard")) else {
+    let Some(discard_idx) = last[..comma].iter().position(|token| token.matches_word("discard")) else {
         return Ok(None);
     };
     let filter_tokens = &last[discard_idx + 1..comma];
@@ -8260,7 +8269,7 @@ fn parse_for_each_of_those_players_who_didnt_discard(
     if filter.zone == Some(Zone::Battlefield)
         && filter_tokens
             .iter()
-            .any(|token| token.is_word("card") || token.is_word("cards"))
+            .any(|token| token.matches_word("card") || token.matches_word("cards"))
     {
         filter.zone = None;
     }
@@ -8821,7 +8830,7 @@ pub fn parse_effect_sentences_lexed(
                 combine_shared_set_base_axes(&mut effects);
             }
             bind_single_outer_where_x(&mut effects, tokens)?;
-            if tokens.iter().any(|token| token.is_word("instead"))
+            if tokens.iter().any(|token| token.matches_word("instead"))
                 && matches!(effects.as_slice(), [EffectAst::SubjectVerb(subject)]
                     if matches!(subject.action, crate::cards::builders::SubjectVerbActionAst::LifeResources(
                         crate::cards::builders::LifeResourceActionAst::GainLife { .. })))
@@ -9077,7 +9086,7 @@ fn bind_where_x_threshold_conditions(tokens: &[OwnedLexToken], effects: &mut [Ef
     // its own sentence's context; re-reading it alone would lose the referent.
     if tokens[where_idx..end]
         .iter()
-        .any(|token| token.is_any_word(&["that", "those", "it", "its", "they", "their"]))
+        .any(|token| token.matches_any_word(&["that", "those", "it", "its", "they", "their"]))
     {
         return;
     }
@@ -9283,7 +9292,7 @@ pub(super) fn parse_single_put_counters_effect_chain(
     if !tokens.first().is_some_and(|token| token.is_word("put"))
         || !tokens
             .iter()
-            .any(|token| token.is_any_word(&["counter", "counters"]))
+            .any(|token| token.matches_any_word(&["counter", "counters"]))
     {
         return Err(CardTextError::ParseError(format!(
             "conditional counter body is not a put-counters clause (clause: '{}')",
@@ -16918,16 +16927,16 @@ fn parse_becomes_your_choice_sentence(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     let Some(becomes) = tokens.windows(4).position(|window| {
-        window[0].is_word("becomes")
-            && window[1].is_word("your")
-            && window[2].is_word("choice")
-            && window[3].is_word("of")
+        window[0].matches_word("becomes")
+            && window[1].matches_word("your")
+            && window[2].matches_word("choice")
+            && window[3].matches_word("of")
     }) else {
         return Ok(None);
     };
     let options = &tokens[becomes + 4..];
     let Some(or_idx) = options.windows(2).position(|pair| {
-        pair[0].is_word("or") && pair[1].is_any_word(&["a", "an"])
+        pair[0].matches_word("or") && pair[1].matches_any_word(&["a", "an"])
     }) else {
         return Ok(None);
     };
@@ -16936,13 +16945,13 @@ fn parse_becomes_your_choice_sentence(
     if first.is_empty() || second.is_empty() {
         return Ok(None);
     }
-    let Some(target_idx) = tokens[..becomes].iter().position(|token| token.is_word("target"))
+    let Some(target_idx) = tokens[..becomes].iter().position(|token| token.matches_word("target"))
     else {
         return Ok(None);
     };
     let verb_idx = tokens[target_idx..becomes]
         .iter()
-        .position(|token| token.is_any_word(&["loses", "gains", "gets"]))
+        .position(|token| token.matches_any_word(&["loses", "gains", "gets"]))
         .map_or(becomes, |offset| target_idx + offset);
     if verb_idx <= target_idx + 1 {
         return Ok(None);
@@ -16982,6 +16991,10 @@ fn parse_becomes_your_choice_sentence(
             if_false: second_effects,
         },
     ));
+    // "your choice of" and the "or" between the options, found by the
+    // scans above; the named-option choice models them.
+    crate::word_claims::claim_tokens(&tokens[becomes + 1..becomes + 4]);
+    crate::word_claims::claim_tokens(&options[or_idx..=or_idx]);
     Ok(Some(effects))
 }
 
@@ -17229,7 +17242,7 @@ fn parse_shuffle_library_then_document(
     let first_sentence = &rest[..first_sentence_end];
     let mut rewritten = rest.to_vec();
     if let Some(it_index) = first_sentence.windows(3).position(|window| {
-        window[0].is_word("top") && window[1].is_word("of") && window[2].is_word("it")
+        window[0].matches_word("top") && window[1].matches_word("of") && window[2].matches_word("it")
     }) {
         let it_index = it_index + 2;
         rewritten.splice(it_index..=it_index, [
@@ -17366,7 +17379,7 @@ fn parse_target_players_each_then_instead_document(
             continue;
         };
         let after = &next[comma + 1..];
-        let Some(instead) = after.iter().rposition(|token| token.is_word("instead")) else {
+        let Some(instead) = after.iter().rposition(|token| token.matches_word("instead")) else {
             continue;
         };
         if after.len() < 6
@@ -17424,7 +17437,7 @@ fn parse_simultaneous_tap_untap_sentence(
     // each untapped artifact ..." (Sands of Time): a player subject may
     // precede the simultaneity adverb.
     let Some(simultaneous_at) =
-        tokens.iter().position(|token| token.is_word("simultaneously"))
+        tokens.iter().position(|token| token.matches_word("simultaneously"))
     else {
         return Ok(None);
     };
@@ -17432,7 +17445,7 @@ fn parse_simultaneous_tap_untap_sentence(
     if !matches!(
         subject_words.as_slice(),
         [] | ["that", "player"] | ["each", "player"] | ["target", "player"] | ["you"]
-    ) || tokens.iter().any(|token| token.is_any_word(&["phase", "phases"]))
+    ) || tokens.iter().any(|token| token.matches_any_word(&["phase", "phases"]))
     {
         return Ok(None);
     }
@@ -17480,6 +17493,8 @@ fn parse_simultaneous_tap_untap_sentence(
         return Ok(None);
     }
     snapshots.extend(effects);
+    // The adverb the scan above found; the snapshots model it.
+    crate::word_claims::claim_tokens(&tokens[simultaneous_at..=simultaneous_at]);
     Ok(Some(vec![EffectAst::Sequence { effects: snapshots }]))
 }
 

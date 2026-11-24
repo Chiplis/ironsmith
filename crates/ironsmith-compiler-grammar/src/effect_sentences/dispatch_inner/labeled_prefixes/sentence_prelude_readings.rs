@@ -446,7 +446,7 @@ fn read_leading_result_prefix(
                     && prefix
                         .trailing_tokens
                         .iter()
-                        .filter(|token| token.is_word("and"))
+                        .filter(|token| token.matches_word("and"))
                         .count()
                         >= 2)
                     .then(|| {

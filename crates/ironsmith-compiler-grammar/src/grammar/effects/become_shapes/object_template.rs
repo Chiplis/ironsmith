@@ -81,13 +81,13 @@ pub fn parse_object_template_tokens(tokens: &[OwnedLexToken]) -> Option<ObjectTe
             tokens = trim_separators(&tokens[..start]);
         }
     }
-    let with = tokens.iter().enumerate().find_map(|(i,t)| (t.is_word("with") && outside_quotes(tokens,i)).then_some(i));
+    let with = tokens.iter().enumerate().find_map(|(i,t)| (t.matches_word("with") && outside_quotes(tokens,i)).then_some(i));
     let mut descriptor_tokens = with.map(|i| trim_separators(&tokens[..i])).unwrap_or(tokens);
     let mut ability_tokens = with.map(|i| trim_separators(&tokens[i+1..])).unwrap_or(&[]);
     if with.is_some() && ability_tokens.is_empty() { return None; }
     // A literal name is a characteristic, not discarded presentation text.
     // Quotes in a granted ability never introduce this outer `named` tail.
-    let named = descriptor_tokens.iter().enumerate().find_map(|(i,t)| (t.is_word("named") && outside_quotes(descriptor_tokens,i)).then_some(i));
+    let named = descriptor_tokens.iter().enumerate().find_map(|(i,t)| (t.matches_word("named") && outside_quotes(descriptor_tokens,i)).then_some(i));
     let name_override = if let Some(i) = named {
         let name_tokens = trim_separators(&descriptor_tokens[i+1..]);
         if name_tokens.is_empty() { return None; }
@@ -157,6 +157,8 @@ pub fn parse_object_template_tokens(tokens: &[OwnedLexToken]) -> Option<ObjectTe
     for word in parser_token_word_refs(descriptor_tokens) {
         if matches!(word, "a" | "an" | "the" | "and") { crate::word_claims::claim_word(word); }
     }
+    // The "with" introducing the granted abilities.
+    if !ability_tokens.is_empty() && let Some(i) = with { crate::word_claims::claim_tokens(&tokens[i..=i]); }
     Some(ObjectTemplateShape { base_power_toughness, name_override, card_types, subtypes, supertypes, colors: color_stated.then_some(colors), ability_tokens, preserve_other_types, preserve_other_colors, remove_other_abilities, remove_other_supertypes, remove_other_card_types, remove_other_subtypes })
 }
 

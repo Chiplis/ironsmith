@@ -31,7 +31,7 @@ fn replacement(tokens: &[OwnedLexToken]) -> Result<Option<(PredicateAst, i32, bo
     let tokens = crate::grammar::effects::labeled_dispatch::parse_leading_effect_label_tokens(tokens)
         .map_or(tokens, |label| label.body_tokens);
     let tokens = sentence(tokens);
-    let markers = tokens.iter().enumerate().filter(|(_, token)| token.is_word("instead"))
+    let markers = tokens.iter().enumerate().filter(|(_, token)| token.matches_word("instead"))
         .map(|(index, _)| index).collect::<Vec<_>>();
     let [instead] = markers.as_slice() else { return Ok(None); };
     let (condition, action) = if tokens.first().is_some_and(|token| token.is_word("if")) {

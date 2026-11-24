@@ -233,7 +233,7 @@ fn parse_exile_to_graveyard_replacement_lexed<'a>(
     let filter_tokens = trim_lexed_commas(filter_tokens);
     let filter_kind = classify_exile_graveyard_filter(filter_tokens);
     let battlefield_arm_dies_at = filter_tokens.windows(3).position(|words| {
-        words[0].is_word("would") && words[1].is_word("die") && words[2].is_word("or")
+        words[0].matches_word("would") && words[1].matches_word("die") && words[2].matches_word("or")
     });
     Ok(ExileToGraveyardReplacementSpec {
         filter_tokens,

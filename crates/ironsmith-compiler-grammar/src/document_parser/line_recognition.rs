@@ -331,14 +331,17 @@ fn recognize_triggered_line_inner(
         // graveyard this turn" (Skyclave Shade): with the source card as the
         // condition's subject, the effect's object pronoun names that card,
         // not the triggering object.
-        let rebound_effects =
-            rebind_object_pronoun_to_source_card(&spec.predicate, spec.effects_tokens)
+        let (rebound_effects, source_pronoun) =
+            match rebind_object_pronoun_to_source_card(&spec.predicate, spec.effects_tokens)
                 .or_else(|| {
                     rebind_plural_pronoun_to_universal_population(
                         &spec.predicate,
                         spec.effects_tokens,
                     )
-                });
+                }) {
+                Some((rebound, index)) => (Some(rebound), Some(index)),
+                None => (None, None),
+            };
         let probe = probe_triggered_split(
             spec.trigger_tokens,
             rebound_effects.as_deref().unwrap_or(spec.effects_tokens),
@@ -346,6 +349,10 @@ fn recognize_triggered_line_inner(
             trailing_cap,
         );
         if let Some(mut parsed) = probe.supported_recognized(line, tokens_without_cap) {
+            // The authored pronoun the rebinding read as its antecedent.
+            if let Some(index) = source_pronoun {
+                crate::word_claims::claim_tokens(&spec.effects_tokens[index..=index]);
+            }
             parsed.full_text = normalized.clone();
             parse_trace::event(format!(
                 "trigger split: conditional trigger=\"{}\" effects=\"{}\"",
@@ -1175,7 +1182,7 @@ pub(super) fn recognize_saga_chapter_line(
 fn rebind_plural_pronoun_to_universal_population(
     predicate: &crate::cards::builders::PredicateAst,
     effects: &[OwnedLexToken],
-) -> Option<Vec<OwnedLexToken>> {
+) -> Option<(Vec<OwnedLexToken>, usize)> {
     use crate::cards::builders::PredicateAst;
     let PredicateAst::ValueComparison {
         left: crate::effect::Value::Count(population),
@@ -1196,19 +1203,19 @@ fn rebind_plural_pronoun_to_universal_population(
         return None;
     }
     let index = (1..effects.len()).find(|&index| {
-        effects[index].is_word("them") && effects[index - 1].is_any_word(&["from", "on"])
+        effects[index].matches_word("them") && effects[index - 1].matches_any_word(&["from", "on"])
     })?;
     let noun = format!("{}s", format!("{card_type:?}").to_ascii_lowercase());
     let mut rebound = effects[..index].to_vec();
     rebound.extend(crate::lexer::synthetic_word_tokens(["all".to_string(), noun]));
     rebound.extend_from_slice(&effects[index + 1..]);
-    Some(rebound)
+    Some((rebound, index))
 }
 
 fn rebind_object_pronoun_to_source_card(
     predicate: &crate::cards::builders::PredicateAst,
     effects: &[OwnedLexToken],
-) -> Option<Vec<OwnedLexToken>> {
+) -> Option<(Vec<OwnedLexToken>, usize)> {
     use crate::cards::builders::{PredicateAst, SourcePredicateAst};
     fn names_source_zone(predicate: &PredicateAst) -> bool {
         match predicate {
@@ -1221,12 +1228,14 @@ fn rebind_object_pronoun_to_source_card(
         return None;
     }
     let index = (1..effects.len()).find(|&index| {
-        effects[index].is_word("it") && effects[index - 1].is_any_word(&["cast", "return", "play"])
+        effects[index].matches_word("it") && effects[index - 1].matches_any_word(&["cast", "return", "play"])
     })?;
+    // The authored "it" the synthetic "this card" stands for.
+    crate::word_claims::claim_tokens(&effects[index..=index]);
     let mut rebound = effects[..index].to_vec();
     rebound.extend(crate::lexer::synthetic_word_tokens(["this", "card"]));
     rebound.extend_from_slice(&effects[index + 1..]);
-    Some(rebound)
+    Some((rebound, index))
 }
 
 #[cfg(test)]

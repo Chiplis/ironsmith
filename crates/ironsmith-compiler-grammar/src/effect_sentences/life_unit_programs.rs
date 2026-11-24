@@ -191,7 +191,7 @@ fn parse_prefix_reading(
     if effects.is_empty() {
         return Ok(None);
     }
-    if body.iter().any(|token| token.is_word("unless")) {
+    if body.iter().any(|token| token.matches_word("unless")) {
         return Ok(Some(vec![EffectAst::ForEach(
             ForEachEffectAst::RepeatEffects { count, effects },
         )]));

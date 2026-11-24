@@ -22,7 +22,7 @@ fn replacement(tokens: &[OwnedLexToken]) -> Result<Option<(PredicateAst, EffectA
     let tokens = trim_edge_punctuation_tokens(tokens);
     if !tokens.first().is_some_and(|token| token.is_word("if"))
         || !tokens.last().is_some_and(|token| token.is_word("instead"))
-        || tokens.iter().filter(|token| token.is_word("instead")).count() != 1
+        || tokens.iter().filter(|token| token.matches_word("instead")).count() != 1
         || tokens.iter().any(|token| token.kind == TokenKind::Period)
     {
         return Ok(None);

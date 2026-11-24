@@ -32,7 +32,7 @@ fn replacement(
     if tokens.iter().any(|token| token.kind == TokenKind::Period) {
         return Ok(None);
     }
-    let markers = tokens.iter().enumerate().filter(|(_, token)| token.is_word("instead"))
+    let markers = tokens.iter().enumerate().filter(|(_, token)| token.matches_word("instead"))
         .map(|(index, _)| index).collect::<Vec<_>>();
     let [instead] = markers.as_slice() else { return Ok(None); };
     let (condition, action) = if tokens.first().is_some_and(|token| token.is_word("if")) {

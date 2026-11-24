@@ -837,7 +837,7 @@ pub(super) fn parse_all_this_turn_to_target_by_choice<'a>(
     }
     primitives::phrase(&["is", "dealt", "to"]).parse_next(input)?;
     let destination_tokens = one_or_more_tokens_before(input, primitives::kw("instead").void())?;
-    if !destination_tokens.iter().any(|token| token.is_word("target")) {
+    if !destination_tokens.iter().any(|token| token.matches_word("target")) {
         return Err(winnow::error::ErrMode::Backtrack(
             winnow::error::ContextError::new(),
         ));

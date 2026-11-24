@@ -481,10 +481,10 @@ pub fn parse_destroy(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextErro
         }
         let left = &tokens[..and_index];
         let right = &tokens[and_index + 1..];
-        if left.iter().filter(|token| token.is_word("target")).count() != 1
-            || right.iter().filter(|token| token.is_word("target")).count() != 1
+        if left.iter().filter(|token| token.matches_word("target")).count() != 1
+            || right.iter().filter(|token| token.matches_word("target")).count() != 1
             || right.iter().any(|token| {
-                token.is_any_word(&[
+                token.matches_any_word(&[
                     "destroy", "exile", "return", "draw", "gain", "gains", "lose", "loses",
                 ])
             })
@@ -523,7 +523,7 @@ pub fn parse_destroy(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextErro
     }
     // "destroy it and all creatures it blocked this turn" (Defiant Vanguard):
     // a bare object reference joined with an independent universal set.
-    if let Some(and_index) = tokens.iter().position(|token| token.is_word("and"))
+    if let Some(and_index) = tokens.iter().position(|token| token.matches_word("and"))
         && tokens
             .get(and_index + 1)
             .is_some_and(|token| token.is_any_word(&["all", "each"]))
@@ -807,7 +807,7 @@ pub fn parse_destroy(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextErro
                     ],
                 }
             } else if let Some(and_index) = target_tokens.iter().position(|token| {
-                token.is_word("and")
+                token.matches_word("and")
             }) && and_index > 0
                 && target_tokens
                     .get(and_index + 1)
@@ -815,7 +815,7 @@ pub fn parse_destroy(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextErro
                 && target_tokens.len() > and_index + 2
                 && !target_tokens[..and_index]
                     .iter()
-                    .any(|token| token.is_any_word(&["target", "this", "all", "each"]))
+                    .any(|token| token.matches_any_word(&["target", "this", "all", "each"]))
             {
                 // "Destroy it and this creature" (Goblin Sappers), "destroy
                 // that creature and this creature" (Loyal Sentry): a

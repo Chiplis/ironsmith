@@ -197,7 +197,7 @@ pub fn parse_independent_alternative_price_line(
     // casting subject's 'spell' means its chosen spell face, not Stack zone.
     if !subject
         .iter()
-        .any(|token| token.is_any_word(&["spell", "spells"]))
+        .any(|token| token.matches_any_word(&["spell", "spells"]))
     {
         return Err(error("subject is not spells"));
     }

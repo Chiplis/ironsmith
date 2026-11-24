@@ -312,7 +312,7 @@ pub(super) fn parse_effect_clause_unstacked(
     }
     // "it deals 2 damage to you unless it came under your control this turn"
     // (Erg Raiders): a resolution-time state exception, not a payment.
-    if let Some(unless) = tokens.iter().position(|token| token.is_word("unless"))
+    if let Some(unless) = tokens.iter().position(|token| token.matches_word("unless"))
         && unless > 0
         && crate::lexer::token_word_refs(&tokens[unless + 1..]).as_slice()
             == ["it", "came", "under", "your", "control", "this", "turn"]
@@ -582,7 +582,7 @@ pub(super) fn parse_effect_clause_unstacked(
         Verb::Counter => {
             if let Some(entry) = tokens
                 .windows(2)
-                .position(|pair| pair[0].is_word("enters") && pair[1].is_word("with"))
+                .position(|pair| pair[0].matches_word("enters") && pair[1].matches_word("with"))
                 && crate::util::is_source_reference_words(&crate::lexer::token_word_refs(
                     &tokens[..entry],
                 ))
@@ -1130,7 +1130,7 @@ pub(crate) fn parse_referenced_tokens_goaded_sentence(
     };
     let goaded = tokens
         .iter()
-        .position(|token| token.is_word(crate::keyword_forms::GOADED))?;
+        .position(|token| token.matches_word(crate::keyword_forms::GOADED))?;
     let tail = crate::lexer::trim_lexed_commas(&tokens[goaded + 1..]);
     let tail_words = &words[subject_len..];
     // Undurationed and rest-of-game forms keep their existing readings.

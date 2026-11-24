@@ -136,9 +136,9 @@ mod qualified_participant_tests {
 /// remain with their existing readers; neither arm borrows the other's subject.
 pub(super) fn read_participant_event_union(tokens: &[OwnedLexToken]) -> Option<TriggerSpec> {
     let participant = tokens.windows(3).position(|words|
-        words[0].is_any_word(&["participates", "participate"])
-            && words[1].is_word("in") && words[2].is_word("the"))?;
-    for separator in (1..participant).rev().filter(|index| tokens[*index].is_word("or")) {
+        words[0].matches_any_word(&["participates", "participate"])
+            && words[1].matches_word("in") && words[2].matches_word("the"))?;
+    for separator in (1..participant).rev().filter(|index| tokens[*index].matches_word("or")) {
         let Some(right) = crate::grammar::primitives::probe_shape(read(&tokens[separator + 1..])).flatten() else { continue; };
         if !matches!(right, TriggerSpec::NamedActionParticipant { .. }) { continue; }
         let Some(left) = crate::grammar::primitives::probe_shape(parse_trigger_clause_lexed(&tokens[..separator])) else { continue; };

@@ -89,7 +89,7 @@ pub(super) fn parse_direct_prior_effect_result_surface(
     // actual battlefield departure, rather than testing the graveyard card.
     if let Some(dies) = tokens
         .iter()
-        .position(|token| token.is_any_word(&["dies", "died"]))
+        .position(|token| token.matches_any_word(&["dies", "died"]))
     {
         let tail = tokens[dies + 1..]
             .iter()
@@ -109,6 +109,8 @@ pub(super) fn parse_direct_prior_effect_result_surface(
                 return None;
             }
             filter.zone = None;
+            // "dies this way", found by the scan and read exactly above.
+            crate::word_claims::claim_tokens(&tokens[dies..]);
             return Some(PriorEffectResultSurface::new(
                 PriorEffectAction::Died,
                 filter,

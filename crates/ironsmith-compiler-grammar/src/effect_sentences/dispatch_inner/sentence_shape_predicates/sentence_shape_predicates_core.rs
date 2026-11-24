@@ -192,7 +192,7 @@ fn parse_effect_sentence_lexed_uncached(
     if tokens
         .iter()
         .take(2)
-        .any(|token| token.is_word("for"))
+        .any(|token| token.matches_word("for"))
         && let Some(effects) =
             crate::effect_sentences::subject_verb_primitives::parse_sentence_for_each_card_kept_on_top_of_library(
                 crate::effect_sentences::SubjectVerbPrimitiveClause::new(tokens),
@@ -223,9 +223,9 @@ fn parse_effect_sentence_lexed_uncached(
         // characteristic. Reuse the dynamic become reader so that target is
         // declared independently of the permanent receiving the assignment.
         if let Some(to_idx) = tokens.windows(3).position(|words| {
-            words[0].is_word("base")
-                && (words[1].is_word("power") || words[1].is_word("toughness"))
-                && words[2].is_word("to")
+            words[0].matches_word("base")
+                && (words[1].matches_word("power") || words[1].matches_word("toughness"))
+                && words[2].matches_word("to")
         }).map(|base| base + 2)
             && to_idx > 2
             && let Ok(effect) = crate::effect_sentences::clause_dispatch::parse_become_clause(
@@ -240,11 +240,11 @@ fn parse_effect_sentence_lexed_uncached(
         // and toughness become <quantity>", whose become reading owns
         // dynamic target quantities and the next-upkeep-end duration.
         if let Some(to_idx) = tokens.windows(5).position(|words| {
-            words[0].is_word("base")
-                && words[1].is_word("power")
-                && words[2].is_word("and")
-                && words[3].is_word("toughness")
-                && words[4].is_word("to")
+            words[0].matches_word("base")
+                && words[1].matches_word("power")
+                && words[2].matches_word("and")
+                && words[3].matches_word("toughness")
+                && words[4].matches_word("to")
         }).map(|base| base + 4)
             && to_idx > 4
             && crate::lexer::token_word_refs(&tokens[to_idx + 1..])
@@ -263,8 +263,8 @@ fn parse_effect_sentence_lexed_uncached(
             return Ok(vec![effect]);
         }
     }
-    if (tokens.windows(3).any(|words| words[0].is_word("base")
-        && words[1].is_word("power") && words[2].is_word("becomes"))
+    if (tokens.windows(3).any(|words| words[0].matches_word("base")
+        && words[1].matches_word("power") && words[2].matches_word("becomes"))
         || crate::lexer::token_word_refs(tokens).starts_with(&["the", "base", "power", "and", "toughness", "of"]))
         && let Some(effect) = crate::effect_sentences::for_each_helpers::parse_has_base_power_toughness_clause(tokens)?
     {
@@ -296,7 +296,7 @@ fn parse_effect_sentence_lexed_uncached(
     {
         return Ok(vec![effect]);
     }
-    if tokens.windows(2).any(|pair| pair[0].is_word("may") && pair[1].is_word("put"))
+    if tokens.windows(2).any(|pair| pair[0].matches_word("may") && pair[1].matches_word("put"))
         && let Some(effects) =
             crate::effect_sentences::pair_procedure::reveal_put_rest_do_same::read_single_sentence(tokens)?
     {
@@ -385,7 +385,7 @@ fn parse_for_each_color_target_expansion(
     // a permanent's independent chosen-color value. Keep the established
     // targeted surface, and allow an immediately qualified ordinary object
     // noun ("a card of that color") inside one bounded program.
-    let target_positions = body.iter().enumerate().filter(|(_, token)| token.is_word("target"))
+    let target_positions = body.iter().enumerate().filter(|(_, token)| token.matches_word("target"))
         .map(|(index, _)| index).collect::<Vec<_>>();
     let insert_color = match target_positions.as_slice() {
         [target] if *target < that_idx => *target + 1,
@@ -433,7 +433,7 @@ fn parse_for_any_number_of_opponents_target_expansion(
     let target_positions = body
         .iter()
         .enumerate()
-        .filter(|(_, token)| token.is_word("target"))
+        .filter(|(_, token)| token.matches_word("target"))
         .map(|(index, _)| index)
         .collect::<Vec<_>>();
     let [target_idx] = target_positions.as_slice() else {
@@ -588,7 +588,7 @@ fn parse_gain_all_basic_land_types_sentence(
         return Ok(None);
     }
     let subject = &clean[..gain_idx];
-    let target = if subject.iter().any(|token| token.is_word("target")) {
+    let target = if subject.iter().any(|token| token.matches_word("target")) {
         crate::util::parse_target_phrase(subject)?
     } else {
         let Ok(filter) = crate::object_filters::parse_object_filter(subject, false) else {
@@ -1517,10 +1517,10 @@ pub(crate) fn parse_effect_sentence_with_where_x_lexed(
         // players" (Officious Interrogation) refers back to a target an
         // earlier sentence already declared.
         && primary_where_tokens.windows(2).any(|pair| {
-            pair[0].is_word("target") && pair[1].is_any_word(&["player", "opponent", "player's", "opponent's", "players", "opponents"])
+            pair[0].matches_word("target") && pair[1].matches_any_word(&["player", "opponent", "player's", "opponent's", "players", "opponents"])
         })
         && !stripped.windows(2).any(|pair| {
-            pair[0].is_word("target") && pair[1].is_any_word(&["player", "opponent"])
+            pair[0].matches_word("target") && pair[1].matches_any_word(&["player", "opponent"])
         })
     {
         prelude_effects.push(EffectAst::subject_verb_target_only(TargetAst::Player(
@@ -1685,7 +1685,7 @@ fn parse_owner_bottom_or_beneath_top_x(tokens: &[OwnedLexToken]) -> Result<Optio
     let tokens = crate::util::trim_edge_punctuation_tokens(tokens);
     // A locator: finding the owner subject reads nothing yet (the whole
     // sentence is claimed once it is this reading).
-    let Some(owner) = crate::word_claims::probe_only(|| tokens.iter().position(|token| token.is_word("owner"))) else { return Ok(None); };
+    let Some(owner) = crate::word_claims::probe_only(|| tokens.iter().position(|token| token.matches_word("owner"))) else { return Ok(None); };
     if owner == 0 || !crate::word_claims::probe_only(|| tokens.get(owner + 1).is_some_and(|token| token.is_word("puts"))) { return Ok(None); }
     // The binding comma follows the owner's action; an earlier comma (in the
     // subject or a leading clause) is not the one that introduces "where X is".

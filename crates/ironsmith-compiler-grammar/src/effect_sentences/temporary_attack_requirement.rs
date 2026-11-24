@@ -59,7 +59,7 @@ pub(super) fn parse(tokens: &[OwnedLexToken]) -> Result<Option<EffectAst>, CardT
     let subject = &body[..index];
     if subject
         .iter()
-        .any(|token| token.is_any_word(&["target", "that", "it", "chosen"]))
+        .any(|token| token.matches_any_word(&["target", "that", "it", "chosen"]))
     {
         return Ok(None);
     }
@@ -144,7 +144,7 @@ fn parse_filtered_creatures_block_this_turn(
     }
     let subject = &body[..index];
     if subject.iter().any(|token| {
-        token.is_any_word(&["target", "that", "those", "it", "they", "them", "chosen"])
+        token.matches_any_word(&["target", "that", "those", "it", "they", "them", "chosen"])
     }) {
         return Ok(None);
     }
@@ -287,7 +287,7 @@ fn parse_during_target_players_next_turn(
     } else {
         let Some(index) = body
             .iter()
-            .position(|token| token.is_word("attack") || token.is_word("attacks"))
+            .position(|token| token.matches_word("attack") || token.matches_word("attacks"))
         else {
             return Ok(None);
         };
@@ -321,7 +321,7 @@ fn parse_during_target_players_next_turn(
     }
     if subject
         .iter()
-        .any(|token| token.is_any_word(&["target", "chosen", "it", "they"]))
+        .any(|token| token.matches_any_word(&["target", "chosen", "it", "they"]))
     {
         return Ok(None);
     }
@@ -374,7 +374,7 @@ fn parse_target_attacks_during_its_controllers_next_turn(
     use crate::target::PlayerFilter;
 
     let body = crate::util::trim_edge_punctuation_tokens(tokens);
-    let Some(during) = body.iter().rposition(|token| token.is_word("during")) else {
+    let Some(during) = body.iter().rposition(|token| token.matches_word("during")) else {
         return Ok(None);
     };
     let tail = crate::lexer::parser_token_word_refs(&body[during + 1..]);
@@ -388,7 +388,7 @@ fn parse_target_attacks_during_its_controllers_next_turn(
     let head = &body[..during];
     let Some(verb) = head
         .iter()
-        .position(|token| token.is_word("attack") || token.is_word("attacks"))
+        .position(|token| token.matches_word("attack") || token.matches_word("attacks"))
     else {
         return Ok(None);
     };

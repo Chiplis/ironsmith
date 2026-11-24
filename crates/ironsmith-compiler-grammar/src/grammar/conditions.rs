@@ -1911,20 +1911,24 @@ fn parse_battlefield_entry_shape(tokens: &[OwnedLexToken]) -> Option<Battlefield
             // "this artifact or another artifact entered the battlefield under
             // your control this turn" (Master's Manufactory): the source is one
             // of the artifacts, so the event is any artifact entering.
+            let mut source_or_another: &[OwnedLexToken] = &[];
             {
                 let words = crate::lexer::token_word_refs(object_tokens);
                 if let ["this", noun, "or", "another", rest @ ..] = words.as_slice()
                     && rest.first() == Some(noun)
                     && let Some(another_idx) = object_tokens
                         .iter()
-                        .position(|token| token.is_word("another"))
+                        .position(|token| token.matches_word("another"))
                 {
+                    source_or_another = &object_tokens[..=another_idx];
                     object_tokens = &object_tokens[another_idx + 1..];
                 }
             }
             let mut filter = crate::grammar::primitives::probe_shape(
                 parse_object_filter_with_grammar_entrypoint(object_tokens, false),
             )?;
+            // "this <noun> or another", matched word by word above.
+            crate::word_claims::claim_tokens(source_or_another);
             filter.controller = Some(PlayerFilter::You);
             if other {
                 filter.other = true;
@@ -2072,8 +2076,8 @@ fn parse_spell_cast_filter_tokens_single(tokens: &[OwnedLexToken]) -> Option<Obj
     )?;
     if tokens
         .iter()
-        .take_while(|token| !token.is_word("spell") && !token.is_word("spells"))
-        .any(|token| token.is_word("another") || token.is_word("other"))
+        .take_while(|token| !token.matches_word("spell") && !token.matches_word("spells"))
+        .any(|token| token.matches_word("another") || token.matches_word("other"))
     {
         filter.other = true;
     }

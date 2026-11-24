@@ -249,7 +249,7 @@ pub fn parse_same_name_target_fanout_sentence(
                 // names a permanent, so a defaulted battlefield zone yields.
                 let first_names_card = first_target_tokens
                     .iter()
-                    .any(|token| token.is_word("card") || token.is_word("cards"));
+                    .any(|token| token.matches_word("card") || token.matches_word("cards"));
                 if first_names_card
                     && first_filter.zone == Some(Zone::Battlefield)
                     && filter.zone.is_some_and(|zone| zone != Zone::Battlefield)

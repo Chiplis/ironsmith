@@ -33,7 +33,7 @@ pub(super) fn parse(tokens: &[OwnedLexToken]) -> Result<Option<Vec<EffectAst>>, 
         if pieces.len() > 2
             || pieces
                 .iter()
-                .any(|piece| !piece.iter().any(|token| token.is_word("target")))
+                .any(|piece| !piece.iter().any(|token| token.matches_word("target")))
         {
             return Ok(None);
         }

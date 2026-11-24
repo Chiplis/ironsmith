@@ -276,7 +276,7 @@ fn parse_play_permission_enter_counter_lexed<'a>(
         counter_type,
         additional: counter_tokens
             .iter()
-            .any(|token| token.is_word("additional")),
+            .any(|token| token.matches_word("additional")),
         cast_this_way_filter,
     })
 }

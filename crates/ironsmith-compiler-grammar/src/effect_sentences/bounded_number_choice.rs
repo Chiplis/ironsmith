@@ -70,7 +70,7 @@ pub(super) fn parse_sentence(tokens: &[OwnedLexToken]) -> Result<Option<Vec<Effe
     // the caster makes two independent choices, each its own result producer.
     if complete.first().is_some_and(|token| token.is_word("choose"))
         && let Some(and_idx) = complete.windows(3).position(|window| {
-            window[0].is_word("and") && window[1].is_word("a") && window[2].is_word("number")
+            window[0].matches_word("and") && window[1].matches_word("a") && window[2].matches_word("number")
         })
         && and_idx > 1
         && let Some(name) = super::clause_primitives::parse_choose_card_name_clause(&complete[..and_idx])?

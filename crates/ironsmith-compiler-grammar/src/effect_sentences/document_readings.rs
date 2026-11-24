@@ -727,7 +727,7 @@ fn read_selected_card_copy_free_cast(document: &Document<'_>) -> Result<Option<V
     let first = crate::util::trim_edge_punctuation_tokens(first);
     if first.len() < 3 || !first[0].is_word("copy") || !first[1].is_any_word(&["a", "an"]) { return Ok(None); }
     if crate::lexer::parser_token_word_refs(second).as_slice() != ["you", "may", "cast", "the", "copy", "without", "paying", "its", "mana", "cost"] { return Ok(None); }
-    if !first.iter().any(|token| token.is_word("card")) || first.iter().any(|token| token.is_word("target")) { return Ok(None); }
+    if !first.iter().any(|token| token.matches_word("card")) || first.iter().any(|token| token.matches_word("target")) { return Ok(None); }
     let filter = crate::object_filters::parse_object_filter(&first[2..], false)?;
     if !filter.zone.is_some_and(|zone| zone != crate::zone::Zone::Stack) { return Ok(None); }
     let tag = crate::util::helper_tag_for_tokens(first, "copied_card");
@@ -1127,7 +1127,7 @@ fn read_repeat_following_process(
     if first.iter().any(|token| !matches!(token.kind, TokenKind::Word | TokenKind::Comma | TokenKind::Period)) {
         return Ok(None);
     }
-    let binding_start = first.iter().position(|token| token.is_word("where"));
+    let binding_start = first.iter().position(|token| token.matches_word("where"));
     let header = binding_start.map_or(*first, |index| &first[..index]);
     let words = crate::lexer::parser_token_word_refs(header);
     let count_word = match words.as_slice() {
@@ -1435,13 +1435,13 @@ fn read_effect_clause_with_trailing_if(
         return Ok(None);
     };
     // Two conditions joined by "and" are the conditional damage pair's; a run of them is the keyword bundle's.
-    if sentence.iter().filter(|token| token.is_word("if")).count() >= 2 {
+    if sentence.iter().filter(|token| token.matches_word("if")).count() >= 2 {
         return Ok(None);
     }
     // "..., except it has X if it doesn't have X": the condition belongs to
     // the copy exception, not to the whole effect (the become reading owns it).
     if crate::grammar::structure::split_trailing_if_clause_lexed(sentence)
-        .is_some_and(|trailing| trailing.leading_tokens.iter().any(|token| token.is_word("except")))
+        .is_some_and(|trailing| trailing.leading_tokens.iter().any(|token| token.matches_word("except")))
     {
         return Ok(None);
     }
@@ -1631,7 +1631,7 @@ fn read_for_each_participant(
     // An explicitly named actor after a coordination boundary starts a new
     // participant scope. Let chain composition keep it outside this loop.
     if !(sentence.first().is_some_and(|token| token.is_word("for"))
-        && sentence.iter().any(|token| token.is_word("who")))
+        && sentence.iter().any(|token| token.matches_word("who")))
         && let crate::recognition::ParseOutcome::Match(plan) =
             effect_grammar::coordination::recognize_coordination(sentence)
         && plan.value.members.iter().skip(1).any(|member| {
@@ -2216,7 +2216,7 @@ fn read_chosen_color_or_type_protection(document: &Document<'_>) -> Result<Optio
     let [choice,grant]=document.sentences.as_slice() else {return Ok(None)};
     if crate::lexer::parser_token_word_refs(choice)!=["choose","a","color","or","card","type"] {return Ok(None)}
     let grant=crate::util::trim_edge_punctuation_tokens(grant);
-    let Some(verb)=grant.iter().position(|token|token.is_any_word(&["gains","gain"])) else {return Ok(None)};
+    let Some(verb)=grant.iter().position(|token|token.matches_any_word(&["gains","gain"])) else {return Ok(None)};
     if crate::lexer::parser_token_word_refs(&grant[verb..])!=["gains","protection","from","the","chosen","color","or","type","until","end","of","turn"] {return Ok(None)}
     let target=crate::util::parse_target_phrase(&grant[..verb])?;
     let mut protections=vec![

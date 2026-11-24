@@ -14,16 +14,16 @@ fn split_reference_pair_return(
 ) -> Option<(Vec<OwnedLexToken>, Vec<OwnedLexToken>)> {
     // A quoted rule or a declared target is not a pair of references.
     if tokens.iter().any(|token| {
-        token.kind == crate::lexer::TokenKind::Quote || token.is_any_word(&["target", "targets"])
+        token.kind == crate::lexer::TokenKind::Quote || token.matches_any_word(&["target", "targets"])
     }) {
         return None;
     }
-    let and_idx = tokens.iter().position(|token| token.is_word("and"))?;
+    let and_idx = tokens.iter().position(|token| token.matches_word("and"))?;
     let left_ref = &tokens[..and_idx];
     let right = &tokens[and_idx + 1..];
     // The shared destination begins at the first "to" after the second
     // reference.
-    let to_idx = right.iter().position(|token| token.is_word("to"))?;
+    let to_idx = right.iter().position(|token| token.matches_word("to"))?;
     let right_ref = &right[..to_idx];
     // Both conjuncts name objects already identified: a pronoun or a
     // demonstrative/definite noun phrase. Quantified sets ("all", "each")
@@ -70,11 +70,11 @@ fn split_articled_card_pair_return(
     if !tokens.first().is_some_and(is_article)
         || tokens
             .iter()
-            .any(|token| token.is_any_word(&["target", "targets"]))
+            .any(|token| token.matches_any_word(&["target", "targets"]))
     {
         return None;
     }
-    let and_idx = tokens.iter().position(|token| token.is_word("and"))?;
+    let and_idx = tokens.iter().position(|token| token.matches_word("and"))?;
     if and_idx < 2
         || !tokens[and_idx - 1].is_word("card")
         || !tokens.get(and_idx + 1).is_some_and(is_article)
@@ -82,10 +82,10 @@ fn split_articled_card_pair_return(
         return None;
     }
     let right = &tokens[and_idx + 1..];
-    let right_card = right.iter().position(|token| token.is_word("card"))?;
+    let right_card = right.iter().position(|token| token.matches_word("card"))?;
     let tail = &right[right_card + 1..];
     if !tail.first().is_some_and(|token| token.is_word("from"))
-        || tokens[..and_idx].iter().any(|token| token.is_word("from"))
+        || tokens[..and_idx].iter().any(|token| token.matches_word("from"))
     {
         return None;
     }
@@ -118,7 +118,7 @@ fn parse_half_the_objects_return(
     } else {
         return Ok(None);
     };
-    let Some(to_idx) = body.iter().rposition(|token| token.is_word("to")) else {
+    let Some(to_idx) = body.iter().rposition(|token| token.matches_word("to")) else {
         return Ok(None);
     };
     let destination = crate::lexer::token_word_refs(&body[to_idx + 1..]);
@@ -196,7 +196,7 @@ pub fn parse_return(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextError
     let trimmed = crate::util::trim_edge_punctuation_tokens(tokens);
     if let Some((last, head)) = trimmed.split_last()
         && last.is_word("flipped")
-        && head.iter().any(|token| token.is_word("battlefield"))
+        && head.iter().any(|token| token.matches_word("battlefield"))
     {
         let returned = parse_return(head)?;
         return Ok(EffectAst::Sequence {
@@ -527,7 +527,7 @@ pub fn parse_return(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextError
             // of Devouring): the scope phrase restates the source-linked set.
             let source_linked_subject = match source_linked_subject
                 .windows(2)
-                .position(|pair| pair[0].is_word("from") && pair[1].is_word("among"))
+                .position(|pair| pair[0].matches_word("from") && pair[1].matches_word("among"))
             {
                 Some(from_idx)
                     if has_explicit_source_link
@@ -537,7 +537,7 @@ pub fn parse_return(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextError
                         })
                         && source_linked_subject[from_idx + 2..]
                             .iter()
-                            .any(|token| token.is_any_word(&["card", "cards"])) =>
+                            .any(|token| token.matches_any_word(&["card", "cards"])) =>
                 {
                     crate::word_claims::claim_tokens(&source_linked_subject[from_idx..]);
                     &source_linked_subject[..from_idx]
@@ -547,7 +547,7 @@ pub fn parse_return(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextError
             let source_linked_excludes_current = has_explicit_source_link
                 && source_linked_subject
                     .iter()
-                    .any(|token| token.is_word("other"));
+                    .any(|token| token.matches_word("other"));
             let omitted_exiled_set = exiled_with_source_surface.as_ref().is_some_and(|surface| {
                 matches!(
                     surface.subject,
@@ -773,9 +773,9 @@ pub fn parse_return(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextError
             // owners' hands" (Scarab of the Unseen): the host is a real
             // target. Declare it, then relate the returned objects to it.
             let attached_target_split = filter_tokens.windows(3).position(|window| {
-                window[0].is_word("attached")
-                    && window[1].is_word("to")
-                    && window[2].is_word("target")
+                window[0].matches_word("attached")
+                    && window[1].matches_word("to")
+                    && window[2].matches_word("target")
             });
             let mut attachment_target_prelude = None;
             let mut filter = if let Some(split) = attached_target_split {
@@ -788,8 +788,11 @@ pub fn parse_return(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextError
                     effect: Box::new(EffectAst::subject_verb_explicit_target_only(host)),
                     tag: host_tag.clone(),
                 });
-                parse_object_filter(&head_tokens, false)?
-                    .match_tagged(host_tag, TaggedOpbjectRelation::AttachedToTaggedObject)
+                let filter = parse_object_filter(&head_tokens, false)?
+                    .match_tagged(host_tag, TaggedOpbjectRelation::AttachedToTaggedObject);
+                // "attached to", found by the scan above: the attachment relation.
+                crate::word_claims::claim_tokens(&filter_tokens[split..split + 2]);
+                filter
             } else {
                 parse_object_filter(&filter_tokens, false)?
             };
@@ -916,7 +919,7 @@ pub fn parse_return(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextError
                 parse_target_phrase(&target_tokens)?
             };
             let words = crate::lexer::token_word_refs(tokens);
-            if let Some(from) = target_tokens.iter().position(|token| token.is_word("from"))
+            if let Some(from) = target_tokens.iter().position(|token| token.matches_word("from"))
                 && let Some(owner) =
                     crate::effect_sentences::zone_handlers::parse_graveyard_owner_prefix_lexed(
                         &target_tokens[from + 1..],
@@ -985,7 +988,7 @@ pub fn parse_return(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextError
                     ),
                 };
             }
-            if choice.is_some() && target_tokens.iter().any(|token| token.is_word("target")) {
+            if choice.is_some() && target_tokens.iter().any(|token| token.matches_word("target")) {
                 choice_prefix.push(EffectAst::subject_verb_explicit_target_only_for_chooser(
                     target,
                     PlayerAst::Opponent,

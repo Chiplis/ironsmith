@@ -219,7 +219,7 @@ pub(super) fn parse_additional_cost(
             if let Some(KeywordLinePayload::Ast(parsed)) = parse_additional_cost(line, sentences[0], full_tokens)?
                 && let LineAst::OptionalCost(cost) = *parsed {
                 let trigger_tokens = if gated {
-                    &tail[tail.iter().position(|token| token.is_word("when")).unwrap()..]
+                    &tail[tail.iter().position(|token| token.matches_word("when")).unwrap()..]
                 } else { tail };
                 let mut trigger = crate::clause_support::parse_triggered_line_lexed(trigger_tokens)?;
                 if let LineAst::Triggered { effects, .. } = &mut trigger {
@@ -370,7 +370,7 @@ pub(super) fn parse_additional_cost(
     if matches!(words.as_slice(), ["you", "may", "collect", "evidence", _]) {
         let collect = effect_tokens
             .iter()
-            .position(|token| token.is_word("collect"))
+            .position(|token| token.matches_word("collect"))
             .unwrap();
         let cost = crate::activation_and_restrictions::activated_line_core::parse_compiler_activation_cost(&effect_tokens[collect..])?;
         let mut optional = crate::model::CompilerOptionalCost::custom("Collect evidence", cost);
@@ -386,7 +386,7 @@ pub(super) fn parse_additional_cost(
         && crate::lexer::parser_token_word_refs(&trimmed[trimmed.len() - 4..]) == ["any", "number", "of", "times"]
         && let Some(split) = trimmed[3..trimmed.len() - 4]
             .iter()
-            .position(|token| token.is_word("and/or"))
+            .position(|token| token.matches_word("and/or"))
             .map(|offset| offset + 3)
     {
         let mut optional_costs = Vec::new();

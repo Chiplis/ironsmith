@@ -170,7 +170,7 @@ fn parse_trailing_main_phase_schedule_shape(
     tokens: &[OwnedLexToken],
 ) -> Option<DelayedScheduleSentenceShape<'_>> {
     (1..tokens.len()).find_map(|index| {
-        if !tokens[index].is_word("at") {
+        if !tokens[index].matches_word("at") {
             return None;
         }
         let ((step, player, start_next_turn), rest) =

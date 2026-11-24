@@ -2,7 +2,7 @@
 use super::*;
 pub(super) fn read(tokens:&[OwnedLexToken])->Result<Option<ironsmith_core::MergePermanentsEffect>,CardTextError>{
  let tokens=crate::util::trim_edge_punctuation_tokens(tokens);if !tokens.first().is_some_and(|t|t.is_word("merge")){return Ok(None)}
- let Some(with)=tokens.iter().position(|t|t.is_word("with"))else{return Ok(None)};
+ let Some(with)=tokens.iter().position(|t|t.matches_word("with"))else{return Ok(None)};
  let Some(comma)=tokens.iter().position(|t|t.is_comma())else{return Ok(None)};if with<=1||comma<=with+1{return Ok(None)}
  let incoming=operand(&tokens[1..with])?;
  let host=operand(&tokens[with+1..comma])?;

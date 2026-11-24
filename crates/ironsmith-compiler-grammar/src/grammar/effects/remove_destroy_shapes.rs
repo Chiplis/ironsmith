@@ -393,7 +393,7 @@ pub fn parse_remove_clause_shape(
         && count > 1
         && let Some(filter_tokens) = after_each_of.get(used..)
         && !filter_tokens.is_empty()
-        && !filter_tokens.iter().any(|token| token.is_word("target"))
+        && !filter_tokens.iter().any(|token| token.matches_word("target"))
     {
         RemoveCounterDestination::EachOfExactly {
             count: count as usize,

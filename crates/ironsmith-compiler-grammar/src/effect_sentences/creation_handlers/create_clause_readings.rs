@@ -94,7 +94,7 @@ fn read_token_prototype_reference(input: &CreateClause<'_>) -> Result<Option<Eff
     let tail = if tail.last().is_some_and(|token| token.kind == TokenKind::Period) {
         &tail[..tail.len() - 1]
     } else { tail };
-    let (entry, binding) = if let Some(where_at) = tail.iter().position(|t| t.is_word("where")) {
+    let (entry, binding) = if let Some(where_at) = tail.iter().position(|t| t.matches_word("where")) {
         let entry = &tail[..where_at];
         let entry = if entry.last().is_some_and(|token| token.kind == TokenKind::Comma) {
             &entry[..entry.len() - 1]

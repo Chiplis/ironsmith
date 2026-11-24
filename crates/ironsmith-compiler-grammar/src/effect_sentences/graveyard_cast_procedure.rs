@@ -83,7 +83,7 @@ pub(super) fn open(
     {
         let you = permission
             .iter()
-            .position(|token| token.is_word("you"))
+            .position(|token| token.matches_word("you"))
             .unwrap_or(0);
         permission = crate::util::trim_commas(&permission[you..]);
         for_each_opponent = true;
@@ -110,7 +110,7 @@ pub(super) fn open(
     if !when_result
         && effect_grammar::parse_graveyard_cast_permission_shape(&permission).is_none()
         && let Some(then) = (1..permission.len()).find(|&index| {
-            permission[index].is_word("then")
+            permission[index].matches_word("then")
                 && crate::word_primitives::parse_sequence_prefix(
                     &crate::lexer::token_word_refs(&permission[index + 1..]),
                     &["you", "may", "cast"],
@@ -288,18 +288,18 @@ fn parse_unless_targets_surcharge(
     if !negated_target {
         return None;
     }
-    let target = tokens.iter().position(|token| token.is_word("target"))?;
+    let target = tokens.iter().position(|token| token.matches_word("target"))?;
     let costs = target
         + 1
         + tokens[target + 1..]
             .iter()
-            .position(|token| token.is_word("costs"))?;
-    let it = costs.checked_sub(1).filter(|&it| tokens[it].is_word("it"))?;
+            .position(|token| token.matches_word("costs"))?;
+    let it = costs.checked_sub(1).filter(|&it| tokens[it].matches_word("it"))?;
     let more = costs
         + 1
         + tokens[costs + 1..]
             .iter()
-            .position(|token| token.is_word("more"))?;
+            .position(|token| token.matches_word("more"))?;
     if crate::lexer::token_word_refs(&tokens[more + 1..]) != ["to", "cast", "this", "way"] {
         return None;
     }

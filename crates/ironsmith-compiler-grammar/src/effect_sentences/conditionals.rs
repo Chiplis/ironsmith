@@ -227,7 +227,7 @@ fn parse_negated_who_this_way_predicate(
     if filter.zone == Some(crate::zone::Zone::Battlefield)
         && filter_tokens
             .iter()
-            .any(|token| token.is_word("card") || token.is_word("cards"))
+            .any(|token| token.matches_word("card") || token.matches_word("cards"))
     {
         filter.zone = None;
     }

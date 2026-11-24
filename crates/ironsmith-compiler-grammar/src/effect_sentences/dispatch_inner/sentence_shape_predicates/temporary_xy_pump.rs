@@ -59,7 +59,7 @@ fn parse_body(
     }
     let Some(get) = body
         .iter()
-        .position(|token| token.is_any_word(&["get", "gets"]))
+        .position(|token| token.matches_any_word(&["get", "gets"]))
     else {
         return Ok(None);
     };

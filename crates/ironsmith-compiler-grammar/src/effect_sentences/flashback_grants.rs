@@ -8,7 +8,7 @@ use crate::lexer::{OwnedLexToken, TokenKind};
 pub(crate) fn fixed_grant_parts(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<(&[OwnedLexToken], crate::model::CompilerAlternativeCastingMethod)>, CardTextError> {
-    let Some(gain) = tokens.iter().position(|token| token.is_any_word(&["gain", "gains"])) else {
+    let Some(gain) = tokens.iter().position(|token| token.matches_any_word(&["gain", "gains"])) else {
         return Ok(None);
     };
     if gain == 0 || !tokens.get(gain + 1).is_some_and(|token|
@@ -35,6 +35,8 @@ pub(crate) fn fixed_grant_parts(
     let Some(method) = method else {
         return Ok(None);
     };
+    // The "gain(s)" verb the scan above found.
+    crate::word_claims::claim_tokens(&tokens[gain..=gain]);
     Ok(Some((&tokens[..gain], method)))
 }
 

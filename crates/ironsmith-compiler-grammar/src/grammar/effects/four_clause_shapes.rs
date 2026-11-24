@@ -339,7 +339,7 @@ pub fn parse_choose_looked_card_and_or_shape(
     }
     Some(LookedCardAndOrChoiceShape {
         filter_tokens,
-        uses_and_or: filter_tokens.iter().any(|token| token.is_word("and/or")),
+        uses_and_or: filter_tokens.iter().any(|token| token.matches_word("and/or")),
     })
 }
 

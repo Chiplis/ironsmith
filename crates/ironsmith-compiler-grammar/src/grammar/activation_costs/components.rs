@@ -547,9 +547,9 @@ fn distribute_activation_cost_alternative(
     let counter_noun = |token: &OwnedLexToken| token.is_any_word(&["counter", "counters"]);
     if left_segment.first().is_some_and(|token| token.is_word("remove"))
         && left_segment.last().is_some_and(counter_noun)
-        && !left_segment.iter().any(|token| token.is_word("from"))
+        && !left_segment.iter().any(|token| token.matches_word("from"))
         && right.first().is_some_and(|token| token.is_any_word(&["a", "an"]))
-        && let Some(from_index) = right.iter().position(|token| token.is_word("from"))
+        && let Some(from_index) = right.iter().position(|token| token.matches_word("from"))
         && from_index >= 2
         && counter_noun(&right[from_index - 1])
     {

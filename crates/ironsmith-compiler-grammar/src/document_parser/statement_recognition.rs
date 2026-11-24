@@ -669,7 +669,7 @@ fn recognize_statement_line_general(
         && parse_groups.iter().skip(1).any(|group_tokens| {
             group_tokens
                 .first()
-                .is_some_and(|token| token.is_word("create"))
+                .is_some_and(|token| token.matches_word("create"))
         })
     {
         Some(
@@ -959,7 +959,7 @@ fn is_restatement_of_statement(line: &[OwnedLexToken], statement: &[OwnedLexToke
     else {
         return false;
     };
-    if last_sentence.iter().any(|token| token.is_word("instead")) {
+    if last_sentence.iter().any(|token| token.matches_word("instead")) {
         return false;
     }
     crate::effect_sentences::find_verb(last_sentence).is_some_and(|(verb, _)| verb == restated_verb)
@@ -986,7 +986,7 @@ pub(super) fn extend_statement_line_with_result_followups_in_place(
         // ("that creature") belongs to the same resolving program.
         let labeled_prior_result = !restatement
             // Replacement lines ("..., instead ...") keep their own family.
-            && !line.tokens.iter().any(|token| token.is_word("instead"))
+            && !line.tokens.iter().any(|token| token.matches_word("instead"))
             && (super::split_label_prefix_lexed(&line.tokens)
                 .map(|(_, _, body)| body)
                 .or_else(|| super::tokens_after_non_keyword_label_prefix(line))
@@ -1170,12 +1170,14 @@ fn inline_counted_number_sentence(sentences: &mut Vec<Vec<OwnedLexToken>>) {
     let anaphors = consumer
         .windows(2)
         .enumerate()
-        .filter(|(_, pair)| pair[0].is_word("that") && pair[1].is_word("number"))
+        .filter(|(_, pair)| pair[0].matches_word("that") && pair[1].matches_word("number"))
         .map(|(idx, _)| idx)
         .collect::<Vec<_>>();
     let [anaphor] = anaphors.as_slice() else {
         return;
     };
+    // "that number" is read as the counted quantity it is replaced by.
+    crate::word_claims::claim_tokens(&consumer[*anaphor..anaphor + 2]);
     let mut rewritten = consumer[..*anaphor].to_vec();
     rewritten.extend(quantity);
     rewritten.extend_from_slice(&consumer[anaphor + 2..]);
@@ -1223,7 +1225,7 @@ fn first_trailing_static_sentence_idx_inner(
                     && crate::effect_sentences::find_verb(sentence).is_none()
                     && !sentence
                         .first()
-                        .is_some_and(|token| token.is_any_word(&["choose", "leave"]))
+                        .is_some_and(|token| token.matches_any_word(&["choose", "leave"]))
                     && !sentence_is_anaphoric_object_conditional_effect(sentence)
                     && !followup_shapes::is_if_did_untap_source_followup(sentence)
                     && !is_plural_tagged_result_followup_tokens(sentence)
@@ -1285,13 +1287,13 @@ fn sentence_is_anaphoric_object_conditional_effect(tokens: &[OwnedLexToken]) -> 
         }
     }
     let predicate_tokens = &tokens[1..predicate_end];
-    predicate_tokens.iter().any(|token| token.is_word("it"))
+    predicate_tokens.iter().any(|token| token.matches_word("it"))
         || predicate_tokens
             .first()
             .is_some_and(|token| token.is_word("target"))
         || predicate_tokens.windows(2).any(|pair| {
-            pair[0].is_word("that")
-                && pair[1].is_any_word(&[
+            pair[0].matches_word("that")
+                && pair[1].matches_any_word(&[
                     "card",
                     "creature",
                     "object",

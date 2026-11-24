@@ -34,15 +34,15 @@ pub(super) fn parse(tokens: &[OwnedLexToken]) -> Result<Option<Vec<EffectAst>>, 
         if used!=amount_tokens.len(){return Ok(None);}
         (&after[damage_end..],amount)
     };
-    if target_tokens.iter().any(|token|token.is_word("target")){return Ok(None);}
+    if target_tokens.iter().any(|token|token.matches_word("target")){return Ok(None);}
     // A per-recipient amount or condition ("3 damage to each creature without
     // flying if {R} was spent ... and 3 damage to each creature with flying
     // if {G} was spent ...") is two gated instructions, not one shared set.
-    if target_tokens.iter().any(|token|token.is_any_word(&["if","unless","damage"])){return Ok(None);}
+    if target_tokens.iter().any(|token|token.matches_any_word(&["if","unless","damage"])){return Ok(None);}
     // "each opponent, where X is the number of artifacts you control": a
     // trailing `where` clause defines the shared amount, it is never one of
     // the recipient operands (Tezzeret, Master of the Bridge).
-    if target_tokens.iter().any(|token|token.is_word("where")){return Ok(None);}
+    if target_tokens.iter().any(|token|token.matches_word("where")){return Ok(None);}
     // One inherited quantifier can govern a comma/conjunction list of
     // independently read recipient operands ("each creature, player, and
     // planeswalker"). Do not execute the operands as separate instructions.

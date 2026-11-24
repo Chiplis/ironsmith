@@ -128,7 +128,7 @@ pub(super) fn read_destination_first_battlefield(
                 // Only an authored "target" announces a target; "any number
                 // of Aura cards ... from your graveyard and/or hand" (Bruna,
                 // Light of Alabaster) is chosen on resolution.
-                if object_tokens.iter().any(|token| token.is_word("target")) {
+                if object_tokens.iter().any(|token| token.matches_word("target")) {
                     object_target = force_object_targeting(object_target, tokens[0].span());
                 }
                 return Ok(Some(EffectAst::subject_verb_move_to_zone(
@@ -267,7 +267,7 @@ pub(super) fn read_library_placement_destination(
         if let Some(then_idx) = shape
             .destination_tokens
             .windows(2)
-            .position(|pair| pair[0].is_comma() && pair[1].is_word("then"))
+            .position(|pair| pair[0].is_comma() && pair[1].matches_word("then"))
             && then_idx + 2 < shape.destination_tokens.len()
         {
             let (parsed, claims) = crate::word_claims::scoped(|| {
@@ -355,12 +355,12 @@ pub(super) fn read_library_placement_destination(
 fn parse_two_source_zone_filter(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<ObjectFilter>, CardTextError> {
-    let Some(from_idx) = tokens.iter().position(|token| token.is_word("from")) else {
+    let Some(from_idx) = tokens.iter().position(|token| token.matches_word("from")) else {
         return Ok(None);
     };
     let Some(and_idx) = tokens
         .windows(2)
-        .position(|pair| pair[0].is_word("and") && pair[1].is_word("from"))
+        .position(|pair| pair[0].matches_word("and") && pair[1].matches_word("from"))
         .filter(|idx| *idx > from_idx + 1)
     else {
         return Ok(None);
@@ -1239,7 +1239,7 @@ fn split_independent_reference_pair(
     let mut ands = tokens
         .iter()
         .enumerate()
-        .filter(|(_, token)| token.is_word("and"));
+        .filter(|(_, token)| token.matches_word("and"));
     let (and_idx, _) = ands.next()?;
     if ands.next().is_some() || tokens.iter().any(|token| token.is_comma()) {
         return None;

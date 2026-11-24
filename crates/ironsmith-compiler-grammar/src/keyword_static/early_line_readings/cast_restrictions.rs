@@ -33,7 +33,7 @@ pub(super) fn read_cant_cast_this_unless(
         _ => return Ok(None),
     };
     let keyword = if negated { "if" } else { "unless" };
-    let Some(unless_idx) = tokens.iter().position(|token| token.is_word(keyword)) else {
+    let Some(unless_idx) = tokens.iter().position(|token| token.matches_word(keyword)) else {
         return Ok(None);
     };
     let Some(condition) = super::static_condition_clause_bound(&tokens[unless_idx + 1..]) else {

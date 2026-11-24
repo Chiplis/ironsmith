@@ -379,11 +379,11 @@ fn parse_target_phase_subject(tokens: &[OwnedLexToken]) -> Option<&[OwnedLexToke
     // Adversary) is still one subject, so only a `then` boundary or a comma
     // opening a new pronoun clause splits it.
     if tokens.iter().enumerate().any(|(index, token)| {
-        token.is_word("then")
+        token.matches_word("then")
             || (token.is_comma()
                 && tokens
                     .get(index + 1)
-                    .is_some_and(|next| next.is_any_word(&["it", "they", "that", "those"])))
+                    .is_some_and(|next| next.matches_any_word(&["it", "they", "that", "those"])))
     }) {
         return None;
     }

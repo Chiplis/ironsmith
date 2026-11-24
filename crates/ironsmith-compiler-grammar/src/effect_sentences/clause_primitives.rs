@@ -217,7 +217,7 @@ fn retarget_condition_conjunct_filter(
 fn parse_choose_new_targets_with_trailing_if(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<EffectAst>, CardTextError> {
-    let Some(if_idx) = tokens.iter().position(|token| token.is_word("if")) else {
+    let Some(if_idx) = tokens.iter().position(|token| token.matches_word("if")) else {
         return Ok(None);
     };
     if if_idx == 0 {
@@ -247,6 +247,8 @@ fn parse_choose_new_targets_with_trailing_if(
     let Some(effect) = parse_choose_new_targets_clause(&tokens[..if_idx])? else {
         return Ok(None);
     };
+    // The "if" the instruction was split from its condition at.
+    crate::word_claims::claim_tokens(&tokens[if_idx..=if_idx]);
     Ok(Some(EffectAst::Conditionals(ConditionalEffectAst::TrailingIf {
         predicate: crate::cards::builders::PredicateAst::ItMatches(filter),
         effects: vec![effect],
@@ -259,7 +261,7 @@ pub fn parse_choose_new_targets_clause(
     let Some(split) = split_choose_new_targets_clause_lexed(tokens) else {
         return Ok(None);
     };
-    if tokens.iter().any(|token| token.is_word("if")) {
+    if tokens.iter().any(|token| token.matches_word("if")) {
         if let Some(effect) = parse_choose_new_targets_with_trailing_if(tokens)? {
             return Ok(Some(effect));
         }
@@ -525,7 +527,7 @@ fn optional_cost_actor(tokens: &[OwnedLexToken]) -> Option<(PlayerAst, &[OwnedLe
     actors.iter().find_map(|(words, player)| {
         let (actor, rest) = tokens.split_at_checked(words.len())?;
         let (may, price) = rest.split_first()?;
-        (may.is_word("may") && actor.iter().zip(*words).all(|(t, w)| t.is_word(w)))
+        (may.matches_word("may") && actor.iter().zip(*words).all(|(t, w)| t.is_word(w)))
             .then_some((*player, price))
     })
 }
@@ -990,7 +992,7 @@ pub fn parse_choose_card_name_clause(
     // player phrase must not be read into the card-name filter.
     if matches!(shape.player, PlayerAst::You)
         && let Some(filter_tokens) = shape.filter_tokens
-        && let Some(and_index) = filter_tokens.iter().position(|token| token.is_word("and"))
+        && let Some(and_index) = filter_tokens.iter().position(|token| token.matches_word("and"))
         && and_index > 0
     {
         let synthetic = crate::cards::builders::TextSpan::synthetic;
@@ -1917,7 +1919,7 @@ fn parse_named_player_turn_end_trailing_trigger_clause(
         _ => return Ok(None),
     };
     let rest = crate::lexer::trim_lexed_commas(&tokens[comma + 1..]);
-    let Some(whenever) = rest.iter().position(|token| token.is_word("whenever")) else {
+    let Some(whenever) = rest.iter().position(|token| token.matches_word("whenever")) else {
         return Ok(None);
     };
     // Only "<effect> whenever they <verb> ...": the trailing actor is the
@@ -1983,7 +1985,7 @@ pub fn parse_until_duration_triggered_clause(
 ) -> Result<Option<EffectAst>, CardTextError> {
     // The registration label and prior-action relation are independent data.
     if tokens.first().is_some_and(|token| token.is_word("maintain")) {
-        let Some(collection) = tokens.iter().position(|token| token.is_word("collection")) else { return Ok(None); };
+        let Some(collection) = tokens.iter().position(|token| token.matches_word("collection")) else { return Ok(None); };
         if collection < 3 || !tokens[1].is_word("the") { return Ok(None); }
         let Some(label) = tokens[2..collection].iter().map(OwnedLexToken::as_word).collect::<Option<Vec<_>>>() else { return Ok(None); };
         let after = &tokens[collection + 1..];
@@ -2120,10 +2122,12 @@ pub fn parse_until_duration_triggered_clause(
     let declared_subject_target: Option<EffectAst> = if matches!(trigger_words.get(1), Some(&"target")) {
         let subject_end = trigger_tokens
             .iter()
-            .position(|token| token.is_word("deals"));
+            .position(|token| token.matches_word("deals"));
         match (subject_end, damage_source_filter_mut(&mut trigger)) {
             (Some(end), Some(source)) if end > 2 => {
                 let filter = parse_object_filter(&trigger_tokens[2..end], false)?;
+                // The subject's "target" is the declaration this reading makes.
+                crate::word_claims::claim_tokens(&trigger_tokens[1..2]);
                 let tag = crate::util::helper_tag_for_tokens(tokens, "targeted");
                 *source = filter
                     .clone()
@@ -2517,7 +2521,7 @@ pub fn parse_deal_damage_equal_to_power_clause(
     // deal ...") is not covered by the leading-may shape above, but a damage
     // source never contains the optional-action modal; the player-may
     // readings own the clause.
-    if shape.source_tokens.iter().any(|token| token.is_word("may")) {
+    if shape.source_tokens.iter().any(|token| token.matches_word("may")) {
         return Ok(None);
     }
     let demonstrative_source_words = TokenWordView::new(shape.source_tokens).to_word_refs();
@@ -2863,7 +2867,7 @@ pub fn parse_fight_clause(tokens: &[OwnedLexToken]) -> Result<Option<EffectAst>,
     };
     if shape
         .left_tokens
-        .is_some_and(|left| left.iter().any(|token| token.is_word("may")))
+        .is_some_and(|left| left.iter().any(|token| token.matches_word("may")))
     {
         return Ok(None);
     }

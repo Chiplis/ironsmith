@@ -95,7 +95,7 @@ pub fn parse_exile_segment_tokens(
         return Err(unsupported(tokens, "scaled-exile-count"));
     }
     if tokens.first().is_some_and(|t| t.is_word("exile"))
-        && let Some(from) = tokens.iter().position(|t| t.is_word("from")) {
+        && let Some(from) = tokens.iter().position(|t| t.matches_word("from")) {
         let tail: String = render_token_slice(&tokens[from..]).to_ascii_lowercase().chars().filter(|c| !c.is_whitespace()).collect();
         if matches!(tail.as_str(), "fromyourhandand/orgraveyard" | "fromyourhandand/orfromyourgraveyard" | "fromyourhandandorgraveyard" | "fromyourhandandorfromyourgraveyard") {
             let subject = &tokens[1..from];
@@ -139,7 +139,7 @@ pub fn parse_exile_segment_tokens(
         }
     }
     // A cardinality suffix qualifies the chosen set, not its object filter.
-    if let Some(equal) = tokens.iter().position(|token| token.is_word("equal")) {
+    if let Some(equal) = tokens.iter().position(|token| token.matches_word("equal")) {
         let words = primitives::TokenWordView::new(&tokens[equal..]).word_refs();
         let players = match words.as_slice() {
             ["equal", "to", "the", "number", "of", "opponents", "you", "have"] => Some(PlayerFilter::Opponent),
@@ -327,7 +327,7 @@ fn parse_source_and_chosen_exile(
     let mut literal_name_tokens: &[OwnedLexToken] = &[];
     // A complete authored name at the end of this bounded selector is a
     // literal, including words such as "Its" that also have grammatical uses.
-    if let Some(named) = choice.rest.iter().position(|token| token.is_word("named")) {
+    if let Some(named) = choice.rest.iter().position(|token| token.matches_word("named")) {
         let name_tokens = &choice.rest[named + 1..];
         if !name_tokens.is_empty()
             && (shared_origin.is_some()
@@ -366,7 +366,7 @@ fn parse_source_and_chosen_exile(
 fn parse_chosen_and_source_exile(
     body: &[OwnedLexToken],
 ) -> Result<Option<ActivationCostSegmentCst>, CardTextError> {
-    let Some(and_idx) = body.iter().rposition(|token| token.is_word("and")) else {
+    let Some(and_idx) = body.iter().rposition(|token| token.matches_word("and")) else {
         return Ok(None);
     };
     let source_tokens = &body[and_idx + 1..];
@@ -412,7 +412,7 @@ fn parse_generic_exile(
         && subject_tokens[subject_tokens.len() - 1].is_word("up")
         && subject_tokens[..subject_tokens.len() - 2]
             .iter()
-            .any(|token| token.is_word("face-down"))
+            .any(|token| token.matches_word("face-down"))
     {
         (&subject_tokens[..subject_tokens.len() - 2], true)
     } else {

@@ -158,7 +158,7 @@ pub fn parse_fixed_mana_output(tokens: &[OwnedLexToken]) -> FixedManaOutput {
     // phrase after "equal to" is a value, never more mana symbols.
     let first_equal_to_token = tokens
         .windows(2)
-        .position(|pair| pair[0].is_word("equal") && pair[1].is_word("to"));
+        .position(|pair| pair[0].matches_word("equal") && pair[1].matches_word("to"));
     let scan_end = first_for_each_token
         .into_iter()
         .chain(first_equal_to_token)

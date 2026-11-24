@@ -88,7 +88,7 @@ fn complete_object_arm(tokens: &[OwnedLexToken]) -> bool {
     // callers. Here articles are admitted only at an owned noun/relation
     // head, and `instead` remains the enclosing instruction's connective.
     let has_discarded_word = |tokens: &[OwnedLexToken]| tokens.iter().any(|token| {
-        token.is_any_word(&["a", "an", "the", "instead"])
+        token.matches_any_word(&["a", "an", "the", "instead"])
     });
     if !has_discarded_word(tokens) && parse_simple_object_filter_lexed(tokens, false).is_some() {
         return true;
@@ -102,7 +102,7 @@ fn complete_object_arm(tokens: &[OwnedLexToken]) -> bool {
             return false;
         };
         let relation = if relation.first().is_some_and(|token| {
-            token.is_word("a") || token.is_word("an") || token.is_word("the")
+            token.matches_word("a") || token.matches_word("an") || token.matches_word("the")
         }) {
             &relation[1..]
         } else {

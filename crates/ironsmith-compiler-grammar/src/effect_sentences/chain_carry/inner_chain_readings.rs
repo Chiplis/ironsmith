@@ -79,7 +79,7 @@ const READINGS: &[Reading] = &[
     Reading {
         id: RuleId::new("hand-choice-then-shuffle-remainder"),
         head: HeadDiscriminator::Any,
-        admits: |input| input.tokens.iter().any(|token| token.is_word("rest")),
+        admits: |input| input.tokens.iter().any(|token| token.matches_word("rest")),
         read: |input| {
             input.outcome(crate::activation_and_restrictions::choice_object_clauses::parse_hand_choice_then_shuffle_remainder(input.tokens))
         },
@@ -426,7 +426,7 @@ fn read_control_flow_plan(input: &InnerChain<'_>) -> Result<Option<Vec<EffectAst
         // trailing if qualifies the retargeted stack object, so the retarget
         // reader owns it; a generic control-flow split would test the source.
         if crate::lexer::token_word_refs(tokens).starts_with(&["choose", "new", "targets"])
-            && tokens.iter().any(|token| token.is_word("if"))
+            && tokens.iter().any(|token| token.matches_word("if"))
             && let Ok(Some(effect)) =
                 crate::effect_sentences::clause_primitives::parse_choose_new_targets_clause(tokens)
         {
@@ -438,7 +438,7 @@ fn read_control_flow_plan(input: &InnerChain<'_>) -> Result<Option<Vec<EffectAst
                 // A temporary prohibition must retain its duration while the
                 // chain distinguishes restrictions from granted abilities.
                 if matches!(plan.structure, crate::grammar::effects::control_flow::RecognizedControlFlowAst::Duration(_))
-                    && plan.body_tokens.iter().any(|token| token.is_any_word(&["can't", "cant", "cannot"]))
+                    && plan.body_tokens.iter().any(|token| token.matches_any_word(&["can't", "cant", "cannot"]))
                 {
                     let effects = parse_effect_chain_inner_lexed_unstacked(tokens, false)?;
                     if let Some(control) = plan.into_ast(effects.clone()) {
@@ -556,7 +556,7 @@ fn read_keyword_mechanic_without_terminal_punctuation(
     let tokens = input.tokens;
     // Explicit simultaneity owns the full pair before ordinary and-splitting.
     if tokens.first().is_some_and(|token| token.is_word("simultaneously"))
-        && tokens.iter().any(|token| token.is_any_word(&["phase", "phases"]))
+        && tokens.iter().any(|token| token.matches_any_word(&["phase", "phases"]))
     {
         return match parse_keyword_mechanic_without_terminal_punctuation(tokens)? {
             Some(effect) => Ok(Some(vec![effect])),

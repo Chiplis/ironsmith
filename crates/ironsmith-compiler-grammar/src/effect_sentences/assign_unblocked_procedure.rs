@@ -73,13 +73,13 @@ pub(crate) fn parse_targeted_mandatory_unblocked_assignment(
     }
     let Some(verb) = tokens
         .iter()
-        .position(|token| token.is_word("assign") || token.is_word("assigns"))
+        .position(|token| token.matches_word("assign") || token.matches_word("assigns"))
     else {
         return Ok(None);
     };
     let subject = &tokens[..verb];
     if subject.is_empty()
-        || !subject.iter().any(|token| token.is_word("target"))
+        || !subject.iter().any(|token| token.matches_word("target"))
         || subject
             .iter()
             .any(|token| ["may", "can", "have", "has"].iter().any(|word| token.is_word(word)))

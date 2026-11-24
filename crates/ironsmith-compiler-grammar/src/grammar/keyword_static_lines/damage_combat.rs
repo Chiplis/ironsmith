@@ -408,7 +408,7 @@ fn parse_additive_damage_amount_lexed<'a>(
 pub fn parse_damage_source_operand_tokens(tokens: &[OwnedLexToken]) -> Option<DamageSourceShape<'_>> {
     let tokens=trim_lexed_commas(tokens);
     if tokens.is_empty(){return None}
-    let Some(noun)=tokens.iter().position(|token|token.is_any_word(&["source","sources"])) else {
+    let Some(noun)=tokens.iter().position(|token|token.matches_any_word(&["source","sources"])) else {
         return Some(DamageSourceShape {source_noun:false,filter_tokens:tokens,
             controller:DamageSourceControllerKind::None,trailing_filter_tokens:&[]});
     };
@@ -1039,7 +1039,7 @@ fn permanent_prevention_source_shape<'a>(
     }
     // An explicit source noun has any-zone scope. Its controller and trailing
     // qualities are kept separate for the shared semantic filter mapper.
-    if let Some(index) = tokens.iter().position(|token| token.is_any_word(&["source", "sources"])) {
+    if let Some(index) = tokens.iter().position(|token| token.matches_any_word(&["source", "sources"])) {
         let (controller, tail) = primitives::parse_prefix(&tokens[index + 1..], opt(alt((
             primitives::phrase(&["you", "control"]).value(DamageSourceControllerKind::You),
             alt((primitives::phrase(&["you", "don't", "control"]),
@@ -1053,6 +1053,8 @@ fn permanent_prevention_source_shape<'a>(
         let filter_tokens = if prefix.len() == 1 && prefix[0].is_any_word(&["a", "an", "any"]) {
             &prefix[..0]
         } else { prefix };
+        // The source noun the scan above found.
+        crate::word_claims::claim_tokens(&tokens[index..=index]);
         Ok(DamageSourceShape {
             source_noun: true, filter_tokens,
             controller: controller.unwrap_or(DamageSourceControllerKind::None),

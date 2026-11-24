@@ -288,7 +288,7 @@ pub fn parse_consult_disposition_bundle(tokens: &[OwnedLexToken]) -> Option<Vec<
         .consult_tokens
         .iter()
         .position(|token| {
-            token.is_word("reveal") || token.is_word("look") || token.is_word("exile")
+            token.matches_word("reveal") || token.matches_word("look") || token.matches_word("exile")
         })
         .is_some_and(|verb| verb > 0 && shape.consult_tokens[verb - 1].is_word("may"));
     let mut effects = parts.effects;
@@ -299,7 +299,7 @@ pub fn parse_consult_disposition_bundle(tokens: &[OwnedLexToken]) -> Option<Vec<
         && shape
             .consult_tokens
             .windows(2)
-            .any(|pair| pair[0].is_comma() && pair[1].is_word("then"))
+            .any(|pair| pair[0].is_comma() && pair[1].matches_word("then"))
     {
         effects = vec![EffectAst::CommaThen { effects }];
     }

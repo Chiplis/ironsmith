@@ -462,7 +462,7 @@ fn per_attacker_action_attack_cost_static_ability(
     ) {
         return Ok(None);
     }
-    let Some(verb) = payment.iter().position(|token| token.is_word("sacrifices")) else {
+    let Some(verb) = payment.iter().position(|token| token.matches_word("sacrifices")) else {
         return Ok(None);
     };
     let Some(per) = payment
@@ -470,7 +470,7 @@ fn per_attacker_action_attack_cost_static_ability(
         .enumerate()
         .skip(verb + 1)
         .find_map(|(index, token)| {
-            (token.is_word("for") && payment.get(index + 1).is_some_and(|next| next.is_word("each")))
+            (token.matches_word("for") && payment.get(index + 1).is_some_and(|next| next.matches_word("each")))
                 .then_some(index)
         })
     else {
@@ -500,7 +500,7 @@ fn per_attacker_action_attack_cost_static_ability(
     let mut object_tokens = &payment[verb + 1..per];
     let object_words = crate::lexer::token_word_refs(object_tokens);
     if object_words.ends_with(&["of", "their", "choice"]) {
-        let Some(of) = object_tokens.iter().rposition(|token| token.is_word("of")) else {
+        let Some(of) = object_tokens.iter().rposition(|token| token.matches_word("of")) else {
             return Ok(None);
         };
         object_tokens = &object_tokens[..of];
@@ -573,7 +573,7 @@ fn block_cost_static_ability(
         )
     {
         let payment = trim_edge_punctuation_tokens(&tokens[unless_index + 1..]);
-        let Some(pay) = payment.iter().position(|token| token.is_word("pays")) else {
+        let Some(pay) = payment.iter().position(|token| token.matches_word("pays")) else {
             return Ok(None);
         };
         let payer = crate::lexer::token_word_refs(&payment[..pay]);
@@ -598,6 +598,8 @@ fn block_cost_static_ability(
             filter.with_attached_object = Some(Box::new(ObjectFilter::source()));
             filter
         };
+        // The payment verb the scan above found.
+        crate::word_claims::claim_tokens(&payment[pay..=pay]);
         return Ok(Some(StaticAbility::block_cost(
             ObjectFilter::creature(),
             attackers,
@@ -1167,11 +1169,11 @@ fn parse_cant_clauses_unbound(
 ) -> Result<Option<Vec<StaticAbility>>, CardTextError> {
     // A shared source subject followed by a positive predicate is owned by
     // the compound static reader, even when a later member is negated.
-    let first_predicate = tokens.iter().position(|token| token.is_any_word(&["attacks", "blocks", "has", "gets", "is", "can", "can\'t", "cant"]));
+    let first_predicate = tokens.iter().position(|token| token.matches_any_word(&["attacks", "blocks", "has", "gets", "is", "can", "can\'t", "cant"]));
     if let Some(index) = first_predicate {
         if !tokens[index].is_any_word(&["can\'t", "cant"])
             && crate::util::is_source_reference_words(&crate::lexer::token_word_refs(&tokens[..index]))
-            && tokens[index + 1..].iter().any(|token| token.is_any_word(&["can\'t", "cant"])) {
+            && tokens[index + 1..].iter().any(|token| token.matches_any_word(&["can\'t", "cant"])) {
             return Ok(None);
         }
     }
@@ -1352,7 +1354,7 @@ fn parse_cant_clauses_unbound(
         && crate::util::is_source_reference_words(&crate::lexer::token_word_refs(
             &tokens[..neg_start],
         ))
-        && let Some(if_index) = tokens.iter().rposition(|token| token.is_word("if"))
+        && let Some(if_index) = tokens.iter().rposition(|token| token.matches_word("if"))
         && if_index > neg_start
         && let Some(condition) = crate::keyword_static::parse_attacked_during_controllers_last_turn(
             &trim_commas(&tokens[if_index + 1..]),
@@ -1363,6 +1365,8 @@ fn parse_cant_clauses_unbound(
         let Some(abilities) = parse_cant_clauses(&head)? else {
             return Ok(None);
         };
+        // The "if" the restriction was split from its condition at.
+        crate::word_claims::claim_tokens(&tokens[if_index..=if_index]);
         return Ok(Some(
             abilities
                 .into_iter()
@@ -1380,10 +1384,10 @@ fn parse_cant_clauses_unbound(
     // less life" (Marina Vendrell's Grimoire): a shared player subject with a
     // positive hand-size rule and a negated player restriction. Each member
     // is its own static rule.
-    if let Some(and_index) = tokens.iter().position(|token| token.is_word("and"))
+    if let Some(and_index) = tokens.iter().position(|token| token.matches_word("and"))
         && let Some(have_index) = tokens[..and_index]
             .iter()
-            .position(|token| token.is_word("have") || token.is_word("has"))
+            .position(|token| token.matches_word("have") || token.matches_word("has"))
         && have_index > 0
         && let Ok(Some(hand_size)) =
             crate::keyword_static::parse_no_maximum_hand_size_line(&tokens[..and_index])
@@ -1411,11 +1415,11 @@ fn parse_cant_clauses_unbound(
             .enumerate()
             .skip(neg_end)
             .find_map(|(index, token)| {
-                if token.is_word("unless") {
+                if token.matches_word("unless") {
                     Some((index, index + 1, true))
-                } else if token.is_word("as")
-                    && tokens.get(index + 1).is_some_and(|next| next.is_word("long"))
-                    && tokens.get(index + 2).is_some_and(|next| next.is_word("as"))
+                } else if token.matches_word("as")
+                    && tokens.get(index + 1).is_some_and(|next| next.matches_word("long"))
+                    && tokens.get(index + 2).is_some_and(|next| next.matches_word("as"))
                 {
                     Some((index, index + 3, false))
                 } else {
@@ -1609,7 +1613,7 @@ pub fn parse_cant_clause(tokens: &[OwnedLexToken]) -> Result<Option<StaticAbilit
     // a source combat prohibition gated by a trailing static condition (the
     // restriction applies only while the condition holds). "can't be blocked
     // if ..." belongs to parse_subject_cant_be_blocked_as_long_as_condition_line.
-    if let Some(if_idx) = tokens.iter().rposition(|token| token.is_word("if"))
+    if let Some(if_idx) = tokens.iter().rposition(|token| token.matches_word("if"))
         && if_idx > 0
         && if_idx + 1 < tokens.len()
     {
@@ -1628,6 +1632,8 @@ pub fn parse_cant_clause(tokens: &[OwnedLexToken]) -> Result<Option<StaticAbilit
             && let Ok(predicate) = crate::keyword_static::parse_static_condition_clause(predicate_tokens)
             && let Some(ability) = parse_cant_clause(leading)?
         {
+            // The "if" the restriction was split from its condition at.
+            crate::word_claims::claim_tokens(&tokens[if_idx..=if_idx]);
             return Ok(Some(ability.with_condition(predicate)));
         }
     }

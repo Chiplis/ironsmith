@@ -117,10 +117,10 @@ pub fn parse_for_each_target_players_shape(
     // A qualifier between the player phrase and `each` remains supported.
     let (each_index, effect_tokens) =
         after_player.iter().enumerate().find_map(|(index, token)| {
-            if !token.is_word("each")
+            if !token.matches_word("each")
                 || after_player
                     .get(index.saturating_sub(1))
-                    .is_some_and(|previous| previous.is_word("for"))
+                    .is_some_and(|previous| previous.matches_word("for"))
             {
                 return None;
             }
@@ -143,6 +143,7 @@ pub fn parse_for_each_target_players_shape(
     (!target_tokens.is_empty() && !effect_tokens.is_empty()).then_some(ForEachTargetPlayersShape {
         count,
         target_tokens,
+        each_token: &after_player[each_index],
         effect_tokens,
     })
 }

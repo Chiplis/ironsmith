@@ -396,6 +396,17 @@ pub(in super::super) fn apply_reference_and_tag_stage(
             {
                 crate::word_claims::claim_words(&all_words[exiled_with_idx - 2..exiled_with_idx]);
             }
+            // "cards from among cards exiled with this artifact" (Bag of
+            // Devouring): the scope phrase restates the source-linked set.
+            if let Some(scope) = [
+                &["from", "among", "the", "cards"][..],
+                &["from", "among", "cards"][..],
+            ]
+            .into_iter()
+            .find(|scope| crate::word_primitives::ends_with(&all_words[..exiled_with_idx], scope))
+            {
+                crate::word_claims::claim_words(&all_words[exiled_with_idx - scope.len()..exiled_with_idx]);
+            }
             let mut reference_end = exiled_with_idx + 2;
             let mut has_reference_head = false;
             if all_words

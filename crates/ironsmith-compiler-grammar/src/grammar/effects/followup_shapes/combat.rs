@@ -17,6 +17,8 @@ pub struct DamageAmountReplacementShape<'a> {
     pub self_recipient: bool,
     /// The damage source phrase before "deals".
     pub source_tokens: &'a [OwnedLexToken],
+    /// The "deals" verb itself.
+    pub verb_tokens: &'a [OwnedLexToken],
 }
 
 pub fn parse_damage_amount_replacement(
@@ -33,14 +35,14 @@ pub fn parse_damage_amount_replacement(
         }
         (&tokens[..comma], &action[..action.len() - 1])
     } else {
-        let instead = tokens.iter().position(|token| token.is_word("instead"))?;
+        let instead = tokens.iter().position(|token| token.matches_word("instead"))?;
         let predicate = &tokens[instead + 1..];
         if !predicate.first()?.is_word("if") {
             return None;
         }
         (predicate, &tokens[..instead])
     };
-    let deal = action.iter().position(|token| token.is_word("deals"))?;
+    let deal = action.iter().position(|token| token.matches_word("deals"))?;
     let source = token_word_refs(&action[..deal]);
     let repeats_source = source.as_slice() == ["it"];
     let self_source = crate::util::source_reference_surface_for_words(&source).is_some();
@@ -90,6 +92,7 @@ pub fn parse_damage_amount_replacement(
         definite_source,
         self_recipient,
         source_tokens: &action[..deal],
+        verb_tokens: &action[deal..=deal],
     })
 }
 

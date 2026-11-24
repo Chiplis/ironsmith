@@ -245,7 +245,7 @@ fn parse_create_equal_to_dynamic_count(
     // The authored "equal to" that introduces the amount reads with it.
     let authored_equal_to = tail_tokens
         .get(spec.cut_token..spec.cut_token + 2)
-        .filter(|pair| pair[0].is_word("equal") && pair[1].is_word("to"))
+        .filter(|pair| pair[0].matches_word("equal") && pair[1].matches_word("to"))
         .unwrap_or_default();
     let mut equal_tokens = super::super::lexer::synthetic_word_tokens(["equal", "to"]);
     equal_tokens.extend_from_slice(spec.value_tokens);
@@ -259,7 +259,7 @@ fn parse_create_equal_to_dynamic_count(
     let references_prior_result = spec
         .value_tokens
         .iter()
-        .any(|token| token.is_word("result"));
+        .any(|token| token.matches_word("result"));
     let mut synthetic_tokens = super::super::lexer::synthetic_word_tokens(["where", "x", "is"]);
     synthetic_tokens.extend_from_slice(spec.value_tokens);
     Ok(parse_create_value_binding(&synthetic_tokens)?.map(|value| {
@@ -549,17 +549,17 @@ pub fn mixed_pronoun_token_rule_list(tokens: &[OwnedLexToken]) -> Option<&[Owned
     // "They each have flying and "This token can't be enchanted."" (Tetravus)
     // distributes the same list over every created token.
     let (start, head_len) = tokens.iter().enumerate().find_map(|(index, token)| {
-        if token.is_word("it") && tokens.get(index + 1).is_some_and(|next| next.is_word("has")) {
+        if token.matches_word("it") && tokens.get(index + 1).is_some_and(|next| next.matches_word("has")) {
             return Some((index, 2));
         }
-        if !token.is_word("they") {
+        if !token.matches_word("they") {
             return None;
         }
-        if tokens.get(index + 1).is_some_and(|next| next.is_word("have")) {
+        if tokens.get(index + 1).is_some_and(|next| next.matches_word("have")) {
             return Some((index, 2));
         }
-        (tokens.get(index + 1).is_some_and(|next| next.is_word("each"))
-            && tokens.get(index + 2).is_some_and(|next| next.is_word("have")))
+        (tokens.get(index + 1).is_some_and(|next| next.matches_word("each"))
+            && tokens.get(index + 2).is_some_and(|next| next.matches_word("have")))
         .then_some((index, 3))
     })?;
     let rules = tokens.get(start + head_len..)?;
@@ -587,7 +587,7 @@ fn inline_token_with_rule_list(tokens: &[OwnedLexToken]) -> Option<&[OwnedLexTok
         if token.kind==TokenKind::Quote {quoted=!quoted;continue;}
         if quoted || !token.is_any_word(&["token","tokens"])
             || !tokens.get(index+1).is_some_and(|next|next.is_word("with"))
-            || !tokens[..index].iter().any(|word|word.is_word("create")) {continue;}
+            || !tokens[..index].iter().any(|word|word.matches_word("create")) {continue;}
         let rules=&tokens[index+2..];
         if rules.iter().filter(|token|token.kind==TokenKind::Quote).count()>=4 {
             return Some(rules);
@@ -1562,9 +1562,9 @@ fn split_token_entry_counters(
     if trimmed.iter().any(|token| token.kind == TokenKind::Quote) {
         return None;
     }
-    let with_idx = trimmed.iter().rposition(|token| token.is_word("with"))?;
+    let with_idx = trimmed.iter().rposition(|token| token.matches_word("with"))?;
     let mut prefix = &trimmed[..with_idx];
-    if !prefix.iter().any(|token| token.is_any_word(&["token", "tokens"])) {
+    if !prefix.iter().any(|token| token.matches_any_word(&["token", "tokens"])) {
         return None;
     }
     let tail = &trimmed[with_idx + 1..];
@@ -1625,7 +1625,7 @@ fn split_token_copy_entry_counter_exception(
     if trimmed.iter().any(|token| token.kind == TokenKind::Quote) {
         return None;
     }
-    let except_idx = trimmed.iter().rposition(|token| token.is_word("except"))?;
+    let except_idx = trimmed.iter().rposition(|token| token.matches_word("except"))?;
     let mut prefix = &trimmed[..except_idx];
     if !token_word_refs(prefix).contains(&"copy") {
         return None;
@@ -1877,7 +1877,7 @@ pub fn parse_create(
     tokens: &[OwnedLexToken],
     subject: Option<SubjectAst>,
  ) -> Result<EffectAst, CardTextError> {
-    if subject.is_none() && tokens.iter().any(|token|token.is_word("real")) {
+    if subject.is_none() && tokens.iter().any(|token|token.matches_word("real")) {
         let mut complete=Vec::new();
         if !tokens.first().is_some_and(|token|token.is_word("create")){complete.extend(crate::lexer::lex_line("Create",0)?);}
         complete.extend_from_slice(tokens);
@@ -1885,7 +1885,7 @@ pub fn parse_create(
     }
     // A power/toughness prefix on a token copy is a copy exception,
     // not a separate token definition.
-    if let Some(index) = tokens.iter().position(|token| token.is_word("token"))
+    if let Some(index) = tokens.iter().position(|token| token.matches_word("token"))
         && index > 0
         && tokens.get(index + 1).is_some_and(|token| token.is_word("copy"))
         && tokens[index - 1].slice.split_once('/').is_some_and(|(p, t)| p.parse::<i32>().is_ok() && t.parse::<i32>().is_ok())
@@ -1913,7 +1913,7 @@ pub fn parse_create(
         crate::word_claims::claim_tokens(&tokens[prefix.len()..]);
         return Ok(with_token_entry_counter(create, counter_type, amount, tokens));
     }
-    if let Some(index) = tokens.iter().position(|token| token.is_word("if")) {
+    if let Some(index) = tokens.iter().position(|token| token.matches_word("if")) {
         let predicate_words = crate::lexer::parser_token_word_refs(&tokens[index + 1..]);
         if predicate_words == ["you", "revealed", "it", "this", "way"] {
             let effect = parse_create(
@@ -2008,7 +2008,7 @@ pub fn parse_create(
     // made name words such as Red Elf look like colors and creature types.
     if let Some(last) = head.name_tokens.last()
         && let Some(marker) = head.body_tokens.iter().find(|token| {
-            token.span.start >= last.span.end && token.is_any_word(&["token", "tokens"])
+            token.span.start >= last.span.end && token.matches_any_word(&["token", "tokens"])
         })
     {
         definition_tokens.push(marker.clone());
@@ -2085,7 +2085,7 @@ pub fn parse_create(
     let mut blocking_target: Option<TargetAst> = None;
     if let Some(blocking_idx) = tail_tokens
         .iter()
-        .rposition(|token| token.is_word("blocking"))
+        .rposition(|token| token.matches_word("blocking"))
         && blocking_idx + 1 < tail_tokens.len()
     {
         let modifier_start = if blocking_idx >= 1
@@ -2106,6 +2106,8 @@ pub fn parse_create(
             && let Ok(target) = parse_target_phrase(&target_tokens)
         {
             blocking_target = Some(target);
+            // "blocking", found by the scan above.
+            crate::word_claims::claim_tokens(&tail_tokens[blocking_idx..=blocking_idx]);
             tail_tokens.truncate(modifier_start);
             // "a copy of that creature and that's blocking that creature"
             // (Mirror Match): the conjunction joins the two relative clauses.
@@ -2340,7 +2342,7 @@ pub fn parse_create(
             // "except the token has ..." (Mythos of Illuna) names the same
             // subject through the created token.
             crate::word_claims::claim_tokens(crate::word_claims::probe_only(|| {
-                let except_idx = tail_tokens.iter().position(|token| token.is_word("except"))?;
+                let except_idx = tail_tokens.iter().position(|token| token.matches_word("except"))?;
                 let subject = except_idx + 1;
                 let subject_len = match (tail_tokens.get(subject), tail_tokens.get(subject + 1)) {
                     (Some(it), _) if it.is_any_word(&["it", "they"]) => 1,
@@ -2454,7 +2456,7 @@ pub fn parse_create(
                     if let Some(first_tail) = head.tail_tokens.first()
                         && let Some(marker) = head.body_tokens.iter().rev().find(|token| {
                             token.span.end <= first_tail.span.start
-                                && token.is_any_word(&["token", "tokens"])
+                                && token.matches_any_word(&["token", "tokens"])
                         })
                     {
                         crate::word_claims::claim_tokens(std::slice::from_ref(marker));

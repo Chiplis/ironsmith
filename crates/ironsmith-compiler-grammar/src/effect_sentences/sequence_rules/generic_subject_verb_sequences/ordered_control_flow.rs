@@ -1878,7 +1878,7 @@ pub fn parse_target_modifier_counter_instead_then_common_damage(
     if !sentences[sentence_idx + 1]
         .lowered()
         .iter()
-        .any(|token| token.is_word("instead"))
+        .any(|token| token.matches_word("instead"))
     {
         return Ok(None);
     }
@@ -1964,7 +1964,7 @@ pub fn parse_target_modifier_counter_instead_then_common_damage(
     ) || !sentences[sentence_idx + 1]
         .lowered()
         .iter()
-        .any(|token| token.is_word("instead"))
+        .any(|token| token.matches_word("instead"))
     {
         return Ok(None);
     }

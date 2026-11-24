@@ -62,7 +62,7 @@ fn authored_name_tokens_for_span(
     }
     let mut name: Vec<OwnedLexToken> = covered[first_name..]
         .iter()
-        .take_while(|token| !token.is_word("and"))
+        .take_while(|token| !token.matches_word("and"))
         .filter(|token| token.kind != TokenKind::Period)
         .map(|token| (*token).clone())
         .collect();

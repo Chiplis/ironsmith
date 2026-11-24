@@ -235,6 +235,8 @@ pub(super) fn pre_rule_damage_amount_replacement(
         attach_to_previous_ability: false,
     });
     *state.carried_context = None;
+    // The replacement's "deals", found by the shape's scan.
+    crate::word_claims::claim_tokens(shape.verb_tokens);
     Ok(Some(PreParseFollowupResult::Handled {
         consumed_sentences: 1,
         route: Some("subject-verb verb=Deal subject=source recognizer=damage-amount-replacement"),
@@ -282,7 +284,7 @@ pub(super) fn consult_match_quality_predicate(
     let tokens = crate::lexer::trim_lexed_commas(predicate_tokens);
     let verb = tokens
         .iter()
-        .position(|token| token.is_word("was") || token.is_word("is"))?;
+        .position(|token| token.matches_word("was") || token.matches_word("is"))?;
     if verb < 4
         || !tokens[0].is_word("if")
         || !tokens[1].is_word("the")
@@ -321,6 +323,8 @@ pub(super) fn consult_match_quality_predicate(
         }
         _ => return None,
     };
+    // The authored "was"/"is" the rewrite restates as "it is".
+    crate::word_claims::claim_tokens(&tokens[verb..=verb]);
     Some(PredicateAst::TaggedMatches(match_tag, filter))
 }
 

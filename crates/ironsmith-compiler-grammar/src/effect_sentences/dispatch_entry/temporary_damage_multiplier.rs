@@ -226,7 +226,7 @@ fn parse_each_time_target_source(
     if !words.starts_with(&["each", "time", "target"]) {
         return Ok(None);
     }
-    let Some(would) = tokens.iter().position(|token| token.is_word("would")) else {
+    let Some(would) = tokens.iter().position(|token| token.matches_word("would")) else {
         return Ok(None);
     };
     if would < 4 {

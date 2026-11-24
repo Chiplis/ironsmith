@@ -271,7 +271,7 @@ pub fn parse_where_x_usage_shape_tokens(tokens: &[OwnedLexToken]) -> Option<Wher
             let remaining = full_binding_tokens.get(index + 1..)?;
             let body = if remaining
                 .first()
-                .is_some_and(|t| t.is_any_word(&["and", "then"]))
+                .is_some_and(|t| t.matches_any_word(&["and", "then"]))
             {
                 &remaining[1..]
             } else {

@@ -106,10 +106,10 @@ fn parse_participant_choice_then_return_chosen_set(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<EffectAst>, CardTextError> {
     let Some(and_idx) = tokens.iter().enumerate().find_map(|(idx, token)| {
-        (token.is_word("and")
+        (token.matches_word("and")
             && tokens
                 .get(idx + 1)
-                .is_some_and(|next| next.is_word("return") || next.is_word("returns")))
+                .is_some_and(|next| next.matches_word("return") || next.matches_word("returns")))
         .then_some(idx)
     }) else {
         return Ok(None);
@@ -1299,7 +1299,7 @@ pub(crate) fn parse_get_pump_clause_with_bound_values(
             multiplier => Value::Scaled(Box::new(count.clone()), multiplier)
                 .with_surface_hint(ValueSurfaceHint::ForEach),
         };
-        let plural_as_set = subject_shape.subject_tokens.iter().any(|token| token.is_word("those"));
+        let plural_as_set = subject_shape.subject_tokens.iter().any(|token| token.matches_word("those"));
         let Some(recipient) = pump_recipient(&subject_shape, plural_as_set)? else {
             return Ok(None);
         };
@@ -1349,7 +1349,7 @@ pub(crate) fn parse_get_pump_clause_with_bound_values(
     let subject_is_target = subject_shape
         .subject_tokens
         .iter()
-        .any(|token| token.is_word("target"));
+        .any(|token| token.matches_word("target"));
     let (power, toughness, parsed_duration, condition) =
         super::for_each_helpers::parse_get_modifier_values_with_tail_for_subject(
             modifier_tail,
@@ -1435,7 +1435,7 @@ fn set_pump_quantifier(
     } else if [subject.first(), subject.last()]
         .into_iter()
         .flatten()
-        .any(|t| t.is_word("each"))
+        .any(|t| t.matches_word("each"))
     {
         Some(SetQuantifierSurface::Each)
     } else {
