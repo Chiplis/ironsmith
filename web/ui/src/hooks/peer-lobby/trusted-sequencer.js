@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef } from "../../lib/verified-session/hook-runtime.js";
 import { createTrustedSequencer } from "../../lib/verified-session/trusted-sequencer.js";
 import { browserSessionHost } from "./browser-host.js";
 

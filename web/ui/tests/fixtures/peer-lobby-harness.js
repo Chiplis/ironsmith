@@ -1,6 +1,7 @@
 import { getDiagnosticsSnapshot } from "/src/lib/action-diagnostics.js";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
+import "/src/hooks/peer-lobby/browser-peers.js";
 import { usePeerLobby } from "/src/hooks/usePeerLobby.js";
 import { UI_NOTICE_EVENT } from "/src/lib/ui-notices.js";
 

@@ -9,7 +9,6 @@ import {
   MAX_PENDING_ACTION_INTENT_MS,
   PROTOCOL_RESPONSE_TIMEOUT_MS,
   PROTOCOL_VERSION,
-  Peer,
   ZIFFLE_REVEAL_TOKEN_TIMEOUT_MS_PER_CARD,
   actionIntentFingerprint,
   actionIntentKey,
@@ -253,13 +252,13 @@ export function usePeerLobbyConnections(base, servicesRef) {
   const clearConnectionHeartbeat = useCallback((key) => {
     const heartbeat = connectionHeartbeatsRef.current.get(key);
     if (!heartbeat) return;
-    window.clearInterval(heartbeat.timer);
+    globalThis.clearInterval(heartbeat.timer);
     connectionHeartbeatsRef.current.delete(key);
   }, []);
 
   const clearAllConnectionHeartbeats = useCallback(() => {
     for (const heartbeat of connectionHeartbeatsRef.current.values()) {
-      window.clearInterval(heartbeat.timer);
+      globalThis.clearInterval(heartbeat.timer);
     }
     connectionHeartbeatsRef.current.clear();
   }, []);
@@ -315,7 +314,7 @@ export function usePeerLobbyConnections(base, servicesRef) {
       lastCheck: Date.now(),
       missedTimeouts: 0,
       lastTimeoutLogAt: 0,
-      timer: window.setInterval(() => {
+      timer: globalThis.setInterval(() => {
         const dataChannelState = String(conn?.dataChannel?.readyState || "").toLowerCase();
         const iceState = String(conn?.peerConnection?.iceConnectionState || "").toLowerCase();
         if (
@@ -742,19 +741,19 @@ export function usePeerLobbyConnections(base, servicesRef) {
         description: "A peer is producing verifiable shuffle material before the game can continue.",
         ...wait,
       });
-      const timer = window.setTimeout(() => {
+      const timer = globalThis.setTimeout(() => {
         ziffleShuffleWaitersRef.current.delete(requestId);
         clearPeerWait(requestId);
         reject(new Error("Timed out waiting for ziffle shuffle step"));
       }, timeoutMs);
       ziffleShuffleWaitersRef.current.set(requestId, {
         resolve: (value) => {
-          window.clearTimeout(timer);
+          globalThis.clearTimeout(timer);
           clearPeerWait(requestId);
           resolve(value);
         },
         reject: (err) => {
-          window.clearTimeout(timer);
+          globalThis.clearTimeout(timer);
           clearPeerWait(requestId);
           reject(err);
         },
@@ -770,8 +769,8 @@ export function usePeerLobbyConnections(base, servicesRef) {
       let dueAtMs = startedAtMs + normalizedTimeoutMs;
       let timer = null;
       const scheduleTimeout = () => {
-        if (timer) window.clearTimeout(timer);
-        timer = window.setTimeout(() => {
+        if (timer) globalThis.clearTimeout(timer);
+        timer = globalThis.setTimeout(() => {
           ziffleRevealWaitersRef.current.delete(requestId);
           clearPeerWait(requestId);
           const err = new Error(
@@ -807,12 +806,12 @@ export function usePeerLobbyConnections(base, servicesRef) {
           return true;
         },
         resolve: (value) => {
-          if (timer) window.clearTimeout(timer);
+          if (timer) globalThis.clearTimeout(timer);
           clearPeerWait(requestId);
           resolve(value);
         },
         reject: (err) => {
-          if (timer) window.clearTimeout(timer);
+          if (timer) globalThis.clearTimeout(timer);
           clearPeerWait(requestId);
           reject(err);
         },
@@ -829,19 +828,19 @@ export function usePeerLobbyConnections(base, servicesRef) {
         description: "A peer must commit to their random contribution before the shared random value can be revealed.",
         ...wait,
       });
-      const timer = window.setTimeout(() => {
+      const timer = globalThis.setTimeout(() => {
         rngCommitWaitersRef.current.delete(requestId);
         clearPeerWait(requestId);
         reject(new Error("Timed out waiting for random commitment"));
       }, timeoutMs);
       rngCommitWaitersRef.current.set(requestId, {
         resolve: (value) => {
-          window.clearTimeout(timer);
+          globalThis.clearTimeout(timer);
           clearPeerWait(requestId);
           resolve(value);
         },
         reject: (err) => {
-          window.clearTimeout(timer);
+          globalThis.clearTimeout(timer);
           clearPeerWait(requestId);
           reject(err);
         },
@@ -858,19 +857,19 @@ export function usePeerLobbyConnections(base, servicesRef) {
         description: "A peer must reveal their committed random contribution before the shared random value can be used.",
         ...wait,
       });
-      const timer = window.setTimeout(() => {
+      const timer = globalThis.setTimeout(() => {
         rngRevealWaitersRef.current.delete(requestId);
         clearPeerWait(requestId);
         reject(new Error("Timed out waiting for random reveal"));
       }, timeoutMs);
       rngRevealWaitersRef.current.set(requestId, {
         resolve: (value) => {
-          window.clearTimeout(timer);
+          globalThis.clearTimeout(timer);
           clearPeerWait(requestId);
           resolve(value);
         },
         reject: (err) => {
-          window.clearTimeout(timer);
+          globalThis.clearTimeout(timer);
           clearPeerWait(requestId);
           reject(err);
         },
@@ -887,19 +886,19 @@ export function usePeerLobbyConnections(base, servicesRef) {
         description: "A peer must sign the timeout vote before this claim can be submitted.",
         ...wait,
       });
-      const timer = window.setTimeout(() => {
+      const timer = globalThis.setTimeout(() => {
         timeoutVoteWaitersRef.current.delete(requestId);
         clearPeerWait(requestId);
         reject(new Error("Timed out waiting for timeout vote"));
       }, timeoutMs);
       timeoutVoteWaitersRef.current.set(requestId, {
         resolve: (value) => {
-          window.clearTimeout(timer);
+          globalThis.clearTimeout(timer);
           clearPeerWait(requestId);
           resolve(value);
         },
         reject: (err) => {
-          window.clearTimeout(timer);
+          globalThis.clearTimeout(timer);
           clearPeerWait(requestId);
           reject(err);
         },
@@ -916,19 +915,19 @@ export function usePeerLobbyConnections(base, servicesRef) {
         description: "Peers are validating and signing this action before it can be accepted.",
         ...wait,
       });
-      const timer = window.setTimeout(() => {
+      const timer = globalThis.setTimeout(() => {
         actionQuorumVoteWaitersRef.current.delete(requestId);
         clearPeerWait(requestId);
         reject(new Error("Timed out waiting for action quorum vote"));
       }, timeoutMs);
       actionQuorumVoteWaitersRef.current.set(requestId, {
         resolve: (value) => {
-          window.clearTimeout(timer);
+          globalThis.clearTimeout(timer);
           clearPeerWait(requestId);
           resolve(value);
         },
         reject: (err) => {
-          window.clearTimeout(timer);
+          globalThis.clearTimeout(timer);
           clearPeerWait(requestId);
           reject(err);
         },
@@ -945,19 +944,19 @@ export function usePeerLobbyConnections(base, servicesRef) {
         description: "A peer must send hidden-card opening material before this action can advance.",
         ...wait,
       });
-      const timer = window.setTimeout(() => {
+      const timer = globalThis.setTimeout(() => {
         cryptoMaterialWaitersRef.current.delete(requestId);
         clearPeerWait(requestId);
         reject(new Error("Timed out waiting for cryptographic opening material"));
       }, timeoutMs);
       cryptoMaterialWaitersRef.current.set(requestId, {
         resolve: (value) => {
-          window.clearTimeout(timer);
+          globalThis.clearTimeout(timer);
           clearPeerWait(requestId);
           resolve(value);
         },
         reject: (err) => {
-          window.clearTimeout(timer);
+          globalThis.clearTimeout(timer);
           clearPeerWait(requestId);
           reject(err);
         },
@@ -1337,7 +1336,7 @@ export function usePeerLobbyConnections(base, servicesRef) {
 
   function scheduleProtocolRequestFromNotice(entry) {
     if (!entry?.requestPayload || entry.requestHandled || entry.answerStatus || entry.dispatchTimer) return;
-    entry.dispatchTimer = window.setTimeout(() => {
+    entry.dispatchTimer = globalThis.setTimeout(() => {
       entry.dispatchTimer = null;
       if (entry.requestHandled || entry.answerStatus) return;
       void answerProtocolRequestFromNotice(entry).catch(() => {});
@@ -1381,7 +1380,7 @@ export function usePeerLobbyConnections(base, servicesRef) {
     const entry = protocolWaitPlaceholder(requester, requestId);
     entry.requestHandled = true;
     if (entry.dispatchTimer) {
-      window.clearTimeout(entry.dispatchTimer);
+      globalThis.clearTimeout(entry.dispatchTimer);
       entry.dispatchTimer = null;
     }
     let announced = false;
@@ -3370,7 +3369,7 @@ export function usePeerLobbyConnections(base, servicesRef) {
     if (!key) return;
     const timeoutId = pendingActionIntentTimeoutsRef.current.get(key);
     if (timeoutId) {
-      window.clearTimeout(timeoutId);
+      globalThis.clearTimeout(timeoutId);
       pendingActionIntentTimeoutsRef.current.delete(key);
     }
     pendingActionIntentsRef.current.delete(key);
@@ -3380,7 +3379,7 @@ export function usePeerLobbyConnections(base, servicesRef) {
 
   function clearAllPendingActionIntents() {
     for (const timeoutId of pendingActionIntentTimeoutsRef.current.values()) {
-      window.clearTimeout(timeoutId);
+      globalThis.clearTimeout(timeoutId);
     }
     pendingActionIntentTimeoutsRef.current.clear();
     pendingActionIntentsRef.current.clear();
@@ -3473,7 +3472,7 @@ export function usePeerLobbyConnections(base, servicesRef) {
     persistPendingPaymentTiming(record);
     const existingTimeoutId = pendingActionIntentTimeoutsRef.current.get(key);
     if (existingTimeoutId) {
-      window.clearTimeout(existingTimeoutId);
+      globalThis.clearTimeout(existingTimeoutId);
       pendingActionIntentTimeoutsRef.current.delete(key);
     }
     const dueAtMs = Math.max(
@@ -3482,7 +3481,7 @@ export function usePeerLobbyConnections(base, servicesRef) {
     );
     if (!Number.isFinite(dueAtMs)) return;
     const delayMs = Math.max(1, Math.ceil(dueAtMs - Date.now()));
-    const timeoutId = window.setTimeout(() => {
+    const timeoutId = globalThis.setTimeout(() => {
       // A cancelled callback can already be queued when a progress update
       // installs its replacement. It must not remove or act for that timer.
       if (pendingActionIntentTimeoutsRef.current.get(key) !== timeoutId
@@ -3995,10 +3994,10 @@ export function usePeerLobbyConnections(base, servicesRef) {
       );
     };
     sendCurrent();
-    const timerId = window.setInterval(() => {
+    const timerId = globalThis.setInterval(() => {
       sendCurrent();
     }, Math.max(250, Math.floor(ZIFFLE_REVEAL_TOKEN_TIMEOUT_MS_PER_CARD / 2)));
-    const stop = () => window.clearInterval(timerId);
+    const stop = () => globalThis.clearInterval(timerId);
     stop.update = (
       nextPhase = currentPhase,
       nextResponseTimeoutMs = currentResponseTimeoutMs,

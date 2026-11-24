@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { listSavedDeckPresets, SAVED_DECKS_CHANGED } from '@/lib/saved-decks';
+import { listSavedDeckPresets, SAVED_DECKS_CHANGED } from '../lib/saved-decks.js';
 
 export default function useSavedDecks() {
   const [decks, setDecks] = useState([]);

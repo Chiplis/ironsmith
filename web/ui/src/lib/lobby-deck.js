@@ -1,6 +1,6 @@
-import useSavedDecks from "@/hooks/useSavedDecks";
+import useSavedDecks from "../hooks/useSavedDecks.js";
 import { useMemo } from "react";
-import { PUBLIC_FORMATS, usesCommanders } from "@/lib/relay/formats";
+import { PUBLIC_FORMATS, usesCommanders } from "./relay/formats.js";
 import {
   COMMANDER_DECK_SIZE,
   LOBBY_DECK_SIZE,
@@ -9,7 +9,7 @@ import {
   PARTNER_DECK_SIZE,
   normalizeMatchFormat,
   splitSavedLobbyDeck,
-} from "@/lib/decklists";
+} from "./decklists.js";
 
 // Wording and deck choices shared by the lobby sheet and the rematch screen.
 

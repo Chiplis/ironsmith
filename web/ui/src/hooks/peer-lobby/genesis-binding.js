@@ -160,7 +160,7 @@ export function resolveMatchSeedReveal(message, fromPeerId = "") {
   if (!waiter) return false;
   if (waiter.peerIds.size > 0 && fromPeerId && !waiter.peerIds.has(String(fromPeerId))) return false;
   seedRevealWaiters.delete(requestId);
-  window.clearTimeout(waiter.timer);
+  globalThis.clearTimeout(waiter.timer);
   if (message?.error) waiter.reject(new Error(String(message.error)));
   else waiter.resolve(message);
   return true;
@@ -168,7 +168,7 @@ export function resolveMatchSeedReveal(message, fromPeerId = "") {
 
 function waitForMatchSeedReveal(requestId, peerIds, timeoutMs) {
   return new Promise((resolve, reject) => {
-    const timer = window.setTimeout(() => {
+    const timer = globalThis.setTimeout(() => {
       seedRevealWaiters.delete(requestId);
       reject(new Error("Timed out waiting for a player's match seed reveal"));
     }, timeoutMs);

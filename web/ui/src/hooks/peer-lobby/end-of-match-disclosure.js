@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef } from "../../lib/verified-session/hook-runtime.js";
 import { createEndOfMatchDisclosure } from "../../lib/verified-session/end-of-match-disclosure.js";
 import { browserSessionHost } from "./browser-host.js";
 

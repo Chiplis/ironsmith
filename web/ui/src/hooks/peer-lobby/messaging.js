@@ -11,6 +11,7 @@ import { readRelaySession, readPeerSession, relayCheckpoint, relayMatchId } from
 import { PUBLIC_FORMATS, isLegalityFormat, isRelayId, relayBaseUrl, usesCommanders } from '../../lib/relay/formats.js';
 import { loadFormatCatalog, assertFormatDecks, assertFormatMatch } from '../../lib/relay/format-legality.js';
 import { buildPeerOptions, describePeerServer, pinnedSessionSecurityMode, relayPeerOptions } from './shared.js';
+import { createPeer as defaultCreatePeer } from "../../lib/verified-session/peer-factory.js";
 import {
   CURRENT_AUDIT_MAX_PLAYERS,
   CURRENT_AUDIT_MIN_PLAYERS,
@@ -25,7 +26,6 @@ import {
   PEER_OPEN_TIMEOUT_MS,
   PROTOCOL_RESPONSE_TIMEOUT_MS,
   PROTOCOL_VERSION,
-  Peer,
   actionTimerSnapshotFromMatchClock,
   assertResyncActionsExtendLocalTranscript,
   buildRematchStateFromPayload,
@@ -37,7 +37,6 @@ import {
   createEmptyState,
   createMatchSeed,
   createOfflinePeerId,
-  createPeer,
   deckSlotOpeningsForManifest,
   decklistHashForCards,
   emitSyncFailureNotice,
@@ -169,6 +168,8 @@ function hostCheckedDeckReadiness(session, message) {
 }
 
 export function usePeerLobbyMessaging(base, servicesRef) {
+  // The session host may supply its own transport (see usePeerLobby's `createPeer` input).
+  const createPeer = (...args) => (base.createPeer || defaultCreatePeer)(...args);
   const { actionCryptoRequirementsRef, actionHistoryRef, applySyncedCommand, applyingSequencedActionsRef, auditEncryptionPublicKeyRef, auditKeyPairRef, auditPublicKeyRef, auditStateHashRef, awaitingStateResyncRef, clientConnectionsRef, clientMessageQueueRef, drainingPendingSequencedActionsRef, ensureDirectPeerConnectionsRef, gameRef, hostConnectionRef, hostMessageQueueRef, ignoredActionIntentKeysRef, initialPublicCheckpointHashRef, liveAuditTranscriptRef, localZiffleRevealInFlightRef, matchClockConfigRef, matchClockObservationExemptSequenceRef, matchStartPayloadRef, multiplayerRef, peerConnectionsRef, peerMessageQueueRef, peerOptionsRef, peerRef, peerServerLabelRef, pendingSequencedActionsRef, reconnectChallengesRef, relayedActionIdsRef, resyncingPeerIdsRef, setState, setStatus, stateRef } = base;
   const rematchStartInFlightRef = useRef(false);
   const reportCardSubstitutions = useCallback((substitutions) => {
@@ -276,7 +277,7 @@ export function usePeerLobbyMessaging(base, servicesRef) {
     if (retry.timer) return true;
     if (retry.attempts >= 3) return false;
     retry.attempts += 1;
-    retry.timer = window.setTimeout(() => {
+    retry.timer = globalThis.setTimeout(() => {
       retry.timer = null;
       const session = multiplayerRef.current;
       if (session.role !== "client" || !session.matchStarted || !awaitingStateResyncRef.current) return;
@@ -286,10 +287,11 @@ export function usePeerLobbyMessaging(base, servicesRef) {
     return true;
   }, [requestResync]);
   useEffect(() => () => {
-    if (resyncRetryRef.current.timer) window.clearTimeout(resyncRetryRef.current.timer);
+    if (resyncRetryRef.current.timer) globalThis.clearTimeout(resyncRetryRef.current.timer);
   }, []);
 
   useEffect(() => {
+    if (typeof document === "undefined" || typeof window === "undefined") return undefined;
     const recoverForegroundSession = () => {
       if (document.visibilityState === "hidden") return;
       const session = multiplayerRef.current;
@@ -3116,7 +3118,7 @@ export function usePeerLobbyMessaging(base, servicesRef) {
     const key = reconnectChallengeMapKey(peerId, requestId);
     const challenge = reconnectChallengesRef.current.get(key);
     if (challenge?.timeoutId) {
-      window.clearTimeout(challenge.timeoutId);
+      globalThis.clearTimeout(challenge.timeoutId);
     }
     reconnectChallengesRef.current.delete(key);
   }
@@ -3136,7 +3138,7 @@ export function usePeerLobbyMessaging(base, servicesRef) {
       nonce: randomAuditHex(32),
     };
     const key = reconnectChallengeMapKey(conn?.peer, requestId);
-    const timeoutId = window.setTimeout(() => {
+    const timeoutId = globalThis.setTimeout(() => {
       reconnectChallengesRef.current.delete(key);
     }, PEER_CONNECT_TIMEOUT_MS);
     reconnectChallengesRef.current.set(key, {
@@ -4277,7 +4279,7 @@ export function usePeerLobbyMessaging(base, servicesRef) {
             `${statusReason} Retrying signaling in ${Math.ceil(delay / 1000)}s...`,
             true
           );
-          reconnectTimer = window.setTimeout(() => {
+          reconnectTimer = globalThis.setTimeout(() => {
             reconnectTimer = null;
             if (peerRef.current !== takeoverPeer || takeoverPeer.destroyed) return;
             try {
@@ -4301,9 +4303,9 @@ export function usePeerLobbyMessaging(base, servicesRef) {
             `${formatPeerError(err, "Could not take over lobby host")} Retrying host takeover in ${Math.ceil(delay / 1000)}s...`,
             true
           );
-          window.setTimeout(startTakeoverPeer, delay);
+          globalThis.setTimeout(startTakeoverPeer, delay);
         };
-        const openTimeout = window.setTimeout(() => {
+        const openTimeout = globalThis.setTimeout(() => {
           if (peerRef.current !== takeoverPeer || takeoverPeer.open) return;
           scheduleTakeoverRetry("Timed out while claiming the lobby host id");
         }, PEER_OPEN_TIMEOUT_MS);
@@ -4565,7 +4567,7 @@ export function usePeerLobbyMessaging(base, servicesRef) {
           `${reason} Retrying signaling in ${Math.ceil(delay / 1000)}s...`,
           true
         );
-        reconnectTimer = window.setTimeout(() => {
+        reconnectTimer = globalThis.setTimeout(() => {
           reconnectTimer = null;
           if (peerRef.current !== peer || peer.destroyed) return;
           try {
@@ -4576,7 +4578,7 @@ export function usePeerLobbyMessaging(base, servicesRef) {
           }
         }, delay);
       };
-      const openTimeout = window.setTimeout(() => {
+      const openTimeout = globalThis.setTimeout(() => {
         if (peerRef.current !== peer || peer.open) return;
         setStatus(
           `Could not register the lobby with the lobby signaling service (${peerServerLabelRef.current}).`,
@@ -4746,7 +4748,7 @@ export function usePeerLobbyMessaging(base, servicesRef) {
             return;
           }
           setStatus('Waiting for the previous host connection to close...');
-          window.setTimeout(() => {
+          globalThis.setTimeout(() => {
             if (peerRef.current !== peer) return;
             void createLobby({ name, desiredPlayers, startingLife, format, securityMode, communityFormat,
               deckText, commanderText, transport, advertise,
@@ -4855,7 +4857,7 @@ export function usePeerLobbyMessaging(base, servicesRef) {
         }
         hostReconnectAttempts = 0;
       };
-      const peerOpenTimeout = window.setTimeout(() => {
+      const peerOpenTimeout = globalThis.setTimeout(() => {
         if (peerRef.current !== peer || peer.open) return;
         setStatus(
           `Could not connect to the lobby signaling service (${peerServerLabelRef.current}).`,
@@ -4903,7 +4905,7 @@ export function usePeerLobbyMessaging(base, servicesRef) {
           `${reason} Retrying ${inMatch ? "match host" : "lobby host"} in ${Math.ceil(delay / 1000)}s...`,
           true
         );
-        hostReconnectTimer = window.setTimeout(() => {
+        hostReconnectTimer = globalThis.setTimeout(() => {
           hostReconnectTimer = null;
           if (peerRef.current !== peer || peer.destroyed || multiplayerRef.current.role === "host") {
             return;
@@ -4938,7 +4940,7 @@ export function usePeerLobbyMessaging(base, servicesRef) {
 	        });
         hostConnectionRef.current = conn;
         const heartbeatKey = connectionHeartbeatKey("host", hostTarget);
-        const connOpenTimeout = window.setTimeout(() => {
+        const connOpenTimeout = globalThis.setTimeout(() => {
           if (hostConnectionRef.current !== conn || conn.open) return;
           hostConnectionRef.current = null;
           clearConnectionHeartbeat(heartbeatKey);
@@ -5165,7 +5167,7 @@ export function usePeerLobbyMessaging(base, servicesRef) {
           `${reason} Retrying signaling in ${Math.ceil(delay / 1000)}s...`,
           true
         );
-        reconnectTimer = window.setTimeout(() => {
+        reconnectTimer = globalThis.setTimeout(() => {
           reconnectTimer = null;
           if (peerRef.current !== peer || peer.destroyed) return;
           try {
@@ -5267,7 +5269,7 @@ export function usePeerLobbyMessaging(base, servicesRef) {
         clearTimeout(peerOpenTimeout);
         if (saved && !isRelayId(lobbyId) && err?.type === 'unavailable-id' && resumeAttempt < 15) {
           setStatus('Waiting for the previous player connection to close...');
-          window.setTimeout(() => {
+          globalThis.setTimeout(() => {
             if (peerRef.current !== peer) return;
             void joinLobby({ name, lobbyId, deckText, commanderText, resumeAttempt: resumeAttempt + 1 });
           }, 1000);

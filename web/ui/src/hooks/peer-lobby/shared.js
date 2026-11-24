@@ -18,16 +18,15 @@ import { validateCommunityDeck } from "../../lib/community-format.js";
 export { hiddenCardMetadataForObjectFromCheckpoint } from "../../lib/hidden-card-metadata.js";
 import { actionRefObjectId, actionRefWithObjectId, hiddenObjectIdForHiddenRefFromCheckpoint } from "../../lib/sync-object-identity.js";
 export { actionRefObjectId, actionRefWithObjectId, hiddenObjectIdForHiddenRefFromCheckpoint };
-import { WebSocketPeer } from '../../lib/relay/websocket-peer.js';
 import { PUBLIC_FORMATS, isLegalityFormat, isRelayId, relayBaseUrl } from '../../lib/relay/formats.js';
 import { readRelayOnlyPreference } from '../../lib/relay/session.js';
 import { WITNESS_FORFEIT_REASON } from '../../lib/tournament/witness-protocol.js';
 import { validateFormatDeck } from '../../lib/relay/format-legality.js';
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "../../lib/verified-session/hook-runtime.js";
+import { createPeer } from "../../lib/verified-session/peer-factory.js";
+export { createPeer };
 import { approximateMessageBytes, markActionStage, recordDiagnosticEvent, recordPeerMessage } from "../../lib/action-diagnostics.js";
 import { applyKnownSubstitutions } from "../../lib/unsupported-card-substitution.js";
-import Peer from "peerjs";
-import { NativeLanPeer } from "../../lib/lan/native-peer.js";
 import {
   auditStateHash,
   ziffleOriginAnchorFromOpening,
@@ -91,7 +90,7 @@ import {
   verifyProtocolResponseTimeoutVote,
   verifySignedMatchGenesis,
   verifySignedResyncEnvelope,
-} from "@/lib/multiplayer-audit";
+} from "../../lib/multiplayer-audit.js";
 import {
   MATCH_FORMAT_COMMANDER,
   MATCH_FORMAT_NORMAL,
@@ -106,11 +105,11 @@ import {
   parseSideboardList,
   parseStickerList,
   saveDefaultLobbyDeck,
-} from "@/lib/decklists";
-import { setFoilCards } from "@/lib/foil-cards";
-import { setPreferredCardPrints } from "@/lib/scryfall";
-import { emitSyncFailureNotice } from "@/lib/ui-notices";
-import { isDisadvantageousActivePlayerClockAdvance } from "@/lib/match-clock";
+} from "../../lib/decklists.js";
+import { setFoilCards } from "../../lib/foil-cards.js";
+import { setPreferredCardPrints } from "../../lib/scryfall.js";
+import { emitSyncFailureNotice } from "../../lib/ui-notices.js";
+import { isDisadvantageousActivePlayerClockAdvance } from "../../lib/match-clock.js";
 import {
   castingMethodOrigin,
   isDecisionCommandCompatible,
@@ -118,24 +117,24 @@ import {
   selectObjectCandidateForId,
   selectObjectCandidateRevealPolicy,
   selectObjectSyncMetadataForCommand,
-} from "@/lib/sync-commands";
+} from "../../lib/sync-commands.js";
 import {
   isSupportedZiffleDeckCount,
   normalizeZiffleCardPositions,
   pendingActionIntentHardTimeoutMs,
   ZIFFLE_REVEAL_TOKEN_TIMEOUT_MS_PER_CARD,
   ziffleRevealTokenTimeoutMs,
-} from "@/lib/ziffle-timeouts";
-import { preloadCardArt } from "@/lib/scryfall";
+} from "../../lib/ziffle-timeouts.js";
+import { preloadCardArt } from "../../lib/scryfall.js";
 import {
   MULTIPLAYER_SECURITY_TRUSTED,
   MULTIPLAYER_SECURITY_VERIFIED,
   isTrustedMultiplayerSecurityMode,
   isVerifiedMultiplayerSecurityMode,
   normalizeMultiplayerSecurityMode,
-} from "@/lib/multiplayer-security";
+} from "../../lib/multiplayer-security.js";
 
-export { ziffleOriginAnchorFromOpening, ziffleOriginAnchorFromMetadata, assertZiffleOpeningOriginMatchesMetadata, CURRENT_AUDIT_MAX_PLAYERS, CURRENT_AUDIT_MIN_PLAYERS, CURRENT_AUDIT_PROTOCOL_VERSION, DISCONNECT_AUTO_FORFEIT_MS, DISCONNECT_FORFEIT_REASON, MATCH_FORMAT_COMMANDER, MATCH_FORMAT_NORMAL, MATCH_FORMAT_PLANECHASE, MULTIPLAYER_SECURITY_TRUSTED, MULTIPLAYER_SECURITY_VERIFIED, PROTOCOL_RESPONSE_TIMEOUT_MS, PROTOCOL_RESPONSE_TIMEOUT_REASON, Peer, ZIFFLE_REVEAL_TOKEN_TIMEOUT_MS_PER_CARD, actionQuorumThreshold, assertResyncActionsExtendLocalTranscript, auditStateHash, authorizeCryptoMaterialRequestRequirements, buildActionForkDisputeEvidence, buildDeckSlotOpening, buildPrivateDeckManifest, buildSignedActionEnvelope, buildSignedActionQuorumVote, buildSignedDisconnectForfeitVote, buildSignedMatchGenesis, buildSignedPlayerGenesis, buildSignedProtocolResponseTimeoutVote, buildSignedResyncEnvelope, buildZiffleOpeningProof, canonicalJson, createAuditEncryptionKey, createAuditSessionKey, cryptoMaterialResponsibleSeat, decklistHashForCards, decryptPrivateAuditPayload, emitSyncFailureNotice, encryptPrivateAuditPayload, evaluateLobbyDeckSubmission, exportAuditEncryptionKeyPair, exportAuditEncryptionPublicKey, exportAuditKeyPair, exportAuditPublicKey, fairRandomCombinedSeedHex, importAuditEncryptionKeyPair, importAuditKeyPair, importAuditPublicKey, isCurrentAuditPlayerCount, isDecisionCommandCompatible, isDisadvantageousActivePlayerClockAdvance, isDisconnectForfeitReason, isProtocolResponseTimeoutForfeitReason, isSupportedZiffleDeckCount, isTrustedMultiplayerSecurityMode, isVerifiedMultiplayerSecurityMode, normalizeMatchFormat, normalizeMultiplayerSecurityMode, normalizeSelectObjectHiddenRef, normalizeZiffleCardPositions, parseCommanderList, parseDeckList, parseDeckPrintPreferences, parseSideboardList, pendingActionIntentHardTimeoutMs, preloadCardArt, protocolResponseTimeoutVoteThreshold, publicCheckpointHash, publicDeckManifest, randomAuditHex, rngCommitmentPayload, rngRevealPayload, saveDefaultLobbyDeck, selectObjectCandidateForId, selectObjectCandidateRevealPolicy, selectObjectSyncMetadataForCommand, setPreferredCardPrints, sha256Hex, signAuditPayload, useCallback, useEffect, useRef, useState, verifyActionQuorumCertificate, verifyActionQuorumVote, verifyAuditPayload, verifyCardOpeningAgainstManifest, verifyDisconnectForfeitCertificate, verifyDisconnectForfeitVote, verifyLiveAuditTranscript, verifyProtocolResponseTimeoutCertificate, verifyProtocolResponseTimeoutVote, verifySignedMatchGenesis, verifySignedResyncEnvelope, ziffleRevealTokenTimeoutMs };
+export { ziffleOriginAnchorFromOpening, ziffleOriginAnchorFromMetadata, assertZiffleOpeningOriginMatchesMetadata, CURRENT_AUDIT_MAX_PLAYERS, CURRENT_AUDIT_MIN_PLAYERS, CURRENT_AUDIT_PROTOCOL_VERSION, DISCONNECT_AUTO_FORFEIT_MS, DISCONNECT_FORFEIT_REASON, MATCH_FORMAT_COMMANDER, MATCH_FORMAT_NORMAL, MATCH_FORMAT_PLANECHASE, MULTIPLAYER_SECURITY_TRUSTED, MULTIPLAYER_SECURITY_VERIFIED, PROTOCOL_RESPONSE_TIMEOUT_MS, PROTOCOL_RESPONSE_TIMEOUT_REASON, ZIFFLE_REVEAL_TOKEN_TIMEOUT_MS_PER_CARD, actionQuorumThreshold, assertResyncActionsExtendLocalTranscript, auditStateHash, authorizeCryptoMaterialRequestRequirements, buildActionForkDisputeEvidence, buildDeckSlotOpening, buildPrivateDeckManifest, buildSignedActionEnvelope, buildSignedActionQuorumVote, buildSignedDisconnectForfeitVote, buildSignedMatchGenesis, buildSignedPlayerGenesis, buildSignedProtocolResponseTimeoutVote, buildSignedResyncEnvelope, buildZiffleOpeningProof, canonicalJson, createAuditEncryptionKey, createAuditSessionKey, cryptoMaterialResponsibleSeat, decklistHashForCards, decryptPrivateAuditPayload, emitSyncFailureNotice, encryptPrivateAuditPayload, evaluateLobbyDeckSubmission, exportAuditEncryptionKeyPair, exportAuditEncryptionPublicKey, exportAuditKeyPair, exportAuditPublicKey, fairRandomCombinedSeedHex, importAuditEncryptionKeyPair, importAuditKeyPair, importAuditPublicKey, isCurrentAuditPlayerCount, isDecisionCommandCompatible, isDisadvantageousActivePlayerClockAdvance, isDisconnectForfeitReason, isProtocolResponseTimeoutForfeitReason, isSupportedZiffleDeckCount, isTrustedMultiplayerSecurityMode, isVerifiedMultiplayerSecurityMode, normalizeMatchFormat, normalizeMultiplayerSecurityMode, normalizeSelectObjectHiddenRef, normalizeZiffleCardPositions, parseCommanderList, parseDeckList, parseDeckPrintPreferences, parseSideboardList, pendingActionIntentHardTimeoutMs, preloadCardArt, protocolResponseTimeoutVoteThreshold, publicCheckpointHash, publicDeckManifest, randomAuditHex, rngCommitmentPayload, rngRevealPayload, saveDefaultLobbyDeck, selectObjectCandidateForId, selectObjectCandidateRevealPolicy, selectObjectSyncMetadataForCommand, setPreferredCardPrints, sha256Hex, signAuditPayload, useCallback, useEffect, useRef, useState, verifyActionQuorumCertificate, verifyActionQuorumVote, verifyAuditPayload, verifyCardOpeningAgainstManifest, verifyDisconnectForfeitCertificate, verifyDisconnectForfeitVote, verifyLiveAuditTranscript, verifyProtocolResponseTimeoutCertificate, verifyProtocolResponseTimeoutVote, verifySignedMatchGenesis, verifySignedResyncEnvelope, ziffleRevealTokenTimeoutMs };
 
 
 export const PROTOCOL_VERSION = CURRENT_AUDIT_PROTOCOL_VERSION;
@@ -571,7 +570,7 @@ export function buildPeerOptions() {
   const port = parseNumberEnv(readPeerEnv("VITE_PEER_PORT"), 0);
   const debug = parseNumberEnv(
     readPeerEnv("VITE_PEER_DEBUG"),
-    import.meta.env.DEV ? 2 : 1
+    import.meta.env?.DEV ? 2 : 1
   );
   const pingInterval = parseNumberEnv(readPeerEnv("VITE_PEER_PING_INTERVAL"), 0);
   const iceConfig = parseIceConfig();
@@ -1030,19 +1029,6 @@ export function safeSend(conn, payload) {
   }
 }
 
-export function createPeer(peerId, options) {
-  const requestedPeerId = String(peerId || "").trim();
-  if (options?.transport === "websocket") return new WebSocketPeer(requestedPeerId, options);
-  if (options?.transport === "lan") return new NativeLanPeer(requestedPeerId);
-  // Reclaiming a saved ID can legitimately report unavailable-id while an
-  // old socket closes or another host is elected. The error event is handled
-  // by recovery and surfaced in status; avoid PeerJS's duplicate console errors.
-  const peer = requestedPeerId ? new Peer(requestedPeerId, { ...options, debug: 0 }) : new Peer(options);
-  const release = () => peer.destroy();
-  window.addEventListener('pagehide', release, { once: true });
-  peer.on('close', () => window.removeEventListener('pagehide', release));
-  return peer;
-}
 
 export function connectionHeartbeatKey(kind, peerId) {
   return `${kind}:${String(peerId || "")}`;

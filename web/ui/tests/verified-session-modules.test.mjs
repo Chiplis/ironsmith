@@ -19,6 +19,7 @@ import {
 test('verified-session modules import no framework or hook-layer code', () => {
   const dir = new URL('../src/lib/verified-session/', import.meta.url);
   for (const file of readdirSync(dir)) {
+    if (file === 'hook-runtime.js') continue; // the one module allowed to wrap React
     const source = readFileSync(new URL(file, dir), 'utf8');
     for (const [, specifier] of source.matchAll(/from\s+["']([^"']+)["']/g)) {
       assert.ok(!/^(react|peerjs)$/.test(specifier) && !specifier.includes('hooks/'), `${file} imports ${specifier}`);

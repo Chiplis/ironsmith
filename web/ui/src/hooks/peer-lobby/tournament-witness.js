@@ -2,7 +2,7 @@
 // seat and settles liveness disputes. Silence toward the witness loses the
 // match; any answer is forwarded to the claimant, and an answer the
 // claimant's engine contradicts becomes signed dispute evidence.
-import { useRef } from "react";
+import { useRef } from "../../lib/verified-session/hook-runtime.js";
 import {
   canonicalJson,
   sha256Hex,

@@ -2084,10 +2084,10 @@ export function usePeerLobbyCryptoResync(base, servicesRef) {
       const finish = () => {
         if (settled) return;
         settled = true;
-        window.clearTimeout(timer);
+        globalThis.clearTimeout(timer);
         resolve();
       };
-      const timer = window.setTimeout(() => {
+      const timer = globalThis.setTimeout(() => {
         if (settled) return;
         recordDiagnosticEvent("peer_resync:wait_timeout", {
           peers: [...resyncingPeerIdsRef.current],
@@ -2109,7 +2109,7 @@ export function usePeerLobbyCryptoResync(base, servicesRef) {
     ignoredActionIntentKeysRef.current.clear();
     for (const challenge of reconnectChallengesRef.current.values()) {
       if (challenge?.timeoutId) {
-        window.clearTimeout(challenge.timeoutId);
+        globalThis.clearTimeout(challenge.timeoutId);
       }
     }
     reconnectChallengesRef.current.clear();

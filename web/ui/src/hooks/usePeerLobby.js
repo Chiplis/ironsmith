@@ -107,6 +107,7 @@ export function usePeerLobby({
   subscribeState,
   setStatus,
   applySyncedCommand,
+  createPeer,
 }) {
   const initialPeerOptions = buildPeerOptions();
   const initialHeartbeatConfig = buildPeerHeartbeatConfig();
@@ -269,7 +270,7 @@ export function usePeerLobby({
   }, [state, subscribeState]);
 
   const peerLobbyBase = {
-    game, state, setState, setStatus, applySyncedCommand, multiplayer, setMultiplayer, matchClockStore,
+    game, state, setState, setStatus, applySyncedCommand, createPeer, multiplayer, setMultiplayer, matchClockStore,
     peerRef, hostConnectionRef, clientConnectionsRef, peerConnectionsRef, connectionHeartbeatsRef,
     matchStartPayloadRef, actionHistoryRef, gameRef, stateRef, multiplayerRef, peerOptionsRef,
     peerHeartbeatConfigRef, matchClockConfigRef, matchClockRef, timeoutClaimInFlightRef,
@@ -2273,10 +2274,10 @@ export function usePeerLobby({
       void tick().finally(() => { tickInFlight = false; });
     };
     runTick();
-    const timerId = window.setInterval(runTick, MATCH_CLOCK_TICK_MS);
+    const timerId = globalThis.setInterval(runTick, MATCH_CLOCK_TICK_MS);
     return () => {
       disposed = true;
-      window.clearInterval(timerId);
+      globalThis.clearInterval(timerId);
     };
   }, [
     multiplayer.matchStarted,
@@ -2384,12 +2385,12 @@ export function usePeerLobby({
     };
 
     void tick();
-    const timerId = window.setInterval(() => {
+    const timerId = globalThis.setInterval(() => {
       void tick();
     }, 1000);
     return () => {
       disposed = true;
-      window.clearInterval(timerId);
+      globalThis.clearInterval(timerId);
     };
   }, [
     multiplayer.matchStarted,
