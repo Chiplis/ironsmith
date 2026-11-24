@@ -1,9 +1,14 @@
-// Registers the browser transports (PeerJS, relay WebSocket, LAN) with the
-// session code. Imported for its side effect by the web app's hook.
+// Registers React and the browser transports (PeerJS, relay WebSocket, LAN)
+// with the session code. Imported for its side effect by the web app's hook.
+import * as React from "react";
 import Peer from "peerjs";
 import { NativeLanPeer } from "../../lib/lan/native-peer.js";
 import { WebSocketPeer } from "../../lib/relay/websocket-peer.js";
+import { registerReactHooks } from "../../lib/verified-session/hook-runtime.js";
 import { registerPeerFactory } from "../../lib/verified-session/peer-factory.js";
+
+// The peer-lobby hooks run on React in the web app.
+registerReactHooks(React);
 
 registerPeerFactory((requestedPeerId, options) => {
   if (options?.transport === "websocket") return new WebSocketPeer(requestedPeerId, options);

@@ -5,7 +5,8 @@
 //
 //   node scripts/build-verified-session.mjs <out-dir>
 //
-// Needs web/ui's dependencies installed (esbuild comes from there).
+// Needs esbuild: from web/ui's dependencies, or installed globally (the npm
+// release workflow installs it with vite).
 import { createRequire } from "node:module";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -20,6 +21,15 @@ async function loadEsbuild() {
   for (const request of ["esbuild", "vite/node_modules/esbuild"]) {
     try { return requireFromUi(request); } catch { /* try the next location */ }
   }
+  // The release workflow has no web/ui install: use the esbuild next to the
+  // globally installed tools.
+  try {
+    const { execFileSync } = await import("node:child_process");
+    const globalRoot = execFileSync("npm", ["root", "-g"], { encoding: "utf8" }).trim();
+    for (const location of [resolve(globalRoot, "esbuild"), resolve(globalRoot, "vite/node_modules/esbuild")]) {
+      try { return createRequire(resolve(location, "package.json"))("esbuild"); } catch { /* next */ }
+    }
+  } catch { /* npm unavailable */ }
   const { readdirSync } = await import("node:fs");
   const store = resolve(uiDir, "node_modules/.pnpm");
   const entry = readdirSync(store).find((name) => name.startsWith("esbuild@"));
@@ -37,9 +47,6 @@ await esbuild.build({
   target: "es2022",
   minify: true,
   legalComments: "none",
-  // React is only touched when the hooks run inside a React render; a host
-  // without React never reaches it, and one with React shares its copy.
-  external: ["react"],
   outfile,
   logLevel: "warning",
 });

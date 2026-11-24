@@ -9,9 +9,19 @@
 // whole `usePeerLobby` stack run in node and inside hosts that are not React
 // apps (Manabrew's adapter, test harnesses) with no change to its code.
 
-import * as React from "react";
-
 let activeInstance = null;
+let react = null;
+
+// The web app registers React once; hosts without React never need it, so this
+// module (and the npm bundle) carries no dependency on it.
+export function registerReactHooks(reactModule) {
+  react = reactModule;
+}
+
+function reactHooks() {
+  if (!react) throw new Error("These hooks ran outside a headless host and React was not registered (registerReactHooks)");
+  return react;
+}
 
 function depsChanged(previous, next) {
   if (!previous || !next) return true;
@@ -23,19 +33,19 @@ function depsChanged(previous, next) {
 }
 
 export function useState(initial) {
-  return activeInstance ? activeInstance.useState(initial) : React.useState(initial);
+  return activeInstance ? activeInstance.useState(initial) : reactHooks().useState(initial);
 }
 
 export function useRef(initial) {
-  return activeInstance ? activeInstance.useRef(initial) : React.useRef(initial);
+  return activeInstance ? activeInstance.useRef(initial) : reactHooks().useRef(initial);
 }
 
 export function useCallback(callback, deps) {
-  return activeInstance ? activeInstance.useCallback(callback, deps) : React.useCallback(callback, deps);
+  return activeInstance ? activeInstance.useCallback(callback, deps) : reactHooks().useCallback(callback, deps);
 }
 
 export function useEffect(effect, deps) {
-  return activeInstance ? activeInstance.useEffect(effect, deps) : React.useEffect(effect, deps);
+  return activeInstance ? activeInstance.useEffect(effect, deps) : reactHooks().useEffect(effect, deps);
 }
 
 const MAX_SETTLE_TURNS = 200;

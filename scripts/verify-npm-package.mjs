@@ -36,6 +36,17 @@ if (engine.registrySize() !== 0) {
   throw new Error("npm artifact is not lean: registry should be empty before card loading");
 }
 
+for (const method of ["manabrewAttach", "manabrewTranslate", "manabrewSetVerified", "manabrewView"]) {
+  if (typeof engine[method] !== "function") {
+    throw new Error(`npm artifact lacks the Verified Manabrew adapter method ${method}`);
+  }
+}
+// The Verified session bundle must load without React or a DOM.
+const verifiedSession = await import(pathToFileURL(resolve(packageDir, "verified-session.js")));
+if (typeof verifiedSession.createVerifiedSession !== "function") {
+  throw new Error("npm artifact lacks createVerifiedSession in verified-session.js");
+}
+
 const externalResult = engine.registerExternalCardSources({
   canonicalName: "npm Smoke Test",
   group: {

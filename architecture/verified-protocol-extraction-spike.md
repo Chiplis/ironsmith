@@ -204,3 +204,46 @@ Converted both modules to the context-factory form; recipe confirmed mechanical.
   "lost accepted action is retried and command IDs prevent duplicate application"
   pass, with 2 pre-existing failures ("State resync requires audit protocol 33")
   identical on HEAD.
+
+## Outcome (2026-11-24): Verified mode runs inside Manabrew
+
+The plan above (rewrite every hook module as a context factory) was replaced by a
+cheaper, safer one: run the **unchanged** hook stack headless.
+
+- `web/ui/src/lib/verified-session/hook-runtime.js` implements the four hooks the stack
+  uses (`useState`, `useRef`, `useCallback`, `useEffect`) with React-compatible rules
+  (stable setters, dependency-gated callbacks and effects, cleanup first). Inside a
+  headless render they use slot tables; otherwise they call the React the web app
+  registers (`registerReactHooks`, in `hooks/peer-lobby/browser-peers.js`). No logic
+  of `usePeerLobby` and its modules changed, so closures behave exactly as before.
+- Transport is injected: `createPeer` input of `usePeerLobby` (falls back to the
+  registered factory). `window` timers became `globalThis`; `@/` aliases became relative.
+- `createVerifiedSession({ engine, createPeer, ensureCards })`
+  (`lib/verified-session/index.js`) composes it with an engine (`call(method, ...args)`),
+  a state store and `applySyncedCommand`. `scripts/build-verified-session.mjs` bundles
+  it into the npm package as `ironsmith-wasm/verified-session` (no React import).
+- The Manabrew adapter methods in the engine: `manabrewAttach` (adopt a match started
+  with committed decks), `manabrewSetVerified` (no engine-side auto-answers; a forced
+  answer is returned as `forcedCommand`), `manabrewTranslate` (prompt answer ->
+  `UiCommand`, not applied), and unopened hidden cards render as hidden.
+- Tests: `tests/verified-headless-match.test.mjs` (two seats in worker threads, real
+  engine, ~80 signed actions), `tests/verified-manabrew-shim.test.mjs` (Manabrew
+  prompts -> translate -> signed transcript, privacy of hands),
+  `tests/verified-session-hook-runtime.test.mjs`, `tests/verified-session-modules.test.mjs`.
+  `IRONSMITH_PKG=<built npm package dir>` points the harness at a different engine.
+- Manabrew side (branch `feat/ironsmith-verified-mode`): `IronsmithVerified` engine kind,
+  `src/game/ironsmithVerified/{roomPeer,ironsmithVerifiedRuntime}.ts`, worker
+  `verifiedOpen/verifiedCall/verifiedClose`, lobby option, and
+  `tests/e2e-ironsmith/ironsmith-verified-pair.mjs` (two real browsers, real relay).
+
+Gotchas found: the web app turns off the engine's cleanup auto-discard (a random pick no
+other seat can replay); a room peer must emit `open` after the lobby attaches listeners;
+the host must not invite guests before its lobby id exists; seats are joined in table
+order so engine seats equal room seats.
+
+Not done / limits: two players only exercised (the join-order logic is written for 2-4);
+no lobby bots in verified rooms; no spectators; Manabrew's room still shows decklists to
+the host before the match (hidden-deck privacy is the game's, not the lobby's); host
+migration, reconnect and forfeit votes are the web app's, untested through Manabrew;
+opponents' cards are registered from Scryfall data when opened (needs network);
+`ironsmith-wasm` must be released with `verified-session` before Manabrew can depend on it.
