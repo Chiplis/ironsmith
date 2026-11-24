@@ -1,0 +1,453 @@
+// End-of-match disclosure (verified multiplayer).
+//
+// Some claims about hidden cards can only be checked once the card is opened:
+// a face-down spell's public cast kind (morph, megamorph, disguise), a card an
+// owner withheld from a forced "reveal every matching card", a hand choice the
+// owner answered with fewer cards than the rules asked for. The engine keeps
+// them in its obligation ledger (game_state/hidden_hand_choices.rs) and checks
+// them whenever the card is opened during the game. Cards that stay hidden
+// until the end are checked here: when the match ends each player publicly
+// opens, in one signed message, every hidden card it still owns in its hand,
+// every face-down spell or permanent it owns, and every library anchor it
+// owns (never the rest of its library). Every
+// peer verifies the openings against the deck commitments and the obligation
+// ledger. A mismatch is reported as a detected cheat; a player that never
+// sends its disclosure while claims about its hidden cards are pending is
+// reported as "withheld" (a verdict against it: the exported outcome is
+// disputed with that player accused), otherwise as "disclosure missing".
+// Neither blocks the other players, and nothing here touches the public
+// checkpoint hash.
+//
+// A claimed card that entered a library is disclosed too: the engine anchors
+// it to the durable ziffle ciphertext it was dealt from (a verified ceremony
+// record later shuffles never change), and the owner opens that ciphertext
+// here with every seat's reveal token (authorized once the owner's part of the
+// match is over, see authorizedZiffleRevealPositionsForOwner).
+//
+// Every signed disclosure and this peer's verdict on it are kept for the
+// exported audit transcript (endOfMatchDisclosures), which audit replay
+// re-verifies (lib/audit-replay.js).
+
+import {
+  CURRENT_AUDIT_PROTOCOL_VERSION as PROTOCOL_VERSION,
+  signAuditPayload,
+  verifyAuditPayload,
+} from "../multiplayer-audit.js";
+import { isVerifiedMultiplayerSecurityMode } from "../multiplayer-security.js";
+import {
+  cloneMultiplayerPayload,
+  playerNameForIndex,
+  sessionSecurityMode,
+  toErrorMessage,
+} from "./payload.js";
+
+export const END_OF_MATCH_DISCLOSURE_DOMAIN = "ironsmith-end-of-match-disclosure-v1";
+export const END_OF_MATCH_DISCLOSURE_TIMEOUT_MS = 120_000;
+
+export const DISCLOSURE_STATUS_PENDING = "pending";
+export const DISCLOSURE_STATUS_VERIFIED = "verified";
+export const DISCLOSURE_STATUS_CHEAT = "cheat_detected";
+export const DISCLOSURE_STATUS_MISSING = "missing";
+// A player with pending deferred claims (claim subjects or library anchors,
+// public facts identical on every peer) that never delivered a valid
+// disclosure before the timeout: a verdict against that player, carried into
+// the exported outcome (disputed, player accused) and re-derived by audit
+// replay (lib/audit-replay.js). Players with no pending claims owe nothing.
+export const DISCLOSURE_STATUS_WITHHELD = "withheld";
+
+// Whether a status is only a timeout verdict (a late valid disclosure may
+// still replace it, and it never replaces a final verdict).
+function isTimeoutDisclosureStatus(status) {
+  return status === DISCLOSURE_STATUS_MISSING || status === DISCLOSURE_STATUS_WITHHELD;
+}
+
+// The number of deferred claims about `player`'s hidden cards that only its
+// end-of-match disclosure can settle, from public facts only (so every peer
+// and the audit replay agree). Null when the engine cannot tell.
+export async function pendingDisclosureClaimCount(game, player) {
+  if (typeof game?.endOfMatchDisclosureObligations !== "function") return null;
+  const result = await game.endOfMatchDisclosureObligations(Number(player));
+  const subjects = Number(result?.claimSubjects ?? result?.claim_subjects ?? 0);
+  const anchors = Number(result?.libraryAnchors ?? result?.library_anchors ?? 0);
+  return (Number.isFinite(subjects) ? subjects : 0) + (Number.isFinite(anchors) ? anchors : 0);
+}
+
+function playerLeftGame(uiState, playerIndex) {
+  const player = (uiState?.players || []).find((entry) =>
+    Number(entry?.id ?? entry?.index) === Number(playerIndex)
+  );
+  return Boolean(
+    player?.has_lost
+    || player?.hasLost
+    || player?.has_left_game
+    || player?.hasLeftGame
+  );
+}
+
+// Whether `playerIndex`'s part of the match is over on this engine: the game
+// ended, or that player lost / left (its objects were removed and snapshotted
+// for disclosure, CR 800.4a).
+export function disclosureDueForPlayer(uiState, playerIndex) {
+  return Boolean(uiState?.game_over) || playerLeftGame(uiState, playerIndex);
+}
+
+export function endOfMatchDisclosurePayload({ matchId, player, openings }) {
+  return {
+    domain: END_OF_MATCH_DISCLOSURE_DOMAIN,
+    matchId: String(matchId || ""),
+    player: Number(player),
+    openings: cloneMultiplayerPayload(Array.isArray(openings) ? openings : []),
+  };
+}
+
+// One exported transcript entry: the signed disclosure (null when it never
+// arrived) and the verdict this peer reached.
+export function endOfMatchDisclosureTranscriptEntry({ matchId, player, disclosure, status, reason }) {
+  return {
+    matchId: String(matchId || ""),
+    player: Number(player),
+    disclosure: disclosure ? cloneMultiplayerPayload(disclosure) : null,
+    verdict: {
+      status: String(status || DISCLOSURE_STATUS_PENDING),
+      reason: String(reason || ""),
+    },
+  };
+}
+
+// Framework-free: `base` carries the session refs and `setStatus`, `servicesRef`
+// the late-bound protocol services, and `host` the platform bindings:
+//   host.recordPerf(label, payload)        -> diagnostics sink
+//   host.notice(title, body)               -> user-visible failure notice
+//   host.mergeAuditOpenings(...lists)      -> opening-list merge
+//   host.clock                             -> optional { setTimeout, clearTimeout }
+// Call dispose() when the session closes.
+export function createEndOfMatchDisclosure(base, servicesRef, host) {
+  const { gameRef, stateRef, multiplayerRef, setStatus } = base;
+  const { recordPerf: recordPeerSyncPerf, notice: emitSyncFailureNotice, mergeAuditOpenings } = host;
+  const timers = host.clock || globalThis;
+  const sentForMatchRef = { current: "" };
+  const pendingDisclosuresRef = { current: new Map() };
+  const processedDisclosuresRef = { current: new Set() };
+  // `${matchId}:${player}` -> { matchId, player, disclosure, status, reason }
+  const disclosureRecordsRef = { current: new Map() };
+  const missingTimerRef = { current: null };
+  const missingTimerMatchRef = { current: "" };
+
+  const services = () => servicesRef.current || {};
+
+  const recordDisclosure = (matchId, player, fields) => {
+    const key = `${matchId}:${Number(player)}`;
+    const existing = disclosureRecordsRef.current.get(key) || {
+      matchId: String(matchId || ""),
+      player: Number(player),
+      disclosure: null,
+      status: DISCLOSURE_STATUS_PENDING,
+      reason: "",
+    };
+    // Same rule as the UI verdict: a final verdict is never downgraded to
+    // "missing" by a late timer.
+    if (
+      isTimeoutDisclosureStatus(fields.status)
+      && existing.status !== DISCLOSURE_STATUS_PENDING
+    ) {
+      return;
+    }
+    disclosureRecordsRef.current.set(key, {
+      ...existing,
+      ...fields,
+      disclosure: fields.disclosure
+        ? cloneMultiplayerPayload(fields.disclosure)
+        : existing.disclosure,
+    });
+  };
+
+  // Signed disclosures and verdicts of `matchId`, in seat order, for the
+  // exported audit transcript.
+  const endOfMatchDisclosuresForExport = (matchId) => {
+    const normalizedMatchId = String(matchId || "");
+    return [...disclosureRecordsRef.current.values()]
+      .filter((record) => record.matchId === normalizedMatchId)
+      .sort((left, right) => left.player - right.player)
+      .map((record) => endOfMatchDisclosureTranscriptEntry(record));
+  };
+
+  const setDisclosureStatus = (matchId, playerIndex, status, reason = "") => {
+    recordDisclosure(matchId, playerIndex, { status, reason: String(reason || "") });
+    const updateMultiplayer = services().updateMultiplayer;
+    if (typeof updateMultiplayer !== "function") return;
+    updateMultiplayer((prev) => {
+      const current = prev.endOfMatchDisclosure?.matchId === matchId
+        ? prev.endOfMatchDisclosure
+        : { matchId, byPlayer: {} };
+      const existing = current.byPlayer?.[playerIndex];
+      // A final verdict is never downgraded (a late "missing" timer must not
+      // hide a detected cheat, and a verified disclosure stays verified).
+      if (
+        existing
+        && existing.status !== DISCLOSURE_STATUS_PENDING
+        && isTimeoutDisclosureStatus(status)
+      ) {
+        return prev;
+      }
+      return {
+        ...prev,
+        endOfMatchDisclosure: {
+          ...current,
+          byPlayer: {
+            ...(current.byPlayer || {}),
+            [playerIndex]: {
+              status,
+              reason: String(reason || ""),
+              name: playerNameForIndex(prev.players, playerIndex),
+            },
+          },
+        },
+      };
+    });
+  };
+
+  const verifiedMode = () => isVerifiedMultiplayerSecurityMode(sessionSecurityMode(multiplayerRef.current));
+
+  // Build, sign and send the local disclosure once per match.
+  const sendLocalDisclosure = async () => {
+    const session = multiplayerRef.current;
+    const currentGame = gameRef.current;
+    const svc = services();
+    if (
+      !verifiedMode()
+      || !session.matchStarted
+      || !currentGame
+      || typeof currentGame.endOfMatchDisclosureRequirements !== "function"
+    ) {
+      return;
+    }
+    const matchId = String(svc.currentAuditMatchId?.() || "");
+    if (!matchId || sentForMatchRef.current === matchId) return;
+    sentForMatchRef.current = matchId;
+    const localSeat = Number(svc.resolveLocalCryptoPlayerIndex?.());
+    if (!Number.isInteger(localSeat) || localSeat < 0) return;
+    try {
+      const requirements = await currentGame.endOfMatchDisclosureRequirements(localSeat);
+      const list = Array.isArray(requirements) ? requirements : [];
+      const openingOptions = {
+        requirements: list,
+        timing: "post",
+        forceZiffleOpeningProof: true,
+        endOfMatchDisclosure: true,
+      };
+      const openings = list.length === 0
+        ? []
+        : mergeAuditOpenings(
+          await svc.buildLocalOpeningsForCommand({}, list, openingOptions),
+          await svc.buildLocalRequirementOpeningsForRequirements(list, openingOptions)
+        );
+      const payload = endOfMatchDisclosurePayload({ matchId, player: localSeat, openings });
+      const { keyPair } = await svc.ensureAuditIdentity();
+      const disclosure = {
+        ...payload,
+        signatureAlgorithm: "ecdsa-p256-sha256",
+        signature: await signAuditPayload(keyPair, payload),
+      };
+      const message = {
+        type: "end_of_match_disclosure",
+        protocolVersion: PROTOCOL_VERSION,
+        senderIndex: localSeat,
+        disclosure,
+      };
+      for (const player of session.players || []) {
+        if (Number(player?.index) === localSeat) continue;
+        const peerId = svc.routePeerIdForPlayer?.(player);
+        if (!peerId || peerId === session.localPeerId) continue;
+        svc.sendDirectPeerMessage?.(peerId, message);
+      }
+      recordDisclosure(matchId, localSeat, { disclosure });
+      setDisclosureStatus(matchId, localSeat, DISCLOSURE_STATUS_VERIFIED, "sent");
+      recordPeerSyncPerf("end_of_match_disclosure:sent", {
+        player: localSeat,
+        cards: list.length,
+        openings: openings.length,
+      });
+    } catch (err) {
+      sentForMatchRef.current = "";
+      recordPeerSyncPerf("end_of_match_disclosure:send_failed", { error: toErrorMessage(err) });
+      setStatus?.(`End-of-match disclosure failed: ${toErrorMessage(err)}`, true);
+    }
+  };
+
+  const verifyDisclosure = async (disclosure) => {
+    const svc = services();
+    const currentGame = gameRef.current;
+    const matchId = String(disclosure?.matchId || "");
+    const player = Number(disclosure?.player);
+    const payload = endOfMatchDisclosurePayload(disclosure || {});
+    try {
+      if (payload.domain !== END_OF_MATCH_DISCLOSURE_DOMAIN) {
+        throw new Error("End-of-match disclosure has the wrong domain");
+      }
+      const publicKey = await svc.importCachedAuditPublicKey(svc.publicKeyForAuditSigner(player));
+      const validSignature = await verifyAuditPayload(publicKey, payload, disclosure.signature || "");
+      if (!validSignature) {
+        throw new Error("End-of-match disclosure signature is invalid");
+      }
+      // Deck-manifest commitments and ziffle position proofs.
+      await svc.verifyAuditOpeningsAgainstManifests(payload.openings, { endOfMatchDisclosure: true });
+      // Bind each opening to the hidden card it must open and check that
+      // card's pending claims (face-down cast kinds, withheld cards).
+      const result = await currentGame.verifyEndOfMatchDisclosure(player, payload.openings);
+      const violations = Array.isArray(result?.violations) ? result.violations : [];
+      const missing = Array.isArray(result?.missing) ? result.missing : [];
+      if (violations.length > 0) {
+        throw new Error(violations.join("; "));
+      }
+      if (missing.length > 0) {
+        throw new Error(
+          `End-of-match disclosure omits ${missing.length} hidden card`
+          + `${missing.length === 1 ? "" : "s"} (objects ${missing.join(", ")})`
+        );
+      }
+      setDisclosureStatus(matchId, player, DISCLOSURE_STATUS_VERIFIED);
+      recordPeerSyncPerf("end_of_match_disclosure:verified", {
+        player,
+        openings: payload.openings.length,
+      });
+    } catch (err) {
+      const reason = toErrorMessage(err);
+      const name = playerNameForIndex(multiplayerRef.current.players, player);
+      setDisclosureStatus(matchId, player, DISCLOSURE_STATUS_CHEAT, reason);
+      recordPeerSyncPerf("end_of_match_disclosure:cheat_detected", { player, reason });
+      emitSyncFailureNotice("Cheat detected", `End-of-match disclosure from ${name}: ${reason}`);
+      setStatus?.(`Cheat detected from ${name}: ${reason}`, true);
+    }
+  };
+
+  // Verify every stashed disclosure whose sender's part of the match is over
+  // on this engine (its final action has been applied here).
+  const processPendingDisclosures = async () => {
+    const uiState = stateRef.current;
+    const currentGame = gameRef.current;
+    if (!currentGame || typeof currentGame.verifyEndOfMatchDisclosure !== "function") return;
+    for (const [key, disclosure] of [...pendingDisclosuresRef.current.entries()]) {
+      if (!disclosureDueForPlayer(uiState, disclosure.player)) continue;
+      pendingDisclosuresRef.current.delete(key);
+      if (processedDisclosuresRef.current.has(key)) continue;
+      processedDisclosuresRef.current.add(key);
+      await verifyDisclosure(disclosure);
+    }
+  };
+
+  const handleEndOfMatchDisclosureMessage = async (message) => {
+    const disclosure = message?.disclosure;
+    if (!disclosure || typeof disclosure !== "object" || !verifiedMode()) return;
+    const player = Number(disclosure.player);
+    const localSeat = Number(services().resolveLocalCryptoPlayerIndex?.());
+    if (!Number.isInteger(player) || player < 0 || player === localSeat) return;
+    if (message.senderIndex != null && Number(message.senderIndex) !== player) return;
+    const matchId = String(services().currentAuditMatchId?.() || "");
+    if (!matchId || String(disclosure.matchId || "") !== matchId) return;
+    const key = `${matchId}:${player}`;
+    if (processedDisclosuresRef.current.has(key) || pendingDisclosuresRef.current.has(key)) return;
+    pendingDisclosuresRef.current.set(key, cloneMultiplayerPayload(disclosure));
+    recordDisclosure(matchId, player, { disclosure });
+    setDisclosureStatus(matchId, player, DISCLOSURE_STATUS_PENDING, "received");
+    await processPendingDisclosures();
+  };
+
+  // Once the match is over here: send the local disclosure, verify what has
+  // arrived, and report every player still silent after the timeout as
+  // "disclosure missing".
+  const onRuntimeState = async (uiState) => {
+    const session = multiplayerRef.current;
+    if (!verifiedMode() || !session.matchStarted) return;
+    const localSeat = Number(services().resolveLocalCryptoPlayerIndex?.());
+    if (Number.isInteger(localSeat) && disclosureDueForPlayer(uiState, localSeat)) {
+      await sendLocalDisclosure();
+    }
+    await processPendingDisclosures();
+    if (!uiState?.game_over) return;
+    const matchId = String(services().currentAuditMatchId?.() || "");
+    if (!matchId || missingTimerMatchRef.current === matchId) return;
+    if (missingTimerRef.current) timers.clearTimeout(missingTimerRef.current);
+    missingTimerMatchRef.current = matchId;
+    const players = (session.players || []).map((player) => Number(player?.index));
+    for (const player of players) {
+      if (player === localSeat) continue;
+      const existing = session.endOfMatchDisclosure?.matchId === matchId
+        ? session.endOfMatchDisclosure.byPlayer?.[player]
+        : null;
+      if (!existing) setDisclosureStatus(matchId, player, DISCLOSURE_STATUS_PENDING, "awaiting");
+    }
+    missingTimerRef.current = timers.setTimeout(async () => {
+      missingTimerRef.current = null;
+      if (String(services().currentAuditMatchId?.() || "") !== matchId) return;
+      for (const player of players) {
+        if (player === localSeat) continue;
+        const key = `${matchId}:${player}`;
+        if (processedDisclosuresRef.current.has(key)) continue;
+        const latest = multiplayerRef.current;
+        const entry = latest.endOfMatchDisclosure?.matchId === matchId
+          ? latest.endOfMatchDisclosure.byPlayer?.[player]
+          : null;
+        if (entry && entry.status !== DISCLOSURE_STATUS_PENDING) continue;
+        if (pendingDisclosuresRef.current.has(key)) {
+          // Our engine lags the sender; its disclosure is here, not withheld.
+          setDisclosureStatus(matchId, player, DISCLOSURE_STATUS_MISSING,
+            "disclosure arrived before the match ended here");
+          recordPeerSyncPerf("end_of_match_disclosure:missing", { player });
+          continue;
+        }
+        let pendingClaims = null;
+        try {
+          pendingClaims = await pendingDisclosureClaimCount(gameRef.current, player);
+        } catch {
+          pendingClaims = null;
+        }
+        if (String(services().currentAuditMatchId?.() || "") !== matchId) return;
+        if (pendingClaims != null && pendingClaims > 0) {
+          const reason = `withheld its end-of-match disclosure with ${pendingClaims} pending`
+            + ` claim${pendingClaims === 1 ? "" : "s"} about hidden cards`;
+          const name = playerNameForIndex(multiplayerRef.current.players, player);
+          setDisclosureStatus(matchId, player, DISCLOSURE_STATUS_WITHHELD, reason);
+          recordPeerSyncPerf("end_of_match_disclosure:withheld", { player, pendingClaims });
+          emitSyncFailureNotice("Cheat detected", `${name} ${reason}`);
+          setStatus?.(`Cheat detected from ${name}: ${reason}`, true);
+          continue;
+        }
+        setDisclosureStatus(
+          matchId,
+          player,
+          DISCLOSURE_STATUS_MISSING,
+          pendingClaims === 0
+            ? "no end-of-match disclosure received (none required)"
+            : "no end-of-match disclosure received"
+        );
+        recordPeerSyncPerf("end_of_match_disclosure:missing", { player });
+      }
+    }, END_OF_MATCH_DISCLOSURE_TIMEOUT_MS);
+  };
+
+  const dispose = () => {
+    if (missingTimerRef.current) {
+      timers.clearTimeout(missingTimerRef.current);
+      missingTimerRef.current = null;
+    }
+  };
+
+  // A new match (rematch) starts with a clean slate.
+  const resetEndOfMatchDisclosure = () => {
+    if (missingTimerRef.current) {
+      timers.clearTimeout(missingTimerRef.current);
+      missingTimerRef.current = null;
+    }
+    pendingDisclosuresRef.current.clear();
+  };
+
+  return {
+    api: {
+      endOfMatchDisclosuresForExport,
+      handleEndOfMatchDisclosureMessage,
+      onEndOfMatchRuntimeState: onRuntimeState,
+      resetEndOfMatchDisclosure,
+    },
+    dispose,
+  };
+}

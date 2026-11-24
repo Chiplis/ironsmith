@@ -1,3 +1,19 @@
+import {
+  canonicalMultiplayerPayload,
+  cloneMultiplayerPayload,
+  enqueueAsync,
+  playerNameForIndex,
+  sessionSecurityMode,
+  toErrorMessage,
+} from "../../lib/verified-session/payload.js";
+export {
+  canonicalMultiplayerPayload,
+  cloneMultiplayerPayload,
+  enqueueAsync,
+  playerNameForIndex,
+  sessionSecurityMode,
+  toErrorMessage,
+};
 import { validateCommunityDeck } from "../../lib/community-format.js";
 export { hiddenCardMetadataForObjectFromCheckpoint } from "../../lib/hidden-card-metadata.js";
 import { actionRefObjectId, actionRefWithObjectId, hiddenObjectIdForHiddenRefFromCheckpoint } from "../../lib/sync-object-identity.js";
@@ -171,9 +187,6 @@ export function matchPayloadSecurityMode(payload, fallback = MULTIPLAYER_SECURIT
   return normalizeMultiplayerSecurityMode(fallback);
 }
 
-export function sessionSecurityMode(session, fallback = MULTIPLAYER_SECURITY_TRUSTED) {
-  return normalizeMultiplayerSecurityMode(session?.securityMode, fallback);
-}
 
 // The security mode this seat consented to for its lobby and current match.
 // `lockedSecurityMode` is recorded when the seat first observes the lobby
@@ -384,10 +397,6 @@ export function actionTimerSnapshotFromMatchClock(matchClock) {
   };
 }
 
-export function toErrorMessage(err, fallback = "Action rejected") {
-  const message = String(err?.message || err || "").trim();
-  return message || fallback;
-}
 
 export function sanitizePlayerName(raw, fallback = "Player") {
   const trimmed = String(raw || "").trim();
@@ -898,10 +907,6 @@ export async function matchClockAuditHash(clock) {
   }));
 }
 
-export function playerNameForIndex(players, playerIndex) {
-  const target = (players || []).find((player) => Number(player?.index) === Number(playerIndex));
-  return String(target?.name || `Player ${Number(playerIndex) + 1}`);
-}
 
 export function publicCheckpointWinner(checkpoint) {
   const players = Array.isArray(checkpoint?.players) ? checkpoint.players : [];
@@ -1043,10 +1048,6 @@ export function connectionHeartbeatKey(kind, peerId) {
   return `${kind}:${String(peerId || "")}`;
 }
 
-export function cloneMultiplayerPayload(value) {
-  if (value == null) return value;
-  return JSON.parse(JSON.stringify(value));
-}
 
 export function stripTransientZifflePositionOpeningFields(opening) {
   if (!opening || typeof opening !== "object") return opening;
@@ -1902,9 +1903,6 @@ export function knownCheckpointObjectMatchesOpening(object, opening) {
   return Boolean(objectName) && (!openingCard || objectName === openingCard);
 }
 
-export function canonicalMultiplayerPayload(value) {
-  return canonicalJson(cloneMultiplayerPayload(value));
-}
 
 export function peerSyncPerfNow() {
   return globalThis.performance && typeof globalThis.performance.now === "function"
@@ -2095,11 +2093,6 @@ export function protocolResponseTimeoutClaimFromError(err) {
   return err?.protocolResponseTimeoutClaim || null;
 }
 
-export function enqueueAsync(queueRef, task) {
-  const next = queueRef.current.catch(() => undefined).then(task);
-  queueRef.current = next.catch(() => undefined);
-  return next;
-}
 
 export function sanitizeCardList(cards) {
   if (!Array.isArray(cards)) return [];

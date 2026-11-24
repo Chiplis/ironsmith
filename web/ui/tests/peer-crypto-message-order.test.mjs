@@ -1,13 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
+import { enqueueAsync } from '../src/lib/verified-session/payload.js';
 
 const messaging = readFileSync(new URL('../src/hooks/peer-lobby/messaging.js', import.meta.url), 'utf8');
-const shared = readFileSync(new URL('../src/hooks/peer-lobby/shared.js', import.meta.url), 'utf8');
-const enqueueStart = shared.indexOf('export function enqueueAsync(');
-const enqueueEnd = shared.indexOf('\nexport ', enqueueStart + 1);
-const enqueueAsync = new Function(`${shared.slice(enqueueStart, enqueueEnd).replace('export ', '')}; return enqueueAsync;`)();
-
 // Exercise the production transport callbacks; the action handler models a
 // relayed action waiting for the verifier, which is awaiting crypto material.
 function transportHarness(marker) {
