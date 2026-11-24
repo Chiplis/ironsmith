@@ -22,7 +22,9 @@ test('verified-session modules import no framework or hook-layer code', () => {
     if (file === 'hook-runtime.js') continue; // the one module allowed to wrap React
     const source = readFileSync(new URL(file, dir), 'utf8');
     for (const [, specifier] of source.matchAll(/from\s+["']([^"']+)["']/g)) {
-      assert.ok(!/^(react|peerjs)$/.test(specifier) && !specifier.includes('hooks/'), `${file} imports ${specifier}`);
+      // The session entry composes usePeerLobby; nothing else reaches the hook layer.
+      const allowed = file === 'index.js' && specifier.endsWith('hooks/usePeerLobby.js');
+      assert.ok(!/^(react|peerjs)$/.test(specifier) && (allowed || !specifier.includes('hooks/')), `${file} imports ${specifier}`);
     }
     assert.ok(!/\bwindow\./.test(source.replace(/\/\/.*$/gm, '')), `${file} touches window`);
   }

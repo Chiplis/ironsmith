@@ -23,7 +23,7 @@ test('two headless seats start a Verified match and apply the same signed action
 
     let applied = 0;
     const started = Date.now();
-    while (applied < 80 && Date.now() - started < 200_000) {
+    while (applied < Number(process.env.ACTIONS || 80) && Date.now() - started < 200_000) {
       let moved = false;
       for (const [seat, index] of [[host, 0], [guest, 1]]) {
         if (await playStep(seat, index)) { moved = true; applied += 1; }

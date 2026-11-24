@@ -44,7 +44,7 @@ test('Manabrew views and prompts over a Verified match stay private and replicat
     let submitted = 0;
     const started = Date.now();
     const rejected = [];
-    while (submitted < 25 && Date.now() - started < 200_000) {
+    while (submitted < Number(process.env.SUBMITS || 25) && Date.now() - started < 200_000) {
       let moved = false;
       for (const [seat, index] of seats) {
         const view = await seat.engine('manabrewView', index);
@@ -65,7 +65,7 @@ test('Manabrew views and prompts over a Verified match stay private and replicat
       if (!moved) await new Promise(resolve => setTimeout(resolve, 60));
     }
     assert.deepEqual(rejected, [], 'the engine accepts every answer the driver gives');
-    assert.ok(submitted >= 25, `submitted ${submitted} answers`);
+    assert.ok(submitted >= Number(process.env.SUBMITS || 25), `submitted ${submitted} answers`);
     let a; let b;
     for (let attempt = 0; attempt < 300; attempt += 1) {
       [a, b] = await Promise.all([host.snapshot(), guest.snapshot()]);

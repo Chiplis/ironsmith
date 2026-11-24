@@ -69,6 +69,11 @@ export function createVerifiedSession({ engine, createPeer, ensureCards, onStatu
   game.supportsRuntimeBranches = false;
   game.runtimeGeneration = 0;
   game.ensureCards = ensureCards;
+  // A cleanup discard is the player's choice, never an engine-side random pick
+  // (which no other seat could replay): same as the web app's game setup.
+  if (typeof game.setAutoCleanupDiscard === "function") {
+    void game.setAutoCleanupDiscard(false).catch((error) => onError?.(error));
+  }
 
   let hook = null;
   const notify = () => {

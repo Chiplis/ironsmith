@@ -15,7 +15,12 @@ export function answerFor(prompt) {
     case 'chooseAttackers': return { type: 'chooseAttackers', output: { type: 'declareAttackers', assignments: [] } };
     case 'chooseBlockers': return { type: 'chooseBlockers', output: { type: 'declareBlockers', assignments: [] } };
     case 'chooseFromSelection': return { type: 'chooseFromSelection', output: { type: 'selectionDecision', chosenIndices: [] } };
-    case 'chooseCards': return { type: 'chooseCards', output: { type: 'chooseCardsDecision', chosenCardIds: [] } };
+    case 'chooseCards': {
+      // A cleanup discard must discard; a permission-reveal prompt may reveal nothing.
+      const need = Number(input.minSelections ?? input.min ?? 0);
+      const pool = (input.cards || []).map(card => card.id);
+      return { type: 'chooseCards', output: { type: 'chooseCardsDecision', chosenCardIds: pool.slice(0, need) } };
+    }
     default: return null;
   }
 }
