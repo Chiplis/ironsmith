@@ -3870,6 +3870,16 @@ pub(crate) fn intrinsic_starting_counter_abilities(
 }
 
 fn add_intrinsic_abilities(chars: &mut CalculatedCharacteristics) {
+    if chars.subtypes.contains(&Subtype::Saga) {
+        let rule = ironsmith_core::IntrinsicStartingCounter::Lore;
+        let ability = StaticAbility::intrinsic_starting_counters(rule);
+        chars.static_abilities.push(ability.clone());
+        chars.abilities.push_with_origin(Ability::static_ability(ability), AbilityOrigin::IntrinsicStartingCounters(rule));
+    }
+    add_intrinsic_land_and_card_type_abilities(chars);
+}
+
+fn add_intrinsic_land_and_card_type_abilities(chars: &mut CalculatedCharacteristics) {
     add_intrinsic_basic_land_mana_abilities(chars);
     for (rule, ability) in intrinsic_starting_counter_abilities(&chars.card_types) {
         if let AbilityKind::Static(static_ability) = &ability.kind {
@@ -3890,7 +3900,7 @@ pub(crate) fn remove_land_rules_text_abilities(chars: &mut CalculatedCharacteris
         .abilities
         .retain_with_origin(|_, origin| origin.is_independent_early_grant());
     chars.static_abilities = extract_static_abilities(&chars.abilities).into();
-    add_intrinsic_abilities(chars);
+    add_intrinsic_land_and_card_type_abilities(chars);
 }
 
 fn remove_all_abilities_for_effect(

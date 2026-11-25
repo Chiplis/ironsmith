@@ -1771,16 +1771,13 @@ impl EffectExecutor for AmplifyEffect {
                 }
 
                 // "This creature" is the permanent as it would exist on the
-                // battlefield, including a copy replacement already applied to
-                // this entry (Clone entering as Kilnmouth Dragon), CR 614.12,
-                // CR 707.2: the copy's creature types decide what can be revealed.
+                // battlefield, including type changes and any copy replacement
+                // already applied to the entry (CR 614.12).
                 let entry_preview = ctx
                     .replacement
                     .entry_event
                     .as_deref()
-                    .filter(|entry| {
-                        entry.object == ctx.source && entry.enters_as_copy_of.is_some()
-                    })
+                    .filter(|entry| entry.object == ctx.source)
                     .and_then(|entry| entry.prospective_game_state(game));
                 let source_creature_types = entry_preview
                     .as_ref()
@@ -1809,9 +1806,9 @@ impl EffectExecutor for AmplifyEffect {
                     .filter(|&id| {
                         game.object(id).is_some_and(|obj| {
                             obj.zone == Zone::Hand
-                                && source_creature_types
-                                    .iter()
-                                    .any(|&subtype| obj.has_subtype(subtype))
+                                && game.current_subtypes(id).is_some_and(|types| {
+                                    types.iter().any(|ty| source_creature_types.contains(ty))
+                                })
                         })
                     })
                     .collect::<Vec<_>>();

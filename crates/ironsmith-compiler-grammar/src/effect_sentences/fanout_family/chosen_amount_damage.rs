@@ -70,6 +70,17 @@ pub(super) fn parse(tokens: &[OwnedLexToken]) -> Result<Option<Vec<EffectAst>>, 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn chosen_damage_finds_the_verb_after_a_hyphenated_or_punctuated_name() {
+        for name in ["Bone-Crusher", "Ashling, Pilgrim"] {
+            let text = format!("{name} deals an amount of damage of your choice to you.");
+            let tokens = crate::lexer::lex_line(&text, 0).unwrap();
+            let effects = parse(&tokens).unwrap().expect("named source deals damage");
+            assert_eq!(effects.len(), 2, "{text}");
+        }
+    }
+
     #[test]
     fn chosen_damage_amount_is_one_number_choice_then_one_damage_per_recipient() {
         let tokens = crate::lexer::lex_line(

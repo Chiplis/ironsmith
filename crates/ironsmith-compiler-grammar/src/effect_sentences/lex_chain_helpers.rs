@@ -19,6 +19,7 @@ pub fn is_token_creation_context(tokens: &[OwnedLexToken]) -> bool {
     chain_grammar::is_token_creation_context_tokens(tokens)
 }
 
+/// Returns the verb and its index in the normalized parser words.
 pub fn find_verb_lexed(tokens: &[OwnedLexToken]) -> Option<(Verb, usize)> {
     let found = chain_grammar::find_chain_verb_tokens(tokens)?;
     Some((found.kind, found.word_index))

@@ -34,9 +34,9 @@ pub fn find_chain_verb_words(words: &[&str]) -> Option<ChainVerbMatch> {
         let Ok(word) = parsed else {
             break;
         };
-        // "cards in exile" names the zone, not the exile action.
-        let exile_zone_noun = word == "exile" && parse_word_at(words, word_index.saturating_sub(1), "in")
-            && word_index > 0;
+        // Both "in exile" and "from exile" name the zone.
+        let exile_zone_noun = word == "exile" && word_index > 0
+            && parse_any_word_at(words, word_index - 1, &["in", "from"]);
         if duration_end_at(words, word_index, word)
             || counter_noun_at(words, word_index, word)
             || exile_zone_noun
@@ -163,6 +163,19 @@ mod tests {
     use crate::lexer::lex_line;
 
     use super::*;
+
+    #[test]
+    fn from_exile_is_a_zone_even_when_an_action_follows_it() {
+        let clause = "you may play face-up cards you own from exile";
+        assert!(find_chain_verb_tokens(&lex_line(clause, 0).unwrap()).is_none());
+        let tokens = lex_line("Exile a card from exile", 0).unwrap();
+        assert_eq!(find_chain_verb_tokens(&tokens), Some(ChainVerbMatch {
+            kind: ChainVerbKind::Exile,
+            word_index: 0,
+        }));
+        let tokens = lex_line("For each card played from exile, draw a card", 0).unwrap();
+        assert_eq!(find_chain_verb_tokens(&tokens).unwrap().kind, ChainVerbKind::Draw);
+    }
 
     #[test]
     fn token_entrypoint_normalizes_sentence_case() {

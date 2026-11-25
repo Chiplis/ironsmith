@@ -2,6 +2,8 @@ use super::*;
 
 pub(super) fn branch_has_scoped_state(filter: &ObjectFilter) -> bool {
     filter.other
+        || !filter.supertypes.is_empty()
+        || !filter.excluded_supertypes.is_empty()
         || filter.zone.is_some()
         || filter.controller.is_some()
         || filter.owner.is_some()

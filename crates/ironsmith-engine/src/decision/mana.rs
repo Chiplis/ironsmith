@@ -1590,7 +1590,9 @@ fn game_for_spell_characteristics<'a>(
         return Cow::Borrowed(game);
     }
     let mut proposed = game.clone();
+    let origin = crate::snapshot::ObjectSnapshot::from_object(live, game);
     proposed.project_spell_for_payment(face.id);
+    proposed.set_cast_origin_snapshot(face.id, origin);
     let mut spell = face.clone();
     spell.zone = Zone::Stack;
     spell.initial_controller = caster;

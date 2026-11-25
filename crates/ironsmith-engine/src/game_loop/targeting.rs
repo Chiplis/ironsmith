@@ -2546,8 +2546,9 @@ fn spell_effect_has_legal_targets_internal_with_preview_mode_selection(
                 source_id,
                 &mut legal_targets,
             );
-            legal_targets.len() >= min_targets
-                && distribution_supports_minimum_target_count(
+            crate::targeting::has_enough_legal_targets_for_spec(
+                game, specialized.spec, &legal_targets, min_targets,
+            ) && distribution_supports_minimum_target_count(
                     game,
                     &specialized,
                     caster,

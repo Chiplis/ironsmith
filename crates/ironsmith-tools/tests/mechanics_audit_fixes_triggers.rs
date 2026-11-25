@@ -541,7 +541,7 @@ fn aftermath_half_permission_stays_specific_but_other_grants_can_allow_both_halv
 }
 
 #[test]
-fn graveyard_flashback_grants_filter_the_adventure_card_before_selecting_its_spell_face() {
+fn graveyard_flashback_grants_filter_the_proposed_adventure_spell() {
     use ironsmith::alternative_cast::CastingMethod;
     use ironsmith::card::LinkedFaceLayout;
     use ironsmith::decision::{LegalAction, compute_legal_actions};
@@ -602,17 +602,15 @@ fn graveyard_flashback_grants_filter_the_adventure_card_before_selecting_its_spe
         )),
         "the grant authorizes an ordinary sorcery card"
     );
-    assert!(
-        !actions.iter().any(|action| matches!(
-            action, LegalAction::CastSpell { spell_id, .. } if *spell_id == card
-        )),
-        "the Adventure's sorcery face does not make its graveyard card a sorcery"
-    );
+    assert!(actions.iter().any(|action| matches!(
+        action, LegalAction::CastSpell {
+            spell_id, casting_method: CastingMethod::SplitOtherHalfPlayFrom { .. }, ..
+        } if *spell_id == card
+    )), "the proposed Adventure is a sorcery and gains flashback");
 
-    // CR 601.3e / 715.3a: once the Adventure face is proposed, only its
-    // (sorcery) characteristics decide legality, so a grant to creature cards
-    // no longer applies to it, and flashback cannot cast the creature face
-    // (CR 702.34a). The grant must match both the card and the face.
+    // CR 601.3e uses the proposed spell for the check. With only a
+    // creature-card grant, the sorcery Adventure does not gain flashback.
+    game.effect_store.grant_registry.remove_grants_from_source(source);
     game.effect_store.grant_registry.grant_to_filter(
         ObjectFilter::default().with_type(CardType::Creature),
         Zone::Graveyard,

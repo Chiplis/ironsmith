@@ -758,6 +758,9 @@ fn append_zone_granted_alternative_cast_actions_for_card(
     zone: Zone,
     view: &DerivedGameView<'_>,
 ) {
+    if card.is_land() {
+        return;
+    }
     let granted_casts = view.granted_alternative_casts_for_card(card_id, zone, player);
 
     let base_alt_idx = card.alternative_casts.len();
@@ -1084,7 +1087,7 @@ fn append_cast_actions_from_zone_for_card(
             game, actions, player, card_id, card, from_zone, view,
         );
     }
-    if zone_has_active_grants && from_zone == Zone::Library && !card.is_land() {
+    if zone_has_active_grants && from_zone == Zone::Library {
         // Only the top card reaches this path (see `add_library_cast_actions`).
         append_zone_granted_alternative_cast_actions_for_card(
             game,

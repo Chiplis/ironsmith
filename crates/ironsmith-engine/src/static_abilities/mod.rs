@@ -3645,7 +3645,9 @@ impl StaticAbility {
     pub fn intrinsic_starting_counters(rule: ironsmith_core::IntrinsicStartingCounter) -> Self {
         static LOYALTY: std::sync::OnceLock<StaticAbility> = std::sync::OnceLock::new();
         static DEFENSE: std::sync::OnceLock<StaticAbility> = std::sync::OnceLock::new();
+        static LORE: std::sync::OnceLock<StaticAbility> = std::sync::OnceLock::new();
         let slot = match rule {
+            ironsmith_core::IntrinsicStartingCounter::Lore => &LORE,
             ironsmith_core::IntrinsicStartingCounter::Loyalty => &LOYALTY,
             ironsmith_core::IntrinsicStartingCounter::Defense => &DEFENSE,
         };

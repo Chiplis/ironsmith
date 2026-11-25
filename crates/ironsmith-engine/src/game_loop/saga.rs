@@ -83,6 +83,10 @@ fn saga_entry_profile_with_view(
     view: &crate::derived_view::DerivedGameView<'_>,
     object_id: ObjectId,
 ) -> Option<SagaProfile> {
+    if !view.abilities_rc(object_id)?.iter().any(|ability| matches!(&ability.kind,
+        crate::ability::AbilityKind::Static(s) if s.intrinsic_starting_counter_rule() == Some(ironsmith_core::IntrinsicStartingCounter::Lore))) {
+        return None;
+    }
     saga_profile_and_chapters_with_view(game, view, object_id).map(|(profile, _)| profile)
 }
 
@@ -164,7 +168,7 @@ pub fn add_saga_lore_counters_with_dm(
                 game,
                 saga_id,
                 1,
-                saga_entry_lore_cause(game, saga_id),
+                precombat_lore_cause(game, saga_id),
                 trigger_queue,
                 decision_maker,
             )?;
@@ -186,7 +190,7 @@ pub fn add_saga_lore_counters_with_dm(
 /// `false` proves the object's calculated subtypes lack Saga: it prints no
 /// Saga subtype on either face or component, and no live continuous effect
 /// could add one (copy, text and merge effects count as possibly adding it).
-fn object_may_be_saga(game: &GameState, object_id: ObjectId) -> bool {
+pub(crate) fn object_may_be_saga(game: &GameState, object_id: ObjectId) -> bool {
     use crate::continuous::Modification as M;
     let Some(object) = game.object(object_id) else {
         return true;
@@ -230,60 +234,8 @@ fn entry_lore_counter_amount(
     })
 }
 
-/// CR 714.3a: "As a Saga without read ahead enters the battlefield, its
-/// controller puts a lore counter on it." This applies to every entry
-/// (cast, played, put onto the battlefield, token copies), so the central
-/// battlefield-entry path calls it. The counter-placed event drives chapter
-/// triggers once pending events are drained.
-pub(crate) fn add_entry_lore_counters(
-    game: &mut GameState,
-    saga_id: ObjectId,
-    decision_maker: &mut dyn DecisionMaker,
-) -> Result<(), crate::effects::ExecutionError> {
-    if game.has_processed_saga_entry_lore(saga_id) {
-        return Ok(());
-    }
-    // The profile reads calculated subtypes, which on a just-changed board
-    // recomputes every permanent. A non-Saga entrant needs no profile.
-    if !object_may_be_saga(game, saga_id) {
-        return Ok(());
-    }
-    let Some(amount) = entry_lore_counter_amount(game, saga_id, decision_maker) else {
-        return Ok(());
-    };
-    if decision_maker.awaiting_choice() {
-        return Ok(());
-    }
-    if amount == 0 {
-        game.mark_saga_entry_lore_processed(saga_id);
-        return Ok(());
-    }
-    // CR 122.6 / 614.1: the lore counters a Saga enters with are "put" on it,
-    // so counter replacements and "can't have counters" effects apply.
-    let amount = crate::events::processing::process_put_counters_with_event_with_dm(
-        game,
-        saga_id,
-        CounterType::Lore,
-        amount,
-        saga_entry_lore_cause(game, saga_id),
-        decision_maker,
-    )?;
-    if decision_maker.awaiting_choice() {
-        return Ok(());
-    }
-    if let Some(event) = game.add_counters(saga_id, CounterType::Lore, amount) {
-        game.queue_trigger_event(event.provenance(), event);
-    }
-    game.mark_saga_entry_lore_processed(saga_id);
-    Ok(())
-}
-
-/// The entry lore counter (CR 714.3a) is put on by a game rule, not by an
-/// effect or an intrinsic ability (contrast planeswalker loyalty, CR 306.5b,
-/// and battle defense, CR 310.4b). So "if an effect would put counters"
-/// doublers (Doubling Season) don't apply, while "if you would put counters"
-/// ones (Vorinclex, Innkeeper's Talent) do: the Saga's controller puts it.
-fn saga_entry_lore_cause(game: &GameState, saga_id: ObjectId) -> crate::events::cause::EventCause {
+/// The precombat main-phase lore counter is a turn-based action (CR 715.3c).
+fn precombat_lore_cause(game: &GameState, saga_id: ObjectId) -> crate::events::cause::EventCause {
     let mut cause = crate::events::cause::EventCause::from_game_rule();
     if let Some(controller) = game
         .object(saga_id)
@@ -316,7 +268,7 @@ pub fn handle_saga_enters_battlefield(
         if decision_maker.awaiting_choice() {
             return Ok(());
         }
-        let cause = saga_entry_lore_cause(game, saga_id);
+        let cause = crate::events::cause::EventCause::from_effect(saga_id, game.controller_of_id(saga_id).unwrap());
         put_lore_counters_and_check_chapters_with_cause(
             game,
             saga_id,
@@ -376,7 +328,7 @@ fn choose_read_ahead_chapter(
         .unwrap_or(1)
 }
 
-fn chapter_number_to_roman(chapter: u32) -> Option<&'static str> {
+pub(crate) fn chapter_number_to_roman(chapter: u32) -> Option<&'static str> {
     match chapter {
         1 => Some("I"),
         2 => Some("II"),

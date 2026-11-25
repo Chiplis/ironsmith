@@ -5,6 +5,7 @@ use crate::replacement::{ReplacementEffect, ReplacementEffectKey, ReplacementEff
 
 pub(crate) struct CompiledManaReplacements {
     effects: Vec<CompiledReplacement>,
+    hypothetical: bool,
 }
 
 struct CompiledReplacement {
@@ -48,6 +49,14 @@ pub(crate) struct ReplacementResources {
 
 impl CompiledManaReplacements {
     pub fn compile(game: &GameState) -> Option<Self> {
+        Self::compile_inner(game, false)
+    }
+
+    pub fn for_hypothetical_production(game: &GameState) -> Option<Self> {
+        Self::compile_inner(game, true)
+    }
+
+    fn compile_inner(game: &GameState, hypothetical: bool) -> Option<Self> {
         let manager = &game.effect_store.replacement_effects;
         let generated_ids: std::collections::HashSet<_> = manager
             .effect_sources_snapshot()
@@ -70,6 +79,7 @@ impl CompiledManaReplacements {
         let mut compiled = Vec::new();
         for (effect, once) in effects {
             let matcher = effect.matcher.as_ref()?;
+            if hypothetical && !matcher.may_match_event_kind(EventKind::ManaAdded) { continue; }
             if [
                 EventKind::BecomeTapped,
                 EventKind::ManaAdded,
@@ -83,13 +93,13 @@ impl CompiledManaReplacements {
             // A mana predicate alone says nothing about effects on the tap
             // cost or activation event. Those transitions must also be proven
             // unrelated before a pure production rewrite can stand in for them.
-            if matcher.may_match_event_kind(EventKind::BecomeTapped)
-                || matcher.may_match_event_kind(EventKind::AbilityActivated)
+            if !hypothetical && (matcher.may_match_event_kind(EventKind::BecomeTapped)
+                || matcher.may_match_event_kind(EventKind::AbilityActivated))
             {
                 return None;
             }
             let predicate = matcher.mana_predicate()?;
-            if GameState::filter_reads_tapped_state_or_activation_history(
+            if !hypothetical && GameState::filter_reads_tapped_state_or_activation_history(
                 predicate.source_filter,
                 true,
             ) || (effect.replacement.mana_transformation().is_none()
@@ -103,7 +113,7 @@ impl CompiledManaReplacements {
                 key: effect.application_key(),
             });
         }
-        Some(Self { effects: compiled })
+        Some(Self { effects: compiled, hypothetical })
     }
 
     pub fn is_empty(&self) -> bool {
@@ -155,7 +165,7 @@ impl CompiledManaReplacements {
             let chooser = if matches!(output, ironsmith_core::ManaRewriteOutput::ByBasicLandType(_) | ironsmith_core::ManaRewriteOutput::ByLandTypeClauses(_)) {
                 branch.event.controller
             } else { effect.controller };
-            if outputs.len() > 1 && game.controlling_player_for(chooser) != game.controlling_player_for(branch.event.player) {
+            if !self.hypothetical && outputs.len() > 1 && game.controlling_player_for(chooser) != game.controlling_player_for(branch.event.player) {
                 return None;
             }
             Some(outputs.into_iter().map(Some).collect())

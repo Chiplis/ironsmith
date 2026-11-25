@@ -840,6 +840,11 @@ impl WouldPutCountersOrEnterWithCountersMatcher {
 }
 
 impl ReplacementMatcher for WouldPutCountersOrEnterWithCountersMatcher {
+    fn matches_entry_counter_kind(&self, kind: CounterType) -> bool {
+        (self.player_filter.is_none() || self.includes_permanents)
+            && self.counter_type.is_none_or(|required| required == kind)
+    }
+
     fn ignores_event_amount(&self) -> bool {
         true
     }

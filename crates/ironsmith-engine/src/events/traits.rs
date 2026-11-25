@@ -427,6 +427,22 @@ pub trait ReplacementMatcher: Debug + Send + Sync + ReplacementMatcherClone + An
         self.matches_event(event, ctx)
     }
 
+    /// A counter-placement matcher can match the counter component of an
+    /// entry. Preventing that component still lets the permanent enter.
+    fn matches_entry_counter_kind(&self, _kind: crate::object::CounterType) -> bool {
+        false
+    }
+
+    /// A matcher for a standalone counter placement can also prevent those
+    /// counters on a proposed permanent without replacing the permanent itself.
+    fn matches_entering_counter_prevention(
+        &self,
+        _entry: &crate::events::EnterBattlefieldEvent,
+        _ctx: &EventContext,
+    ) -> Result<bool, crate::static_ability_processor::StaticEffectDiscoveryError> {
+        Ok(false)
+    }
+
     /// For token-creation replacements: the filter a token group must match
     /// for this replacement to modify it (`None` = every group).
     fn token_group_filter(&self) -> Option<&crate::target::ObjectFilter> {

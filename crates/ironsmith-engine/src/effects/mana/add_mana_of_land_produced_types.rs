@@ -1,13 +1,16 @@
 //! Add mana of any color/type that permanents matching a filter could produce.
 
-use crate::ability::{AbilityKind, ActivatedAbility, ActivatedAbilityRuntimeExt as _};
+use crate::ability::{Ability, AbilityKind, ActivatedAbilityRuntimeExt as _};
 use crate::effect::Value;
 use crate::effects::EffectExecutor;
 use crate::effects::{ExecutionContext, ExecutionError};
 use crate::filter::ObjectFilterExt as _;
 use crate::game_state::GameState;
 use crate::mana::ManaSymbol;
-use crate::object::Object;
+use crate::ids::{ObjectId, PlayerId};
+use crate::snapshot::ObjectSnapshot;
+use super::production_resolution::ResolvedManaOutput;
+use crate::mana_payment::replacement_program::{CompiledManaReplacements, ReplacementResources};
 use crate::target::{ObjectFilter, PlayerFilter};
 pub use ironsmith_core::ManaTypeSource;
 
@@ -103,22 +106,11 @@ impl EffectExecutor for AddManaOfLandProducedTypesEffect {
         if self.mana_type_source != ManaTypeSource::MatchingLandsCouldProduce {
             return None;
         }
-        // A producer reached through a wrapper re-enters here with a fresh
-        // visiting list; bound the depth so mutual "could produce" sources
-        // (two wrapped Exotic Orchards) cannot recurse forever.
-        thread_local! {
-            static DEPTH: std::cell::Cell<u8> = const { std::cell::Cell::new(0) };
-        }
-        if DEPTH.with(|depth| depth.get()) >= 4 {
-            return None;
-        }
-        DEPTH.with(|depth| depth.set(depth.get() + 1));
         let ctx = ExecutionContext::new_default(source, controller);
         let symbols: Vec<ManaSymbol> = collect_available_mana_symbols(game, &ctx, &self.land_filter)
             .into_iter()
             .filter(|symbol| is_allowed_symbol(*symbol, self.allow_colorless))
             .collect();
-        DEPTH.with(|depth| depth.set(depth.get() - 1));
         (!symbols.is_empty()).then_some(symbols)
     }
 
@@ -191,11 +183,25 @@ pub(super) fn collect_available_mana_symbols(
     ctx: &ExecutionContext,
     land_filter: &ObjectFilter,
 ) -> Vec<ManaSymbol> {
-    let mut visiting = vec![ctx.source];
-    let mut replacements = None;
-    let mut symbols =
-        could_produce_from_matching_permanents(game, ctx, land_filter, &mut visiting, &mut replacements);
+    let mut symbols = Vec::new();
     let filter_ctx = ctx.filter_context(game);
+    for &id in &game.battlefield {
+        let Some(object) = game.object(id) else {
+            continue;
+        };
+        if land_filter.matches(object, &filter_ctx, game) {
+            let abilities = game
+                .current_abilities(id)
+                .unwrap_or_else(|| object.abilities_vec());
+            symbols.extend(permanent_mana_types(
+                game,
+                id,
+                game.controller_of(object),
+                &abilities,
+                None,
+            ));
+        }
+    }
     // "any type the sacrificed land could produce" (Squandered Resources):
     // a tagged producer that already left the battlefield is read from its
     // last-known abilities (CR 106.7, 608.2h).
@@ -212,19 +218,13 @@ pub(super) fn collect_available_mana_symbols(
             {
                 continue;
             }
-            for ability in snapshot.abilities.iter() {
-                let AbilityKind::Activated(mana_ability) = &ability.kind else {
-                    continue;
-                };
-                if !mana_ability.is_mana_ability() {
-                    continue;
-                }
-                for symbol in
-                    mana_ability.inferred_mana_symbols(game, snapshot.object_id, snapshot.controller)
-                {
-                    push_symbol_if_addable(&mut symbols, symbol);
-                }
-            }
+            symbols.extend(permanent_mana_types(
+                game,
+                snapshot.object_id,
+                snapshot.controller,
+                &snapshot.abilities,
+                Some(snapshot),
+            ));
         }
     }
 
@@ -233,190 +233,200 @@ pub(super) fn collect_available_mana_symbols(
     symbols
 }
 
-/// CR 106.7: the types of mana the matching permanents "could produce" are the
-/// types their abilities would produce if they resolved now, whether or not
-/// they are mana abilities and whether or not their costs could be paid,
-/// counting current output quantities and applicable replacement effects.
-/// Producers asking what other permanents could produce are followed recursively;
-/// a producer already being evaluated contributes nothing (the mutual-Orchard case).
-fn could_produce_from_matching_permanents(
+/// CR 106.7 evaluates each ability as though it resolved now, without paying
+/// activation costs. An undefined recursive production contributes no types.
+pub(crate) fn permanent_mana_types(
     game: &GameState,
-    ctx: &ExecutionContext,
-    land_filter: &ObjectFilter,
-    visiting: &mut Vec<crate::ids::ObjectId>,
-    replacements: &mut Option<Option<crate::mana_payment::replacement_program::CompiledManaReplacements>>,
+    source: ObjectId,
+    controller: PlayerId,
+    abilities: &[Ability],
+    historical: Option<&ObjectSnapshot>,
 ) -> Vec<ManaSymbol> {
-    let mut symbols = Vec::new();
-    let filter_ctx = ctx.filter_context(game);
-    for &perm_id in &game.battlefield {
-        let Some(perm) = game.object(perm_id) else {
-            continue;
-        };
-        if !land_filter.matches(perm, &filter_ctx, game) {
-            continue;
-        }
-        if visiting.contains(&perm_id) {
-            continue;
-        }
-        visiting.push(perm_id);
-        for symbol in could_produce_from_permanent(game, perm, visiting, replacements) {
-            push_symbol_if_addable(&mut symbols, symbol);
-        }
-        visiting.pop();
+    thread_local! {
+        static ACTIVE: std::cell::RefCell<Vec<(ObjectId, usize)>> = const { std::cell::RefCell::new(Vec::new()) };
     }
-    symbols
-}
+    struct ActiveAbility;
+    impl Drop for ActiveAbility {
+        fn drop(&mut self) {
+            ACTIVE.with(|active| {
+                active.borrow_mut().pop();
+            });
+        }
+    }
 
-fn could_produce_from_permanent(
-    game: &GameState,
-    perm: &Object,
-    visiting: &mut Vec<crate::ids::ObjectId>,
-    replacements: &mut Option<Option<crate::mana_payment::replacement_program::CompiledManaReplacements>>,
-) -> Vec<ManaSymbol> {
-    let perm_id = perm.id;
-    let controller = game.controller_of(perm);
-    let mut raw = Vec::new();
-    let abilities = game
-        .current_abilities(perm_id)
-        .unwrap_or_else(|| perm.abilities_vec());
-    for ability in &abilities {
-        let AbilityKind::Activated(activated) = &ability.kind else {
-            continue;
-        };
-        if !activated.could_add_mana(game, perm_id, controller)
-            || !mana_ability_condition_met(game, perm, activated)
+    let mut types = Vec::new();
+    let mut replacements = None;
+    let mut snapshot = historical.cloned();
+    for (index, ability) in abilities.iter().enumerate() {
+        if !ability.functions_in(&crate::zone::Zone::Battlefield)
+            || ACTIVE.with(|active| active.borrow().contains(&(source, index)))
         {
             continue;
         }
-        let fixed = activated.mana_symbols();
-        if !fixed.is_empty() {
-            raw.extend(fixed.iter().copied());
+        use crate::events::mana::ManaProductionProvenance::{
+            ManaAbility, TappedSourceForMana, Unknown,
+        };
+        let (effects, fixed, provenance) = match &ability.kind {
+            AbilityKind::Activated(a) if a.could_add_mana(game, source, controller) => {
+                let provenance = if !a.is_runtime_mana_ability(game, source, controller) {
+                    Unknown
+                } else if a.has_tap_cost() {
+                    TappedSourceForMana
+                } else {
+                    ManaAbility
+                };
+                (&a.effects, a.mana_symbols(), provenance)
+            }
+            AbilityKind::Triggered(t)
+                if t.effects
+                    .all_effects()
+                    .iter()
+                    .any(|e| e.contains_mana_production()) =>
+            {
+                (&t.effects, &[][..], Unknown)
+            }
+            _ => continue,
+        };
+        ACTIVE.with(|active| active.borrow_mut().push((source, index)));
+        let _active = ActiveAbility;
+        let mut ctx = ExecutionContext::new_default(source, controller);
+        ctx.ability_index = Some(index);
+        ctx.source_snapshot = historical.cloned();
+        if let AbilityKind::Triggered(t) = &ability.kind
+            && let Some(condition) = &t.intervening_if
+            && !crate::condition_eval::evaluate_condition_resolution(game, condition, &ctx)
+                .unwrap_or(false)
+        {
             continue;
         }
-        let mut dm = crate::decision::SelectFirstDecisionMaker;
-        let producer_ctx = ExecutionContext::new(perm_id, controller, &mut dm);
-        for effect in crate::ability::selected_resolution_effects_for_current_state(
-            &activated.effects,
-            game,
-            perm_id,
-            controller,
-        ) {
-            use crate::mana_payment::program::ManaProduction;
-            let amount = match effect.mana_production() {
-                Some(
-                    ManaProduction::Repeated { amount, .. }
-                    | ManaProduction::ChooseColors { amount, .. }
-                    | ManaProduction::ChosenColor { amount, .. }
-                    | ManaProduction::CommanderIdentity { amount, .. }
-                    | ManaProduction::DraftChosenColors { amount, .. }
-                    | ManaProduction::DeckChosenColors { amount, .. }
-                    | ManaProduction::LandProducedTypes { amount, .. },
-                ) => Some(amount),
-                _ => None,
+        let mut add = |recipient, output: ResolvedManaOutput| {
+            let compiled = replacements
+                .get_or_insert_with(|| CompiledManaReplacements::for_hypothetical_production(game));
+            let compiled = compiled.as_ref().filter(|r| !r.is_empty());
+            if compiled.is_none() {
+                match output {
+                    ResolvedManaOutput::Exact(mana) => types.extend(mana),
+                    ResolvedManaOutput::Choice {
+                        available,
+                        count,
+                        distinct,
+                        same_type,
+                    } if count > 0
+                        && (!distinct
+                            || count as usize <= available.len() && (!same_type || count == 1)) =>
+                    {
+                        types.extend(available)
+                    }
+                    _ => {}
+                }
+                return;
+            }
+            if snapshot.is_none() {
+                snapshot = game
+                    .object(source)
+                    .map(|o| ObjectSnapshot::from_object_with_calculated_characteristics(o, game));
+            }
+            let mut apply = |mana: &[ManaSymbol]| {
+                if mana.is_empty() {
+                    return;
+                }
+                let event = crate::events::ManaAddedEvent::new(
+                    source,
+                    controller,
+                    recipient,
+                    mana.to_vec(),
+                )
+                .with_snapshot(snapshot.clone())
+                .with_production_provenance(provenance);
+                if let Some(branches) = compiled.unwrap().branches(
+                    game,
+                    event,
+                    &ReplacementResources::default(),
+                    usize::MAX,
+                ) {
+                    for branch in branches {
+                        types.extend(branch.event.mana);
+                    }
+                }
             };
-            if let Some(amount) = amount
-                && crate::effects::helpers::resolve_value(game, amount, &producer_ctx)
-                    .is_ok_and(|value| value <= 0)
-            {
-                continue;
-            }
-            if let Some(ManaProduction::LandProducedTypes {
-                filter,
-                allow_colorless,
-                source: ManaTypeSource::MatchingLandsCouldProduce,
-                ..
-            }) = effect.mana_production()
-            {
-                raw.extend(
-                    could_produce_from_matching_permanents(
-                        game, &producer_ctx, filter, visiting, replacements,
-                    )
-                    .into_iter()
-                    .filter(|symbol| is_allowed_symbol(*symbol, allow_colorless)),
-                );
-                continue;
-            }
-            effect.collect_producible_mana_symbols(game, perm_id, controller, &mut raw);
-        }
-    }
-    raw.sort_by_key(|symbol| canonical_symbol_order(*symbol));
-    raw.dedup();
-    if raw.is_empty() {
-        return raw;
-    }
-    let compiled = replacements
-        .get_or_insert_with(|| {
-            crate::mana_payment::replacement_program::CompiledManaReplacements::compile(game)
-        })
-        .as_ref();
-    let Some(compiled) = compiled.filter(|compiled| !compiled.is_empty()) else {
-        return raw;
-    };
-    let snapshot = crate::snapshot::ObjectSnapshot::from_object(perm, game);
-    let mut produced = Vec::new();
-    for symbol in raw {
-        let event = crate::events::ManaAddedEvent::new(perm_id, controller, controller, vec![symbol])
-            .with_snapshot(Some(snapshot.clone()));
-        match compiled.branches(
-            game,
-            event,
-            &crate::mana_payment::replacement_program::ReplacementResources::default(),
-            64,
-        ) {
-            Some(branches) => {
-                for branch in branches {
-                    produced.extend(branch.event.mana);
+            match output {
+                ResolvedManaOutput::Exact(mana) => apply(&mana),
+                ResolvedManaOutput::Choice {
+                    available,
+                    count,
+                    distinct,
+                    same_type,
+                } => {
+                    // Production predicates inspect types and quantities. Permutations of
+                    // the same bundle have the same possible resulting types.
+                    if same_type {
+                        if !distinct || count <= 1 {
+                            for symbol in available {
+                                apply(&vec![symbol; count as usize]);
+                            }
+                        }
+                    } else {
+                        visit_mana_bundles(
+                            &available,
+                            count as usize,
+                            distinct,
+                            &mut Vec::new(),
+                            &mut apply,
+                        );
+                    }
                 }
             }
-            None => produced.push(symbol),
+        };
+        if !fixed.is_empty() {
+            add(controller, ResolvedManaOutput::Exact(fixed.to_vec()));
+            continue;
+        }
+        for effect in crate::ability::selected_resolution_effects_for_current_state(
+            effects, game, source, controller,
+        ) {
+            if let Some(production) = effect.mana_production() {
+                if let Ok(resolved) = production.resolve(game, &ctx) {
+                    add(resolved.player, resolved.output);
+                }
+            } else if effect.contains_mana_production() {
+                let mut available = Vec::new();
+                effect.collect_producible_mana_symbols(game, source, controller, &mut available);
+                for symbol in available {
+                    add(controller, ResolvedManaOutput::Exact(vec![symbol]));
+                }
+            }
         }
     }
-    produced
+    types.retain(|s| is_allowed_symbol(*s, true));
+    types.sort_by_key(|s| canonical_symbol_order(*s));
+    types.dedup();
+    types
 }
 
-fn mana_ability_condition_met(
-    game: &GameState,
-    source: &Object,
-    mana_ability: &ActivatedAbility,
-) -> bool {
-    mana_ability
-        .activation_condition
-        .as_ref()
-        .is_none_or(|condition| {
-            let eval_ctx = crate::condition_eval::ExternalEvaluationContext {
-                controller: game.controller_of(source),
-                source: source.id,
-                defending_player: None,
-                attacking_player: None,
-                filter_source: Some(source.id),
-                iterated_player: None,
-                triggering_event: None,
-                trigger_identity: None,
-                ability_index: None,
-                options: crate::condition_eval::ExternalEvaluationOptions {
-                    // For mana-production inference we only care about what colors can be
-                    // produced, not whether the ability is currently activatable by timing/limits.
-                    ignore_timing: true,
-                    ignore_activation_limits: true,
-                    recipient: None,
-                    ..Default::default()
-                },
-            };
-            crate::condition_eval::evaluate_condition_external(game, condition, &eval_ctx)
-        })
-}
-
-fn push_symbol_if_addable(out: &mut Vec<ManaSymbol>, symbol: ManaSymbol) {
-    if matches!(
-        symbol,
-        ManaSymbol::White
-            | ManaSymbol::Blue
-            | ManaSymbol::Black
-            | ManaSymbol::Red
-            | ManaSymbol::Green
-            | ManaSymbol::Colorless
-    ) {
-        out.push(symbol);
+fn visit_mana_bundles(
+    available: &[ManaSymbol],
+    remaining: usize,
+    distinct: bool,
+    bundle: &mut Vec<ManaSymbol>,
+    visit: &mut impl FnMut(&[ManaSymbol]),
+) {
+    if remaining == 0 {
+        visit(bundle);
+        return;
+    }
+    let Some((&first, rest)) = available.split_first() else {
+        return;
+    };
+    if distinct && remaining > available.len() {
+        return;
+    }
+    let max = if distinct { 1 } else { remaining };
+    let min = if rest.is_empty() { remaining } else { 0 };
+    for count in min..=max {
+        let start = bundle.len();
+        bundle.resize(start + count, first);
+        visit_mana_bundles(rest, remaining - count, distinct, bundle, visit);
+        bundle.truncate(start);
     }
 }
 

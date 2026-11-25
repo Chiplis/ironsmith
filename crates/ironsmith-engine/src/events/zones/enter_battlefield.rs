@@ -1410,6 +1410,7 @@ mod entry_intrinsic_counter_width_tests {
                 let definition = match rule {
                     ironsmith_core::IntrinsicStartingCounter::Loyalty => builder.loyalty(printed).build(),
                     ironsmith_core::IntrinsicStartingCounter::Defense => builder.subtypes(vec![Subtype::Siege]).defense(printed).build(),
+                    _ => unreachable!("this fixture exercises printed starting numbers"),
                 };
                 let entrant = if copy {
                     let source = game.create_object_from_definition(&definition, alice, Zone::Battlefield);
@@ -1451,6 +1452,7 @@ mod entry_intrinsic_counter_overflow_tests {
             let definition = match rule {
                 ironsmith_core::IntrinsicStartingCounter::Loyalty => builder.loyalty(u32::MAX).build(),
                 ironsmith_core::IntrinsicStartingCounter::Defense => builder.subtypes(vec![Subtype::Siege]).defense(u32::MAX).build(),
+                _ => unreachable!("this fixture exercises printed starting numbers"),
             };
             let entrant = game.create_object_from_definition(&definition, alice, Zone::Hand);
             let result = game.move_object_with_etb_processing_with_initial_counters_with_dm(
@@ -1489,6 +1491,7 @@ mod entry_intrinsic_counter_zero_tests {
                     (ironsmith_core::IntrinsicStartingCounter::Defense, Some(count)) => builder.subtypes(vec![Subtype::Siege]).defense(count).build(),
                     (ironsmith_core::IntrinsicStartingCounter::Loyalty, None) => builder.build(),
                     (ironsmith_core::IntrinsicStartingCounter::Defense, None) => builder.subtypes(vec![Subtype::Siege]).build(),
+                    _ => unreachable!("this fixture exercises printed starting numbers"),
                 };
                 let entrant = game.create_object_from_definition(&definition, alice, Zone::Hand);
                 game.take_pending_trigger_events();

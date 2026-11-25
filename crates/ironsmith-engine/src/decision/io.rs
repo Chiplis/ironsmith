@@ -1121,14 +1121,15 @@ impl DecisionMaker for SelectFirstDecisionMaker {
     ) -> Vec<Target> {
         let mut proposed = Vec::new();
         for requirement in &ctx.requirements {
-            let count = requirement
-                .max_targets
-                .unwrap_or(1)
-                .max(requirement.min_targets)
-                .min(requirement.legal_targets.len());
-            proposed.extend(requirement.legal_targets.iter().take(count).copied());
+            let candidates = requirement.legal_target_sets.iter()
+                .find(|set| set.len() >= requirement.min_targets)
+                .unwrap_or(&requirement.legal_targets);
+            let count = requirement.max_targets.unwrap_or(1).max(requirement.min_targets);
+            proposed.extend(candidates.iter().take(count).copied());
         }
-        normalize_targets_for_requirements(&ctx.requirements, proposed).unwrap_or_default()
+        normalize_targets_for_requirements(&ctx.requirements, proposed)
+            .or_else(|| normalize_targets_for_requirements(&ctx.requirements, Vec::new()))
+            .unwrap_or_default()
     }
 
     fn decide_options(

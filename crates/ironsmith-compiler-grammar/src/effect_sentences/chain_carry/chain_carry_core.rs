@@ -323,7 +323,7 @@ pub fn expand_missing_verb_segment_lexed(
     previous: &[OwnedLexToken],
     segment: &[OwnedLexToken],
 ) -> Option<Vec<OwnedLexToken>> {
-    let (verb, verb_idx) = find_verb_lexed(previous)?;
+    let (verb, verb_idx) = find_verb(previous)?;
     match verb {
         Verb::Deal => {
             if parse_value_prefix_lexed(segment).is_none()
@@ -387,8 +387,11 @@ pub fn expand_missing_verb_segment_lexed(
     }
 }
 
+/// Returns the verb and its index in the supplied token slice.
 pub fn find_verb(tokens: &[OwnedLexToken]) -> Option<(Verb, usize)> {
-    find_verb_lexed(tokens)
+    let (verb, word_index) = find_verb_lexed(tokens)?;
+    let token_index = crate::lexer::TokenWordView::new(tokens).map_word_to_token_start(word_index)?;
+    Some((verb, token_index))
 }
 
 pub fn parse_effect_chain(tokens: &[OwnedLexToken]) -> Result<Vec<EffectAst>, CardTextError> {

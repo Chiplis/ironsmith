@@ -30,6 +30,94 @@ fn creature(g: &mut GameState, name: &str, p: i32, t: i32) -> ObjectId {
 
 fn card(route: &str) -> ironsmith::CardDefinition {
     let (name, block) = match route {
+        "spire-of-industry" => (
+            "Spire of Industry",
+            "Type: Land\nFirst printed set: Aether Revolt\n{T}: Add {C}.\n{T}, Pay 1 life: Add one mana of any color. Activate only if you control an artifact.",
+        ),
+        "crumbling-vestige" => (
+            "Crumbling Vestige",
+            "Type: Land\nFirst printed set: Friday Night Magic 2016\nThis land enters tapped.\nWhen this land enters, add one mana of any color.\n{T}: Add {C}. ({C} represents colorless mana.)",
+        ),
+        "gaea-s-cradle" => (
+            "Gaea's Cradle",
+            "Type: Legendary Land\nFirst printed set: Judge Gift Cards 1998\n{T}: Add {G} for each creature you control.",
+        ),
+        "cannibalize" => (
+            "Cannibalize",
+            "Mana cost: {1}{B}\nType: Sorcery\nChoose two target creatures controlled by the same player. Exile one of those creatures and put two +1/+1 counters on the other.",
+        ),
+        "break-the-ice" => (
+            "Break the Ice",
+            "Mana cost: {B}{B}\nType: Sorcery\nFirst printed set: Modern Horizons 2\nDestroy target land that is snow or could produce {C}.\nOverload {4}{B}{B} (You may cast this spell for its overload cost. If you do, change \"target\" in its text to \"each.\")",
+        ),
+        "drannith-magistrate" => (
+            "Drannith Magistrate",
+            "Mana cost: {1}{W}\nType: Creature — Human Wizard\nFirst printed set: Ikoria: Lair of Behemoths\nPower/Toughness: 1/3\nYour opponents can't cast spells from anywhere other than their hands.",
+        ),
+        "the-eldest-reborn" => (
+            "The Eldest Reborn",
+            "Mana cost: {4}{B}\nType: Enchantment — Saga\nFirst printed set: Dominaria\n(As this Saga enters and after your draw step, add a lore counter. Sacrifice after III.)\nI — Each opponent sacrifices a creature or planeswalker of their choice.\nII — Each opponent discards a card.\nIII — Put target creature or planeswalker card from a graveyard onto the battlefield under your control.",
+        ),
+        "doubling-season" => (
+            "Doubling Season",
+            "Mana cost: {4}{G}\nType: Enchantment\nFirst printed set: Ravnica: City of Guilds\nIf an effect would create one or more tokens under your control, it creates twice that many of those tokens instead.\nIf an effect would put one or more counters on a permanent you control, it puts twice that many of those counters on that permanent instead.",
+        ),
+        "urza-s-saga" => (
+            "Urza's Saga",
+            "Type: Enchantment Land — Urza's Saga\nFirst printed set: Modern Horizons 2 Promos\n(As this Saga enters and after your draw step, add a lore counter. Sacrifice after III.)\nI — This Saga gains \"{T}: Add {C}.\"\nII — This Saga gains \"{2}, {T}: Create a 0/0 colorless Construct artifact creature token with 'This token gets +1/+1 for each artifact you control.'\"\nIII — Search your library for an artifact card with mana cost {0} or {1}, put it onto the battlefield, then shuffle.",
+        ),
+        "blood-moon" => (
+            "Blood Moon",
+            "Mana cost: {2}{R}\nType: Enchantment\nFirst printed set: The Dark\nNonbasic lands are Mountains.",
+        ),
+        "kilnmouth-dragon" => (
+            "Kilnmouth Dragon",
+            "Mana cost: {5}{R}{R}\nType: Creature — Dragon\nFirst printed set: Legions\nPower/Toughness: 5/5\nAmplify 3 (As this creature enters, put three +1/+1 counters on it for each Dragon card you reveal in your hand.)\nFlying\n{T}: This creature deals damage equal to the number of +1/+1 counters on it to any target.",
+        ),
+        "nameless-inversion" => (
+            "Nameless Inversion",
+            "Mana cost: {1}{B}\nType: Kindred Instant — Shapeshifter\nFirst printed set: Lorwyn\nChangeling (This card is every creature type.)\nTarget creature gets +3/-3 and loses all creature types until end of turn.",
+        ),
+        "arcane-adaptation" => (
+            "Arcane Adaptation",
+            "Mana cost: {2}{U}\nType: Enchantment\nFirst printed set: Ixalan Promos\nAs this enchantment enters, choose a creature type.\nCreatures you control are the chosen type in addition to their other types. The same is true for creature spells you control and creature cards you own that aren't on the battlefield.",
+        ),
+        "damping-sphere" => (
+            "Damping Sphere",
+            "Mana cost: {2}\nType: Artifact\nFirst printed set: Dominaria\nIf a land is tapped for two or more mana, it produces {C} instead of any other type and amount.\nEach spell a player casts costs {1} more to cast for each other spell that player has cast this turn.",
+        ),
+        "azorius-chancery" => (
+            "Azorius Chancery",
+            "Type: Land\nFirst printed set: Dissension\nThis land enters tapped.\nWhen this land enters, return a land you control to its owner's hand.\n{T}: Add {W}{U}.",
+        ),
+        "contamination" => (
+            "Contamination",
+            "Mana cost: {2}{B}\nType: Enchantment\nFirst printed set: Urza's Saga\nAt the beginning of your upkeep, sacrifice this enchantment unless you sacrifice a creature.\nIf a land is tapped for mana, it produces {B} instead of any other type and amount.",
+        ),
+        "wastes" => (
+            "Wastes",
+            "Type: Basic Land\nFirst printed set: Oath of the Gatewatch\n{T}: Add {C}.",
+        ),
+        "reflecting-pool" => (
+            "Reflecting Pool",
+            "Type: Land\nFirst printed set: Tempest\n{T}: Add one mana of any type that a land you control could produce.",
+        ),
+        "mystic-gate" => (
+            "Mystic Gate",
+            "Type: Land\nFirst printed set: Shadowmoor\n{T}: Add {C}.\n{W/U}, {T}: Add {W}{W}, {W}{U}, or {U}{U}.",
+        ),
+        "eldritch-immunity" => (
+            "Eldritch Immunity",
+            "Mana cost: {C}\nType: Kindred Instant — Eldrazi\nFirst printed set: Modern Horizons 3 Commander\nTarget creature you control gains protection from each color until end of turn.\nOverload {4}{C} (You may cast this spell for its overload cost. If you do, change \"target\" in its text to \"each.\")",
+        ),
+        "thalia-heretic-cathar" => (
+            "Thalia, Heretic Cathar",
+            "Mana cost: {2}{W}\nType: Legendary Creature — Human Soldier\nFirst printed set: Eldritch Moon\nPower/Toughness: 3/2\nFirst strike\nCreatures and nonbasic lands your opponents control enter tapped.",
+        ),
+        "living-plane" => (
+            "Living Plane",
+            "Mana cost: {2}{G}{G}\nType: World Enchantment\nFirst printed set: Legends\nAll lands are 1/1 creatures that are still lands.",
+        ),
         "arctic-foxes" => (
             "Arctic Foxes",
             "Mana cost: {1}{W}\nType: Creature — Fox\nPower/Toughness: 1/1\nThis creature can't be blocked by creatures with power 2 or greater as long as defending player controls a snow land.",
@@ -975,3 +1063,214 @@ mod expanded_interactions;
 
 #[path = "november_2026_rules/gameplay_audit.rs"]
 mod gameplay_audit;
+
+fn enter_from_hand(g: &mut GameState, route: &str, dm: &mut impl DecisionMaker) -> ObjectId {
+    let id = put(g, route, A, Zone::Hand);
+    let stable = g.object(id).unwrap().stable_id;
+    let result = g
+        .move_object_with_etb_processing_with_dm(id, Zone::Battlefield, dm)
+        .unwrap();
+    assert!(!result.pending && result.programs.is_empty());
+    let id = g.find_object_by_stable_id(stable).unwrap();
+    assert_eq!(g.object(id).unwrap().zone, Zone::Battlefield);
+    id
+}
+
+#[test]
+fn magistrate_allows_a_spell_cast_from_its_owners_hand() {
+    let mut g = game();
+    put(
+        &mut g,
+        "drannith-magistrate",
+        PlayerId(1),
+        Zone::Battlefield,
+    );
+    let spell = put(&mut g, "grizzly-bears", A, Zone::Hand);
+    g.player_mut(A).unwrap().mana_pool.green = 2;
+    assert!(can_cast(&g, spell));
+}
+
+#[test]
+fn saga_entry_counters_follow_the_intrinsic_replacement() {
+    for (modifier, saga, count) in [
+        ("doubling-season", "the-eldest-reborn", 2),
+        ("blood-moon", "urza-s-saga", 0),
+    ] {
+        let mut g = game();
+        put(&mut g, modifier, A, Zone::Battlefield);
+        let id = enter_from_hand(
+            &mut g,
+            saga,
+            &mut ironsmith::decision::SelectFirstDecisionMaker,
+        );
+        assert_eq!(g.counter_count(id, CounterType::Lore), count, "{modifier}");
+    }
+}
+
+#[test]
+fn amplify_uses_current_creature_types_for_both_cards() {
+    struct Reveal;
+    impl DecisionMaker for Reveal {
+        fn decide_objects(
+            &mut self,
+            _: &GameState,
+            ctx: &ironsmith::decisions::context::SelectObjectsContext,
+        ) -> Vec<ObjectId> {
+            ctx.candidates
+                .iter()
+                .filter(|c| c.legal)
+                .take(ctx.max.unwrap_or(usize::MAX))
+                .map(|c| c.id)
+                .collect()
+        }
+        fn decide_boolean(
+            &mut self,
+            _: &GameState,
+            _: &ironsmith::decisions::context::BooleanContext,
+        ) -> bool {
+            true
+        }
+    }
+    for (candidate, adapt) in [("nameless-inversion", false), ("grizzly-bears", true)] {
+        let mut g = game();
+        if adapt {
+            let enchantment = put(&mut g, "arcane-adaptation", A, Zone::Battlefield);
+            g.set_chosen_creature_type(enchantment, ironsmith::Subtype::Elf);
+        }
+        put(&mut g, candidate, A, Zone::Hand);
+        let id = enter_from_hand(&mut g, "kilnmouth-dragon", &mut Reveal);
+        assert_eq!(
+            g.counter_count(id, CounterType::PlusOnePlusOne),
+            3,
+            "{candidate}"
+        );
+    }
+}
+
+#[test]
+fn thalia_taps_an_animated_basic_land() {
+    let mut g = game();
+    put(
+        &mut g,
+        "thalia-heretic-cathar",
+        PlayerId(1),
+        Zone::Battlefield,
+    );
+    put(&mut g, "living-plane", A, Zone::Battlefield);
+    let id = enter_from_hand(
+        &mut g,
+        "island",
+        &mut ironsmith::decision::SelectFirstDecisionMaker,
+    );
+    assert!(g.is_tapped(id));
+}
+
+#[test]
+fn a_land_that_can_add_a_color_or_colorless_can_pay_a_colorless_pip() {
+    let mut g = game();
+    let gate = put(&mut g, "mystic-gate", A, Zone::Battlefield);
+    g.tap(gate);
+    put(&mut g, "reflecting-pool", A, Zone::Battlefield);
+    creature(&mut g, "Target", 2, 2);
+    let spell = put(&mut g, "eldritch-immunity", A, Zone::Hand);
+    assert!(can_cast(&g, spell));
+}
+
+#[test]
+fn mana_type_filters_use_rewritten_production_bundles() {
+    for (land, modifier, expected) in [
+        ("azorius-chancery", "damping-sphere", true),
+        ("wastes", "contamination", false),
+    ] {
+        let mut g = game();
+        put(&mut g, modifier, A, Zone::Battlefield);
+        let id = put(&mut g, land, A, Zone::Battlefield);
+        let stable = g.object(id).unwrap().stable_id;
+        resolve_spell(
+            &mut g,
+            "break-the-ice",
+            vec![ironsmith::Target::Object(id)],
+            &mut ironsmith::decision::SelectFirstDecisionMaker,
+        );
+        let after = g.find_object_by_stable_id(stable).unwrap();
+        assert_eq!(
+            g.object(after).unwrap().zone == Zone::Graveyard,
+            expected,
+            "{land}"
+        );
+    }
+}
+
+#[test]
+fn casting_requires_a_complete_group_of_targets_with_the_same_controller() {
+    let mut g = game();
+    g.player_mut(A).unwrap().mana_pool.black = 2;
+    put(&mut g, "grizzly-bears", A, Zone::Battlefield);
+    put(&mut g, "grizzly-bears", PlayerId(1), Zone::Battlefield);
+    let spell = put(&mut g, "cannibalize", A, Zone::Hand);
+    assert!(!can_cast(&g, spell));
+    put(
+        &mut g,
+        "drannith-magistrate",
+        PlayerId(1),
+        Zone::Battlefield,
+    );
+    assert!(can_cast(&g, spell));
+}
+
+#[test]
+fn potential_mana_includes_restricted_activations_and_triggered_production() {
+    use ironsmith::ManaSymbol::{Black, Blue, Colorless, Green, Red, White};
+    use ironsmith::ability::ActivatedAbilityRuntimeExt;
+
+    for donor in ["spire-of-industry", "crumbling-vestige"] {
+        let mut g = game();
+        let land = put(&mut g, donor, A, Zone::Battlefield);
+        g.tap(land);
+        let pool = put(&mut g, "reflecting-pool", A, Zone::Battlefield);
+        let ability = g
+            .current_abilities(pool)
+            .unwrap()
+            .into_iter()
+            .find_map(|ability| match ability.kind {
+                AbilityKind::Activated(a) => Some(a),
+                _ => None,
+            })
+            .unwrap();
+        let types = ability.inferred_mana_symbols(&g, pool, A);
+        for symbol in [White, Blue, Black, Red, Green, Colorless] {
+            assert!(types.contains(&symbol), "{donor} could produce {symbol:?}");
+        }
+    }
+}
+
+#[test]
+fn sacrificed_land_mana_uses_its_last_abilities_with_current_output_quantities_and_replacements() {
+    use ironsmith::effects::AddManaOfLandProducedTypesEffect;
+    for (donor, contaminated, black) in [("gaea-s-cradle", false, 0), ("island", true, 1)] {
+        let mut g = game();
+        let source = put(&mut g, "sol-ring", A, Zone::Battlefield);
+        if contaminated {
+            put(&mut g, "contamination", A, Zone::Battlefield);
+        }
+        let land = put(&mut g, donor, A, Zone::Battlefield);
+        let info = ironsmith::snapshot::ObjectSnapshot::from_object_with_calculated_characteristics(
+            g.object(land).unwrap(),
+            &g,
+        );
+        g.move_object_by_effect(land, Zone::Graveyard).unwrap();
+        let mut ctx = EffectContext::new_default(source, A);
+        ctx.tag_object("sacrificed", info);
+        let effect = AddManaOfLandProducedTypesEffect::new(
+            1,
+            PlayerFilter::You,
+            ironsmith::ObjectFilter::tagged("sacrificed"),
+            true,
+            false,
+        );
+        effect.execute(&mut g, &mut ctx).unwrap();
+        let pool = &g.player(A).unwrap().mana_pool;
+        assert_eq!(u64::from(pool.total()), black, "{donor}");
+        assert_eq!(pool.black, black, "{donor}");
+    }
+}

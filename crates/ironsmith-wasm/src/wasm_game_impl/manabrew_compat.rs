@@ -725,12 +725,7 @@ fn manabrew_replan_command(
             .map(|activation| ManaPaymentActivationCommand {
                 source_id: activation.source.0.to_string(),
                 ability_index: activation.ability_index,
-                color_restriction: activation.color_restriction.map(|colors| {
-                    colors
-                        .into_iter()
-                        .map(|color| color.name().to_string())
-                        .collect()
-                }),
+                color_restriction: activation.color_restriction.as_deref().map(mana_selection_names),
             })
             .collect(),
         required_alternatives: preferences

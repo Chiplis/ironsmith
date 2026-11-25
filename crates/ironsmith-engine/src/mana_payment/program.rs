@@ -80,6 +80,16 @@ pub(crate) struct ProductionEvent {
     pub needs_choice: bool,
 }
 
+/// A selected type menu uses an empty color set for colorless (CR 105.4).
+/// No restriction leaves all six mana types available.
+pub(crate) fn selection_allows_type(colors: &[Color], symbol: ManaSymbol) -> bool {
+    if symbol == ManaSymbol::Colorless {
+        colors.is_empty()
+    } else {
+        colors.iter().any(|color| ManaSymbol::from_color(*color) == symbol)
+    }
+}
+
 impl ManaProduction<'_> {
     /// Expressions whose reads cannot change during a tap-only mana closure.
     /// Triggering-event types are read from the captured rewritten event, not
@@ -175,6 +185,7 @@ impl ManaProduction<'_> {
                         }
                         symbol
                     }
+                    Some([]) if available.contains(&ManaSymbol::Colorless) => ManaSymbol::Colorless,
                     None => *available.first()?,
                     _ => return None,
                 };

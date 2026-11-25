@@ -3976,7 +3976,7 @@ pub(super) fn collect_search_choices(
                 // colour choices. Only inferred choice outputs use the restriction.
                 activated.is_some_and(|ability| !ability.mana_symbols().is_empty())
                     || choice.color_restriction.as_ref().is_none_or(|colors| {
-                        mana_symbol_color(*produced).is_none_or(|color| colors.contains(&color))
+                        super::program::selection_allows_type(colors, *produced)
                     })
             })
             .collect();
@@ -4221,8 +4221,20 @@ fn collect_raw_activation_choices_with_view(
                 .iter()
                 .filter_map(|symbol| mana_symbol_color(*symbol))
                 .collect::<HashSet<_>>();
-            let flexibility = colors.len();
+            let colorless = mana_ability.mana_symbols().is_empty()
+                && inferred.contains(&ManaSymbol::Colorless);
+            let flexibility = colors.len() + usize::from(colorless);
             if flexibility > 1 {
+                if colorless {
+                    out.push(ActivationChoice {
+                        stored_color_choices: Vec::new(),
+                        replacement_witnesses: None,
+                        source,
+                        ability_index,
+                        color_restriction: Some(Vec::new()),
+                        flexibility,
+                    });
+                }
                 for color in Color::ALL {
                     if colors.contains(&color) {
                         out.push(ActivationChoice {

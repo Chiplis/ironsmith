@@ -37,6 +37,7 @@ pub use add_mana_of_colors_among::AddManaOfColorsAmongEffect;
 pub use add_mana_equal_to_mana_cost::AddManaEqualToManaCostEffect;
 pub use add_mana_lost_this_way::AddManaLostThisWayEffect;
 pub use add_mana_of_imprinted_colors::AddManaOfImprintedColorsEffect;
+pub(crate) use add_mana_of_land_produced_types::permanent_mana_types;
 pub use add_mana_of_land_produced_types::AddManaOfLandProducedTypesEffect;
 pub use add_one_mana_of_any_color_among::AddOneManaOfAnyColorAmongEffect;
 pub use add_scaled_mana::AddScaledManaEffect;

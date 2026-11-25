@@ -3433,14 +3433,16 @@ impl Object {
 
     /// Returns true if this object has the given subtype.
     ///
-    /// If the object has Changeling and is a creature, it has all creature types.
+    /// Creatures and kindred objects with changeling have all creature types.
     pub fn has_subtype(&self, subtype: Subtype) -> bool {
         if self.zone_subtypes().contains(&subtype) {
             return true;
         }
 
-        // Changeling means this creature is every creature type
-        if subtype.is_creature_type() && self.is_creature() && self.has_changeling() {
+        if subtype.is_creature_type()
+            && (self.is_creature() || self.has_card_type(CardType::Kindred))
+            && self.has_changeling()
+        {
             return true;
         }
 

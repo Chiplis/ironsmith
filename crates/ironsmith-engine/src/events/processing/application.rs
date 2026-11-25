@@ -62,7 +62,18 @@ pub(super) fn apply_trait_replacement(
     effect: &ReplacementEffect,
 ) -> Result<TraitApplyResult, crate::effects::ExecutionError> {
     Ok(match &effect.replacement {
-        ReplacementAction::Prevent => TraitApplyResult::Prevented,
+        ReplacementAction::Prevent => {
+            if let Some(entry) = crate::events::downcast_event::<crate::events::EnterBattlefieldEvent>(event.inner())
+                && let Some(matcher) = effect.matcher.as_ref()
+                && entry.enters_with_counters.iter().any(|(kind, _)| matcher.matches_entry_counter_kind(*kind))
+            {
+                let mut entry = entry.clone();
+                entry.enters_with_counters.retain(|(kind, _)| !matcher.matches_entry_counter_kind(*kind));
+                TraitApplyResult::Modified(event.rewrap(entry))
+            } else {
+                TraitApplyResult::Prevented
+            }
+        }
 
         ReplacementAction::PreventDamage => {
             let Some(damage) =
@@ -514,6 +525,29 @@ pub(super) fn apply_trait_replacement(
                     chars.loyalty.or_else(printed_x)
                 }
                 ironsmith_core::IntrinsicStartingCounter::Defense => chars.defense,
+                ironsmith_core::IntrinsicStartingCounter::Lore => {
+                    if !crate::game_loop::source_has_read_ahead(&prospective, etb.object) {
+                        Some(1)
+                    } else {
+                        let last = crate::game_loop::final_chapter_number_from_abilities(&chars.abilities).unwrap_or(0);
+                        if last > 0 {
+                            use crate::decisions::context::{DecisionContext, SelectOptionsContext, SelectableOption};
+                            let options = (1..=last).map(|chapter| {
+                                let label = crate::game_loop::chapter_number_to_roman(chapter)
+                                    .map(str::to_owned).unwrap_or_else(|| chapter.to_string());
+                                SelectableOption::new((chapter - 1) as usize, format!("Chapter {label}"))
+                            }).collect();
+                            return Ok(TraitApplyResult::NeedsInteraction {
+                                decision_ctx: DecisionContext::SelectOptions(SelectOptionsContext::new(
+                                    chars.controller, Some(etb.object), "Choose the starting chapter", options, 1, 1)),
+                                redirect_zone: Zone::Battlefield,
+                                effect_id: effect.id, object_id: etb.object,
+                                filter: None, sacrifice_count: None, destinations: None,
+                            });
+                        }
+                        Some(0)
+                    }
+                }
             }
             .unwrap_or(0);
             let counter = rule.counter_type();

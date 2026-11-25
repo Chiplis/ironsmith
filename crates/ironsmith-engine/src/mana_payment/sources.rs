@@ -181,9 +181,7 @@ impl<'a> ManaSourceAnalysis<'a> {
                 }
                 if let Some(colors) = &choice.color_restriction {
                     available.retain(|symbol| {
-                        colors
-                            .iter()
-                            .any(|color| crate::mana::ManaSymbol::from_color(*color) == *symbol)
+                        super::program::selection_allows_type(colors, *symbol)
                     });
                 }
             }

@@ -541,6 +541,7 @@ pub(crate) trait TaggedConstraintSubject {
 
 pub(crate) trait TailMatchSubject: TaggedConstraintSubject {
     fn tail_object_id(&self) -> ObjectId;
+    fn tail_mana_snapshot(&self) -> Option<&ObjectSnapshot> { None }
     fn tail_name(&self) -> &str;
     /// A second name the subject has: the other half of a split card outside
     /// the stack and battlefield (CR 709.4a).
@@ -919,6 +920,7 @@ impl TaggedConstraintSubject for ObjectSnapshot {
 }
 
 impl TailMatchSubject for ObjectSnapshot {
+    fn tail_mana_snapshot(&self) -> Option<&ObjectSnapshot> { Some(self) }
     fn tail_related_exiled_snapshots(&self) -> Option<&std::collections::BTreeMap<String, Vec<ObjectSnapshot>>> { Some(&self.related_exiled_cards) }
     fn tail_attachment_snapshots(&self) -> Option<&[ObjectSnapshot]> {
         Some(&self.attachment_snapshots)
@@ -1026,17 +1028,9 @@ fn subject_could_produce_any_mana_symbol(
     required: &[crate::mana::ManaSymbol],
     game: &GameState,
 ) -> bool {
-    subject.tail_abilities().iter().any(|ability| {
-        let AbilityKind::Activated(activated) = &ability.kind else {
-            return false;
-        };
-        let produced = activated.inferred_mana_symbols(
-            game,
-            subject.tail_object_id(),
-            subject.subject_controller(),
-        );
-        required.iter().any(|symbol| produced.contains(symbol))
-    })
+    let produced = crate::effects::mana::permanent_mana_types(game, subject.tail_object_id(),
+        subject.subject_controller(), subject.tail_abilities(), subject.tail_mana_snapshot());
+    required.iter().any(|symbol| produced.contains(symbol))
 }
 
 fn linked_face_has_adventure(

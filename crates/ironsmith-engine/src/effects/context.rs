@@ -299,7 +299,7 @@ pub struct BlockEventContext {
 /// Mana-choice restrictions scoped to the current resolution path.
 #[derive(Debug, Clone, Default)]
 pub struct ManaExecutionContext {
-    /// Optional color restriction for mana-choice decisions in this execution.
+    /// None leaves the type open. An empty set selects colorless on a mana-type menu.
     pub mana_color_restriction: Option<Vec<Color>>,
     /// Optional spending restrictions for mana produced during this execution.
     pub mana_usage_restrictions: Vec<crate::ability::ManaUsageRestriction>,

@@ -127,6 +127,23 @@ fn apply_tribute_response(
     apply_trait_enter_with_counters(&event, counter_type, count, &[], &[]).unwrap_or(event)
 }
 
+fn apply_saga_chapter_choice(
+    event: Event,
+    response: &InteractiveReplacementResponse,
+    option_count: usize,
+) -> Event {
+    let count = match response {
+        InteractiveReplacementResponse::Options(indices) => indices
+            .first()
+            .filter(|index| **index < option_count)
+            .and_then(|index| u32::try_from(*index).ok())
+            .and_then(|index| index.checked_add(1))
+            .unwrap_or(1),
+        _ => 1,
+    };
+    apply_trait_enter_with_counters(&event, CounterType::Lore, count, &[], &[]).unwrap_or(event)
+}
+
 fn apply_enter_counter_choice_response(
     game: &GameState,
     event: Event,
@@ -2931,14 +2948,13 @@ fn trait_effect_matches_event(
     // counter-placement modifiers once, after all entry counter proposals exist,
     // so the affected player orders halvers, doublers and adders together
     // (CR 616.1e).
-    if matches!(
-        effect.replacement,
-        ReplacementAction::DoubleCounters { .. }
-            | ReplacementAction::HalveCounters { .. }
-            | ReplacementAction::AddCountersToPlacement { .. }
-    ) && let Some(etb) =
-        crate::events::downcast_event::<crate::events::EnterBattlefieldEvent>(event.inner())
+    if let Some(etb) = crate::events::downcast_event::<crate::events::EnterBattlefieldEvent>(event.inner())
         && etb.prepared_choices.is_none()
+        && (matches!(effect.replacement, ReplacementAction::DoubleCounters { .. }
+            | ReplacementAction::HalveCounters { .. } | ReplacementAction::AddCountersToPlacement { .. })
+            || matches!(effect.replacement, ReplacementAction::Prevent)
+                && effect.matcher.as_ref().is_some_and(|matcher| etb.enters_with_counters.iter()
+                    .any(|(kind, _)| matcher.matches_entry_counter_kind(*kind))))
     {
         return Ok(None);
     }
@@ -2957,6 +2973,9 @@ fn trait_effect_matches_event(
         matcher
             .matches_entry_event(entry, &ctx)
             .map_err(crate::effects::ExecutionError::ContinuousDiscovery)?
+            || (matches!(effect.replacement, ReplacementAction::Prevent)
+                && matcher.matches_entering_counter_prevention(entry, &ctx)
+                    .map_err(crate::effects::ExecutionError::ContinuousDiscovery)?)
     } else {
         matcher
             .matches_event(event.inner(), &ctx)
@@ -8104,6 +8123,7 @@ fn entrant_has_no_own_entry_replacements(
             _ => false,
         });
     !may_gain_starting_counter_type
+        && !crate::game_loop::object_may_be_saga(game, etb.object)
         && etb.enters_as_copy_of.is_none()
         && etb.added_abilities.is_empty()
         && etb.copy_followups.is_empty()
@@ -11536,6 +11556,10 @@ fn prepare_etb_replacements_inner(
                                     .map(|o| game.controller_of(o))
                                     .unwrap_or(PlayerId::from_index(0))
                             };
+                            let option_count = match &decision_ctx {
+                                crate::decisions::context::DecisionContext::SelectOptions(ctx) => ctx.options.len(),
+                                _ => 0,
+                            };
                             let response = match decision_ctx {
                                 crate::decisions::context::DecisionContext::Boolean(ctx) => {
                                     if dm.decide_boolean(game, &ctx) {
@@ -11622,6 +11646,11 @@ fn prepare_etb_replacements_inner(
                                 game.effect_store
                                     .replacement_effects
                                     .mark_effect_used(effect_id);
+                                continue;
+                            }
+                            if matches!(chosen_effect.replacement, ReplacementAction::EnterWithIntrinsicStartingCounters(ironsmith_core::IntrinsicStartingCounter::Lore)) {
+                                current_event = apply_saga_chapter_choice(current_event, &response, option_count);
+                                game.effect_store.replacement_effects.mark_effect_used(effect_id);
                                 continue;
                             }
                             if let ReplacementAction::EnterWithCounterChoice {
@@ -11730,6 +11759,10 @@ fn prepare_etb_replacements_inner(
                             .map(|o| game.controller_of(o))
                             .unwrap_or(PlayerId::from_index(0))
                     };
+                    let option_count = match &decision_ctx {
+                        crate::decisions::context::DecisionContext::SelectOptions(ctx) => ctx.options.len(),
+                        _ => 0,
+                    };
                     let response = match decision_ctx {
                         crate::decisions::context::DecisionContext::Boolean(ctx) => {
                             if dm.decide_boolean(game, &ctx) {
@@ -11812,6 +11845,11 @@ fn prepare_etb_replacements_inner(
                         game.effect_store
                             .replacement_effects
                             .mark_effect_used(effect_id);
+                        continue;
+                    }
+                    if matches!(find_effect_for_choice(game, &current_additional_effects, effect_id).map(|effect| effect.replacement), Some(ReplacementAction::EnterWithIntrinsicStartingCounters(ironsmith_core::IntrinsicStartingCounter::Lore))) {
+                        current_event = apply_saga_chapter_choice(*event, &response, option_count);
+                        game.effect_store.replacement_effects.mark_effect_used(effect_id);
                         continue;
                     }
                     if let Some(ReplacementAction::EnterWithCounterChoice {

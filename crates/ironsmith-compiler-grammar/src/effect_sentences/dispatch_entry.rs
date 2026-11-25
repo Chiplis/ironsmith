@@ -5934,7 +5934,7 @@ fn build_secret_choices_match_conditional_effects(source_type: &str) -> Vec<Effe
 fn parse_complete_serial_create_statement(
     sentence: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    let Some((verb, verb_word_idx)) = super::find_verb(sentence) else {
+    let Some((verb, verb_token_idx)) = super::find_verb(sentence) else {
         return Ok(None);
     };
     if !matches!(verb, super::chain_carry::Verb::Create)
@@ -5944,11 +5944,6 @@ fn parse_complete_serial_create_statement(
     {
         return Ok(None);
     }
-    let Some(verb_token_idx) =
-        crate::lexer::TokenWordView::new(sentence).map_word_to_token_start(verb_word_idx)
-    else {
-        return Ok(None);
-    };
     if sentence[..verb_token_idx]
         .iter()
         .any(|token| token.kind == TokenKind::Comma)
@@ -6178,15 +6173,10 @@ pub(crate) fn parse_complete_create_statement(
         if effect_grammar::split_labeled_effect_prefix_lexed(parse_tokens).is_some() {
             return Ok(None);
         }
-        let Some((verb, verb_word_idx)) = super::find_verb(parse_tokens) else {
+        let Some((verb, verb_idx)) = super::find_verb(parse_tokens) else {
             return Ok(None);
         };
-        let Some(verb_idx) =
-            crate::lexer::TokenWordView::new(parse_tokens).map_word_to_token_start(verb_word_idx)
-        else {
-            return Ok(None);
-        };
-        if verb_word_idx == 0
+        if verb_idx == 0
             || !matches!(verb, super::chain_carry::Verb::Create)
             || parse_tokens
                 .first()
@@ -6268,12 +6258,7 @@ pub(super) fn parse_complete_quantified_discard_statement(
     if effect_grammar::for_each_shapes::parse_participant_clause_shape(sentence).is_some() {
         return Ok(None);
     }
-    let Some((verb, verb_word_idx)) = super::find_verb(sentence) else {
-        return Ok(None);
-    };
-    let Some(verb_idx) =
-        crate::lexer::TokenWordView::new(sentence).map_word_to_token_start(verb_word_idx)
-    else {
+    let Some((verb, verb_idx)) = super::find_verb(sentence) else {
         return Ok(None);
     };
     if verb_idx == 0 || !matches!(verb, super::chain_carry::Verb::Discard) {
@@ -6341,12 +6326,7 @@ pub(crate) fn parse_complete_get_pump_statement(
     {
         return Ok(None);
     }
-    let Some((verb, verb_word_idx)) = super::find_verb(sentence) else {
-        return Ok(None);
-    };
-    let Some(verb_idx) =
-        crate::lexer::TokenWordView::new(sentence).map_word_to_token_start(verb_word_idx)
-    else {
+    let Some((verb, verb_idx)) = super::find_verb(sentence) else {
         return Ok(None);
     };
     if verb_idx == 0 || !matches!(verb, super::chain_carry::Verb::Get) {
@@ -6440,12 +6420,7 @@ pub(super) fn parse_complete_become_statement(
         // not to an object target named by the words before `becomes`.
         return Ok(None);
     }
-    let Some((verb, verb_word_idx)) = super::find_verb(sentence) else {
-        return Ok(None);
-    };
-    let Some(verb_idx) =
-        crate::lexer::TokenWordView::new(sentence).map_word_to_token_start(verb_word_idx)
-    else {
+    let Some((verb, verb_idx)) = super::find_verb(sentence) else {
         return Ok(None);
     };
     if verb_idx == 0
@@ -7685,12 +7660,7 @@ fn parse_direct_typed_coordination(
     let mut verb_tokens = Vec::with_capacity(plan.members.len());
     for member in &plan.members {
         let member_tokens = crate::util::trim_edge_punctuation_tokens(member.tokens);
-        let Some((verb, verb_word_idx)) = super::find_verb(member_tokens) else {
-            return Ok(None);
-        };
-        let Some(verb_idx) =
-            crate::lexer::TokenWordView::new(member_tokens).map_word_to_token_start(verb_word_idx)
-        else {
+        let Some((verb, verb_idx)) = super::find_verb(member_tokens) else {
             return Ok(None);
         };
         let subject =

@@ -48,16 +48,9 @@ fn legal_pool_for_selected(
         return Some(req.legal_targets.clone());
     }
 
-    req.legal_target_sets
-        .iter()
-        .find(|set| selected.iter().all(|target| set.contains(target)))
-        .cloned()
-        .or_else(|| {
-            selected
-                .is_empty()
-                .then(|| req.legal_target_sets.first().cloned())
-                .flatten()
-        })
+    req.legal_target_sets.iter().find(|set| {
+        set.len() >= req.min_targets && selected.iter().all(|target| set.contains(target))
+    }).cloned()
 }
 
 fn selected_targets_satisfy_distinct_player_group(
@@ -538,8 +531,8 @@ mod tests {
         let d = Target::Object(ObjectId::from_raw(4));
         let requirements = vec![TargetRequirementContext {
             description: "same controller targets".to_string(),
-            legal_targets: vec![a, b, c, d],
-            legal_target_sets: vec![vec![a, b], vec![c, d]],
+            legal_targets: vec![a, c, b, d],
+            legal_target_sets: vec![vec![a], vec![a, b], vec![c, d]],
             aggregate_constraint: None,
             min_targets: 2,
             max_targets: Some(2),
@@ -548,9 +541,17 @@ mod tests {
             shared_player_group: None,
         }];
 
+        assert_eq!(normalize_targets_for_requirements(&requirements, vec![]), Some(vec![a, b]));
         let normalized = normalize_targets_for_requirements(&requirements, vec![c]).expect("valid");
 
         assert_eq!(normalized, vec![c, d]);
+
+        use crate::decision::{DecisionMaker, SelectFirstDecisionMaker};
+        let game = crate::tests::test_helpers::setup_two_player_game();
+        let prompt = crate::decisions::context::TargetsContext::new(
+            crate::PlayerId(0), ObjectId::from_raw(5), "Choose two creatures", requirements,
+        );
+        assert_eq!(SelectFirstDecisionMaker.decide_targets(&game, &prompt), vec![a, b]);
     }
 
     #[test]

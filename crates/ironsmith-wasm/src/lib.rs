@@ -1025,6 +1025,13 @@ fn cast_payment_cost_context(
     result
 }
 
+fn mana_selection_names(colors: &[ironsmith::color::Color]) -> Vec<String> {
+    if colors.is_empty() {
+        return vec!["colorless".to_owned()];
+    }
+    colors.iter().map(|color| color.name().to_ascii_lowercase()).collect()
+}
+
 fn mana_activation_option_views(
     game: &GameState,
     request: &ironsmith::mana_payment::ManaPaymentRequest,
@@ -1066,12 +1073,7 @@ fn mana_activation_views_from_inventory(
                 .map(|o| o.name.to_string())
                 .unwrap_or_else(|| format!("Object #{}", option.source.0)),
             ability_index: option.ability_index,
-            color_restriction: option.color_restriction.as_deref().map(|colors| {
-                colors
-                    .iter()
-                    .map(|color| format!("{color:?}").to_ascii_lowercase())
-                    .collect()
-            }),
+            color_restriction: option.color_restriction.as_deref().map(mana_selection_names),
             expected_mana: (&option.expected_mana).into(),
             label: current_ability_action_text(game, option.source, option.ability_index)
                 .unwrap_or_else(|| "Mana ability".to_string()),
@@ -1088,12 +1090,6 @@ fn mana_payment_editor_view(
 ) -> ManaPaymentEditorView {
     let request = &payment.request;
     let preferences = &request.preferences;
-    let colors = |values: &[ironsmith::color::Color]| {
-        values
-            .iter()
-            .map(|color| format!("{color:?}").to_ascii_lowercase())
-            .collect::<Vec<_>>()
-    };
     let mut life_request = request.clone();
     life_request.preferences.prefer_life = false;
     life_request.preferences.required_life_pips.clear();
@@ -1116,7 +1112,7 @@ fn mana_payment_editor_view(
             .map(|selected| ManaPaymentActivationCommand {
                 source_id: selected.source.0.to_string(),
                 ability_index: selected.ability_index,
-                color_restriction: selected.color_restriction.as_deref().map(colors),
+                color_restriction: selected.color_restriction.as_deref().map(mana_selection_names),
             })
             .collect(),
         required_alternatives: preferences
@@ -1188,13 +1184,8 @@ fn planned_mana_source_views(
                 .unwrap_or_else(|| format!("Object #{}", step.source.0)),
             payment_kind: "mana_ability".to_string(),
             ability_index: step.ability_index,
-            color_restriction: step
-                .color_restriction
-                .as_ref()
-                .into_iter()
-                .flatten()
-                .map(|color| format!("{color:?}").to_ascii_lowercase())
-                .collect(),
+            color_restriction: step.color_restriction.as_deref()
+                .map(mana_selection_names).unwrap_or_default(),
             expected_mana: (&step.expected_mana).into(),
             undo_safe: step.undo_safe,
             required: payment
@@ -4219,7 +4210,11 @@ impl ManaPaymentActivationCommand {
         let source = parse_mana_payment_source_id(&self.source_id, "activation")?;
         let color_restriction = self
             .color_restriction
+            .filter(|colors| !colors.is_empty())
             .map(|colors| {
+                if matches!(colors.as_slice(), [name] if name.eq_ignore_ascii_case("colorless")) {
+                    return Ok(Vec::new());
+                }
                 colors
                     .into_iter()
                     .map(|color| {
@@ -7509,6 +7504,18 @@ fn mana_payment_options_view(
 #[cfg(test)]
 mod shared_payment_inventory_tests {
     use super::*;
+
+    #[test]
+    fn colorless_payment_selection_round_trips_distinct_from_an_open_menu() {
+        let names = mana_selection_names(&[]);
+        assert_eq!(names, ["colorless"]);
+        for (selection, expected) in [(None, None), (Some(vec![]), None), (Some(names), Some(vec![]))] {
+            let command = ManaPaymentActivationCommand {
+                source_id: "1".into(), ability_index: 0, color_restriction: selection,
+            };
+            assert_eq!(command.into_runtime().unwrap().color_restriction, expected);
+        }
+    }
 
     #[test]
     fn combined_payment_views_preserve_prompt_only_and_manual_choices() {

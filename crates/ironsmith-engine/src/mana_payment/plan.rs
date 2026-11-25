@@ -37,6 +37,7 @@ pub enum PaymentObligation {
 pub struct RequiredManaActivation {
     pub source: ObjectId,
     pub ability_index: usize,
+    /// An empty selection requests colorless on a mana-type menu.
     pub color_restriction: Option<Vec<Color>>,
 }
 

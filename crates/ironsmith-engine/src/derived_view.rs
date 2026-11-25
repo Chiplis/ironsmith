@@ -1524,21 +1524,8 @@ impl<'a> DerivedGameView<'a> {
     ) -> Vec<GrantedAlternativeCast> {
         self.ensure_memo_context();
         let ctx = self.game.filter_context_for(player, None);
-        // CR 715.4 / 720.4: outside the stack an Adventure or Omen card has
-        // only its normal characteristics, so a grant *to cards* in the
-        // graveyard ("each instant and sorcery card in your graveyard has
-        // flashback", Return the Past) is matched against the card, not the
-        // face being cast. Spell permissions elsewhere (hand alternative
-        // costs keyed on the spell) still see the face (CR 715.3a).
-        let filter_card = if zone == Zone::Graveyard {
-            self.game.object(card_id).unwrap_or(card)
-        } else {
-            card
-        };
-        // A permission to cast *spells* from the graveyard ("you may cast an
-        // instant or sorcery spell from your graveyard", Kess) is checked
-        // against the spell as cast, so an Adventure sorcery qualifies (CR
-        // 715.3a, 601.3e); only grants to *cards* see the normal face.
+        // CR 601.3e: continuous grants apply to the characteristics of the
+        // proposed face when checking permission to cast it.
         self.active_grants()
             .iter()
             .filter(|grant| {
@@ -1546,31 +1533,7 @@ impl<'a> DerivedGameView<'a> {
                     && grant.zone == crate::grant_registry::alternative_cast_grant_zone(zone)
             })
             .filter(|grant| {
-                let from_card_mana_cost = matches!(
-                    &grant.grantable,
-                    Grantable::DerivedAlternativeCast(
-                        DerivedAlternativeCast::GraveyardCastFromCardManaCost { .. }
-                    )
-                );
-                grant_applies_to_card_non_recursive(
-                    grant,
-                    card_id,
-                    card,
-                    if from_card_mana_cost { card } else { filter_card },
-                    &ctx,
-                    self.game,
-                )
-                    // CR 601.3e / 715.3a: the card must have the granted
-                    // ability in its zone (normal characteristics), and when
-                    // a face is proposed only that face's characteristics
-                    // decide legality, so the grant must also still apply to
-                    // the face (Six's retrace reaches Bonecrusher Giant but
-                    // not its Stomp Adventure).
-                    && (from_card_mana_cost
-                        || std::ptr::eq(filter_card, card)
-                        || grant_applies_to_card_non_recursive(
-                            grant, card_id, card, card, &ctx, self.game,
-                        ))
+                grant_applies_to_card_non_recursive(grant, card_id, card, &ctx, self.game)
             })
             .filter_map(|grant| match &grant.grantable {
                 Grantable::AlternativeCast(method) => Some(GrantedAlternativeCast {
@@ -1628,7 +1591,7 @@ impl<'a> DerivedGameView<'a> {
             .iter()
             .filter(|grant| grant.player == player && grant.zone == zone)
             .filter(|grant| {
-                grant_applies_to_card_non_recursive(grant, card_id, card, card, &ctx, self.game)
+                grant_applies_to_card_non_recursive(grant, card_id, card, &ctx, self.game)
             })
             .filter_map(|grant| match &grant.grantable {
                 Grantable::PlayFrom => Some(GrantedPlayFrom {
@@ -1693,7 +1656,7 @@ impl<'a> DerivedGameView<'a> {
         self.active_grants().iter().any(|grant| {
             grant.player == player
                 && grant.zone == zone
-                && grant_applies_to_card_non_recursive(grant, card_id, card, card, &ctx, self.game)
+                && grant_applies_to_card_non_recursive(grant, card_id, card, &ctx, self.game)
                 && matches!(
                     &grant.grantable,
                     Grantable::Ability(ability) if ability.id() == ability_id
@@ -2464,7 +2427,6 @@ fn grant_applies_to_card_non_recursive(
     grant: &Grant,
     card_id: ObjectId,
     card: &crate::object::Object,
-    filter_card: &crate::object::Object,
     ctx: &crate::filter::FilterContext,
     game: &GameState,
 ) -> bool {
@@ -2472,8 +2434,7 @@ fn grant_applies_to_card_non_recursive(
         return false;
     }
 
-    // A self-grant can require a particular cast face even when the grant's
-    // card filter must use that card's characteristics in its current zone.
+    // A self-grant can require a particular face of this physical card.
     if grant
         .required_face_name
         .as_ref()
@@ -2490,7 +2451,7 @@ fn grant_applies_to_card_non_recursive(
         return identity_matches
             && grant.filter.as_ref().is_none_or(|filter| {
                 filter.matches_non_recursive(
-                    filter_card,
+                    card,
                     &grant_filter_context(ctx, grant, game),
                     game,
                 )
@@ -2498,7 +2459,7 @@ fn grant_applies_to_card_non_recursive(
     }
 
     grant.filter.as_ref().is_some_and(|filter| {
-        filter.matches_non_recursive(filter_card, &grant_filter_context(ctx, grant, game), game)
+        filter.matches_non_recursive(card, &grant_filter_context(ctx, grant, game), game)
     })
 }
 

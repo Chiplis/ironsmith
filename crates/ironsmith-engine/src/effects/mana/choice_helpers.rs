@@ -441,9 +441,7 @@ pub(crate) fn choose_mana_symbols(
                 .iter()
                 .copied()
                 .filter(|symbol| {
-                    Color::ALL
-                        .into_iter()
-                        .any(|color| colors.contains(&color) && ManaSymbol::from_color(color) == *symbol)
+                    crate::mana_payment::program::selection_allows_type(colors, *symbol)
                 })
                 .collect();
             if restricted.is_empty() {

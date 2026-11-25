@@ -1,7 +1,6 @@
 //! Counter replacement effect matchers.
 
 use crate::events::cause::{CauseFilter, CauseFilterRuntimeExt as _};
-#[cfg(test)]
 use crate::events::context::EventContext;
 use crate::events::traits::{EventKind, GameEventType, ReplacementMatcher, downcast_event};
 use crate::filter::ObjectFilterExt as _;
@@ -50,7 +49,36 @@ impl ReplacementMatcher for WouldPutCountersMatcher {
     }
 
     fn may_match_event_kind(&self, kind: crate::events::EventKind) -> bool {
-        matches!(kind, crate::events::EventKind::PutCounters)
+        matches!(kind, EventKind::PutCounters | EventKind::EnterBattlefield)
+    }
+
+    fn matches_entry_counter_kind(&self, kind: CounterType) -> bool {
+        self.counter_type.is_none_or(|required| required == kind)
+    }
+
+    fn matches_entering_counter_prevention(
+        &self,
+        entry: &crate::events::EnterBattlefieldEvent,
+        ctx: &EventContext,
+    ) -> Result<bool, crate::static_ability_processor::StaticEffectDiscoveryError> {
+        if !entry.enters_with_counters.iter().any(|(kind, count)| {
+            *count > 0 && self.matches_entry_counter_kind(*kind)
+        }) {
+            return Ok(false);
+        }
+        let projected;
+        let world = if let Some(world) = ctx.prospective_etb_game {
+            world
+        } else {
+            projected = entry.try_prospective_game_state(ctx.game)?;
+            let Some(world) = projected.as_ref() else { return Ok(false) };
+            world
+        };
+        let Some(object) = world.object(entry.object) else { return Ok(false) };
+        let controller = world.controller_of(object);
+        let cause = crate::events::cause::EventCause::from_effect(entry.object, controller);
+        Ok(self.cause_filter.matches(&cause, world, controller)
+            && self.filter.matches(object, &ctx.filter_ctx, world))
     }
 
     fn matches_prepared_event(

@@ -773,18 +773,21 @@ impl<T, E, C, Cond, ICond> PowerToughnessChoiceOption<T, E, C, Cond, ICond> {
 pub enum IntrinsicStartingCounter {
     Loyalty,
     Defense,
+    Lore,
 }
 impl IntrinsicStartingCounter {
     pub fn counter_type(self) -> CounterType {
         match self {
             Self::Loyalty => CounterType::Loyalty,
             Self::Defense => CounterType::Defense,
+            Self::Lore => CounterType::Lore,
         }
     }
     pub fn card_type(self) -> crate::types::CardType {
         match self {
             Self::Loyalty => crate::types::CardType::Planeswalker,
             Self::Defense => crate::types::CardType::Battle,
+            Self::Lore => crate::types::CardType::Enchantment,
         }
     }
 }
@@ -10954,6 +10957,7 @@ impl<
                 IntrinsicStartingCounter::Defense => {
                     "Enters with defense counters equal to its printed defense number"
                 }
+                IntrinsicStartingCounter::Lore => "Enters with lore counters",
             }
             .into(),
             payload: StaticAbilityPayload::IntrinsicStartingCounters(rule),

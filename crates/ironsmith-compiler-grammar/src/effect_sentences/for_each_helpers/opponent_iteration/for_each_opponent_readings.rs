@@ -148,8 +148,7 @@ fn read_cast_history_participant(input: &ParticipantClause<'_>) -> Result<Option
     let Some((turn_start, (), after_turn)) = primitives::find_prefix(after_cast, || {
         primitives::phrase(&["this", "turn"])
     }) else { return Ok(None); };
-    let Some((_, action_word)) = crate::effect_sentences::find_verb(after_turn) else { return Ok(None); };
-    let Some(action_start) = crate::lexer::TokenWordView::new(after_turn).map_word_to_token_start(action_word) else { return Ok(None); };
+    let Some((_, action_start)) = crate::effect_sentences::find_verb(after_turn) else { return Ok(None); };
     let mut filter_tokens = after_cast[..turn_start].to_vec();
     filter_tokens.extend_from_slice(&after_turn[..action_start]);
     let mut filter = crate::grammar::filters::parse_object_filter_with_grammar_entrypoint_lexed(&filter_tokens, false)?;
