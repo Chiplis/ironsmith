@@ -2950,21 +2950,23 @@ function PriorityBar({
   if (!decision || isCombatDecision) return null;
   if (isPriorityDecision && !passAction) return null;
 
-  // Ordering choices already live in the effect rail / stack. Only the
-  // confirmation belongs here, in the same slot as priority and combat.
+  // The stack holds the ordering choices. The dock holds the confirmation and matching toggle.
   if (inline && dockSubmitFooter && effectOrderingDecision && !showPeerWaitOpeningPreviews) {
     return (
       <div ref={inlineRootRef} className="pointer-events-none absolute inset-0 z-[120] flex items-stretch">
         <div className="priority-inline-panel priority-inline-panel--segmented priority-inline-panel--main-only pointer-events-auto relative flex h-full w-full">
           {canCancelDecision ? <div className="combat-floating-hint">{renderCancelControl()}</div> : null}
           <div className="action-strip-layout action-strip-layout--segmented flex min-h-[46px] items-stretch gap-2">
-            <TriggerMatchingControl canAct={canAct} />
             <div className="action-strip-command-region shrink-0 self-stretch" style={decisionButtonStyle}>
               <div className="action-strip-main-region h-full w-[132px] shrink-0 self-stretch" style={decisionButtonStyle}>
                 {renderExpandedPrimaryControl(false, true)}
               </div>
             </div>
           </div>
+          <TriggerMatchingControl
+            canAct={canAct}
+            className="block h-auto min-h-8 min-w-0 shrink whitespace-normal wrap-anywhere px-1.5 py-1 text-xs leading-tight"
+          />
           {quickControls}
         </div>
       </div>

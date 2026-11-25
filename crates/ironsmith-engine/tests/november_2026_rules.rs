@@ -430,6 +430,94 @@ fn card(route: &str) -> ironsmith::CardDefinition {
             "Opt",
             "Mana cost: {U}\nType: Instant\nFirst printed set: Invasion\nScry 1. (Look at the top card of your library. You may put that card on the bottom.)\nDraw a card.",
         ),
+        "abomination-of-llanowar" => (
+            "Abomination of Llanowar",
+            "Mana cost: {1}{B}{G}\nType: Legendary Creature — Elf Horror\nFirst printed set: Commander Legends\nPower/Toughness: */*\nVigilance; menace (This creature can't be blocked except by two or more creatures.)\nAbomination of Llanowar's power and toughness are each equal to the number of Elves you control plus the number of Elf cards in your graveyard.",
+        ),
+        "amoeboid-changeling" => (
+            "Amoeboid Changeling",
+            "Mana cost: {1}{U}\nType: Creature — Shapeshifter\nFirst printed set: Lorwyn\nPower/Toughness: 1/1\nChangeling (This card is every creature type.)\n{T}: Target creature gains all creature types until end of turn.\n{T}: Target creature loses all creature types until end of turn.",
+        ),
+        "ash-barrens" => (
+            "Ash Barrens",
+            "Type: Land\nFirst printed set: Commander 2016\n{T}: Add {C}.\nBasic landcycling {1} ({1}, Discard this card: Search your library for a basic land card, reveal it, put it into your hand, then shuffle.)",
+        ),
+        "beacon-of-immortality" => (
+            "Beacon of Immortality",
+            "Mana cost: {5}{W}\nType: Instant\nFirst printed set: Fifth Dawn\nDouble target player's life total. Shuffle Beacon of Immortality into its owner's library.",
+        ),
+        "blessed-wind" => (
+            "Blessed Wind",
+            "Mana cost: {7}{W}{W}\nType: Sorcery\nFirst printed set: Prophecy\nTarget player's life total becomes 20.",
+        ),
+        "conspiracy" => (
+            "Conspiracy",
+            "Mana cost: {3}{B}{B}\nType: Enchantment\nFirst printed set: Mercadian Masques\nAs this enchantment enters, choose a creature type.\nCreatures you control are the chosen type. The same is true for creature spells you control and creature cards you own that aren't on the battlefield.",
+        ),
+        "gavi-nest-warden" => (
+            "Gavi, Nest Warden",
+            "Mana cost: {2}{U}{R}{W}\nType: Legendary Creature — Human Shaman\nFirst printed set: Commander 2020\nPower/Toughness: 2/5\nYou may pay {0} rather than pay the cycling cost of the first card you cycle each turn.\nWhenever you draw your second card each turn, create a 2/2 red and white Dinosaur Cat creature token.",
+        ),
+        "impact-tremors" => (
+            "Impact Tremors",
+            "Mana cost: {1}{R}\nType: Enchantment\nFirst printed set: Dragons of Tarkir\nWhenever a creature you control enters, this enchantment deals 1 damage to each opponent.",
+        ),
+        "lightning-bolt" => (
+            "Lightning Bolt",
+            "Mana cost: {R}\nType: Instant\nFirst printed set: Limited Edition Alpha\nLightning Bolt deals 3 damage to any target.",
+        ),
+        "new-perspectives" => (
+            "New Perspectives",
+            "Mana cost: {5}{U}\nType: Enchantment\nFirst printed set: Amonkhet\nWhen this enchantment enters, draw three cards.\nAs long as you have seven or more cards in hand, you may pay {0} rather than pay cycling costs.",
+        ),
+        "psychic-transfer" => (
+            "Psychic Transfer",
+            "Mana cost: {4}{U}\nType: Sorcery\nFirst printed set: Mirage\nIf the difference between your life total and target player's life total is 5 or less, exchange life totals with that player.",
+        ),
+        "rain-of-gore" => (
+            "Rain of Gore",
+            "Mana cost: {B}{R}\nType: Enchantment\nFirst printed set: Dissension\nIf a spell or ability would cause its controller to gain life, that player loses that much life instead.",
+        ),
+        "sacred-nectar" => (
+            "Sacred Nectar",
+            "Mana cost: {1}{W}\nType: Sorcery\nFirst printed set: Portal\nYou gain 4 life.",
+        ),
+        "sage-owl" => (
+            "Sage Owl",
+            "Mana cost: {1}{U}\nType: Creature — Bird\nFirst printed set: Weatherlight\nPower/Toughness: 1/1\nFlying\nWhen this creature enters, look at the top four cards of your library, then put them back in any order.",
+        ),
+        "show-and-tell" => (
+            "Show and Tell",
+            "Mana cost: {2}{U}\nType: Sorcery\nFirst printed set: Urza's Saga\nEach player may put an artifact, creature, enchantment, or land card from their hand onto the battlefield.",
+        ),
+        "soulless-one" => (
+            "Soulless One",
+            "Mana cost: {3}{B}\nType: Creature — Zombie Avatar\nFirst printed set: Onslaught\nPower/Toughness: */*\nSoulless One's power and toughness are each equal to the number of Zombies on the battlefield plus the number of Zombie cards in all graveyards.",
+        ),
+        "sulfuric-vortex" => (
+            "Sulfuric Vortex",
+            "Mana cost: {1}{R}{R}\nType: Enchantment\nFirst printed set: Scourge\nAt the beginning of each player's upkeep, this enchantment deals 2 damage to that player.\nIf a player would gain life, that player gains no life instead.",
+        ),
+        "suppression-field" => (
+            "Suppression Field",
+            "Mana cost: {1}{W}\nType: Enchantment\nFirst printed set: Ravnica: City of Guilds\nActivated abilities cost {2} more to activate unless they're mana abilities.",
+        ),
+        "tainted-remedy" => (
+            "Tainted Remedy",
+            "Mana cost: {2}{B}\nType: Enchantment\nFirst printed set: Magic Origins\nIf an opponent would gain life, that player loses that much life instead.",
+        ),
+        "the-wanderer" => (
+            "The Wanderer",
+            "Mana cost: {3}{W}\nType: Legendary Planeswalker\nFirst printed set: War of the Spark Promos\nLoyalty: 5\nPrevent all noncombat damage that would be dealt to you and other permanents you control.\n−2: Exile target creature with power 4 or greater.",
+        ),
+        "tireless-tracker" => (
+            "Tireless Tracker",
+            "Mana cost: {2}{G}\nType: Creature — Human Scout\nFirst printed set: Shadows over Innistrad Promos\nPower/Toughness: 3/2\nLandfall — Whenever a land you control enters, investigate. (Create a Clue token. It's an artifact with \"{2}, Sacrifice this token: Draw a card.\")\nWhenever you sacrifice a Clue, put a +1/+1 counter on this creature.",
+        ),
+        "traveling-chocobo" => (
+            "Traveling Chocobo",
+            "Mana cost: {2}{G}\nType: Creature — Bird\nFirst printed set: Final Fantasy\nPower/Toughness: 3/2\nYou may look at the top card of your library any time.\nYou may play lands and cast Bird spells from the top of your library.\nIf a land or Bird you control entering the battlefield causes a triggered ability of a permanent you control to trigger, that ability triggers an additional time.",
+        ),
         _ => panic!("unknown regression fixture {route}"),
     };
     ironsmith_compiler_runtime::compile_to_runtime_definition(name, block, false).unwrap()
@@ -664,12 +752,16 @@ fn an_interchangeable_printing_must_meet_a_card_name_choices_type_restriction() 
             Some(filter),
             "chosen",
         );
-        effect
-            .execute(
-                &mut g,
-                &mut EffectContext::new(source, A, &mut ChoosePrinting),
-            )
-            .unwrap();
+        let result = effect.execute(
+            &mut g,
+            &mut EffectContext::new(source, A, &mut ChoosePrinting),
+        );
+        if expected {
+            result.unwrap();
+        } else {
+            assert!(matches!(result, Err(ironsmith::effects::ExecutionError::Impossible(reason))
+                if reason.contains("invalid card name")));
+        }
         assert_eq!(g.chosen_named_option(source).is_some(), expected);
     }
 }
@@ -1274,3 +1366,6 @@ fn sacrificed_land_mana_uses_its_last_abilities_with_current_output_quantities_a
         assert_eq!(pool.black, black, "{donor}");
     }
 }
+
+#[path = "november_2026_rules/damage_and_stack.rs"]
+mod damage_and_stack;

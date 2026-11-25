@@ -318,6 +318,10 @@ pub struct TextInputContext {
     pub initial_value: Option<String>,
     /// Whether the entered text must correspond to a known card name.
     pub require_known_value: bool,
+    /// CR 201.4a. A name can also be limited to revealed cards or exclude earlier choices.
+    pub name_filter: Option<Box<(crate::target::ObjectFilter, crate::filter::FilterContext)>>,
+    pub allowed_names: Option<Vec<String>>,
+    pub excluded_names: Vec<String>,
     /// Optional richer UI hints for contextual rendering.
     pub ui_hints: DecisionUiHints,
 }
@@ -332,6 +336,9 @@ impl TextInputContext {
             placeholder: None,
             initial_value: None,
             require_known_value: false,
+            name_filter: None,
+            allowed_names: None,
+            excluded_names: Vec::new(),
             ui_hints: DecisionUiHints::default(),
         }
     }

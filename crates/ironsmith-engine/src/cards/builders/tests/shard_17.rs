@@ -291,9 +291,9 @@ pub(super) fn sulfuric_vortex_oracle_parses_strictly_and_renders_life_replacemen
     );
     assert!(
         ability_debug.contains("BeginningOfUpkeepTrigger")
-            && ability_debug.contains("RuleRestriction")
-            && ability_debug.contains("GainLife"),
-        "Sulfuric Vortex should lower to an upkeep trigger plus a structural gain-life restriction, got {ability_debug}"
+            && ability_debug.contains("EventReplacementWithEffects")
+            && ability_debug.contains("LifeGain"),
+        "Sulfuric Vortex should lower to an upkeep trigger plus a life-gain replacement, got {ability_debug}"
     );
 }
 

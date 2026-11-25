@@ -45,8 +45,9 @@ fn direct_cant_static_ability(tokens: &[OwnedLexToken]) -> Option<StaticAbilityS
     .flatten();
     let mut ability = match fact {
         DirectCantFact::TemporaryUnblockable => return Some(StaticAbilityShapeResolution::Decline),
-        DirectCantFact::PlayerWouldGainNoLifeInstead => StaticAbility::restriction(
-            crate::effect::Restriction::gain_life(PlayerFilter::Any),
+        DirectCantFact::PlayerWouldGainNoLifeInstead => StaticAbility::event_replacement_with_effects(
+            ironsmith_core::ReplacedEventSpec::LifeGain { player: PlayerFilter::Any, from_own_spell_or_ability: false },
+            Vec::new(),
             "If a player would gain life, that player gains no life instead".to_string(),
         ),
         DirectCantFact::PlayersCantGainLife => StaticAbility::players_cant_gain_life(),

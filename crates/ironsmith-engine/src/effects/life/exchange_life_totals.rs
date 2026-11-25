@@ -136,7 +136,7 @@ impl EffectExecutor for ExchangeLifeTotalsEffect {
         for (player, gains) in [(player1_id, life2 > life1), (player2_id, life1 > life2)] {
             proposals.push(if gains {
                 crate::events::Event::new_with_provenance(
-                    crate::events::LifeGainEvent::new(player, difference).with_source(ctx.source),
+                    crate::events::LifeGainEvent::new(player, difference).with_source(ctx.source).with_effect_controller(ctx.controller),
                     ctx.provenance,
                 )
             } else {

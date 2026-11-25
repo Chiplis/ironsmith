@@ -5548,7 +5548,21 @@ pub fn parse_prevent_all_noncombat_damage_to_matching_permanents_line(
             render_token_slice(tokens)
         )));
     }
-    let filter = parse_object_filter_lexed(&target_tokens, false)?;
+    let (player, object) = super::damage_prevention::prevention_recipient_filters(&target_tokens)?;
+    if player.is_some() {
+        return Ok(Some(StaticAbility::prevent_matching_damage(ironsmith_core::PreventMatchingDamageSpec {
+            source_filter: ObjectFilter::default(),
+            target_player_filter: player,
+            target_object_filter: object,
+            combat_only: false,
+            noncombat_only: true,
+            maximum_damage: None,
+            amount: ironsmith_core::StaticDamagePreventionAmount::All,
+            optional_by_controller: false,
+            display: render_token_slice(tokens),
+        })));
+    }
+    let Some(filter) = object else { return Ok(None) };
     Ok(Some(
         StaticAbility::prevent_all_noncombat_damage_to_permanents_matching(filter),
     ))

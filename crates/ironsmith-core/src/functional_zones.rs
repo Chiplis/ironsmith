@@ -37,7 +37,7 @@ pub fn static_ability_zone_defaults(
         Some(SetColors | AddColors | MakeColorless | AddSubtypes | AddAllSubtypesOfFamily | SetChosenColor)
             if source_only => all_zones(),
         Some(
-            CharacteristicDefiningPT
+            Changeling | CharacteristicDefiningPT
             | Deathtouch | Lifelink | Wither | Infect
             | ShuffleIntoLibraryFromGraveyard
             | CountersRemainAcrossZoneChanges

@@ -58,7 +58,7 @@ impl SimultaneousEffectProposal for SetLifeTotalProposal {
         let amount = self.amount.abs_diff(self.current);
         let event = if self.amount > self.current {
             crate::events::Event::new_with_provenance(
-                crate::events::LifeGainEvent::new(self.player, amount).with_source(ctx.source),
+                crate::events::LifeGainEvent::new(self.player, amount).with_source(ctx.source).with_effect_controller(ctx.controller),
                 self.provenance,
             )
         } else {
@@ -143,7 +143,7 @@ fn apply_set_life_total(
     let difference = amount.abs_diff(current);
     let event = if amount > current {
         crate::events::Event::new_with_provenance(
-            crate::events::LifeGainEvent::new(player_id, difference).with_source(ctx.source), provenance,
+            crate::events::LifeGainEvent::new(player_id, difference).with_source(ctx.source).with_effect_controller(ctx.controller), provenance,
         )
     } else {
         crate::events::Event::new_with_provenance(

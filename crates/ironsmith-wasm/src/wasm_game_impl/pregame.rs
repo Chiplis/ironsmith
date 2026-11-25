@@ -1462,12 +1462,11 @@ impl WasmGame {
 
     fn is_time_lord_doctor(definition: &CardDefinition) -> bool {
         let card = &definition.card;
-        // The runtime subtype catalog represents the multiword Time Lord type
-        // by retaining Doctor and no unrelated creature subtype.
         card.has_supertype(Supertype::Legendary)
             && card.has_card_type(CardType::Creature)
+            && card.has_subtype(Subtype::TimeLord)
             && card.has_subtype(Subtype::Doctor)
-            && card.subtypes.len() == 1
+            && card.subtypes.iter().filter(|ty| ty.is_creature_type()).count() == 2
     }
 
     fn is_legendary_creature(definition: &CardDefinition) -> bool {

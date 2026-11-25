@@ -3315,45 +3315,38 @@ impl GameState {
                         }
                     }
                 }
-                let choice_ctx = crate::decisions::context::TextInputContext::new(
-                    prospective_controller,
-                    Some(old_id),
-                    "Choose a card name",
-                )
-                .with_placeholder("Enter a card name")
-                .require_known_value(true);
+                let mut choice_ctx = crate::decisions::context::TextInputContext::new(
+                    prospective_controller, Some(old_id), "Choose a card name",
+                ).with_placeholder("Enter a card name").require_known_value(true);
+                if spec.exclude_basic_land_names {
+                    choice_ctx.excluded_names = crate::cards::oracle_face_names()
+                        .filter(|name| is_basic_land_card_name(name)).map(str::to_owned).collect();
+                }
+                if spec.require_nonland_from_revealed_opponents {
+                    let names = self.players.iter()
+                        .filter(|p| p.is_in_game() && p.id != prospective_controller)
+                        .flat_map(|p| &p.hand).filter_map(|id| self.object(*id))
+                        .filter(|object| !object.is_land())
+                        .flat_map(|object| std::iter::once(object.name.to_string()).chain(
+                            object.other_face_name.as_ref().filter(|_| object.linked_face_layout == crate::card::LinkedFaceLayout::Split)
+                                .map(ToString::to_string)
+                        )).collect::<Vec<_>>();
+                    if names.is_empty() { continue; }
+                    choice_ctx.allowed_names = Some(names);
+                }
                 let chosen_name = decision_maker.decide_text(self, &choice_ctx);
-                if decision_maker.awaiting_choice() {
-                    return Ok(None);
-                }
+                if decision_maker.awaiting_choice() { return Ok(None); }
                 let chosen_name = chosen_name.trim();
-                if !chosen_name.is_empty() {
-                    let mut registry = CardRegistry::new();
-                    registry.ensure_cards_loaded([chosen_name]);
-                    let canonical_name = registry
-                        .get(chosen_name)
-                        .map(|definition| definition.name().to_string())
-                        .unwrap_or_else(|| chosen_name.to_string());
-                    let legal = !spec.require_nonland_from_revealed_opponents
-                        || self
-                            .players
-                            .iter()
-                            .filter(|player| {
-                                player.is_in_game() && player.id != prospective_controller
-                            })
-                            .flat_map(|player| player.hand.iter().copied())
-                            .filter_map(|object_id| self.object(object_id))
-                            .any(|object| {
-                                !object.is_land()
-                                    && object.name.eq_ignore_ascii_case(&canonical_name)
-                            });
-                    let legal = legal
-                        && !(spec.exclude_basic_land_names
-                            && is_basic_land_card_name(&canonical_name));
-                    if legal {
-                        choices.chosen_named_option = Some(canonical_name);
-                    }
+                if !choice_ctx.allows_card_name(self, chosen_name) {
+                    return Err(crate::effects::ExecutionError::Impossible(format!(
+                        "invalid card name for this choice: {chosen_name}"
+                    )));
                 }
+                let mut registry = CardRegistry::new();
+                registry.ensure_cards_loaded([chosen_name]);
+                choices.chosen_named_option = Some(registry.get(chosen_name)
+                    .map(|definition| definition.name().to_string())
+                    .unwrap_or_else(|| chosen_name.to_string()));
                 // The controller chooses which opponent participates, before
                 // that opponent names their card (CR 101.4, 608.2d).
                 let naming_opponent = if spec.opponent_also_chooses {
@@ -3379,33 +3372,26 @@ impl GameState {
                     }
                 } else { None };
                 if let Some(opponent) = naming_opponent {
-                    let choice_ctx = crate::decisions::context::TextInputContext::new(
-                        opponent,
-                        Some(old_id),
-                        "Choose a card name",
-                    )
-                    .with_placeholder("Enter a card name")
-                    .require_known_value(true);
+                    choice_ctx.player = opponent;
                     let opponent_name = decision_maker.decide_text(self, &choice_ctx);
                     if decision_maker.awaiting_choice() {
                         return Ok(None);
                     }
                     let opponent_name = opponent_name.trim();
-                    if !opponent_name.is_empty() {
-                        let mut registry = CardRegistry::new();
-                        registry.ensure_cards_loaded([opponent_name]);
-                        let canonical = registry
-                            .get(opponent_name)
-                            .map(|definition| definition.name().to_string())
-                            .unwrap_or_else(|| opponent_name.to_string());
-                        if !(spec.exclude_basic_land_names && is_basic_land_card_name(&canonical)) {
-                            choices.chosen_named_option = Some(match choices.chosen_named_option.take() {
-                                Some(mine) if mine != canonical => format!("{mine}\n{canonical}"),
-                                Some(mine) => mine,
-                                None => canonical,
-                            });
-                        }
+                    if !choice_ctx.allows_card_name(self, opponent_name) {
+                        return Err(crate::effects::ExecutionError::Impossible(format!(
+                            "invalid card name for this choice: {opponent_name}"
+                        )));
                     }
+                    registry.ensure_cards_loaded([opponent_name]);
+                    let canonical = registry.get(opponent_name)
+                        .map(|definition| definition.name().to_string())
+                        .unwrap_or_else(|| opponent_name.to_string());
+                    choices.chosen_named_option = Some(match choices.chosen_named_option.take() {
+                        Some(mine) if mine != canonical => format!("{mine}\n{canonical}"),
+                        Some(mine) => mine,
+                        None => canonical,
+                    });
                 }
             }
             if let Some(spec) = static_ability.named_option_choice_as_enters()
@@ -7047,7 +7033,7 @@ retain_original_types: false, retain_original_name: false,
         if object.zone == Zone::Battlefield && self.is_phased_out(id) {
             return None;
         }
-        let mut chars =
+        let chars =
             self.calculated_characteristics(id)
                 .unwrap_or_else(|| CalculatedCharacteristics {
                     copy_values: None,
@@ -7107,7 +7093,6 @@ retain_original_types: false, retain_original_name: false,
         if chars.validate_numeric_range().is_err() {
             return None;
         }
-        self.normalize_current_characteristic_subtypes(object, &mut chars);
 
         Some(chars)
     }
@@ -7128,43 +7113,7 @@ retain_original_types: false, retain_original_name: false,
         if chars.validate_numeric_range().is_err() {
             return None;
         }
-        let renormalizes = object.zone != crate::zone::Zone::Battlefield
-            && chars.static_abilities.iter().any(|ability| {
-                ability.id() == crate::static_abilities::StaticAbilityId::Changeling
-            });
-        if renormalizes {
-            let mut chars = chars.as_ref().clone();
-            self.normalize_current_characteristic_subtypes(object, &mut chars);
-            return Some(Arc::new(chars));
-        }
         Some(chars)
-    }
-
-    fn normalize_current_characteristic_subtypes(
-        &self,
-        object: &Object,
-        chars: &mut CalculatedCharacteristics,
-    ) {
-        let has_changeling = chars
-            .static_abilities
-            .iter()
-            .any(|ability| ability.id() == crate::static_abilities::StaticAbilityId::Changeling);
-        let can_have_creature_subtypes = chars.card_types.iter().any(|card_type| {
-            matches!(
-                card_type,
-                crate::types::CardType::Creature | crate::types::CardType::Kindred
-            )
-        });
-        if object.zone != crate::zone::Zone::Battlefield
-            && has_changeling
-            && can_have_creature_subtypes
-        {
-            for subtype in &self.subtypes_in_family(crate::types::SubtypeFamily::Creature) {
-                if !chars.subtypes.contains(subtype) {
-                    chars.subtypes.push(*subtype);
-                }
-            }
-        }
     }
 
     /// Missing/phased objects remain absence; unresolved computation is an
@@ -7185,9 +7134,8 @@ retain_original_types: false, retain_original_name: false,
         if object.zone == Zone::Battlefield && self.is_phased_out(id) {
             return Ok(None);
         }
-        if let Some(mut chars) = crate::continuous::in_progress_characteristics(self, id) {
+        if let Some(chars) = crate::continuous::in_progress_characteristics(self, id) {
             chars.validate_numeric_range()?;
-            self.normalize_current_characteristic_subtypes(object, &mut chars);
             return Ok(Some(chars));
         }
         let effects = self.try_all_continuous_effects_arc()?;
@@ -7203,11 +7151,10 @@ retain_original_types: false, retain_original_name: false,
                 .borrow()
                 .has_checked_snapshot(revision)
         {
-            let mut chars = self.calculated_characteristics_arc(id)
+            let chars = self.calculated_characteristics_arc(id)
                 .ok_or(crate::static_ability_processor::StaticEffectDiscoveryError::UnavailableCharacteristics { object: id })?
                 .as_ref().clone();
             chars.validate_numeric_range()?;
-            self.normalize_current_characteristic_subtypes(object, &mut chars);
             return Ok(Some(chars));
         }
         // A dirty state outside any calculation: the memoized board pass for
@@ -7218,11 +7165,10 @@ retain_original_types: false, retain_original_name: false,
             && crate::continuous::nested_regeneration_context(self).is_none()
             && self.dirty_memo_effects(self.dirty_state_key()).is_some_and(|memoized| Arc::ptr_eq(&memoized, &effects))
         {
-            let mut chars = self.dirty_calculated_characteristics(id)
+            let chars = self.dirty_calculated_characteristics(id)
                 .ok_or(crate::static_ability_processor::StaticEffectDiscoveryError::UnavailableCharacteristics { object: id })?
                 .as_ref().clone();
             chars.validate_numeric_range()?;
-            self.normalize_current_characteristic_subtypes(object, &mut chars);
             return Ok(Some(chars));
         }
         self.try_current_characteristics_with_effects(id, &effects)
@@ -7271,10 +7217,6 @@ retain_original_types: false, retain_original_name: false,
             let chars = calculated.get_mut(&id).ok_or(
                 crate::static_ability_processor::StaticEffectDiscoveryError::UnavailableCharacteristics { object: id })?;
             chars.validate_numeric_range()?;
-            self.normalize_current_characteristic_subtypes(
-                self.object(id).expect("immutable existing object"),
-                chars,
-            );
         }
         Ok(calculated)
     }
@@ -7296,10 +7238,9 @@ retain_original_types: false, retain_original_name: false,
         if object.zone == Zone::Battlefield && self.is_phased_out(id) {
             return Ok(None);
         }
-        let mut chars = self.calculated_characteristics_with_effects(id, effects)
+        let chars = self.calculated_characteristics_with_effects(id, effects)
             .ok_or(crate::static_ability_processor::StaticEffectDiscoveryError::UnavailableCharacteristics { object: id })?;
         chars.validate_numeric_range()?;
-        self.normalize_current_characteristic_subtypes(object, &mut chars);
         Ok(Some(chars))
     }
 

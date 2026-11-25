@@ -24,13 +24,13 @@ export default function TextInputDecision({
   const value = inputState.key === inputResetKey ? inputState.value : initialValue;
   const trimmedValue = value.trim();
   const requiresKnownValue = !!decision.require_known_value;
-  const validationKey = `${requiresKnownValue ? 1 : 0}|${trimmedValue.toLowerCase()}`;
+  const validationKey = `${inputResetKey}|${requiresKnownValue ? 1 : 0}|${trimmedValue.toLowerCase()}`;
   const [validationState, setValidationState] = useState({ key: "", status: "idle" });
   const validationStatus = !requiresKnownValue
     ? "known"
     : !trimmedValue
       ? "idle"
-      : validationState.key === validationKey
+      : validationState.key === validationKey && validationState.decision === decision
         ? validationState.status
         : "checking";
   const canSubmit = canAct
@@ -39,21 +39,23 @@ export default function TextInputDecision({
 
   useEffect(() => {
     if (!requiresKnownValue || !trimmedValue) return undefined;
-    if (!game || typeof game.isKnownCardName !== "function") return undefined;
+    if (!game || typeof game.isLegalCardNameChoice !== "function") return undefined;
 
     let cancelled = false;
     const timeoutId = window.setTimeout(async () => {
       try {
-        const known = await game.isKnownCardName(trimmedValue);
+        const known = await game.isLegalCardNameChoice(trimmedValue);
         if (cancelled) return;
         setValidationState({
           key: validationKey,
+          decision,
           status: known ? "known" : "unknown",
         });
       } catch {
         if (cancelled) return;
         setValidationState({
           key: validationKey,
+          decision,
           status: "unknown",
         });
       }
@@ -63,7 +65,7 @@ export default function TextInputDecision({
       cancelled = true;
       window.clearTimeout(timeoutId);
     };
-  }, [game, requiresKnownValue, trimmedValue, validationKey]);
+  }, [decision, game, requiresKnownValue, trimmedValue, validationKey]);
 
   const handleSubmit = useCallback(() => {
     if (!trimmedValue) return;
@@ -119,8 +121,8 @@ export default function TextInputDecision({
           {validationStatus === "checking"
             ? ui("Checking card name...")
             : validationStatus === "unknown"
-              ? ui("Unknown card name")
-              : ui("Known card name")}
+              ? ui("Choose a legal card name")
+              : ui("Legal card name")}
         </div>
       ) : null}
     </div>

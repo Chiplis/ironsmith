@@ -1,4 +1,21 @@
+import { deckCardBaseName } from "./deck-color-notes.js";
 import { RUNTIME_VERSION } from "./runtime-version.js";
+
+export function cardNameKey(name) {
+  // A decklist's circled-color note ("Cryptic Spires ({W}{B})") is not part
+  // of the card's name or its assets.
+  return deckCardBaseName(name)
+    .toLocaleLowerCase("en-US")
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9_]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+}
+
+export function cardRouteKey(name) {
+  const key = cardNameKey(name);
+  return key === "index" ? "index--card" : key;
+}
 
 // Card assets have stable, unhashed URLs and are served with max-age=0, so by
 // default every read is a revalidation round trip. A production build knows

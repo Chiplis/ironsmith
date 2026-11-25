@@ -180,7 +180,7 @@ impl ExchangeValuesEffect {
         let amount = value.abs_diff(next_value);
         Some(if next_value > value {
             crate::events::Event::new_with_provenance(
-                crate::events::LifeGainEvent::new(player, amount).with_source(ctx.source),
+                crate::events::LifeGainEvent::new(player, amount).with_source(ctx.source).with_effect_controller(ctx.controller),
                 ctx.provenance,
             )
         } else {

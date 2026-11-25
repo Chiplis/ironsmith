@@ -76,12 +76,8 @@ export async function buildOpponentDecisionCommand(state, game, { automated = fa
     case 'text_input': {
       let value = String(decision.value || '').trim();
       if (decision.require_known_value) {
-        if (!value || !await game.isKnownCardName(value)) {
-          if (await game.isKnownCardName('Plains')) value = 'Plains';
-          else {
-            const names = await game.autocompleteCardNames('a', 1);
-            value = names[0];
-          }
+        if (!value || !await game.isLegalCardNameChoice(value)) {
+          value = await game.getSuggestedCardNameChoice();
         }
       } else value ||= 'Creature';
       return value ? { type: 'text_choice', value } : null;

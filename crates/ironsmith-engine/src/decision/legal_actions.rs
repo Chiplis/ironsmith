@@ -3117,7 +3117,7 @@ fn player_may_activate_equip_abilities_any_time(
     })
 }
 
-fn cost_is_cycle_keyword_action(cost: &crate::costs::Cost) -> bool {
+pub(super) fn cost_is_cycle_keyword_action(cost: &crate::costs::Cost) -> bool {
     cost.effect_ref()
         .and_then(|effect| effect.downcast_ref::<crate::effects::EmitKeywordActionEffect>())
         .is_some_and(|emit| emit.action == crate::events::KeywordActionKind::Cycle)

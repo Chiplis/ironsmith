@@ -4,7 +4,7 @@ import useUiText from '@/i18n/useUiText';
 import { Button } from '@/components/ui/button';
 import PriorityShortcutHint from './PriorityShortcutHint';
 
-export default function TriggerMatchingControl({ canAct }) {
+export default function TriggerMatchingControl({ canAct, className = '' }) {
   const { state, priorityPolicy } = useGame();
   const { groupTriggers } = usePrioritySettings();
   const ui = useUiText();
@@ -13,7 +13,7 @@ export default function TriggerMatchingControl({ canAct }) {
     <Button
       variant="outline"
       size="sm"
-      className="shrink-0 self-center"
+      className={`self-center ${className}`}
       aria-label={ui('Automatically stack matching triggers')}
       aria-pressed={!!groupTriggers}
       disabled={!canAct || Number(state.decision.player) !== Number(state.perspective)}

@@ -849,13 +849,6 @@ fn audit_named_attack_exception(
 /// being unable to cast spells is the printed "Players can cast spells only
 /// during their own turns" (Dosan the Falling Leaf).
 fn audit_rule_restriction_reading(restriction: &crate::effect::Restriction) -> String {
-    // "If a player would gain life, that player gains no life instead"
-    // (Sulfuric Vortex): an every-player gain-life restriction static. The
-    // canonical "Players can't gain life" lowers to the identified
-    // `PlayersCantGainLife` static instead, never to this payload.
-    if matches!(restriction, crate::effect::Restriction::GainLife(PlayerFilter::Any)) {
-        return "If a player would gain life, that player gains no life instead".to_string();
-    }
     if let crate::effect::Restriction::CastSpellsMatching(
         PlayerFilter::Excluding { base, excluded },
         spells,

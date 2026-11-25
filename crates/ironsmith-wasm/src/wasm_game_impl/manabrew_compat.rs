@@ -3207,7 +3207,8 @@ impl WasmGame {
                 if !ctx.require_known_value {
                     return Err(unsupported("free-form text input"));
                 }
-                let names = self.manabrew_known_card_names();
+                let names: Vec<_> = self.manabrew_known_card_names().into_iter()
+                    .filter(|name| ctx.allows_card_name(self.manabrew_game(), name)).collect();
                 if names.is_empty() {
                     return Err(unsupported("known card-name input with an empty registry"));
                 }

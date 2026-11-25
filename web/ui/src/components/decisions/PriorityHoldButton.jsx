@@ -38,7 +38,7 @@ export default function PriorityHoldButton({ className = '', disabled = false })
     return () => observer?.disconnect();
   }, [window, ui]);
   if (!window) return null;
-  const label = <><Timer size={16} aria-hidden="true" /><span>{ui('Countdown Priority')}</span></>;
+  const label = <><Timer size={16} aria-hidden="true" /><span>{ui('Countdown')}</span></>;
   return (
     <Button
       ref={buttonRef}
@@ -46,7 +46,7 @@ export default function PriorityHoldButton({ className = '', disabled = false })
       type="button"
       className={`decision-main-button priority-hold-window ${className}`}
       disabled={disabled}
-      aria-label={ui('Countdown Priority')}
+      aria-label={ui('Countdown')}
       title={ui('Keep priority instead of passing automatically')}
       {...hoverPause}
       onClick={holdPostActionPriority}

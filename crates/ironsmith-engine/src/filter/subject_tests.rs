@@ -110,7 +110,7 @@ fn shared_subject_keeps_live_only_predicate_policy() {
         ..Default::default()
     });
     assert!(union.matches(game.object(candidate).unwrap(), &ctx, &game));
-    assert!(!union.matches_snapshot(&snapshot, &ctx, &game));
+    assert!(union.matches_snapshot(&snapshot, &ctx, &game));
 }
 
 #[test]

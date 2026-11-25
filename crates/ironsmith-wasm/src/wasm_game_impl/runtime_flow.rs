@@ -1432,8 +1432,8 @@ impl WasmGame {
                 if value.is_empty() {
                     return Err(runtime_execution_error("text choice cannot be empty"));
                 }
-                if text.require_known_value && !self.is_known_card_name_query(value) {
-                    return Err(runtime_execution_error(&format!("unknown card name: {value}")));
+                if text.require_known_value && !self.valid_name_for_choice(text, value) {
+                    return Err(runtime_execution_error(&format!("invalid card name for this choice: {value}")));
                 }
                 Ok(ReplayDecisionAnswer::Text(value.to_string()))
             }

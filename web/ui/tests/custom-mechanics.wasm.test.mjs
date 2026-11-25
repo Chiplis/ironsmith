@@ -6,6 +6,21 @@ import { prepareCustomCard, probeMechanic } from '../src/lib/custom-mechanics.js
 import { REMINDER_TEMPLATES } from '../src/lib/mechanics-catalog.js';
 import { variukDraft } from './custom-mechanics-fixture.mjs';
 
+test('an unsupported exile permission reports a parse error and the next preview succeeds', async t => {
+  const { game } = await initWasmGame({ pkg: 'demo' });
+  t.after(() => game.free());
+  const preview = oracleText => game.previewCustomCard({
+    faces: [{ name: "Yawgmoth's Testament", cardTypes: ['Sorcery'], manaCost: '{2}{B}', oracleText }],
+    enforceFilterClaims: true,
+    enforceLineClaims: true,
+  });
+  assert.throws(
+    () => preview('Until end of turn, you may play face-up cards you own from exile.'),
+    /face 1 parse failed[\s\S]*from exile/i,
+  );
+  assert.deepEqual(preview('Draw a card.').faces[0].compiledText, ['Draw a card.']);
+});
+
 test('arbitrary custom names expand different reminders with inline and spaced placement', {timeout: 120000}, async () => {
   const { game } = await initWasmGame({ pkg: 'demo' });
   try {

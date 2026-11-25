@@ -112,9 +112,10 @@ pub(crate) fn split_chosen_card_names(names: &str) -> Vec<String> {
 /// be checked and is accepted.
 fn oracle_name_matches_filter(
     game: &GameState,
-    ctx: &ExecutionContext,
+    source: ObjectId,
     chooser: crate::ids::PlayerId,
     filter: &crate::target::ObjectFilter,
+    filter_ctx: &crate::filter::FilterContext,
     name: &str,
 ) -> bool {
     use crate::filter::ObjectFilterExt as _;
@@ -138,13 +139,34 @@ fn oracle_name_matches_filter(
     let mut functional = filter.clone();
     functional.zone = None;
     functional.tagged_constraints.clear();
-    let filter_ctx = ctx.filter_context(game);
     candidates.into_iter().any(|(supertypes, card_types)| {
-        let mut snapshot = synthetic_chosen_name_snapshot(ctx.source, chooser, name.to_string());
+        let mut snapshot = synthetic_chosen_name_snapshot(source, chooser, name.to_string());
         snapshot.supertypes = supertypes;
         snapshot.card_types = card_types;
-        functional.matches_snapshot(&snapshot, &filter_ctx, game)
+        functional.matches_snapshot(&snapshot, filter_ctx, game)
     })
+}
+
+impl TextInputContext {
+    pub fn first_legal_card_name(&self, game: &GameState) -> Option<String> {
+        if let Some(names) = &self.allowed_names {
+            return names.iter().find(|name| self.allows_card_name(game, name)).cloned();
+        }
+        crate::cards::oracle_face_names().find(|name| self.allows_card_name(game, name)).map(str::to_owned)
+    }
+
+    /// Check the pending decision before accepting an answer into the replay.
+    /// Registration can recognize a combined route such as "Fire // Ice", but
+    /// naming a card requires a single Oracle name (CR 201.4b).
+    pub fn allows_card_name(&self, game: &GameState, name: &str) -> bool {
+        let name = name.trim();
+        let matches = |other: &String| crate::filter::names_match(other, name);
+        !name.is_empty() && !name.contains("//")
+            && !self.excluded_names.iter().any(matches)
+            && self.allowed_names.as_ref().is_none_or(|names| names.iter().any(matches))
+            && self.name_filter.as_deref().is_none_or(|(filter, ctx)| self.source.is_some_and(|source|
+                oracle_name_matches_filter(game, source, self.player, filter, ctx, name)))
+    }
 }
 
 impl EffectExecutor for ChooseCardNameEffect {
@@ -155,15 +177,36 @@ impl EffectExecutor for ChooseCardNameEffect {
     ) -> Result<EffectOutcome, ExecutionError> {
         let chooser =
             crate::effects::helpers::resolve_player_filter_as_chooser(game, &self.chooser, ctx)?;
-        let history = game.chosen_named_option(ctx.source)
-            .map(split_chosen_card_names).unwrap_or_default();
+        let mut choice_ctx = TextInputContext::new(chooser, Some(ctx.source), "Choose a card name")
+            .with_placeholder("Enter a card name").require_known_value(true);
+        if self.exclude_source_history {
+            choice_ctx.excluded_names = game.chosen_named_option(ctx.source)
+                .map(split_chosen_card_names).unwrap_or_default();
+        }
+        if let Some(filter) = &self.filter {
+            if filter.prior_effect_action_surface() == Some(ironsmith_core::PriorEffectAction::Revealed) {
+                use crate::filter::ObjectFilterExt as _;
+                let mut functional = filter.clone();
+                functional.zone = None;
+                functional.tagged_constraints.clear();
+                let filter_ctx = ctx.filter_context(game);
+                let names: Vec<_> = ctx.get_tagged_all(crate::effects::REVEALED_THIS_WAY_TAG)
+                    .into_iter().flatten()
+                    .filter(|snapshot| functional.matches_snapshot(snapshot, &filter_ctx, game))
+                    .flat_map(|snapshot| {
+                        std::iter::once(snapshot.name.clone()).chain(
+                            snapshot.other_face_name.clone().filter(|_| snapshot.linked_face_layout == crate::card::LinkedFaceLayout::Split))
+                    }).collect();
+                if names.is_empty() { return Ok(EffectOutcome::count(0)); }
+                choice_ctx.allowed_names = Some(names);
+            }
+            choice_ctx.name_filter = Some(Box::new((filter.clone(), ctx.filter_context(game))));
+        }
         let chosen_name = if self.options.is_empty() {
-            let choice_ctx = TextInputContext::new(chooser, Some(ctx.source), "Choose a card name")
-                .with_placeholder("Enter a card name").require_known_value(true);
             ctx.decision_maker.decide_text(game, &choice_ctx)
         } else {
             let menu = self.options.iter()
-                .filter(|name| !self.exclude_source_history || !history.iter().any(|prior| crate::filter::names_match(prior, name)))
+                .filter(|name| choice_ctx.allows_card_name(game, name))
                 .map(|name| (name.clone(), name.clone())).collect::<Vec<_>>();
             if menu.is_empty() { return Ok(EffectOutcome::count(0)); }
             use crate::effects::composition::scoped_choice::{select_typed_option, SingleChoicePolicy};
@@ -174,9 +217,9 @@ impl EffectExecutor for ChooseCardNameEffect {
         };
         if ctx.decision_maker.awaiting_choice() { return Ok(EffectOutcome::count(0)); }
         let chosen_name = chosen_name.trim();
-        if chosen_name.is_empty()
-            || (self.exclude_source_history && history.iter().any(|name| crate::filter::names_match(name, chosen_name)))
-        { return Ok(EffectOutcome::count(0)); }
+        if !choice_ctx.allows_card_name(game, chosen_name) {
+            return Err(ExecutionError::Impossible(format!("invalid card name for this choice: {chosen_name}")));
+        }
 
         let mut registry = CardRegistry::new();
         registry.ensure_cards_loaded([chosen_name]);
@@ -184,39 +227,6 @@ impl EffectExecutor for ChooseCardNameEffect {
             .get(chosen_name)
             .map(|definition| definition.name().to_string())
             .unwrap_or_else(|| chosen_name.to_string());
-
-        // A filter restricts which names are legal (e.g. "the name of a
-        // nonland card revealed this way"). Reject names with no matching
-        // candidate rather than storing an illegal choice.
-        if let Some(filter) = &self.filter
-            && filter.prior_effect_action_surface()
-                == Some(ironsmith_core::PriorEffectAction::Revealed)
-        {
-            let candidates = ctx
-                .get_tagged_all(crate::effects::REVEALED_THIS_WAY_TAG)
-                .cloned()
-                .unwrap_or_default();
-            let filter_ctx = ctx.filter_context(game);
-            // The revealed snapshots were captured in their original zone;
-            // the name restriction cares about characteristics, not location.
-            let mut functional = filter.clone();
-            functional.zone = None;
-            // Membership in the revealed set is enforced by the candidate
-            // list itself; the compiled tag constraint has no binding here.
-            functional.tagged_constraints.clear();
-            use crate::filter::ObjectFilterExt as _;
-            let name_is_legal = candidates.iter().any(|snapshot| {
-                crate::filter::names_match(&snapshot.name, &canonical_name)
-                    && functional.matches_snapshot(snapshot, &filter_ctx, game)
-            });
-            if !name_is_legal {
-                return Ok(EffectOutcome::count(0));
-            }
-        } else if let Some(filter) = &self.filter
-            && !oracle_name_matches_filter(game, ctx, chooser, filter, &canonical_name)
-        {
-            return Ok(EffectOutcome::count(0));
-        }
 
         let mut chosen_names = game
             .chosen_named_option(ctx.source)

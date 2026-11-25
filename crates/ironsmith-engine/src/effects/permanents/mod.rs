@@ -416,13 +416,14 @@ fn choose_creature_card_name_and_type_as_becomes_attached(
         return;
     };
 
-    let name_ctx = crate::decisions::context::TextInputContext::new(
+    let mut name_ctx = crate::decisions::context::TextInputContext::new(
         chooser,
         Some(attachment_id),
         "Choose a creature card name",
     )
     .with_placeholder("Enter a creature card name")
     .require_known_value(true);
+    name_ctx.name_filter = Some(Box::new((crate::target::ObjectFilter::creature(), ctx.filter_context(game))));
     let chosen_name = ctx.decision_maker.decide_text(game, &name_ctx);
     if ctx.decision_maker.awaiting_choice() {
         return;

@@ -132,7 +132,7 @@ impl EffectExecutor for RedistributeLifeTotalsEffect {
                 }
                 proposals.push(crate::events::Event::new_with_provenance(
                     crate::events::LifeGainEvent::new(player, new_life.abs_diff(current))
-                        .with_source(ctx.source),
+                        .with_source(ctx.source).with_effect_controller(ctx.controller),
                     ctx.provenance,
                 ));
             } else if new_life < current {

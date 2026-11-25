@@ -9,7 +9,7 @@ import { createAsyncLimiter } from "../lib/bounded-async.js";
 import { replaceHandWithCustomCards } from "../lib/custom-card-pool.js";
 import { castingMethodChoiceForAction } from "../lib/casting-method-choice.js";
 import { inRuntimeBranch } from "../lib/runtime-branches.js";
-import { CARD_ASSET_MISSING, fetchCardAssetJson, versionedCardAssetUrl } from "../lib/card-asset-cache.js";
+import { cardRouteKey, CARD_ASSET_MISSING, fetchCardAssetJson, versionedCardAssetUrl } from "../lib/card-asset-cache.js";
 import { createSnapshotEncoder } from "../lib/snapshot-channel.js";
 import { previewCryptoRequirementsWithMaterial } from "../lib/preview-crypto-material.js";
 import { replayTrustedMatch, replayTrustedActions } from "../lib/relay/replay-trusted-match.js";
@@ -143,7 +143,7 @@ const CARD_ZONE_KEYS = [
 
 // Unknown methods invalidate by default. Presentation reads cannot cancel a
 // long search merely because the user hovered a card or requested a snapshot.
-const ANALYSIS_READ_METHOD = /^(beginPaymentAnalysis|stepPaymentAnalysis|cancelPaymentAnalysis|snapshot|snapshotJson|uiState|last\w*Perf|lastWorkCounters|export\w+|autocompleteCardNames|get\w+|cardsMeetingThreshold|objectDetails|inspectorActions|preview\w+|registrySize|filterKnownCardNames|deckColorNoteIssues|isKnownCardName|hiddenCardOpenState|pendingVerifiedHiddenLibraryPosition|runtimeVersion|cardLoadDiagnostics|validateMatchConfig|captureExactBuildSnapshot|createRuntimeSavepoint|releaseRuntimeSavepoint)$/;
+const ANALYSIS_READ_METHOD = /^(beginPaymentAnalysis|stepPaymentAnalysis|cancelPaymentAnalysis|snapshot|snapshotJson|uiState|last\w*Perf|lastWorkCounters|export\w+|autocompleteCardNames|get\w+|cardsMeetingThreshold|objectDetails|inspectorActions|preview\w+|registrySize|filterKnownCardNames|deckColorNoteIssues|isKnownCardName|isLegalCardNameChoice|hiddenCardOpenState|pendingVerifiedHiddenLibraryPosition|runtimeVersion|cardLoadDiagnostics|validateMatchConfig|captureExactBuildSnapshot|createRuntimeSavepoint|releaseRuntimeSavepoint)$/;
 let priorityIdentity = null;
 let priorityViewRevision = 0;
 let sharedAnalysisRuntime = false;
@@ -326,17 +326,6 @@ function readRegistrySize() {
   } catch {
     return null;
   }
-}
-
-function cardRouteKey(name) {
-  const normalized = String(name || "")
-    .trim()
-    .toLocaleLowerCase("en-US")
-    .normalize("NFKD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .replace(/[^a-z0-9_]+/g, "-")
-    .replace(/^-+|-+$/g, "");
-  return normalized || "";
 }
 
 function cardAssetUrl(route) {
@@ -525,6 +514,7 @@ function collectNamesForMethod(method, args) {
     case "cardLoadDiagnostics":
     case "getCardSemanticScore":
     case "isKnownCardName":
+    case "isLegalCardNameChoice":
       names.push(args?.[0]);
       break;
     case "dispatch":

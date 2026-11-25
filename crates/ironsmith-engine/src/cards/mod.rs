@@ -39,6 +39,15 @@ mod generated_meld_counterparts {
 /// The supertypes and card types of one Oracle card or face record.
 pub(crate) type OracleFaceTypes = (Vec<crate::types::Supertype>, Vec<crate::types::CardType>);
 
+pub(crate) fn oracle_face_names() -> impl Iterator<Item = &'static str> {
+    include_str!("generated_oracle_face_types.txt").lines()
+        .filter(|line| !line.is_empty() && !line.starts_with('#'))
+}
+
+pub fn is_oracle_card_name(name: &str) -> bool {
+    !oracle_face_types(crate::filter::oracle_name_for_lookup(name)).is_empty()
+}
+
 /// CR 201.4a-f: the Oracle type lines of every card or face named `name`
 /// (split halves, back faces, flip and adventurer alternative names
 /// included), read from `generated_oracle_face_types.txt`

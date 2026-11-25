@@ -56,7 +56,7 @@ export default function Audit() {
     playerAccentOverrides: {},
     dispatch: (command) => {setLastAction(JSON.stringify(command)); return Promise.resolve();},
     dispatchInBackground: () => Promise.resolve(),
-    game: {isKnownCardName: async (name) => ["island", "lightning bolt"].includes(name.toLowerCase())},
+    game: {isLegalCardNameChoice: async (name) => ["island", "lightning bolt"].includes(name.toLowerCase())},
   }), [decision, kind]);
   return <GameContext.Provider value={context}><ObjectSelectionProvider><HoverProvider><DragProvider><CombatArrowProvider><TooltipProvider>
     <main className="audit-page setup-screen">

@@ -56,7 +56,7 @@ test('allocates required counters and chooses bounded numbers', async () => {
 });
 test('validates a card name and runs the payment planner', async () => {
   assert.deepEqual(await choose({ kind: 'text_input', require_known_value: true, value: 'bogus' },
-    { isKnownCardName: async name => name === 'Plains' }), { type: 'text_choice', value: 'Plains' });
+    { isLegalCardNameChoice: async () => false, getSuggestedCardNameChoice: async () => 'Plains' }), { type: 'text_choice', value: 'Plains' });
   const command = { type: 'mana_payment', response: { action: 'confirm', plan_id: 'p', request_hash: 'r' } };
   assert.deepEqual(await choose({ kind: 'mana_payment', request_hash: 'r' }, { analyzePayment: async () => command }), command);
 });

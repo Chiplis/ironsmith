@@ -676,22 +676,19 @@ pub(crate) fn calculate_effective_activation_total_cost_without_grants(
         return crate::cost::TotalCost::from_costs(components);
     };
     let modifiers = activation_modifier_sources(game, ability_source_object, view);
-    // "You may pay {0} rather than pay the equip cost of ..." (Bruenor
-    // Battlehammer, Puresteel Paladin): the alternative replaces the whole
-    // printed cost, including non-mana parts such as Demonmail Hauberk's
-    // "Sacrifice a creature" (CR 118.9). Increases below still apply.
-    if !modifiers.is_empty()
-        && activation_mana_reductions(
-            game,
-            ability_source_object,
-            chosen_targets,
-            ability,
-            &modifiers,
-        )
-        .replacement
-        .is_some()
-    {
-        components = vec![crate::costs::Cost::mana(crate::mana::ManaCost::new())];
+    let reductions = std::cell::LazyCell::new(|| {
+        activation_mana_reductions(game, ability_source_object, chosen_targets, ability, &modifiers)
+    });
+    // Replace the printed cost before applying cost increases and reductions
+    // (CR 602.2b, 601.2f). Cycling's discard and cycle event are intrinsic to
+    // the action, outside its replaceable [cost] (CR 702.29a).
+    if !modifiers.is_empty() && let Some(replacement) = &reductions.replacement {
+        let cycling = components.iter().any(super::legal_actions::cost_is_cycle_keyword_action);
+        components.retain(|cost| cycling && (
+            matches!(cost.compiled_model(), Some(ironsmith_core::Cost::DiscardSource))
+                || super::legal_actions::cost_is_cycle_keyword_action(cost)
+        ));
+        components.insert(0, crate::costs::Cost::mana(replacement.clone()));
     }
     for source in &modifiers {
         for increase in source
@@ -790,16 +787,6 @@ pub(crate) fn calculate_effective_activation_total_cost_without_grants(
             .collect();
     }
 
-    // Only determine reductions when a component has a known mana base.
-    let reductions = std::cell::LazyCell::new(|| {
-        activation_mana_reductions(
-            game,
-            ability_source_object,
-            chosen_targets,
-            ability,
-            &modifiers,
-        )
-    });
     let price_mana = |base: &crate::mana::ManaCost| {
         reductions.apply(game, activator, ability_source_object, base)
     };
@@ -953,8 +940,8 @@ pub fn calculate_effective_activation_mana_cost(
         return base_cost.clone();
     };
     let modifiers = activation_modifier_sources(game, source, &DerivedGameView::new(game));
-    activation_mana_reductions(game, source, &[], None, &modifiers)
-        .apply(game, activator, source, base_cost)
+    let reductions = activation_mana_reductions(game, source, &[], None, &modifiers);
+    reductions.apply(game, activator, source, reductions.replacement.as_ref().unwrap_or(base_cost))
 }
 
 fn activation_targets(targets: &[Target]) -> Vec<crate::effects::ResolvedTarget> {
@@ -1088,11 +1075,7 @@ fn activation_mana_reductions(
             }
 
             if let Some(replacement) = &reduction.replacement_mana_cost {
-                determined = ActivationManaReductions {
-                    replacement: Some(replacement.clone()),
-                    ..Default::default()
-                };
-                optional_remaining = optional_limit;
+                determined.replacement = Some(replacement.clone());
                 continue;
             }
             let mut amount = reduction.reduction.saturating_mul(multiplier);
@@ -1143,7 +1126,7 @@ impl ActivationManaReductions {
         source: &crate::object::Object,
         base_cost: &crate::mana::ManaCost,
     ) -> crate::mana::ManaCost {
-        let mut adjusted = self.replacement.as_ref().unwrap_or(base_cost).clone();
+        let mut adjusted = base_cost.clone();
         for &(amount, minimum) in &self.discounts {
             let before = adjusted.mana_value();
             adjusted = adjusted.reduce_generic(amount);

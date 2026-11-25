@@ -3,7 +3,7 @@ import { deckCardBaseName } from "./deck-color-notes.js";
 import { customCardAssets, customCardImageUrl } from "./custom-card-assets.js";
 import { localizedPrintingFlavor } from './printing-flavor.js';
 import { printingForImageFace } from './card-printing-face.js';
-import { CARD_ASSET_FETCH_OPTIONS, versionedCardAssetUrl } from './card-asset-cache.js';
+import { cardRouteKey, CARD_ASSET_FETCH_OPTIONS, versionedCardAssetUrl } from './card-asset-cache.js';
 import { resolveCardAssetUrl } from './card-art-url.js';
 import { readEmbeddedCardSource } from './embedded-card-catalog.js';
 const BASIC_LAND_NAMES = new Set([
@@ -267,17 +267,7 @@ function prefersLiveScryfallCard(cardName) {
 
 const STABLE_CARD_ASSET_FETCH_OPTIONS = CARD_ASSET_FETCH_OPTIONS;
 
-export function cardRouteKey(name) {
-  // A decklist's circled-color note ("Cryptic Spires ({W}{B})") is not part
-  // of the card's name or its assets.
-  const normalized = deckCardBaseName(name)
-    .toLocaleLowerCase("en-US")
-    .normalize("NFKD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .replace(/[^a-z0-9_]+/g, "-")
-    .replace(/^-+|-+$/g, "");
-  return normalized || "";
-}
+export { cardRouteKey };
 
 function namedCardParams(cardName, printPreference = null) {
   const query = deckCardBaseName(cardName);

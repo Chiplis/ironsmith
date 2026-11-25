@@ -2462,6 +2462,20 @@ impl DecisionMaker for SubmitCardName {
     }
 }
 
+fn assert_card_name_resolution(game: &mut GameState, name: &'static str, legal: bool) {
+    let entry = game.stack.last().unwrap().object_id;
+    let result = ironsmith::game_loop::resolve_stack_entry_with(game, &mut SubmitCardName(name));
+    if legal {
+        result.unwrap();
+        assert!(game.stack.is_empty());
+    } else {
+        assert!(matches!(result, Err(ironsmith::GameLoopError::ExecutionFailed(
+            ironsmith::effects::ExecutionError::Impossible(ref reason)
+        )) if reason.contains("invalid card name")), "{name}: {result:?}");
+        assert_eq!(game.stack.last().map(|spell| spell.object_id), Some(entry));
+    }
+}
+
 #[test]
 fn cr_201_4a_choose_artifact_name_cannot_accept_island() {
     use ironsmith::effects::ChooseCardNameEffect;
@@ -33904,13 +33918,11 @@ fn cr_201_4c_710_5_flip_name_choices_use_the_selected_halfs_alternative_characte
                     "flip face name",
                 ))],
             ));
-            ironsmith::game_loop::resolve_stack_entry_with(&mut game, &mut SubmitCardName(name))
-                .unwrap();
+            assert_card_name_resolution(&mut game, name, legal);
             let chosen = game.chosen_named_option(source);
             if chosen != legal.then_some(name) {
                 mismatches.push(format!("name={name:?}, restriction={restriction}, legal={legal}: stored={chosen:?}, required{:?}", legal.then_some(name)));
             }
-            assert!(game.stack.is_empty());
             assert_eq!(game.player(alice).unwrap().life, 20);
             cases += 1;
         }
@@ -40188,16 +40200,11 @@ fn cr_201_4f_715_5_adventure_name_choices_use_only_the_selected_characteristics(
                         "adventure face name",
                     ))],
                 ));
-                ironsmith::game_loop::resolve_stack_entry_with(
-                    &mut game,
-                    &mut SubmitCardName(name),
-                )
-                .unwrap();
+                assert_card_name_resolution(&mut game, name, legal);
                 let chosen = game.chosen_named_option(source);
                 if chosen != legal.then_some(name) {
                     mismatches.push(format!("Adventure Oracle name={name:?}, kind={kind:?}, actor={actor:?}, restriction={restriction}: stored={chosen:?}, required{:?}",legal.then_some(name)));
                 }
-                assert!(game.stack.is_empty());
                 cases += 1;
             }
         }
@@ -43155,11 +43162,7 @@ fn cr_201_4a_722_5_preparation_name_choices_use_only_the_selected_characteristic
                         "preparation face name",
                     ))],
                 ));
-                ironsmith::game_loop::resolve_stack_entry_with(
-                    &mut game,
-                    &mut SubmitCardName(name),
-                )
-                .unwrap();
+                assert_card_name_resolution(&mut game, name, legal);
                 let actual = game.chosen_named_option(source);
                 if actual != legal.then_some(name) {
                     discrepancies.push(format!("name={name:?},actor={actor:?},restriction={restriction:?}:stored{actual:?},required{:?}",legal.then_some(name)));
@@ -53147,11 +53150,7 @@ fn cr_audit_oracle_face_name_restrictions(
                         "chosen face name",
                     ))],
                 ));
-                ironsmith::game_loop::resolve_stack_entry_with(
-                    &mut game,
-                    &mut SubmitCardName(name),
-                )
-                .unwrap();
+                assert_card_name_resolution(&mut game, name, legal);
                 let actual = game.chosen_named_option(source);
                 if actual != legal.then_some(*name) {
                     discrepancies.push(format!("rule={rule},name={name:?},types={types:?},actor={actor:?},required_type={required_type:?}:stored{actual:?},required{:?}",legal.then_some(*name)));

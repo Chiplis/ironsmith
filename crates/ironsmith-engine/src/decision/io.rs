@@ -88,9 +88,13 @@ pub trait DecisionMaker {
     /// Free-form text entry decisions.
     fn decide_text(
         &mut self,
-        _game: &GameState,
+        game: &GameState,
         ctx: &crate::decisions::context::TextInputContext,
     ) -> String {
+        if ctx.require_known_value {
+            return ctx.initial_value.clone().filter(|name| ctx.allows_card_name(game, name))
+                .or_else(|| ctx.first_legal_card_name(game)).unwrap_or_default();
+        }
         ctx.initial_value.clone().unwrap_or_default()
     }
 

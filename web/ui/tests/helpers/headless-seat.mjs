@@ -1,3 +1,4 @@
+import {cardRouteKey as cardRoute} from '../../src/lib/card-asset-cache.js';
 // Runs the real peer-lobby stack (usePeerLobby) outside React and outside a
 // browser: a headless hook host, the real wasm engine, and an in-memory
 // PeerJS-compatible network. One call to createSeat() is one player's client.
@@ -22,10 +23,7 @@ export function loadEngine() {
   return enginePromise;
 }
 
-export function cardRoute(name) {
-  return String(name || '').trim().toLocaleLowerCase('en-US').normalize('NFKD')
-    .replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9_]+/g, '-').replace(/^-+|-+$/g, '');
-}
+export {cardRoute};
 
 class Events {
   listeners = new Map();

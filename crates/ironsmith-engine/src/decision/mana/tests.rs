@@ -161,7 +161,7 @@ fn black_life_permission_scan_is_needed_only_for_costs_with_a_black_symbol() {
 }
 
 #[test]
-fn activated_ability_cost_replacement_resets_the_optional_reduction_allowance() {
+fn alternative_activation_cost_applies_all_mandatory_and_chosen_optional_reductions() {
     use crate::ability::Ability;
     use crate::static_abilities::{ActivatedAbilityCostReduction, StaticAbility};
 
@@ -184,16 +184,17 @@ fn activated_ability_cost_replacement_resets_the_optional_reduction_allowance() 
         card = card.with_ability(Ability::static_ability(StaticAbility::new(rule)));
     }
     let source = game.create_object_from_definition(&card.build(), payer, Zone::Battlefield);
-    for (limit, expected) in [(0, 7), (1, 6), (4, 3)] {
+    // CR 601.2f and 602.2b. The two mandatory discounts reduce {9} to {2}.
+    for (limit, expected) in [(0, 2), (1, 1), (4, 0)] {
         let facts = ActivationCostAbility {
             optional_generic_reduction_limit: Some(limit),
             ..Default::default()
         };
-        assert_eq!(optional_activation_reduction_capacity(&game, source, &[], &facts), 4);
+        assert_eq!(optional_activation_reduction_capacity(&game, source, &[], &facts), 7);
         let total = calculate_effective_activation_total_cost_for_ability(
             &game, payer, source, &crate::cost::TotalCost::mana(generic(12)), &[], Some(&facts),
         );
-        assert_eq!(total.mana_cost(), Some(&generic(expected)));
+        assert_eq!(total.mana_cost().map_or(0, ManaCost::mana_value), expected);
     }
 }
 

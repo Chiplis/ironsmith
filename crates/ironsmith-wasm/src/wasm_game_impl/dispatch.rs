@@ -4090,6 +4090,23 @@ impl WasmGame {
         self.is_known_card_name_query(query.trim())
     }
 
+    fn valid_name_for_choice(&mut self, text: &ironsmith::decisions::context::TextInputContext, value: &str) -> bool {
+        text.allows_card_name(self.pending_decision_game.as_deref().unwrap_or(&self.game), value)
+            && (ironsmith::cards::is_oracle_card_name(value) || self.is_known_card_name_query(value))
+    }
+
+    #[wasm_bindgen(js_name = getSuggestedCardNameChoice)]
+    pub fn get_suggested_card_name_choice(&self) -> Option<String> {
+        let Some(DecisionContext::TextInput(text)) = &self.pending_decision else { return None };
+        text.first_legal_card_name(self.pending_decision_game.as_deref().unwrap_or(&self.game))
+    }
+
+    #[wasm_bindgen(js_name = isLegalCardNameChoice)]
+    pub fn is_legal_card_name_choice(&mut self, value: String) -> bool {
+        let Some(DecisionContext::TextInput(text)) = self.pending_decision.clone() else { return false };
+        self.valid_name_for_choice(&text, value.trim())
+    }
+
     /// Set a player's life total.
     #[wasm_bindgen(js_name = setLife)]
     pub fn set_life(&mut self, player_index: u8, life: i32) -> Result<(), JsValue> {

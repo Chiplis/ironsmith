@@ -749,7 +749,7 @@ pub(super) fn matches_subject(
         return false;
     }
 
-    if filter.type_or_subtype_union && subject.is_live() {
+    if filter.type_or_subtype_union {
         let type_match = !filter.card_types.is_empty()
             && filter
                 .card_types
@@ -799,7 +799,7 @@ pub(super) fn matches_subject(
     }
 
     // Subtypes (must have at least one if specified)
-    if !(filter.type_or_subtype_union && subject.is_live())
+    if !filter.type_or_subtype_union
         && !filter.subtypes.is_empty()
         && !filter
             .subtypes

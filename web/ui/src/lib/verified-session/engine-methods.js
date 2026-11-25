@@ -52,6 +52,8 @@ export const WORKER_METHODS = [
   "getEmbeddedCardCatalogIndexJson",
   "getEmbeddedCardSourceJson",
   "isKnownCardName",
+  "isLegalCardNameChoice",
+  "getSuggestedCardNameChoice",
   "lastAdvanceUntilDecisionPerf",
   "lastDispatchPerf",
   "lastManaPaymentPerf",

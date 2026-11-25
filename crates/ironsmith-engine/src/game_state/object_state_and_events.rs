@@ -5401,7 +5401,11 @@ impl GameState {
         }
         if let Some(cycle) = event.downcast::<crate::events::KeywordActionEvent>()
             && cycle.action == crate::events::KeywordActionKind::Cycle
-            && let Some(name) = self.object(cycle.source).map(|object| object.name.to_string())
+            && let Some(name) = self.object(cycle.source).map(|object| object.name.to_string()).or_else(|| {
+                event.lookback_source_snapshots().iter()
+                    .find(|snapshot| snapshot.object_id == cycle.source)
+                    .map(|snapshot| snapshot.name.clone())
+            })
             && let Some(player) = self.player_mut(cycle.player)
         {
             let count = player.cycled_card_names_this_game.entry(name).or_insert(0);

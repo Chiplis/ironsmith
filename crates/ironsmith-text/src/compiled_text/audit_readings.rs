@@ -3860,6 +3860,11 @@ pub(crate) fn audit_payload_reading(
             if pair.is_some() { "this source" } else { "this" }
         ),
         P::EventReplacementWithEffects {
+            event: ironsmith_core::ReplacedEventSpec::LifeGain { player: who, from_own_spell_or_ability: false },
+            replacement_effects, optional: false, ..
+        } if replacement_effects.is_empty() => format!(
+            "If {} would gain life, that player gains no life instead", player(who)),
+        P::EventReplacementWithEffects {
             event: ironsmith_core::ReplacedEventSpec::SourceDestructionRegenerates,
             replacement_effects,
             ..

@@ -1,4 +1,5 @@
-import { cardRouteKey, fetchScryfallLocalizedCardTranslation } from "@/lib/scryfall";
+import { cardNameKey } from "@/lib/card-asset-cache";
+import { fetchScryfallLocalizedCardTranslation } from "@/lib/scryfall";
 import { loadGeneratedTextTranslation } from "./generatedTextTranslations";
 import { hasTranslatedFields, translationForFace } from "./cardTranslationFace";
 import { baseAssetUrl } from "@/lib/asset-base";
@@ -48,7 +49,7 @@ async function lookupCardI18nBucket(locale, kind, key) {
 export async function loadOfficialCardTranslation(locale, cardName, oracleId = null) {
   if (!locale || locale === "en") return null;
 
-  const route = cardRouteKey(cardName);
+  const route = cardNameKey(cardName);
   const oracleKey = oracleId ? String(oracleId).trim() : "";
   if (!route && !oracleKey) return null;
 
@@ -80,7 +81,7 @@ export async function loadTranslatedCardView(locale, cardView) {
   const cacheKey = [
     locale,
     oracleId || "-",
-    cardRouteKey(cardName) || "-",
+    cardNameKey(cardName) || "-",
     typeLine,
     rulesText,
   ].join("|");
