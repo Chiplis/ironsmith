@@ -717,8 +717,7 @@ impl crate::effects::SimultaneousEffectProposal for TokenCopyProposal {
         if let crate::events::processing::PreparedTokenCreation::Proceed { event, .. } = &mut prepared {
             // Reserve once, before allocating per-token choice buffers. The
             // original phase consumes these slots rather than reserving again.
-            // At most 512 same-name copies per batch, then as many as the budget fits.
-            super::resources::limit_token_batch(game, event)?;
+            super::resources::reserve_token_batch(game, event)?;
             if self.effect.enters_attacking || self.configured_attack_player.is_some() {
                 use crate::events::tokens::TokenGroupKey;
                 self.additional_attack_targets = super::resources::buffer(
@@ -966,7 +965,7 @@ fn commit_token_copy_original(
             token.zone = Zone::Command;
             token.token_creation_method = effect.creation_method;
             let token_is_creature = token.is_creature();
-            if !super::resources::commit_token_slot_within_budget(game)? { break; }
+            game.commit_token_resource_slot()?;
             game.add_object(token);
             game.set_grouped_entrant(Some(id));
             let attachment = None;

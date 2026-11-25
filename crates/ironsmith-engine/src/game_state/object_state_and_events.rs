@@ -1151,6 +1151,18 @@ impl GameState {
             .is_some_and(|other| single_faced_inset(&other.card.subtypes))
     }
 
+    /// CR 713.7 concerns the physical card, even while it copies something else.
+    fn object_is_meld_front(&self, object: &crate::object::Object) -> bool {
+        if object.kind != crate::object::ObjectKind::Card {
+            return false;
+        }
+        let name = object.enters_as_copy_restore_state.as_ref()
+            .map_or(object.name.as_ref(), |state| state.printed.name.as_ref());
+        crate::cards::meld_counterpart_name(name).is_some()
+            || self.linked_face_definitions_by_name.get(name)
+                .is_some_and(|definition| definition.card.meld_partner_name.is_some())
+    }
+
     pub fn can_turn_face_down_permanent(&self, id: ObjectId) -> bool {
         let Some(object) = self.object(id) else {
             return false;
@@ -1160,8 +1172,8 @@ impl GameState {
         }
         let double_faced =
             |object: &crate::object::Object| self.object_is_physical_double_faced_card(object);
-        // CR 712.16: a melded permanent is represented by double-faced cards.
-        if double_faced(object)
+        // CR 712.16 and 713.7 cover double-faced cards, meld fronts and melded permanents.
+        if self.object_is_meld_front(object) || double_faced(object)
             || self
                 .commander_tracking
                 .melded_permanents
@@ -1192,7 +1204,7 @@ impl GameState {
         if self.is_face_down(id) {
             return false;
         }
-        // CR 712.16: a melded permanent can't be turned face down.
+        // CR 713.7: a melded permanent cannot be turned face down.
         if self.object(id).is_some_and(|object| {
             object.zone == Zone::Battlefield
                 && self

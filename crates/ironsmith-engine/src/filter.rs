@@ -87,13 +87,39 @@ pub(crate) fn name_is_nameless(name: &str) -> bool {
 
 /// CR 201.3: pairs of cards with interchangeable names (a Universes Beyond
 /// card and its Universes Within reprint, rule 201.3c). The second name of
-/// each pair is the Universes Within printing (Secret Lair `SLX`).
+/// each pair is its counterpart as listed in the local Oracle catalog.
 const INTERCHANGEABLE_NAME_PAIRS: &[(&str, &str)] = &[
+    ("Ken, Burning Brawler", "Aisha of Sparks and Smoke"),
+    ("Mind Flayer, the Shadow", "Arvinox, the Mind Flail"),
+    ("E. Honda, Sumo Champion", "Baldin, Century Herdmaster"),
+    ("Lucas, the Sharpshooter", "Bjorna, Nightfall Alchemist"),
+    ("Edgin, Larcenous Lutenist", "Bohn, Beguiling Balladeer"),
+    ("Doric, Nature's Warden", "Casal, Lurkwood Pathfinder"),
+    ("Doric, Owlbear Avenger", "Casal, Pathbreaker Owlbear"),
+    ("Eleven, the Mage", "Cecily, Haunted Mage"),
+    ("Max, the Daredevil", "Elmar, Ulvenwald Informant"),
+    ("Michonne, Ruthless Survivor", "Enkira, Hostile Scavenger"),
+    ("Forge, Neverwinter Charlatan", "Evin, Waterdeep Opportunist"),
+    ("Lucille", "Gisa's Favorite Shovel"),
+    ("Glenn, the Voice of Calm", "Gregor, Shrewd Magistrate"),
     ("Rick, Steadfast Leader", "Greymond, Avacyn's Stalwart"),
     ("Daryl, Hunter of Walkers", "Hansk, Slayer Zealot"),
-    ("Glenn, the Voice of Calm", "Gregor, Shrewd Magistrate"),
+    ("Dustin, Gadget Genius", "Hargilde, Kindly Runechanter"),
+    ("Hawkins National Laboratory", "Havengul Laboratory"),
+    ("The Upside Down", "Havengul Mystery"),
+    ("Guile, Sonic Soldier", "Immard, the Stormcleaver"),
+    ("Holga, Relentless Rager", "Jurin, Leading the Charge"),
+    ("Zangief, the Red Cyclone", "Maarika, Brutal Gladiator"),
     ("Negan, the Cold-Blooded", "Malik, Grim Manipulator"),
-    ("Lucille", "Gisa's Favorite Shovel"),
+    ("Simon, Wild Magic Sorcerer", "Mathise, Surge Channeler"),
+    ("Mike, the Dungeon Master", "Othelm, Sigardian Outcast"),
+    ("Xenk, Paladin Unbroken", "Rashel, Fist of Torm"),
+    ("Chief Jim Hopper", "Sophina, Spearsage Deserter"),
+    ("Dhalsim, Pliable Pacifist", "Tadeas, Juniper Ascendant"),
+    ("Blanka, Ferocious Friend", "The Howling Abomination"),
+    ("Ryu, World Warrior", "Vikya, Scorching Stalwart"),
+    ("Will the Wise", "Wernog, Rider's Chaplain"),
+    ("Chun-Li, Countless Kicks", "Zethi, Arcane Blademaster"),
 ];
 
 fn normalized_interchangeable_pairs() -> &'static [(String, String)] {
@@ -111,14 +137,22 @@ fn normalized_interchangeable_pairs() -> &'static [(String, String)] {
     })
 }
 
-/// CR 201.3a: the name that stands for `name` and every name interchangeable
-/// with it. Names without an interchangeable partner are returned unchanged.
-pub(crate) fn interchangeable_name_key(name: &str) -> &str {
+fn interchangeable_pair(name: &str) -> Option<(&'static str, &'static str)> {
     let normalized = normalize_name_for_match(name);
     normalized_interchangeable_pairs()
         .iter()
         .position(|(first, second)| *first == normalized || *second == normalized)
-        .map_or(name, |index| INTERCHANGEABLE_NAME_PAIRS[index].0)
+        .map(|index| INTERCHANGEABLE_NAME_PAIRS[index])
+}
+
+/// Group interchangeable printings under one identity (CR 201.3a).
+pub(crate) fn interchangeable_name_key(name: &str) -> &str {
+    interchangeable_pair(name).map_or(name, |(original, _)| original)
+}
+
+/// Resolve either interchangeable printing to the name used for Oracle lookups.
+pub fn oracle_name_for_lookup(name: &str) -> &str {
+    interchangeable_pair(name).map_or(name, |(_, catalog)| catalog)
 }
 
 /// Both arguments are already normalized with `normalize_name_for_match`.

@@ -11892,8 +11892,19 @@ impl GameState {
                 if !crate::ability_program_identity::ability_programs_equivalent(&previous, abilities) { return Err("conflicting named ability-counter definitions in one admission".into()); }
             }
         }
+        staged.retain(|kind, _| !self.named_ability_counter_programs.contains_key(kind));
+        if staged.is_empty() {
+            return Ok(());
+        }
+        // Existing ordinary counters acquire abilities when a supplied program is admitted.
+        // Validate every recipient before publishing any part of the new vocabulary.
+        for object in self.objects_map().values() {
+            let additional = staged.keys()
+                .map(|kind| u128::from(object.counters.get(kind).copied().unwrap_or(0)))
+                .sum();
+            object.counters.check_occurrence_capacity(additional).map_err(|error| error.to_string())?;
+        }
         for (kind, abilities) in staged {
-            if self.named_ability_counter_programs.contains_key(&kind) { continue; }
             self.named_ability_counter_programs.insert(kind, abilities.clone());
             let ids = self.objects.keys().copied().collect::<Vec<_>>();
             for id in ids {
@@ -12039,8 +12050,13 @@ impl GameState {
     /// Official vocabulary plus this game's referenced custom types, in stable order.
     pub fn subtypes_in_family(&self, family: crate::types::SubtypeFamily) -> Vec<Subtype> {
         let mut result: Vec<_> = family.all_subtypes().iter().copied()
-            .filter(|ty| !ty.is_custom_vocabulary()).collect();
-        result.extend(self.custom_subtypes.iter().copied().filter(|ty| ty.belongs_to_family(family)));
+            .filter(|ty| matches!(ty, Subtype::Custom(_)) || !ty.is_custom_vocabulary())
+            .collect();
+        for &subtype in &self.custom_subtypes {
+            if subtype.belongs_to_family(family) && !result.contains(&subtype) {
+                result.push(subtype);
+            }
+        }
         result
     }
 

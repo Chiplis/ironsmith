@@ -22,6 +22,18 @@ impl std::hash::Hash for CustomSubtype {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) { std::hash::Hash::hash(&self.name, state); }
 }
 impl CustomSubtype {
+    /// Static CR vocabulary using the same spelling identity as existing artifacts.
+    pub(crate) const fn listed(name: &str, family: SubtypeFamily) -> Self {
+        let source = name.as_bytes();
+        let mut bytes = [0; 32];
+        let mut i = 0;
+        while i < source.len() {
+            bytes[i] = source[i].to_ascii_lowercase();
+            i += 1;
+        }
+        Self { name: bytes, family, additional_families: 0 }
+    }
+
     pub fn new(name: &str, family: SubtypeFamily) -> Result<Self, String> {
         let name = normalize_name(name)?;
         let mut bytes = [0; 32];
@@ -62,6 +74,11 @@ impl CustomSubtype {
             .unwrap_or("")
     }
     pub fn display_name(&self) -> String {
+        match self.name() {
+            "jem'hadar" => return "Jem'Hadar".into(),
+            "vau-n'akat" => return "Vau-N'Akat".into(),
+            _ => {}
+        }
         let mut chars = self.name().chars();
         let Some(first) = chars.next() else { return String::new(); };
         first.to_uppercase().chain(chars).collect()

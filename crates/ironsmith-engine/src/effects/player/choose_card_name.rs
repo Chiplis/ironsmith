@@ -117,7 +117,7 @@ fn oracle_name_matches_filter(
     name: &str,
 ) -> bool {
     use crate::filter::ObjectFilterExt as _;
-    let mut candidates = crate::cards::oracle_face_types(name).to_vec();
+    let mut candidates = crate::cards::oracle_face_types(crate::filter::oracle_name_for_lookup(name)).to_vec();
     if candidates.is_empty() {
         candidates = game
             .objects_map()
@@ -162,7 +162,7 @@ impl EffectExecutor for ChooseCardNameEffect {
             ctx.decision_maker.decide_text(game, &choice_ctx)
         } else {
             let menu = self.options.iter()
-                .filter(|name| !self.exclude_source_history || !history.iter().any(|prior| prior.eq_ignore_ascii_case(name)))
+                .filter(|name| !self.exclude_source_history || !history.iter().any(|prior| crate::filter::names_match(prior, name)))
                 .map(|name| (name.clone(), name.clone())).collect::<Vec<_>>();
             if menu.is_empty() { return Ok(EffectOutcome::count(0)); }
             use crate::effects::composition::scoped_choice::{select_typed_option, SingleChoicePolicy};
@@ -174,7 +174,7 @@ impl EffectExecutor for ChooseCardNameEffect {
         if ctx.decision_maker.awaiting_choice() { return Ok(EffectOutcome::count(0)); }
         let chosen_name = chosen_name.trim();
         if chosen_name.is_empty()
-            || (self.exclude_source_history && history.iter().any(|name| name.eq_ignore_ascii_case(chosen_name)))
+            || (self.exclude_source_history && history.iter().any(|name| crate::filter::names_match(name, chosen_name)))
         { return Ok(EffectOutcome::count(0)); }
 
         let mut registry = CardRegistry::new();
@@ -205,7 +205,7 @@ impl EffectExecutor for ChooseCardNameEffect {
             functional.tagged_constraints.clear();
             use crate::filter::ObjectFilterExt as _;
             let name_is_legal = candidates.iter().any(|snapshot| {
-                snapshot.name.eq_ignore_ascii_case(&canonical_name)
+                crate::filter::names_match(&snapshot.name, &canonical_name)
                     && functional.matches_snapshot(snapshot, &filter_ctx, game)
             });
             if !name_is_legal {
@@ -223,7 +223,7 @@ impl EffectExecutor for ChooseCardNameEffect {
             .unwrap_or_default();
         if !chosen_names
             .iter()
-            .any(|name| name.eq_ignore_ascii_case(&canonical_name))
+            .any(|name| crate::filter::names_match(name, &canonical_name))
         {
             chosen_names.push(canonical_name.clone());
         }

@@ -688,8 +688,9 @@ impl WasmGame {
         if query.is_empty() {
             return false;
         }
-        self.ensure_card_definitions_loaded([query]);
-        self.registry.get(query).is_some()
+        let catalog_name = ironsmith::filter::oracle_name_for_lookup(query);
+        self.ensure_card_definitions_loaded([catalog_name]);
+        self.registry.get(catalog_name).is_some()
     }
 
     fn autocomplete_name_corpus() -> &'static [(String, String)] {

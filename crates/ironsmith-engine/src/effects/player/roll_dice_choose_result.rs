@@ -5,7 +5,7 @@ use crate::effects::{ExecutionContext, ExecutionError};
 use crate::game_state::GameState;
 use crate::target::PlayerFilter;
 
-use super::die_roll_transaction::roll_dice_with_modifiers;
+use super::die_roll_transaction::roll_dice_with_authored_modifier;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct RollDiceChooseResultEffect {
@@ -14,7 +14,7 @@ pub struct RollDiceChooseResultEffect {
     pub sides: u32,
     pub die_text: Option<String>,
     /// "... and ignore the lower roll": the result is the highest roll,
-    /// with no choice (Berserker's Frenzy).
+    /// with the roller breaking ties (CR 706.6).
     pub ignore_lower: bool,
     /// The result is the total of every retained roll (no choice).
     pub total: bool,
@@ -102,7 +102,7 @@ impl EffectExecutor for RollDiceChooseResultEffect {
                 }
 
                 let Some(transaction) =
-                    roll_dice_with_modifiers(game, ctx, player, count, self.sides)?
+                    roll_dice_with_authored_modifier(game, ctx, player, count, self.sides, None, self.ignore_lower)?
                 else {
                     return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
                         EffectOutcome::count(0),
@@ -136,18 +136,8 @@ impl EffectExecutor for RollDiceChooseResultEffect {
                     .enumerate()
                     .map(|(idx, roll)| (idx, roll.result.to_string()))
                     .collect::<Vec<_>>();
-                // "Roll two d20 and ignore the lower roll": the higher roll is
-                // the result; nothing is chosen (CR 706.1).
-                let highest_idx = rolls
-                    .iter()
-                    .enumerate()
-                    .max_by_key(|(_, roll)| roll.result)
-                    .map(|(idx, _)| idx)
-                    .unwrap_or(0);
-                let chosen_idx = if self.in_order {
+                let chosen_idx = if self.in_order || self.ignore_lower {
                     0
-                } else if self.ignore_lower {
-                    highest_idx
                 } else {
                     let Some(index) = select_typed_option(
                         game,
@@ -165,11 +155,14 @@ impl EffectExecutor for RollDiceChooseResultEffect {
                     index
                 };
                 let chosen = rolls[chosen_idx];
-                let other = rolls
-                    .iter()
-                    .enumerate()
-                    .find_map(|(idx, roll)| (idx != chosen_idx).then_some(roll.result))
-                    .unwrap_or(chosen.result);
+                let mut outcome = EffectOutcome::count(i64::from(chosen.result))
+                    .with_execution_fact(ExecutionFact::ChosenNumber(chosen.result));
+                if !self.ignore_lower {
+                    let other = rolls.iter().enumerate()
+                        .find_map(|(idx, roll)| (idx != chosen_idx).then_some(roll.result))
+                        .unwrap_or(chosen.result);
+                    outcome = outcome.with_execution_fact(ExecutionFact::OtherNumber(other));
+                }
 
                 // Every retained die completes even though only one result is used.
                 transaction.complete_with_outputs(
@@ -179,9 +172,7 @@ impl EffectExecutor for RollDiceChooseResultEffect {
                     self.sides,
                     chosen.result,
                     super::die_roll_transaction::DieRollCompletion::Simultaneous,
-                    EffectOutcome::count(i64::from(chosen.result))
-                        .with_execution_fact(ExecutionFact::ChosenNumber(chosen.result))
-                        .with_execution_fact(ExecutionFact::OtherNumber(other)),
+                    outcome,
                 )
             },
         )

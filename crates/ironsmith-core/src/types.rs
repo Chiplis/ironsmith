@@ -863,8 +863,15 @@ pub enum Subtype {
 }
 
 impl Subtype {
+    const fn listed(name: &str, family: SubtypeFamily) -> Self {
+        Self::Custom(crate::custom_subtypes::CustomSubtype::listed(name, family))
+    }
+
     pub fn is_custom_vocabulary(self) -> bool {
-        matches!(self, Self::Custom(_) | Self::ArtifactOmen | Self::Idol | Self::Mantra | Self::Satrapy | Self::Monument | Self::Inscription | Self::ArtifactInscription)
+        if let Self::Custom(value) = self {
+            return !value.family.all_subtypes().contains(&self);
+        }
+        matches!(self, Self::ArtifactOmen | Self::Idol | Self::Mantra | Self::Satrapy | Self::Monument | Self::Inscription | Self::ArtifactInscription)
     }
     pub const fn all_land_types() -> &'static [Subtype] {
         &[
@@ -890,7 +897,7 @@ impl Subtype {
     }
 
     pub const fn all_creature_types() -> &'static [Subtype] {
-        &[
+        const TYPES: &[Subtype] = &[
             Subtype::Aetherborn,
             Subtype::Dauthi,
             Subtype::Advisor,
@@ -1224,12 +1231,42 @@ impl Subtype {
             Subtype::Q,
             Subtype::Ferengi,
             Subtype::Romulan,
-            Subtype::MindlessOne,
-            // A current creature type (CR 205.3m) missing from the family
-            // list. Hound, Viashino and Rukh are retired (now Dog, Lizard and
-            // Bird) and stay out.
-            Subtype::Naga,
-        ]
+            Subtype::listed("Aenar", SubtypeFamily::Creature),
+            Subtype::listed("Andorian", SubtypeFamily::Creature),
+            Subtype::listed("Android", SubtypeFamily::Creature),
+            Subtype::listed("Bajoran", SubtypeFamily::Creature),
+            Subtype::listed("Betazoid", SubtypeFamily::Creature),
+            Subtype::listed("Bolian", SubtypeFamily::Creature),
+            Subtype::listed("Brikar", SubtypeFamily::Creature),
+            Subtype::listed("Caitian", SubtypeFamily::Creature),
+            Subtype::listed("Cardassian", SubtypeFamily::Creature),
+            Subtype::listed("Denobulan", SubtypeFamily::Creature),
+            Subtype::listed("Edosian", SubtypeFamily::Creature),
+            Subtype::listed("Excalbian", SubtypeFamily::Creature),
+            Subtype::listed("Gorn", SubtypeFamily::Creature),
+            Subtype::listed("Hirogen", SubtypeFamily::Creature),
+            Subtype::listed("Illyrian", SubtypeFamily::Creature),
+            Subtype::listed("Jem'Hadar", SubtypeFamily::Creature),
+            Subtype::listed("Kelpien", SubtypeFamily::Creature),
+            Subtype::listed("Kwejian", SubtypeFamily::Creature),
+            Subtype::listed("Lanthanite", SubtypeFamily::Creature),
+            Subtype::listed("Medusan", SubtypeFamily::Creature),
+            Subtype::listed("Melkotian", SubtypeFamily::Creature),
+            Subtype::listed("Na'kuhl", SubtypeFamily::Creature),
+            Subtype::listed("Ocampa", SubtypeFamily::Creature),
+            Subtype::listed("Orion", SubtypeFamily::Creature),
+            Subtype::listed("Talaxian", SubtypeFamily::Creature),
+            Subtype::listed("Talosian", SubtypeFamily::Creature),
+            Subtype::listed("Tamarian", SubtypeFamily::Creature),
+            Subtype::listed("Tellarite", SubtypeFamily::Creature),
+            Subtype::listed("Tholian", SubtypeFamily::Creature),
+            Subtype::listed("Tosk", SubtypeFamily::Creature),
+            Subtype::listed("Trill", SubtypeFamily::Creature),
+            Subtype::listed("Vau-N'Akat", SubtypeFamily::Creature),
+            Subtype::listed("Vorta", SubtypeFamily::Creature),
+            Subtype::listed("Xindi", SubtypeFamily::Creature),
+        ];
+        TYPES
     }
 
     pub const fn all_artifact_types() -> &'static [Subtype] {
@@ -1296,7 +1333,14 @@ impl Subtype {
     }
 
     pub const fn all_planeswalker_types() -> &'static [Subtype] {
-        &[
+        const TYPES: &[Subtype] = &[
+            Subtype::listed("Arzakon", SubtypeFamily::Planeswalker),
+            Subtype::listed("Dyfed", SubtypeFamily::Planeswalker),
+            Subtype::listed("Feroz", SubtypeFamily::Planeswalker),
+            Subtype::listed("Greensleeves", SubtypeFamily::Planeswalker),
+            Subtype::listed("Sifa", SubtypeFamily::Planeswalker),
+            Subtype::listed("Thomil", SubtypeFamily::Planeswalker),
+            Subtype::listed("Worzel", SubtypeFamily::Planeswalker),
             Subtype::Ajani,
             Subtype::Ashiok,
             Subtype::Bolas,
@@ -1377,7 +1421,8 @@ impl Subtype {
             Subtype::Yanggu,
             Subtype::Yanling,
             Subtype::Zariel,
-        ]
+        ];
+        TYPES
     }
 
     /// CR 205.3n: the planar types. Each is one subtype even when its name

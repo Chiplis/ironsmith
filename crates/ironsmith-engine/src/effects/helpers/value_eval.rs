@@ -886,15 +886,7 @@ pub(crate) fn resolve_wide(
                     if matches!(target_spec.base(), ChooseSpec::Source)
                         && let Some(snapshot) = source_characteristic_lki_for_execution(game, ctx)
                     {
-                        return snapshot
-                            .mana_cost
-                            .as_ref()
-                            .map(count_symbols)
-                            .ok_or_else(|| {
-                                ExecutionError::UnresolvableValue(
-                                    "Target had no printed mana cost".to_string(),
-                                )
-                            });
+                        return Ok(snapshot.mana_cost.as_ref().map_or(0, count_symbols));
                     }
                     let target_id =
                         resolve_primary_object_from_value_spec(game, target_spec.as_ref(), ctx)?;
@@ -909,42 +901,14 @@ pub(crate) fn resolve_wide(
                             .object(snapshot.object_id)
                             .is_none_or(|object| object.zone != snapshot.zone)
                     {
-                        latest_tagged_lki_snapshot(game, snapshot)
-                            .unwrap_or(snapshot)
-                            .mana_cost
-                            .as_ref()
-                            .map(count_symbols)
-                            .ok_or_else(|| {
-                                ExecutionError::UnresolvableValue(
-                                    "Target had no printed mana cost".to_string(),
-                                )
-                            })
+                        Ok(latest_tagged_lki_snapshot(game, snapshot)
+                            .unwrap_or(snapshot).mana_cost.as_ref().map_or(0, count_symbols))
                     } else if let Some(obj) = game.object(target_id) {
-                        obj.mana_cost.as_deref().map(count_symbols).ok_or_else(|| {
-                            ExecutionError::UnresolvableValue(
-                                "Target has no printed mana cost".to_string(),
-                            )
-                        })
+                        Ok(obj.mana_cost.as_deref().map_or(0, count_symbols))
                     } else if let Some(snapshot) = tagged_snapshot {
-                        snapshot
-                            .mana_cost
-                            .as_ref()
-                            .map(count_symbols)
-                            .ok_or_else(|| {
-                                ExecutionError::UnresolvableValue(
-                                    "Target had no printed mana cost".to_string(),
-                                )
-                            })
+                        Ok(snapshot.mana_cost.as_ref().map_or(0, count_symbols))
                     } else if let Some(snapshot) = object_lki_snapshot(ctx, target_id) {
-                        snapshot
-                            .mana_cost
-                            .as_ref()
-                            .map(count_symbols)
-                            .ok_or_else(|| {
-                                ExecutionError::UnresolvableValue(
-                                    "Target had no printed mana cost".to_string(),
-                                )
-                            })
+                        Ok(snapshot.mana_cost.as_ref().map_or(0, count_symbols))
                     } else {
                         Err(ExecutionError::ObjectNotFound(target_id))
                     }

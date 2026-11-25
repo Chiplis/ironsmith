@@ -611,6 +611,17 @@ fn bounded_die_result(result: i128) -> Result<u32, ExecutionError> {
     Ok(u32::try_from(result.max(0)).unwrap_or(u32::MAX))
 }
 
+/// Refuse an infeasible random event before publishing a partial outcome.
+pub(super) fn check_random_work(resource: &'static str, requested: u64) -> Result<(), ExecutionError> {
+    const MAX_TRIALS: u64 = 1 << 20;
+    if requested > MAX_TRIALS {
+        return Err(ExecutionError::ResourceLimitExceeded {
+            resource, requested: u128::from(requested), maximum: u128::from(MAX_TRIALS),
+        });
+    }
+    Ok(())
+}
+
 pub(crate) fn roll_dice_with_modifiers(
     game: &mut GameState,
     ctx: &mut ExecutionContext,
@@ -618,7 +629,7 @@ pub(crate) fn roll_dice_with_modifiers(
     count: u32,
     sides: u32,
 ) -> Result<Option<DieRollTransaction>, ExecutionError> {
-    roll_dice_with_authored_modifier(game, ctx, player, count, sides, None)
+    roll_dice_with_authored_modifier(game, ctx, player, count, sides, None, false)
 }
 
 pub(crate) fn roll_dice_with_authored_modifier(
@@ -628,12 +639,35 @@ pub(crate) fn roll_dice_with_authored_modifier(
     count: u32,
     sides: u32,
     authored_modifier: Option<&ironsmith_core::effect::DieResultModifier>,
+    ignore_lower: bool,
 ) -> Result<Option<DieRollTransaction>, ExecutionError> {
     let Some(mut rolls) =
         die_roll_replacements::roll_replacement_batch(game, ctx, player, count, sides)?
     else {
         return Ok(None);
     };
+    // CR 706.6: an ignored roll never receives modifiers or produces a roll event.
+    if ignore_lower && rolls.len() > 1 {
+        let highest = rolls.iter().map(|roll| roll.result).max().unwrap();
+        let mut tied = rolls.iter().enumerate().filter(|(_, roll)| roll.result == highest);
+        let first = tied.next().unwrap().0;
+        let keep = if tied.next().is_none() {
+            first
+        } else {
+            let pair = rolls.len() == 2;
+            let options = rolls.iter().enumerate().filter(|(_, roll)| roll.result == highest)
+                .map(|(index, roll)| {
+                    let verb = if pair { "Ignore" } else { "Keep" };
+                    (format!("{verb} die {} (rolled {})", index + 1, roll.result), index)
+                }).collect::<Vec<_>>();
+            let selected = ask_choose_one(game, &mut ctx.decision_maker, player, ctx.source, &options);
+            if ctx.decision_maker.awaiting_choice() { return Ok(None); }
+            let selected = selected.ok_or_else(|| ExecutionError::UnresolvableValue("a tied die must be selected".into()))?;
+            if pair { 1 - selected } else { selected }
+        };
+        rolls.swap(0, keep);
+        rolls.truncate(1);
+    }
     let mut payments = Vec::new();
     if !apply_reroll_modifiers(game, ctx, player, sides, &mut rolls, &mut payments)? {
         return Ok(None);

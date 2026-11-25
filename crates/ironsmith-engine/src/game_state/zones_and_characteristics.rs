@@ -4593,6 +4593,7 @@ retain_original_types: false, retain_original_name: false,
             .chain(&choices.as_enters_counters)
         {
             if let Some(obj) = self.object_mut(new_id) {
+                obj.counters.check_ability_counter_work(*counter_type, *count)?;
                 obj.add_counters(*counter_type, *count);
             }
             if *count == 0 {
@@ -5516,6 +5517,10 @@ retain_original_types: false, retain_original_name: false,
         if amount == 0 || self.is_phased_out(id) {
             return None;
         }
+        if let Err(error) = self.object(id)?.counters.check_ability_counter_work(counter_type, amount) {
+            self.record_token_resource_failure(&error);
+            return None;
+        }
         self.mark_continuous_state_dirty();
         let obj = self.object_mut(id)?;
         let previous_count = obj.counters.get(&counter_type).copied().unwrap_or(0);
@@ -5616,18 +5621,23 @@ retain_original_types: false, retain_original_name: false,
         &mut self, id: ObjectId, counter_type: crate::object::CounterType, amount: u32,
         cause: crate::events::cause::EventCause,
     ) -> Option<crate::triggers::TriggerEvent> {
+        self.try_add_counters_with_cause(id, counter_type, amount, cause)
+            .inspect_err(|error| self.record_token_resource_failure(error))
+            .ok().flatten()
+    }
+
+    pub(crate) fn try_add_counters_with_cause(
+        &mut self, id: ObjectId, counter_type: crate::object::CounterType, amount: u32,
+        cause: crate::events::cause::EventCause,
+    ) -> Result<Option<crate::triggers::TriggerEvent>, crate::effects::ExecutionError> {
         let source = cause.source;
         let source_controller = cause.source_controller;
-        // CR 702.26b: ordinary effects cannot change phased-out permanents.
-        if self.is_phased_out(id) {
-            return None;
+        if amount == 0 || self.is_phased_out(id) || self.object(id).is_none() {
+            return Ok(None);
         }
         self.mark_continuous_state_dirty();
-        if amount == 0 {
-            return None;
-        }
-
-        let obj = self.object_mut(id)?;
+        let obj = self.object_mut(id).expect("counter recipient exists");
+        obj.counters.check_ability_counter_work(counter_type, amount)?;
         obj.add_counters(counter_type, amount);
         let count_after = obj.counters.get(&counter_type).copied().unwrap_or(0);
         self.effect_store
@@ -5640,7 +5650,7 @@ retain_original_types: false, retain_original_name: false,
             .alloc_root_event(crate::events::EventKind::MarkersChanged);
         // The event-time count lets chapter abilities (CR 714.2b) and
         // "Nth counter" triggers (122.7) compare the exact before/after pair.
-        Some(crate::triggers::TriggerEvent::new_with_provenance(
+        Ok(Some(crate::triggers::TriggerEvent::new_with_provenance(
             crate::events::MarkersChangedEvent::added(
                 counter_type,
                 id,
@@ -5650,7 +5660,7 @@ retain_original_types: false, retain_original_name: false,
             )
             .with_count_after(count_after).with_cause(cause),
             event_provenance,
-        ))
+        )))
     }
 
     /// Record a UI-only counter change event for battlefield objects.

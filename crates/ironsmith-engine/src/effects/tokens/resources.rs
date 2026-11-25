@@ -1,4 +1,4 @@
-//! Computation limits are incomplete-execution boundaries, never Magic rules.
+//! Token creation policy and execution resource accounting.
 use crate::effects::ExecutionError;
 use std::sync::{Arc, Mutex};
 
@@ -8,10 +8,9 @@ pub struct TokenCreationLimits {
     pub max_live_objects: usize,
     pub max_instructions: u32,
     pub max_nesting: u32,
-    /// Most tokens with the same name one creation event may create. Larger
-    /// proposals (exponential doublers, copy loops) create this many and the
-    /// rest are not created, so the board keeps growing but never explodes in
-    /// a single batch.
+    /// By default, one creation event produces at most 512 tokens of each name after replacements.
+    /// This intentionally departs from Magic's rules for performance. Multiple token doublers
+    /// can otherwise generate exponentially many objects and overwhelm trigger processing.
     pub max_tokens_per_name_per_batch: u32,
 }
 impl Default for TokenCreationLimits {
@@ -228,23 +227,18 @@ pub(crate) fn reserve_token_creation_up_to(
         }
     }
 }
-/// Bound one final token-creation event: at most
-/// `max_tokens_per_name_per_batch` tokens of each name, then as many as the
-/// creation budget grants. Applied after replacement effects, so doublers
-/// count toward the cap.
-pub(crate) fn limit_token_batch(
+/// Apply the per-name cap to the final replacement event before reserving its objects.
+pub(crate) fn reserve_token_batch(
     game: &mut crate::game_state::GameState,
     event: &mut crate::events::CreateTokensEvent,
 ) -> Result<(), ExecutionError> {
     let cap = game.token_creation_limits().max_tokens_per_name_per_batch;
-    if event.total_count() > u128::from(cap) {
-        *event = event.capped_per_name(cap);
+    let mut count = event.total_count();
+    if count > u128::from(cap) {
+        event.cap_per_name(cap);
+        count = event.total_count();
     }
-    let granted = reserve_token_creation_up_to(game, event.total_count())?;
-    if granted < event.total_count() {
-        *event = event.truncated_to(granted);
-    }
-    Ok(())
+    game.reserve_token_creation(count)
 }
 /// Consume one reserved slot for an inserted token. `Ok(false)` means other
 /// allocations since the reservation used the remaining live-object budget:
@@ -401,15 +395,14 @@ mod tests {
         }
     }
     #[test]
-    fn inner_branch_creation_past_the_budget_creates_what_fits() {
+    fn inner_branch_resource_failure_rolls_back_the_parent() {
         let mut game = game();
         let source = game.new_object_id();
         game.set_token_creation_limits(limits(1));
         let mut ctx = ExecutionContext::new_default(source, alice());
-        crate::effects::execute_effect(&mut game, &Effect::new(AbsorbedChildError), &mut ctx)
-            .unwrap();
-        assert_eq!(game.player(alice()).unwrap().life, 27);
-        assert_eq!(game.battlefield.len(), 1, "one of two tokens fits the budget");
+        exhausted(crate::effects::execute_effect(&mut game, &Effect::new(AbsorbedChildError), &mut ctx));
+        assert_eq!(game.player(alice()).unwrap().life, 20);
+        assert!(game.battlefield.is_empty());
     }
 
     #[test]
@@ -495,26 +488,42 @@ mod tests {
         assert_eq!(food.with_count(u32::MAX).unwrap().total_count(), u128::from(u32::MAX) + 1);
         // "None instead" removes every group, including what saturation hid.
         assert_eq!(food.adjusted_token_total(|_| true, |_| 0).unwrap().total_count(), 0);
-        // The budget, not the representation, bounds what is created.
-        let truncated = food.truncated_to(3);
-        assert_eq!((truncated.count, truncated.total_count()), (3, 3));
-        assert!(truncated.additional_tokens.is_empty());
+        let mut capped = food;
+        capped.cap_per_name(512);
+        assert_eq!(capped.count, 512);
+        assert_eq!(capped.total_count(), 513); // The additional Food has its own allowance.
     }
 
     #[test]
-    fn incubate_past_the_budget_creates_what_fits() {
+    fn token_cap_is_shared_by_same_name_groups_only() {
+        use crate::events::{CreateTokensEvent, cause::EventCause};
+        use ironsmith_core::AdditionalTokenKind::{Food, Treasure};
+
+        let mut event = CreateTokensEvent::with_cause(alice(), 2, EventCause::effect())
+            .with_additional_tokens(Food, 2).unwrap()
+            .with_additional_tokens(Treasure, 3).unwrap()
+            .with_template(crate::cards::tokens::food_token_definition(), 2).unwrap()
+            .with_template(crate::cards::tokens::food_token_definition(), 1).unwrap();
+        event.cap_per_name(3);
+
+        assert_eq!(event.count, 2);
+        assert_eq!(event.additional_tokens, vec![(Food, 2), (Treasure, 3)]);
+        assert_eq!(event.additional_templates.len(), 1);
+        assert_eq!(event.additional_templates[0].count, 1);
+        assert_eq!(event.total_count(), 8);
+    }
+
+    #[test]
+    fn incubate_past_the_budget_rolls_back_all_repetitions() {
         let mut game = game();
         game.set_token_creation_limits(limits(3));
         let source = game.new_object_id();
         let next = game.next_object_id_counter();
         let mut ctx = ExecutionContext::new_default(source, alice());
         ctx.x_value = Some(73);
-        let _ = next;
-        // Four incubations past a three-token budget create three and stop.
-        let out = IncubateEffect::you(2, 4)
-            .execute(&mut game, &mut ctx)
-            .unwrap();
-        assert_eq!(out.result_objects().unwrap().len(), 3);
+        exhausted(IncubateEffect::you(2, 4).execute(&mut game, &mut ctx));
+        assert_eq!(game.next_object_id_counter(), next);
+        assert!(game.battlefield.is_empty());
         assert_eq!(ctx.x_value, Some(73));
         // A new attempt has a fresh computation allowance, not a rules counter.
         let out = IncubateEffect::you(2, 3)
@@ -542,9 +551,9 @@ mod tests {
     }
 
     #[test]
-    fn nested_entry_payload_shares_meter_and_creates_what_fits() {
+    fn nested_entry_payload_requires_the_whole_reservation() {
         use crate::replacement::{ReplacementAction, ReplacementEffect};
-        for (budget, tokens) in [(2, 2), (3, 3)] {
+        for budget in [2, 3] {
             let mut game = game();
             let source = game.new_object_id();
             game.set_token_creation_limits(limits(budget));
@@ -565,10 +574,16 @@ mod tests {
                 .tapped()
                 .exile_at_next_end_step();
             let mut ctx = ExecutionContext::new_default(source, alice());
-            effect.execute(&mut game, &mut ctx).unwrap();
-            // The outer instruction reserved both of its tokens first; the
-            // nested payload creates only what the shared budget leaves.
-            assert_eq!(game.battlefield.len(), tokens);
+            let result = effect.execute(&mut game, &mut ctx);
+            if budget == 2 {
+                exhausted(result);
+                assert!(game.battlefield.is_empty());
+                assert_eq!(game.player(alice()).unwrap().life, 20);
+                assert!(game.effect_store.delayed_triggers.is_empty());
+                continue;
+            }
+            result.unwrap();
+            assert_eq!(game.battlefield.len(), 3);
             assert_eq!(game.player(alice()).unwrap().life, 23);
             assert_eq!(
                 game.effect_store.delayed_triggers.len(),
@@ -604,14 +619,13 @@ mod tests {
             } else {
                 crate::effects::InvestigateEffect::you(3).execute(&mut game, &mut ctx)
             };
-            result.unwrap();
-            // Three repetitions share one two-token budget: two are created.
-            assert_eq!(game.battlefield.len(), before + 2);
+            exhausted(result);
+            assert_eq!(game.battlefield.len(), before);
         }
     }
 
     #[test]
-    fn dispatcher_creation_past_the_budget_keeps_prefix_and_creates_what_fits() {
+    fn dispatcher_creation_past_the_budget_restores_the_prefix() {
         let mut game = game();
         let source = game.new_object_id();
         game.set_token_creation_limits(limits(1));
@@ -621,10 +635,10 @@ mod tests {
         ]));
         let mut ctx = ExecutionContext::new_default(source, alice());
         ctx.x_value = Some(29);
-        crate::effects::execute_effect(&mut game, &effect, &mut ctx).unwrap();
-        assert_eq!(game.player(alice()).unwrap().life, 24);
+        exhausted(crate::effects::execute_effect(&mut game, &effect, &mut ctx));
+        assert_eq!(game.player(alice()).unwrap().life, 20);
         assert_eq!(ctx.x_value, Some(29));
-        assert_eq!(game.battlefield.len(), 1);
+        assert!(game.battlefield.is_empty());
     }
 
     #[test]
@@ -645,10 +659,9 @@ mod tests {
         game.push_to_stack(crate::game_state::StackEntry::new(source, alice()));
         game.take_pending_trigger_events();
         let result = resolve_stack_entry(&mut game);
-        assert!(result.is_ok(), "{result:?}");
-        // Two tokens from the first instruction, one of the second's two.
-        assert_eq!(game.battlefield.len(), 3);
-        assert_eq!(game.player(alice()).unwrap().life, 24);
-        assert!(game.stack.is_empty());
+        assert!(result.is_err());
+        assert!(game.battlefield.is_empty());
+        assert_eq!(game.player(alice()).unwrap().life, 20);
+        assert_eq!(game.stack.len(), 1);
     }
 }

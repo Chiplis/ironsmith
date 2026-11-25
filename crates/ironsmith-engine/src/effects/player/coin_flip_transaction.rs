@@ -10,10 +10,6 @@ use ironsmith_core::{CoinFace, CoinFlipKind, StaticAbilityPayload};
 
 use super::FlipCoinEffect;
 
-/// Physical coins one batch may flip. Coin counts are per-unit physical work:
-/// a larger request flips as many coins as this budget allows, then stops.
-pub(super) const MAX_PHYSICAL_COINS: u32 = 4_096;
-
 pub(super) fn flip_batch(
     game: &mut GameState,
     ctx: &mut ExecutionContext,
@@ -22,7 +18,6 @@ pub(super) fn flip_batch(
     count: u32,
     instruction_start: u32,
 ) -> Result<Option<Vec<CoinFlipResult>>, ExecutionError> {
-    let count = count.min(MAX_PHYSICAL_COINS);
     if count == 0 {
         return Ok(Some(Vec::new()));
     }
@@ -45,11 +40,9 @@ pub(super) fn flip_batch(
             match &model.payload {
                 StaticAbilityPayload::ExtraCoinIgnoreOne { player: filter }
                     if filter.matches_player(player, &filter_context) => {
-                    // Keep the multiplicity a power of two within the
-                    // physical budget; further doublings are not performed.
-                    if multiplicity <= MAX_PHYSICAL_COINS / 2 {
-                        multiplicity = multiplicity.saturating_mul(2);
-                    }
+                    let doubled = u64::from(multiplicity) * 2;
+                    crate::effects::player::die_roll_transaction::check_random_work("physical coins", doubled * u64::from(count))?;
+                    multiplicity *= 2;
                 }
                 StaticAbilityPayload::FirstCoinBatchHeadsWin { player: filter }
                     if filter.matches_player(player, &filter_context) => {
@@ -59,9 +52,8 @@ pub(super) fn flip_batch(
             }
         }
     }
-    // Flip as many original coins as the physical budget allows.
-    let count = count.min(MAX_PHYSICAL_COINS / multiplicity).max(1);
-    let physical = count.saturating_mul(multiplicity);
+    let physical = u64::from(count) * u64::from(multiplicity);
+    crate::effects::player::die_roll_transaction::check_random_work("physical coins", physical)?;
     let mut flips = Vec::new();
     flips.try_reserve_exact(physical as usize).map_err(|_| ExecutionError::ResourceAllocationFailed {
         resource: "physical replacement coin batch", requested: physical as usize,

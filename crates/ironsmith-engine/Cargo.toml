@@ -39,6 +39,10 @@ harness = false
 required-features = ["bench-support"]
 
 [[test]]
+name = "november_2026_rules"
+path = "tests/november_2026_rules.rs"
+
+[[test]]
 name = "i051_end_turn"
 path = "tests/i051_end_turn.rs"
 

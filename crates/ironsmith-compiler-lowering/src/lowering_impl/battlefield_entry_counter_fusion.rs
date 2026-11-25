@@ -199,7 +199,7 @@ fn result_counter_followup(
 /// with X +1/+1 counters on it": a token creation is an entry producer only
 /// for counters the grammar typed as entry-time (`InlineBattlefieldEntryCounter`);
 /// a later "put ... on it" stays a separate action.
-fn is_token_creation_producer(effect: &Effect) -> bool {
+pub(crate) fn is_token_creation_producer(effect: &Effect) -> bool {
     if let Some(tagged) = effect.downcast_ref::<crate::effects::TaggedEffect>() {
         return is_token_creation_producer(&tagged.effect);
     }

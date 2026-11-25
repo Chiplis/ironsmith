@@ -1628,14 +1628,13 @@ fn restrict_choice_among_targets_to_battlefield(effects: &mut [crate::effect::Ef
     }
 }
 
-/// "Choose up to three Doctors. You may exile all other creatures." (The Day
-/// of the Doctor): after a non-target choice of permanents, "all other"
-/// excludes the chosen permanents, not the source. A later mass exile or
-/// destroy whose filter says `other` is rebound to the choice's complement.
-fn exclude_chosen_permanents_from_other_mass_action(effects: &mut [crate::effect::Effect]) {
+/// Bind a mass action's "other" to the preceding choice or token creation.
+/// New copies and tokens from replacements are identified by their actual receipt.
+fn exclude_prior_objects_from_other_mass_action(effects: &mut [crate::effect::Effect]) {
     use crate::filter::{TaggedObjectConstraint, TaggedOpbjectRelation};
-    fn rebind(filter: &mut ObjectFilter, tag: &TagKey) -> bool {
+    fn rebind(filter: &mut ObjectFilter, tag: &TagKey, creation: bool) -> bool {
         if !filter.other
+            || (creation && (filter.source_surface.is_some() || !filter.tagged_constraints.is_empty()))
             || filter
                 .tagged_constraints
                 .iter()
@@ -1651,26 +1650,31 @@ fn exclude_chosen_permanents_from_other_mass_action(effects: &mut [crate::effect
         true
     }
     for index in 0..effects.len() {
-        let Some(choose) = effects[index].downcast_ref::<crate::effects::ChooseObjectsEffect>()
-        else {
+        let creation = crate::battlefield_entry_counter_fusion::is_token_creation_producer(&effects[index]);
+        let (tag, end) = if creation {
+            // A following conditional is part of the same instruction sequence.
+            (TagKey::from(format!("__created_before_other_{index}")), (index + 2).min(effects.len()))
+        } else if let Some(choose) = effects[index].downcast_ref::<crate::effects::ChooseObjectsEffect>() {
+            if choose.is_search || !choose.additional_zones.is_empty()
+                || choose.filter.zone.or(choose.zone) != Some(Zone::Battlefield)
+            {
+                continue;
+            }
+            (choose.tag.clone(), effects.len())
+        } else {
             continue;
         };
-        if choose.is_search
-            || !choose.additional_zones.is_empty()
-            || choose.filter.zone.or(choose.zone) != Some(Zone::Battlefield)
-        {
-            continue;
-        }
-        let tag = choose.tag.clone();
-        for later in index + 1..effects.len() {
-            effects[later] = map_effect_tree(&effects[later], &mut |effect| {
+        let mut consumed = false;
+        for later in &mut effects[index + 1..end] {
+            *later = map_effect_tree(later, &mut |effect| {
                 if let Some(exile) = effect.downcast_ref::<crate::effects::ExileEffect>()
                     && matches!(exile.spec, ChooseSpec::All(_))
                 {
                     let mut exile = exile.clone();
                     if let ChooseSpec::All(filter) = &mut exile.spec
-                        && rebind(filter, &tag)
+                        && rebind(filter, &tag, creation)
                     {
+                        consumed = true;
                         return Some(crate::effect::Effect::new(exile));
                     }
                 }
@@ -1680,17 +1684,21 @@ fn exclude_chosen_permanents_from_other_mass_action(effects: &mut [crate::effect
                     let mut destroy = destroy.clone();
                     let mut changed = false;
                     if let ChooseSpec::All(filter) = &mut destroy.spec {
-                        changed = rebind(filter, &tag);
+                        changed = rebind(filter, &tag, creation);
                     }
                     if let ChooseSpec::All(filter) = &mut destroy.target {
-                        changed |= rebind(filter, &tag);
+                        changed |= rebind(filter, &tag, creation);
                     }
                     if changed {
+                        consumed = true;
                         return Some(crate::effect::Effect::new(destroy));
                     }
                 }
                 None
             });
+        }
+        if creation && consumed {
+            effects[index] = effects[index].clone().tag_all(tag);
         }
     }
 }
@@ -1707,7 +1715,7 @@ fn finalize_program_references(program: &mut crate::resolution::ResolutionProgra
         }
         bind_bare_for_each_to_looked_cards(&mut flat);
         restrict_choice_among_targets_to_battlefield(&mut flat);
-        exclude_chosen_permanents_from_other_mass_action(&mut flat);
+        exclude_prior_objects_from_other_mass_action(&mut flat);
         let mut rest = flat.into_iter();
         for (segment, length) in program.segments.iter_mut().zip(lengths) {
             segment.default_effects = rest.by_ref().take(length).collect();

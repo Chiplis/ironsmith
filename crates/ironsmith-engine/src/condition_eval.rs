@@ -6205,9 +6205,9 @@ fn evaluate_condition_in_context(
                         game.controller_of(obj) == ctx.controller && game.current_is_creature(id)
                     })
                 })
-                .map(|id| game.current_power(id).unwrap_or(0).max(0))
-                .sum::<i32>();
-            Ok(total_power >= *required_power as i32)
+                .map(|id| i64::from(game.current_power(id).unwrap_or(0)))
+                .sum::<i64>();
+            Ok(total_power >= i64::from(*required_power))
         }
         Condition::CardInYourGraveyard {
             card_types,

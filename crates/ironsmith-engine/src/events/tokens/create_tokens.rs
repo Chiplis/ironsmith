@@ -93,23 +93,6 @@ impl CreateTokensEvent {
         })
     }
 
-    /// This proposal limited to its first `granted` tokens, in group order.
-    /// Creation past the token budget creates what fits and then stops.
-    pub(crate) fn truncated_to(&self, granted: u128) -> Self {
-        let mut next = self.clone();
-        let mut remaining = granted;
-        for key in self.group_keys() {
-            let count = next.group_count_mut(key);
-            let kept = token_count(remaining.min(u128::from(*count)));
-            *count = kept;
-            remaining = remaining.saturating_sub(u128::from(kept));
-        }
-        next.additional_tokens.retain(|(_, count)| *count > 0);
-        next.additional_templates.retain(|group| group.count > 0);
-        next.additional_copies.retain(|group| group.count > 0);
-        next
-    }
-
     /// The printed name the tokens of one group would have, when known.
     fn group_name(&self, key: TokenGroupKey) -> Option<String> {
         match key {
@@ -124,38 +107,27 @@ impl CreateTokensEvent {
         }
     }
 
-    /// This proposal with at most `cap` tokens of any one name, in group
-    /// order. Groups sharing a name share the cap; a group whose name is not
-    /// known yet counts as its own name.
-    pub(crate) fn capped_per_name(&self, cap: u32) -> Self {
-        let mut next = self.clone();
+    /// Groups with the same name share an allowance in creation order.
+    pub(crate) fn cap_per_name(&mut self, cap: u32) {
         let mut used: Vec<(Option<String>, u32)> = Vec::new();
-        let mut changed = false;
         for key in self.group_keys() {
             let name = self.group_name(key);
-            let slot = match used.iter().position(|(seen, _)| match (seen, &name) {
-                (Some(seen), Some(name)) => crate::filter::names_match(seen, name),
+            let count = self.group_count_mut(key);
+            if let Some((_, prior)) = used.iter_mut().find(|(seen, _)| match (seen, &name) {
+                (Some(left), Some(right)) => crate::filter::names_match(left, right),
                 (None, None) => true,
                 _ => false,
             }) {
-                Some(index) => index,
-                None => {
-                    used.push((name, 0));
-                    used.len() - 1
-                }
-            };
-            let count = next.group_count_mut(key);
-            let kept = (*count).min(cap.saturating_sub(used[slot].1));
-            changed |= kept != *count;
-            *count = kept;
-            used[slot].1 = used[slot].1.saturating_add(kept);
+                *count = (*count).min(cap - *prior);
+                *prior += *count;
+            } else {
+                *count = (*count).min(cap);
+                used.push((name, *count));
+            }
         }
-        if changed {
-            next.additional_tokens.retain(|(_, count)| *count > 0);
-            next.additional_templates.retain(|group| group.count > 0);
-            next.additional_copies.retain(|group| group.count > 0);
-        }
-        next
+        self.additional_tokens.retain(|(_, count)| *count > 0);
+        self.additional_templates.retain(|group| group.count > 0);
+        self.additional_copies.retain(|group| group.count > 0);
     }
 
     pub fn group_keys(&self) -> Vec<TokenGroupKey> {

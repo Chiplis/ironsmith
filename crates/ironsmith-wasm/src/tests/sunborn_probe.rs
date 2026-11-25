@@ -118,7 +118,7 @@ fn pass(wasm: &mut WasmGame) {
 
 
 /// Two consecutive upkeeps: the second Followed Footsteps trigger sees the
-/// 512 token copies from the first as 512 more doublers. Passes priority
+/// token copies from the first as additional doublers. Passes priority
 /// through the whole turn cycle in between, timing every dispatch.
 #[test]
 #[ignore = "timing probe; run with --ignored --nocapture"]

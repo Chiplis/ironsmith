@@ -72,6 +72,7 @@ impl EffectExecutor for RollDieEffect {
                     1,
                     self.sides,
                     self.result_modifier.as_ref(),
+                    false,
                 )?
                 else {
                     return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(

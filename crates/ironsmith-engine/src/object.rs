@@ -83,11 +83,6 @@ pub struct ObjectCounters {
     next_serial: Vec<u32>,
     named_ability_programs: std::collections::BTreeMap<CounterType, Vec<Ability>>,
 }
-/// Upper bound on per-counter ability occurrences held at once. Counter
-/// counts themselves saturate at `u32::MAX`; only the materialized
-/// occurrences (each carrying its own ability program) are bounded.
-pub(crate) const MAX_MATERIALIZED_COUNTER_OCCURRENCES: usize = 4_096;
-
 impl ObjectCounters {
     /// Bind a supplied compiled program to this counter identity. Counts and
     /// programs remain separate: one occurrence carries the whole program.
@@ -105,13 +100,34 @@ impl ObjectCounters {
         &self.counts
     }
 
+    /// Ability counters allocate a distinct, persistent origin for every instance.
+    pub(crate) fn check_occurrence_capacity(&self, additional: u128) -> Result<(), crate::effects::ExecutionError> {
+        const MAX_OCCURRENCES: u128 = 65_536;
+        let existing: usize = self.occurrences.values().map(Vec::len).sum();
+        let requested = existing as u128 + additional;
+        if requested > MAX_OCCURRENCES {
+            return Err(crate::effects::ExecutionError::ResourceLimitExceeded {
+                resource: "ability counter occurrences",
+                requested,
+                maximum: MAX_OCCURRENCES,
+            });
+        }
+        Ok(())
+    }
+
+    pub(crate) fn check_ability_counter_work(&self, kind: CounterType, additional: u32) -> Result<(), crate::effects::ExecutionError> {
+        if kind.is_ability_counter() || self.named_ability_programs.contains_key(&kind) {
+            self.check_occurrence_capacity(u128::from(additional))?;
+        }
+        Ok(())
+    }
+
     pub fn insert(&mut self, kind: CounterType, count: u32) -> Option<u32> {
         let old = self.counts.insert(kind, count);
         if kind.is_ability_counter() || self.named_ability_programs.contains_key(&kind) {
             let mut occurrences = self.occurrences.remove(&kind).unwrap_or_default();
-            // Counts saturate, but each occurrence is materialized work: keep
-            // the materialized set within the engine's object budget.
-            let materialized = (count as usize).min(MAX_MATERIALIZED_COUNTER_OCCURRENCES);
+            // Each keyword counter supplies its own ability occurrence (CR 122.1b).
+            let materialized = count as usize;
             occurrences.truncate(materialized);
             while occurrences.len() < materialized {
                 let serial = self.next_serial.clone();

@@ -151,10 +151,6 @@ impl EffectExecutor for FlipCoinEffect {
                 } else {
                     self.count
                 };
-                // Coins are per-unit physical work: flip at most the physical
-                // budget, then stop.
-                let authored_count =
-                    authored_count.min(coin_flip_transaction::MAX_PHYSICAL_COINS);
                 let mut results = Vec::new();
                 let mut events = Vec::new();
                 let mut facts = Vec::new();
@@ -164,11 +160,8 @@ impl EffectExecutor for FlipCoinEffect {
                     {
                         break;
                     }
-                    // Successive flips share the same physical budget.
-                    if results.len()
-                        >= coin_flip_transaction::MAX_PHYSICAL_COINS as usize
-                    {
-                        break;
+                    if self.repeat_until_loss {
+                        super::die_roll_transaction::check_random_work("successive coins", results.len() as u64 + 1)?;
                     }
                     let count = if self.repeat_until_loss {
                         1

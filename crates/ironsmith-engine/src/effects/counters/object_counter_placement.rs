@@ -232,12 +232,12 @@ pub(super) fn commit_object_counter_placement_with_limit_outputs(
                     EffectOutcome::count(0),
                 ));
             }
-            let Some(mut notification) = game.add_counters_with_cause(
+            let Some(mut notification) = game.try_add_counters_with_cause(
                 object,
                 resolved.counter_type,
                 count,
                 resolved.cause.clone(),
-            ) else {
+            )? else {
                 return Ok(CompletedEffectOutputs::aggregate_only(
                     if resolved.count == 0 {
                         prevented()
