@@ -339,12 +339,13 @@ pub(super) fn object_has_alternative_cast_kind(
     game: &crate::game_state::GameState,
     ctx: &FilterContext,
 ) -> bool {
-    object_has_alternative_cast_kind_in_view(object, object.abilities.as_slice(), kind, game, ctx)
+    object_has_alternative_cast_kind_in_view(object, object.abilities.as_slice(), true, kind, game, ctx)
 }
 
 pub(super) fn object_has_alternative_cast_kind_in_view(
     object: &Object,
     abilities: &[crate::ability::Ability],
+    has_native_casting_abilities: bool,
     kind: AlternativeCastKind,
     game: &crate::game_state::GameState,
     ctx: &FilterContext,
@@ -356,7 +357,7 @@ pub(super) fn object_has_alternative_cast_kind_in_view(
     {
         return true;
     }
-    if object
+    if has_native_casting_abilities && object
         .alternative_casts
         .iter()
         .any(|method| alternative_cast_matches_kind(method, kind))

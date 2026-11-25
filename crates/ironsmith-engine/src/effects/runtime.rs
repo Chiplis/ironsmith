@@ -762,6 +762,7 @@ pub(crate) fn execute_effect_with_outputs_using<'a>(
                     match game.token_resource_failure() {
                         Some(error) => Err(error),
                         None => {
+                            let first_grant = game.effect_store.grant_registry.next_grant_identity();
                             let result = execute_effect_with_resource_scope_using(
                                 game,
                                 effect,
@@ -769,6 +770,7 @@ pub(crate) fn execute_effect_with_outputs_using<'a>(
                                 origin,
                                 &mut execute,
                             );
+                            game.effect_store.stamp_new_casting_grants(first_grant);
                             // "instead it enters tapped and attacking" (Kira
                             // Nerys): an instruction whose entries bypass the
                             // shared battlefield-entry owner (token creation)

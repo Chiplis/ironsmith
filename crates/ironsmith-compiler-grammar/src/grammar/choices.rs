@@ -791,7 +791,9 @@ fn parse_choice_player_ordinal_prefix_lexed(input: &mut LexStream<'_>) -> usize 
                 primitives::kw("the"),
             ))
             .value(0usize),
-            alt((primitives::kw("other"), primitives::kw("another"))).value(1usize),
+            alt((primitives::kw("other"), primitives::kw("another"))).value(
+                ironsmith_compiler_semantic::model::ast::ANOTHER_PLAYER_CHOICE,
+            ),
             primitives::kw("different").value(
                 ironsmith_compiler_semantic::model::ast::DISTINCT_FROM_EVERY_PRIOR_PLAYER_CHOICE,
             ),

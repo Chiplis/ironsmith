@@ -133,7 +133,7 @@ fn choice_player_shape_is_typed() {
         parsed.filter,
         PlayerFilter::CastCardTypeThisTurn(CardType::Sorcery)
     );
-    assert_eq!(parsed.exclude_previous_choices, 1);
+    assert_eq!(parsed.exclude_previous_choices, ironsmith_compiler_semantic::model::ast::ANOTHER_PLAYER_CHOICE);
     assert!(!parsed.random);
 }
 

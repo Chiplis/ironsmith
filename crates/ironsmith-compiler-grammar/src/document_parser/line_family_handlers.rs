@@ -1119,18 +1119,21 @@ fn station_threshold_is_creature_pt_threshold(
     if ctx.preprocessed.card.power_toughness_ref().is_none() {
         return false;
     }
-    ctx.preprocessed.items.iter().any(|item| {
-        let PreprocessedItem::Line(line) = item else {
-            return false;
-        };
-        line_grammar::parse_station_keyword_line(&line.tokens, &line.info.source_tokens).and_then(
-            |shape| {
-                shape
-                    .creature_threshold
-                    .or(line.info.semantic_facts.station_creature_threshold)
-            },
-        ) == Some(threshold)
-    })
+    let mut symbols = Vec::new();
+    for item in &ctx.preprocessed.items {
+        let PreprocessedItem::Line(line) = item else { continue };
+        if let Some(station) = line_grammar::parse_station_keyword_line(&line.tokens, &line.info.source_tokens)
+            && let Some(explicit) = station.creature_threshold.or(line.info.semantic_facts.station_creature_threshold)
+        {
+            return explicit == threshold;
+        }
+        if let Some(row) = line_grammar::parse_station_threshold_line(&line.tokens) {
+            symbols.push(row.threshold);
+        }
+    }
+    // Oracle text can omit station reminder text. With exactly one symbol,
+    // a printed P/T box belongs to that striation (CR 722.2b).
+    symbols.as_slice() == [threshold]
 }
 
 pub(super) fn run_partner_with_keyword_line_family(

@@ -3980,6 +3980,12 @@ fn propose_spell_cast_with_origin_and_dm(
         let checked = game
             .continuous_query_snapshot()
             .map_err(crate::effects::ExecutionError::ContinuousDiscovery)?;
+        if _from_zone == Zone::Graveyard
+            && matches!(casting_method, CastingMethod::Alternative(_))
+            && checked.calculated_characteristics_arc(spell_id).is_some_and(|c| c.abilities.casting_ability_loss.is_some())
+        {
+            return Err(GameLoopError::InvalidState("The card lost its graveyard casting ability".into()));
+        }
         if crate::alternative_cast::blind_play::requires_opening(&checked, spell_id, caster)
             && !crate::alternative_cast::blind_play::declared_method_is_authorized(
                 &checked,

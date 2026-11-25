@@ -115,9 +115,9 @@ impl<'a, 'game> LayerValueContext<'a, 'game> {
         let ctx = self.calculation;
         let filter_ctx = self.filter_context_for_count(filter);
         let Some((effects, commanders)) = self.direct_counts else {
-            return count_filter_matches(filter, ctx, &filter_ctx);
+            return count_filter_matches(self.controller, filter, ctx, &filter_ctx);
         };
-        if let Some(count) = count_retained_tagged_snapshot_matches(filter, ctx.game, &filter_ctx) {
+        if let Some(count) = count_retained_tagged_snapshot_matches(self.controller, filter, ctx.game, &filter_ctx) {
             return count;
         }
         let mut count = 0i32;
@@ -125,8 +125,8 @@ impl<'a, 'game> LayerValueContext<'a, 'game> {
         let mut members = Vec::new();
         let mut board = None;
         let mut candidates = Vec::new();
-        for_each_filter_candidate(ctx, filter, |object| candidates.push(object.id));
-        for_each_filter_candidate(ctx, filter, |object| {
+        for_each_filter_candidate(ctx, filter, self.controller, Some(self.source), |object| candidates.push(object.id));
+        for_each_filter_candidate(ctx, filter, self.controller, Some(self.source), |object| {
             let cached = if characteristics_calculation_in_progress(ctx.game, object.id)
                 || !std::ptr::eq(ctx.objects, ctx.game.objects_map())
             {
@@ -171,7 +171,7 @@ impl<'a, 'game> LayerValueContext<'a, 'game> {
     // Greatest-count and other aggregate leaves have always used the contextual
     // path, even when reached through the direct evaluator.
     pub fn aggregate_count(&self, filter: &ObjectFilter) -> i32 {
-        count_filter_matches(filter, self.calculation, &self.filter_context())
+        count_filter_matches(self.controller, filter, self.calculation, &self.filter_context())
     }
     pub fn shared_creature_count(&self, filter: &ObjectFilter) -> i32 {
         greatest_shared_creature_type_count_for_filter(
@@ -183,7 +183,7 @@ impl<'a, 'game> LayerValueContext<'a, 'game> {
     }
     pub fn visit_candidates(&self, filter: &ObjectFilter, mut visitor: impl FnMut(&Object)) {
         let filter_ctx = self.filter_context();
-        for_each_filter_candidate(self.calculation, filter, |object| {
+        for_each_filter_candidate(self.calculation, filter, self.controller, Some(self.source), |object| {
             if filter.matches_non_recursive(object, &filter_ctx, self.calculation.game) {
                 visitor(object);
             }
@@ -211,8 +211,8 @@ impl<'a, 'game> LayerValueContext<'a, 'game> {
         let mut visitor = visitor;
         let mut board = None;
         let mut candidates = Vec::new();
-        for_each_filter_candidate(ctx, filter, |object| candidates.push(object.id));
-        for_each_filter_candidate(ctx, filter, |object| {
+        for_each_filter_candidate(ctx, filter, self.controller, Some(self.source), |object| candidates.push(object.id));
+        for_each_filter_candidate(ctx, filter, self.controller, Some(self.source), |object| {
             let cached = if characteristics_calculation_in_progress(ctx.game, object.id)
                 || !std::ptr::eq(ctx.objects, ctx.game.objects_map())
             {
@@ -278,7 +278,7 @@ impl<'a, 'game> LayerValueContext<'a, 'game> {
             .game
             .players
             .iter()
-            .filter(|p| p.is_in_game() && filter.matches_player(p.id, &filter_ctx))
+            .filter(|p| p.is_in_game() && self.calculation.game.player_is_within_source_range(self.controller, p.id, Some(self.source)) && filter.matches_player(p.id, &filter_ctx))
             .map(|p| p.id)
             .collect()
     }
@@ -425,7 +425,7 @@ impl<'a, 'game> LayerValueContext<'a, 'game> {
         if let ChooseSpec::All(filter) = spec.unhinted() {
             let filter_ctx = continuous_filter_context(ctx.game, controller, source);
             let mut total = Ok(0i64);
-            for_each_filter_candidate(ctx, filter, |object| {
+            for_each_filter_candidate(ctx, filter, self.controller, Some(self.source), |object| {
                 let subtotal = match &total { Ok(value) => *value, Err(_) => return };
                 let matches = ctx.effects.calculate_characteristics(
                     object.id, ctx.objects, ctx.battlefield, ctx.game,
@@ -556,6 +556,6 @@ impl LayerValueContext<'_, '_> {
     pub fn controlled_object_count(&self, filter: &ObjectFilter, player: PlayerId) -> usize {
         let mut filter = filter.clone();
         filter.controller = Some(PlayerFilter::Specific(player));
-        count_filter_matches(&filter, self.calculation, &self.filter_context()) as usize
+        count_filter_matches(self.controller, &filter, self.calculation, &self.filter_context()) as usize
     }
 }

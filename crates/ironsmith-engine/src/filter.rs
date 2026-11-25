@@ -558,6 +558,7 @@ pub(crate) trait TailMatchSubject: TaggedConstraintSubject {
     fn tail_first_printed_set_name(&self) -> Option<&str>;
     fn tail_counters(&self) -> &std::collections::BTreeMap<CounterType, u32>;
     fn tail_abilities(&self) -> &[crate::ability::Ability];
+    fn tail_has_casting_ability(&self) -> bool;
     fn tail_has_complete_abilities(&self) -> bool {
         true
     }
@@ -678,6 +679,10 @@ impl TailMatchSubject for Object {
 
     fn tail_counters(&self) -> &std::collections::BTreeMap<CounterType, u32> {
         &self.counters
+    }
+
+    fn tail_has_casting_ability(&self) -> bool {
+        self.has_intrinsic_casting_ability()
     }
 
     fn tail_abilities(&self) -> &[crate::ability::Ability] {
@@ -808,6 +813,10 @@ impl TailMatchSubject for LayeredSubject<'_> {
         &self.object.counters
     }
 
+    fn tail_has_casting_ability(&self) -> bool {
+        self.chars.has_casting_ability(self.object)
+    }
+
     fn tail_abilities(&self) -> &[crate::ability::Ability] {
         self.chars.abilities.as_slice()
     }
@@ -821,6 +830,7 @@ impl TailMatchSubject for LayeredSubject<'_> {
         object_has_alternative_cast_kind_in_view(
             self.object,
             self.chars.abilities.as_slice(),
+            self.chars.abilities.casting_ability_loss.is_none(),
             kind,
             game,
             ctx,
@@ -935,6 +945,10 @@ impl TailMatchSubject for ObjectSnapshot {
 
     fn tail_counters(&self) -> &std::collections::BTreeMap<CounterType, u32> {
         &self.counters
+    }
+
+    fn tail_has_casting_ability(&self) -> bool {
+        self.has_casting_ability
     }
 
     fn tail_abilities(&self) -> &[crate::ability::Ability] {
@@ -4802,7 +4816,7 @@ impl ObjectFilterExt for ObjectFilter {
         {
             return false;
         }
-        if self.no_abilities && !subject.tail_abilities().is_empty() {
+        if self.no_abilities && (!subject.tail_abilities().is_empty() || subject.tail_has_casting_ability()) {
             return false;
         }
 

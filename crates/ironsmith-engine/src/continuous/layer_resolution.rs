@@ -1337,6 +1337,7 @@ pub(super) fn continuous_filter_context(
 }
 
 pub(super) fn count_retained_tagged_snapshot_matches(
+    controller: PlayerId,
     filter: &ObjectFilter,
     game: &crate::game_state::GameState,
     filter_ctx: &crate::target::FilterContext,
@@ -1359,6 +1360,7 @@ pub(super) fn count_retained_tagged_snapshot_matches(
         .iter()
         .filter_map(|constraint| filter_ctx.tagged_objects.get(&constraint.tag))
         .flatten()
+        .filter(|snapshot| game.snapshot_is_within_range(controller, snapshot, filter_ctx.source))
         .filter(|snapshot| seen.insert(snapshot.stable_id))
         .filter(|snapshot| filter.matches_snapshot(snapshot, filter_ctx, game))
         .count();
@@ -1448,12 +1450,15 @@ pub(super) fn for_each_zone_candidate(
 pub(super) fn for_each_filter_candidate(
     ctx: &CalculationContext<'_>,
     filter: &ObjectFilter,
+    controller: PlayerId,
+    source: Option<ObjectId>,
     mut visitor: impl FnMut(&Object),
 ) {
     // Phased-out permanents are absent for continuous-value queries, just as
     // they are for ordinary object filters (CR 702.26b).
     let mut visitor = |object: &Object| {
-        if object.zone != Zone::Battlefield || !ctx.game.is_phased_out(object.id) {
+        if (object.zone != Zone::Battlefield || !ctx.game.is_phased_out(object.id))
+            && ctx.game.object_is_within_range(controller, object.id, source) {
             visitor(object);
         }
     };
@@ -1476,17 +1481,18 @@ pub(super) fn for_each_filter_candidate(
 }
 
 pub(super) fn count_filter_matches(
+    controller: PlayerId,
     filter: &ObjectFilter,
     ctx: &CalculationContext<'_>,
     filter_ctx: &crate::target::FilterContext,
 ) -> i32 {
-    if let Some(count) = count_retained_tagged_snapshot_matches(filter, ctx.game, filter_ctx) {
+    if let Some(count) = count_retained_tagged_snapshot_matches(controller, filter, ctx.game, filter_ctx) {
         return count;
     }
     let mut count = 0i32;
     let set_constrained = filter.has_selection_set_constraint();
     let mut members = Vec::new();
-    for_each_filter_candidate(ctx, filter, |obj| {
+    for_each_filter_candidate(ctx, filter, controller, filter_ctx.source, |obj| {
         let Some(chars) = ctx
             .effects
             .calculate_characteristics(obj.id, ctx.objects, ctx.battlefield, ctx.game)
@@ -1521,14 +1527,14 @@ pub(super) fn continuous_value_players(
             .game
             .players
             .iter()
-            .filter(|player| player.is_in_game())
+            .filter(|player| player.is_in_game() && ctx.game.player_is_within_source_range(controller, player.id, Some(source)))
             .map(|player| player.life)
             .max(),
         PlayerFilter::LowestLifeTied => ctx
             .game
             .players
             .iter()
-            .filter(|player| player.is_in_game())
+            .filter(|player| player.is_in_game() && ctx.game.player_is_within_source_range(controller, player.id, Some(source)))
             .map(|player| player.life)
             .min(),
         _ => None,
@@ -1538,7 +1544,7 @@ pub(super) fn continuous_value_players(
             ctx.game
                 .players
                 .iter()
-                .filter(|player| player.is_in_game())
+                .filter(|player| player.is_in_game() && ctx.game.player_is_within_source_range(controller, player.id, Some(source)))
                 .map(|player| player.hand.len())
                 .max()
         })
@@ -1547,7 +1553,7 @@ pub(super) fn continuous_value_players(
     ctx.game
         .players
         .iter()
-        .filter(|player| player.is_in_game())
+        .filter(|player| player.is_in_game() && ctx.game.player_is_within_source_range(controller, player.id, Some(source)))
         .filter(|player| match player_filter {
             PlayerFilter::EffectController => player.id == controller,
             PlayerFilter::MostLifeTied | PlayerFilter::LowestLifeTied => {
@@ -1600,7 +1606,7 @@ pub(super) fn for_each_matching_continuous_object(
     source: ObjectId,
     mut visitor: impl FnMut(&Object, &CalculatedCharacteristics),
 ) {
-    for_each_filter_candidate(ctx, filter, |object| {
+    for_each_filter_candidate(ctx, filter, controller, Some(source), |object| {
         let Some(chars) = ctx.effects.calculate_characteristics(
             object.id,
             ctx.objects,

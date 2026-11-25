@@ -372,6 +372,12 @@ impl GameState {
             })
     }
 
+    pub(crate) fn player_is_within_source_range(
+        &self, observer: PlayerId, player: PlayerId, source: Option<ObjectId>,
+    ) -> bool {
+        self.player_is_within_range(observer, player) || self.source_is_exempt_from_range(source)
+    }
+
     pub(crate) fn range_players_for_source(
         &self,
         observer: PlayerId,

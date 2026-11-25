@@ -2463,6 +2463,11 @@ pub struct CalculatedCharacteristics {
 }
 
 impl CalculatedCharacteristics {
+    pub(crate) fn has_casting_ability(&self, object: &Object) -> bool {
+        self.abilities.casting_ability_loss.is_none() && self.copy_values.as_ref()
+            .map_or_else(|| object.has_intrinsic_casting_ability(), |values| values.has_casting_ability())
+    }
+
     pub(crate) fn validate_numeric_range(
         &self,
     ) -> Result<(), crate::static_ability_processor::StaticEffectDiscoveryError> {
@@ -3051,6 +3056,7 @@ fn initial_text_box_characteristics(object: &Object, game: Option<&crate::game_s
             chars.static_abilities = Vec::new().into();
             if let Some(values)=chars.copy_values.as_mut() {
                 let values=Arc::make_mut(values);
+                values.has_additional_casting_cost = false;
                 values.alternative_casts.clear();
                 values.optional_costs.clear();
             }
@@ -3313,8 +3319,10 @@ fn object_text_box_characteristics(object: &Object) -> CalculatedCharacteristics
         || object.supertypes.clone(),
         |combined| combined.supertypes.clone(),
     );
+    let copy_values = Arc::new(CopiableValues::from_object(object));
+    let (power, toughness) = (copy_values.power, copy_values.toughness);
     let mut chars = CalculatedCharacteristics {
-        copy_values: Some(Arc::new(CopiableValues::from_object(object))),
+        copy_values: Some(copy_values),
         alternate_name: object.split_other_half_name().map(str::to_string),
         name: object.name.clone(),
         mana_cost: object
@@ -3324,10 +3332,10 @@ fn object_text_box_characteristics(object: &Object) -> CalculatedCharacteristics
         linked_face_mana_value: object.linked_face_mana_value(),
         compiled_card_text: split_combined.map_or_else(|| object.compiled_card_text.clone(), |combined| format!("{}\n{}", object.compiled_card_text, combined.other_half_compiled_text).into()),
         ability_labels: split_combined.map_or_else(|| object.ability_labels.clone(), |combined| object.ability_labels.iter().chain(combined.other_half_ability_labels.iter()).cloned().collect()),
-        base_power: object.base_power.as_ref().map(|p| p.base_value()),
-        base_toughness: object.base_toughness.as_ref().map(|t| t.base_value()),
-        power: object.base_power.as_ref().map(|p| p.base_value()),
-        toughness: object.base_toughness.as_ref().map(|t| t.base_value()),
+        base_power: power,
+        base_toughness: toughness,
+        power,
+        toughness,
         card_types: split_combined.map_or_else(
             || object.card_types.clone(),
             |combined| combined.card_types.clone(),
@@ -3864,6 +3872,7 @@ fn remove_all_abilities_for_effect(
     effect: &ContinuousEffect,
     chars: &mut CalculatedCharacteristics,
 ) {
+    chars.abilities.casting_ability_loss = Some(effect.timestamp);
     if is_land_type_rules_text_ability_loss(effect) {
         remove_land_rules_text_abilities(chars);
     } else {
@@ -5278,16 +5287,18 @@ fn apply_merge_component(
         values.abilities = Arc::new(Vec::new());
         // Casting and optional-cost declarations are abilities too, although
         // stored outside AbilityKind. A face-down component contributes none.
+        values.has_additional_casting_cost = false;
         values.alternative_casts.clear();
         values.optional_costs.clear();
         values.definition_dependencies=Some(crate::snapshot::CopyDefinitionDependencies{ability_counter_definitions:Default::default(),custom_subtypes:Vec::new()});
     }
     if on_top {
         let previous_casting = chars.copy_values.as_ref().map(|previous|
-            (previous.alternative_casts.clone(),previous.optional_costs.clone()));
+            (previous.alternative_casts.clone(), previous.optional_costs.clone(), previous.has_additional_casting_cost));
         copy_characteristics_from_copiable_values(&values, chars, true, &None, &None, &[], Some(effect.into()));
-        if let (Some((alternative,optional)),Some(retained))=(previous_casting,chars.copy_values.as_mut()) {
+        if let (Some((alternative,optional,additional)),Some(retained))=(previous_casting,chars.copy_values.as_mut()) {
             let retained=Arc::make_mut(retained);
+            retained.has_additional_casting_cost |= additional;
             retained.alternative_casts.extend(alternative);
             retained.optional_costs.extend(optional);
         }
@@ -5296,6 +5307,7 @@ fn apply_merge_component(
         // from distinct physical components remain distinct occurrences.
         if let Some(retained)=chars.copy_values.as_mut() {
             let retained=Arc::make_mut(retained);
+            retained.has_additional_casting_cost |= values.has_additional_casting_cost;
             retained.alternative_casts.extend(values.alternative_casts.iter().cloned());
             retained.optional_costs.extend(values.optional_costs.iter().cloned());
         }
@@ -8066,6 +8078,7 @@ fn apply_modification_to_chars(
             *abilities_removed = true;
         }
         Modification::RemoveAllAbilitiesExceptMana => {
+            chars.abilities.casting_ability_loss = Some(effect.timestamp);
             chars
                 .abilities
                 .retain(|ability| ability_is_mana_for_object(ability, game, object));

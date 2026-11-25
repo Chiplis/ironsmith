@@ -1443,6 +1443,11 @@ impl Object {
         Arc::new(abilities)
     }
 
+    pub(crate) fn has_intrinsic_casting_ability(&self) -> bool {
+        self.face_down_cast_state.is_none()
+            && (!self.alternative_casts.is_empty() || !self.optional_costs.is_empty() || !self.additional_cost.is_free())
+    }
+
     pub(crate) fn materialized_text_box_abilities(&self) -> Arc<Vec<Ability>> {
         let mut abilities = self.abilities_with_enchant_metadata(self.aura_attach_filter.as_ref());
         if let Some(combined) = self.split_combined_active() {

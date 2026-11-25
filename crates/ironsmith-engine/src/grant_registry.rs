@@ -713,6 +713,29 @@ pub(crate) fn grant_usage_limit_allows(
     }
 }
 
+/// A keyword on a graveyard card is subject to layer-six ability removal.
+pub(crate) fn grant_card_conditions_match(game: &crate::game_state::GameState, grant: &Grant, card_id: ObjectId) -> bool {
+    if grant.grants_graveyard_casting_ability()
+        && game.object(card_id).is_some_and(|card| card.zone == Zone::Graveyard)
+        && let Some(loss) = game.calculated_characteristics_arc(card_id)
+            .and_then(|c| c.abilities.casting_ability_loss)
+    {
+        let acquired = match &grant.source {
+            GrantSource::StaticAbility { source_id } => {
+                let source = game.effect_store.continuous_effects.get_object_timestamp(*source_id).unwrap_or(0);
+                let granted = match &grant.permission_identity {
+                    Some(GrantPermissionIdentity::Static { origin, .. }) => origin.creating_effect_timestamp(),
+                    _ => None,
+                };
+                source.max(granted.unwrap_or(0))
+            }
+            _ => grant.acquired_at.unwrap_or(0),
+        };
+        if acquired <= loss { return false; }
+    }
+    grant_top_card_matches(game, grant, card_id)
+}
+
 /// A top-only permission is checked before the physical card leaves its
 /// library. A completed announcement retains the exact selected permission;
 /// revealing a different top card during payment cannot invalidate that receipt.
@@ -1031,6 +1054,8 @@ pub struct SharedGrantUsageId(u64);
 /// A unified grant that can represent either an ability or alternative casting method.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Grant {
+    /// Resolution timestamp for a keyword granted by an instant, sorcery or ability.
+    pub(crate) acquired_at: Option<u64>,
     pub permission_identity: Option<GrantPermissionIdentity>,
     /// The specific card that receives this grant (for targeted grants like Snapcaster).
     /// If None, uses the filter instead.
@@ -1081,7 +1106,42 @@ pub struct GrantRegistry {
         crate::incremental::TrackedValue<std::collections::HashMap<SharedGrantUsageId, u32>>,
 }
 
+impl Grant {
+    fn grants_graveyard_casting_ability(&self) -> bool {
+        use ironsmith_core::grant_model::DerivedAlternativeCast::*;
+        self.zone == Zone::Graveyard && match &self.grantable {
+            Grantable::AlternativeCast(method) => {
+                use crate::alternative_cast::AlternativeCastingMethod as Method;
+                matches!(method, Method::Flashback { .. } | Method::Harmonize { .. }
+                    | Method::Retrace { .. } | Method::JumpStart { .. } | Method::Escape { .. }
+                    | Method::Disturb { .. } | Method::BeamMeUp { .. }) || method.keyword().is_some()
+            }
+            Grantable::DerivedAlternativeCast(FlashbackFromCardManaCost { .. }
+                | EscapeFromCardManaCost { .. } | RetraceFromCardManaCost
+                | BeamMeUpFromCardManaCost { .. } | BlitzFromCardManaCost) => true,
+            _ => false,
+        }
+    }
+}
+
+impl crate::game_state::EffectStore {
+    pub(crate) fn stamp_new_casting_grants(&mut self, first: u64) {
+        let registry = &mut self.grant_registry;
+        if first == registry.next_permission_identity { return; }
+        let mut timestamp = None;
+        for grant in registry.grants.iter_mut().rev().take_while(|grant|
+            matches!(grant.permission_identity, Some(GrantPermissionIdentity::Stored(id)) if id >= first))
+        {
+            if grant.acquired_at.is_none() && grant.grants_graveyard_casting_ability() {
+                grant.acquired_at = Some(*timestamp.get_or_insert_with(|| self.continuous_effects.next_timestamp()));
+            }
+        }
+    }
+}
+
 impl GrantRegistry {
+    pub(crate) fn next_grant_identity(&self) -> u64 { self.next_permission_identity }
+
     pub fn view_identity(
         &self,
     ) -> (
@@ -1127,6 +1187,7 @@ impl GrantRegistry {
         shared_usage_id: SharedGrantUsageId,
     ) {
         self.add_grant(Grant {
+            acquired_at: None,
             permission_identity: None,
             required_face_name: None,
             target_id: Some(target_id),
@@ -1256,6 +1317,7 @@ impl GrantRegistry {
         source: GrantSource,
     ) {
         self.add_grant(Grant {
+            acquired_at: None,
             permission_identity: None,
             required_face_name: None,
             target_id: Some(target_id),
@@ -1288,6 +1350,7 @@ impl GrantRegistry {
         source: GrantSource,
     ) {
         self.add_grant(Grant {
+            acquired_at: None,
             permission_identity: None,
             required_face_name: None,
             target_id: Some(target_id),
@@ -1320,6 +1383,7 @@ impl GrantRegistry {
         source: GrantSource,
     ) {
         self.add_grant(Grant {
+            acquired_at: None,
             permission_identity: None,
             required_face_name: None,
             target_id: Some(target_id),
@@ -1353,6 +1417,7 @@ impl GrantRegistry {
         source: GrantSource,
     ) {
         self.add_grant(Grant {
+            acquired_at: None,
             permission_identity: None,
             required_face_name: None,
             target_id: Some(target_id),
@@ -1388,6 +1453,7 @@ impl GrantRegistry {
         source: GrantSource,
     ) {
         self.add_grant(Grant {
+            acquired_at: None,
             permission_identity: None,
             required_face_name: None,
             target_id: Some(target_id),
@@ -1420,6 +1486,7 @@ impl GrantRegistry {
     ) {
         let filter = normalize_grant_filter(filter);
         self.add_grant(Grant {
+            acquired_at: None,
             permission_identity: None,
             required_face_name: None,
             target_id: None,
@@ -1618,7 +1685,7 @@ impl GrantRegistry {
 
             // Check zone matches
             if !grant_origin_matches(grant, card_zone)
-                || !grant_top_card_matches(game, grant, card_id)
+                || !grant_card_conditions_match(game, grant, card_id)
             {
                 continue;
             }
@@ -1677,7 +1744,7 @@ impl GrantRegistry {
             }
             if grant.player != player
                 || !grant_origin_matches(&grant, card_zone)
-                || !grant_top_card_matches(game, &grant, card_id)
+                || !grant_card_conditions_match(game, &grant, card_id)
             {
                 continue;
             }
@@ -1745,7 +1812,7 @@ impl GrantRegistry {
 
             // Check zone matches
             if !grant_origin_matches(grant, card_zone)
-                || !grant_top_card_matches(game, grant, card_id)
+                || !grant_card_conditions_match(game, grant, card_id)
             {
                 continue;
             }
@@ -1778,7 +1845,7 @@ impl GrantRegistry {
 
             if grant.player != player
                 || !grant_origin_matches(&grant, card_zone)
-                || !grant_top_card_matches(game, &grant, card_id)
+                || !grant_card_conditions_match(game, &grant, card_id)
             {
                 continue;
             }
@@ -2329,7 +2396,7 @@ impl GrantRegistry {
                 false
             };
             if !applies
-                || !grant_top_card_matches(game, grant, card_id)
+                || !grant_card_conditions_match(game, grant, card_id)
                 || grant.filter.as_ref().is_some_and(|filter| {
                     card.is_none_or(|card| {
                         !filter.matches(card, &grant_filter_context(&ctx, grant, game), game)
@@ -2631,6 +2698,7 @@ impl GrantRegistry {
                                 inspection.push((member, player.id));
                             }
                             grants.push(Grant {
+                                acquired_at: None,
                                 permission_identity: Some(permission_identity.clone()),
                                 target_id,
                                 target_stable_id: None,

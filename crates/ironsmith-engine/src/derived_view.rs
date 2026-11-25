@@ -2419,7 +2419,7 @@ fn grant_applies_to_card(
     ctx: &crate::filter::FilterContext,
     game: &GameState,
 ) -> bool {
-    if !crate::grant_registry::grant_top_card_matches(game, grant, card_id) {
+    if !crate::grant_registry::grant_card_conditions_match(game, grant, card_id) {
         return false;
     }
 
@@ -2456,7 +2456,7 @@ fn grant_applies_to_card_non_recursive(
     ctx: &crate::filter::FilterContext,
     game: &GameState,
 ) -> bool {
-    if !crate::grant_registry::grant_top_card_matches(game, grant, card_id) {
+    if !crate::grant_registry::grant_card_conditions_match(game, grant, card_id) {
         return false;
     }
 

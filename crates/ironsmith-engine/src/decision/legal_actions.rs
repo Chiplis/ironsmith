@@ -670,7 +670,8 @@ pub(crate) fn native_alternative_cast_zone_permission(
     view: &DerivedGameView<'_>,
 ) -> bool {
     if card.zone != from_zone || card.owner != player { return false; }
-    card.abilities.iter().any(|ability| {
+    let Some(chars) = view.calculated_characteristics_arc(card.id) else { return false; };
+    chars.abilities.iter().any(|ability| {
             let crate::ability::AbilityKind::Static(ability) = &ability.kind else { return false; };
             matches!(ability.compiled_model().map(|model| &model.payload),
                 Some(ironsmith_core::StaticAbilityPayload::NativeAlternativeCastFromZone { zone, method })
@@ -695,6 +696,12 @@ fn append_native_alternative_cast_actions_for_card_from_zone(
     from_zone: Zone,
     view: &DerivedGameView<'_>,
 ) {
+    if card.alternative_casts.is_empty() { return; }
+    // CR 601.3: an ability of this card must still supply its zone permission.
+    if from_zone == Zone::Graveyard
+        && view.calculated_characteristics_arc(card_id).is_some_and(|c| c.abilities.casting_ability_loss.is_some()) {
+        return;
+    }
     for (idx, alt_cast) in card.alternative_casts.iter().enumerate() {
         if game.selected_exile_preparation_index(card_id).is_some_and(|selected|selected!=idx) && (alt_cast.exile_preparation().is_some() || alt_cast.prepares_face_down() || alt_cast.prepares_face_up_sorcery()) { continue; }
         let additional_zone_allowed = native_alternative_cast_zone_permission(

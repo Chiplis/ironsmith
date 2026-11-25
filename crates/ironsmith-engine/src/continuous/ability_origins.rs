@@ -276,6 +276,8 @@ thread_local! {
 /// DerefMut: raw Vec edits must not silently detach an ability from its origin.
 #[derive(Debug, Clone, Default)]
 pub struct CalculatedAbilities {
+    /// Most recent layer effect applied that removed the object's casting abilities.
+    pub(crate) casting_ability_loss: Option<u64>,
     definitions: SharedVec<Ability>,
     // Shared: a characteristics copy is taken per object per layer, and
     // origins change only when the ability list does.
@@ -464,6 +466,7 @@ impl From<SharedVec<Ability>> for CalculatedAbilities {
     fn from(definitions: SharedVec<Ability>) -> Self {
         let origins = (0..definitions.len()).map(AbilityOrigin::Printed).collect::<Vec<_>>().into();
         let mut abilities = Self {
+            casting_ability_loss: None,
             definitions,
             origins,
             host: None,

@@ -86,6 +86,86 @@ fn card(route: &str) -> ironsmith::CardDefinition {
             "Zethi, Arcane Blademaster",
             "Mana cost: {1}{W}{U}\nType: Legendary Creature — Human Soldier\nFirst printed set: Secret Lair Drop\nPower/Toughness: 3/3\nMultikicker {W/U}\nWhen Zethi, Arcane Blademaster enters, exile up to X target instant cards from your graveyard, where X is the number of times Zethi was kicked. Put a kick counter on each of them.\nWhenever Zethi attacks, copy each exiled card you own with a kick counter on it. You may cast the copies.",
         ),
+        "altar-golem" => (
+            "Altar Golem",
+            "Mana cost: {7}\nType: Artifact Creature — Golem\nFirst printed set: Eventide\nPower/Toughness: */*\nTrample\nAltar Golem's power and toughness are each equal to the number of creatures on the battlefield.\nThis creature doesn't untap during your untap step.\nTap five untapped creatures you control: Untap this creature.",
+        ),
+        "bayou-groff" => (
+            "Bayou Groff",
+            "Mana cost: {1}{G}\nType: Creature — Plant Dog\nFirst printed set: Strixhaven: School of Mages\nPower/Toughness: 5/4\nAs an additional cost to cast this spell, sacrifice a creature or pay {3}.",
+        ),
+        "borg-cube" => (
+            "Borg Cube",
+            "Mana cost: {5}{W}{B}\nType: Artifact — Spacecraft\nFirst printed set: Star Trek\nPower/Toughness: 6/6\nAffinity for artifact creatures\nWhenever this Spacecraft enters or attacks, assimilate a creature card exiled with it. If you can't, exile up to one target creature. (To assimilate a card, put it onto the battlefield under your control with a +1/+1 counter. It's a Borg artifact creature and loses all other creature types.)\nStation\n12+ | Artifact creatures you control have flying.",
+        ),
+        "contentious-plan" => (
+            "Contentious Plan",
+            "Mana cost: {1}{U}\nType: Sorcery\nFirst printed set: War of the Spark\nProliferate. (Choose any number of permanents and/or players, then give each another counter of each kind already there.)\nDraw a card.",
+        ),
+        "discerning-financier" => (
+            "Discerning Financier",
+            "Mana cost: {2}{W}\nType: Creature — Human Noble\nFirst printed set: Wilds of Eldraine\nPower/Toughness: 2/3\nAt the beginning of your upkeep, if an opponent controls more lands than you, create a Treasure token. (It's an artifact with \"{T}, Sacrifice this token: Add one mana of any color.\")\n{2}{W}: Choose another player. That player gains control of target Treasure you control. You draw a card.",
+        ),
+        "divination" => (
+            "Divination",
+            "Mana cost: {2}{U}\nType: Sorcery\nFirst printed set: Magic 2010\nDraw two cards.",
+        ),
+        "frankenstein-s-monster" => (
+            "Frankenstein's Monster",
+            "Mana cost: {X}{B}{B}\nType: Creature — Zombie\nFirst printed set: The Dark\nPower/Toughness: 0/1\nAs this creature enters, exile X creature cards from your graveyard. If you can't, put this creature into its owner's graveyard instead of onto the battlefield. For each creature card exiled this way, this creature enters with a +2/+0, +1/+1, or +0/+2 counter on it.",
+        ),
+        "humility" => (
+            "Humility",
+            "Mana cost: {2}{W}{W}\nType: Enchantment\nFirst printed set: Tempest\nAll creatures lose all abilities and have base power and toughness 1/1.",
+        ),
+        "muraganda-petroglyphs" => (
+            "Muraganda Petroglyphs",
+            "Mana cost: {3}{G}\nType: Enchantment\nFirst printed set: Future Sight\nCreatures with no abilities get +2/+2.",
+        ),
+        "pain-s-reward" => (
+            "Pain's Reward",
+            "Mana cost: {2}{B}\nType: Sorcery\nFirst printed set: Saviors of Kamigawa\nEach player may bid life. You start the bidding with a bid of any number. In turn order, each player may top the high bid. The bidding ends if the high bid stands. The high bidder loses life equal to the high bid and draws four cards.",
+        ),
+        "past-in-flames" => (
+            "Past in Flames",
+            "Mana cost: {3}{R}\nType: Sorcery\nFirst printed set: Innistrad\nEach instant and sorcery card in your graveyard gains flashback until end of turn. The flashback cost is equal to its mana cost.\nFlashback {4}{R} (You may cast this card from your graveyard for its flashback cost. Then exile it.)",
+        ),
+        "phyrexian-revoker" => (
+            "Phyrexian Revoker",
+            "Mana cost: {2}\nType: Artifact Creature — Phyrexian Horror\nFirst printed set: Mirrodin Besieged\nPower/Toughness: 2/1\nAs this creature enters, choose a nonland card name.\nActivated abilities of sources with the chosen name can't be activated.",
+        ),
+        "pithing-needle" => (
+            "Pithing Needle",
+            "Mana cost: {1}\nType: Artifact\nFirst printed set: Saviors of Kamigawa\nAs this artifact enters, choose a card name.\nActivated abilities of sources with the chosen name can't be activated unless they're mana abilities.",
+        ),
+        "plea-for-power" => (
+            "Plea for Power",
+            "Mana cost: {3}{U}\nType: Sorcery\nFirst printed set: Conspiracy\nWill of the council — Starting with you, each player votes for time or knowledge. If time gets more votes, take an extra turn after this one. If knowledge gets more votes or the vote is tied, draw three cards.",
+        ),
+        "reanimate" => (
+            "Reanimate",
+            "Mana cost: {B}\nType: Sorcery\nFirst printed set: Tempest\nPut target creature card from a graveyard onto the battlefield under your control. You lose life equal to that card's mana value.",
+        ),
+        "simian-spirit-guide" => (
+            "Simian Spirit Guide",
+            "Mana cost: {2}{R}\nType: Creature — Ape Spirit\nFirst printed set: Planar Chaos\nPower/Toughness: 2/2\nExile this card from your hand: Add {R}.",
+        ),
+        "street-wraith" => (
+            "Street Wraith",
+            "Mana cost: {3}{B}{B}\nType: Creature — Wraith\nFirst printed set: Future Sight\nPower/Toughness: 3/4\nSwampwalk (This creature can't be blocked as long as defending player controls a Swamp.)\nCycling—Pay 2 life. (Pay 2 life, Discard this card: Draw a card.)",
+        ),
+        "think-twice" => (
+            "Think Twice",
+            "Mana cost: {1}{U}\nType: Instant\nFirst printed set: Time Spiral\nDraw a card.\nFlashback {2}{U} (You may cast this card from your graveyard for its flashback cost. Then exile it.)",
+        ),
+        "underworld-breach" => (
+            "Underworld Breach",
+            "Mana cost: {1}{R}\nType: Enchantment\nFirst printed set: Theros Beyond Death Promos\nEach nonland card in your graveyard has escape. The escape cost is equal to the card's mana cost plus exile three other cards from your graveyard. (You may cast cards from your graveyard for their escape cost.)\nAt the beginning of the end step, sacrifice this enchantment.",
+        ),
+        "yixlid-jailer" => (
+            "Yixlid Jailer",
+            "Mana cost: {1}{B}\nType: Creature — Zombie Wizard\nFirst printed set: Future Sight\nPower/Toughness: 2/1\nCards in graveyards lose all abilities.",
+        ),
         _ => panic!("unknown regression fixture {route}"),
     };
     ironsmith_compiler_runtime::compile_to_runtime_definition(name, block, false).unwrap()
@@ -451,4 +531,262 @@ fn creature_type_choices_are_independent_of_an_opponents_library() {
         second.contains(&"Bajoran".to_string()),
         "substituting an unrevealed Kira for an Island changes Alice's menu"
     );
+}
+
+fn put(game: &mut GameState, route: &str, owner: PlayerId, zone: Zone) -> ObjectId {
+    game.create_object_from_definition(&card(route), owner, zone)
+}
+
+fn resolve_spell(
+    game: &mut GameState,
+    route: &str,
+    targets: Vec<ironsmith::Target>,
+    dm: &mut impl DecisionMaker,
+) {
+    let spell = put(game, route, A, Zone::Stack);
+    let mut entry = ironsmith::StackEntry::new(spell, A);
+    entry.targets = targets;
+    game.push_to_stack(entry);
+    ironsmith::game_loop::resolve_stack_entry_with(game, dm).unwrap();
+}
+
+fn can_cast(game: &GameState, card: ObjectId) -> bool {
+    use ironsmith::decision::{LegalAction, compute_legal_actions};
+    compute_legal_actions(game, A).unwrap().iter().any(
+        |action| matches!(action, LegalAction::CastSpell { spell_id, .. } if *spell_id == card),
+    )
+}
+
+#[test]
+fn graveyard_casting_abilities_can_be_lost_and_regained_in_timestamp_order() {
+    let opponent = PlayerId(1);
+    for donor in ["underworld-breach", "past-in-flames"] {
+        for grant_is_newer in [false, true] {
+            let mut g = game();
+            let printed = put(&mut g, "think-twice", A, Zone::Graveyard);
+            let granted = put(&mut g, "divination", A, Zone::Graveyard);
+            for _ in 0..4 {
+                put(&mut g, "bayou-groff", A, Zone::Graveyard);
+            }
+            g.player_mut(A)
+                .unwrap()
+                .mana_pool
+                .add(ironsmith::ManaSymbol::Blue, 5);
+            assert!(can_cast(&g, printed));
+            assert!(!can_cast(&g, granted));
+            let apply_grant = |g: &mut GameState| {
+                if donor == "past-in-flames" {
+                    resolve_spell(
+                        g,
+                        donor,
+                        vec![],
+                        &mut ironsmith::decision::SelectFirstDecisionMaker,
+                    );
+                } else {
+                    put(g, donor, A, Zone::Battlefield);
+                }
+            };
+            if !grant_is_newer {
+                apply_grant(&mut g);
+            }
+            let jailer = put(&mut g, "yixlid-jailer", opponent, Zone::Battlefield);
+            assert!(!can_cast(&g, printed), "printed flashback under Jailer");
+            if grant_is_newer {
+                apply_grant(&mut g);
+            }
+            assert_eq!(can_cast(&g, granted), grant_is_newer, "{donor}");
+            g.phase_out(jailer);
+            assert!(can_cast(&g, printed));
+            assert!(can_cast(&g, granted));
+        }
+    }
+}
+
+#[test]
+fn named_sources_in_hand_obey_mana_and_nonmana_prohibitions() {
+    use ironsmith::decision::{LegalAction, compute_legal_actions};
+    let mut g = game();
+    let street = put(&mut g, "street-wraith", A, Zone::Hand);
+    let guide = put(&mut g, "simian-spirit-guide", A, Zone::Hand);
+    let needle = put(&mut g, "pithing-needle", PlayerId(1), Zone::Battlefield);
+    g.set_chosen_named_option(needle, "Street Wraith".into());
+    let actions = compute_legal_actions(&g, A).unwrap();
+    assert!(
+        !actions
+            .iter()
+            .any(|a| matches!(a, LegalAction::ActivateAbility { source, .. } if *source == street))
+    );
+    g.set_chosen_named_option(needle, "Simian Spirit Guide".into());
+    let actions = compute_legal_actions(&g, A).unwrap();
+    assert!(
+        actions.iter().any(
+            |a| matches!(a, LegalAction::ActivateManaAbility { source, .. } if *source == guide)
+        )
+    );
+    let revoker = put(&mut g, "phyrexian-revoker", PlayerId(1), Zone::Battlefield);
+    g.set_chosen_named_option(revoker, "Simian Spirit Guide".into());
+    assert!(
+        !compute_legal_actions(&g, A).unwrap().iter().any(
+            |a| matches!(a, LegalAction::ActivateManaAbility { source, .. } if *source == guide)
+        )
+    );
+}
+
+#[test]
+fn a_creatures_additional_casting_cost_counts_as_an_ability_until_removed() {
+    let mut g = game();
+    let groff = put(&mut g, "bayou-groff", A, Zone::Battlefield);
+    put(&mut g, "muraganda-petroglyphs", A, Zone::Battlefield);
+    assert_eq!(g.current_power(groff), Some(5));
+    put(&mut g, "humility", A, Zone::Battlefield);
+    assert_eq!(g.current_power(groff), Some(3));
+}
+
+#[test]
+fn station_power_and_toughness_are_available_only_while_stationed() {
+    let mut g = game();
+    for zone in [
+        Zone::Library,
+        Zone::Hand,
+        Zone::Stack,
+        Zone::Graveyard,
+        Zone::Exile,
+        Zone::Battlefield,
+    ] {
+        let id = put(&mut g, "borg-cube", A, zone);
+        assert_eq!(
+            (g.current_power(id), g.current_toughness(id)),
+            (None, None),
+            "{zone:?}"
+        );
+        if zone == Zone::Battlefield {
+            g.add_counters(id, CounterType::Charge, 12);
+            assert_eq!(
+                (g.current_power(id), g.current_toughness(id)),
+                (Some(6), Some(6))
+            );
+        }
+    }
+}
+
+#[test]
+fn reanimate_uses_zero_for_an_uncast_creatures_entry_x() {
+    let mut g = game();
+    let target = put(&mut g, "frankenstein-s-monster", A, Zone::Graveyard);
+    resolve_spell(
+        &mut g,
+        "reanimate",
+        vec![ironsmith::Target::Object(target)],
+        &mut ironsmith::decision::SelectFirstDecisionMaker,
+    );
+    assert_eq!(g.player(A).unwrap().life, 18);
+    let permanent = g
+        .battlefield
+        .iter()
+        .copied()
+        .find(|id| g.object(*id).unwrap().name.as_ref() == "Frankenstein's Monster")
+        .unwrap();
+    assert_eq!(
+        (g.current_power(permanent), g.current_toughness(permanent)),
+        (Some(0), Some(1))
+    );
+}
+
+#[test]
+fn another_player_excludes_the_chooser_before_transferring_control() {
+    let mut g = game();
+    let financier = put(&mut g, "discerning-financier", A, Zone::Battlefield);
+    let treasure = CardDefinitionBuilder::new(CardId::new(), "Treasure")
+        .card_types(vec![CardType::Artifact])
+        .subtypes(vec![ironsmith::Subtype::Treasure])
+        .build();
+    let t = g.create_object_from_definition(&treasure, A, Zone::Battlefield);
+    put(&mut g, "divination", A, Zone::Library);
+    let program = g
+        .current_abilities(financier)
+        .unwrap()
+        .into_iter()
+        .find_map(|a| match a.kind {
+            AbilityKind::Activated(a) => Some(a.effects),
+            _ => None,
+        })
+        .unwrap();
+    let mut entry = ironsmith::StackEntry::ability(financier, A, program);
+    entry.targets = vec![ironsmith::Target::Object(t)];
+    g.push_to_stack(entry);
+    ironsmith::game_loop::resolve_stack_entry_with(
+        &mut g,
+        &mut ironsmith::decision::SelectFirstDecisionMaker,
+    )
+    .unwrap();
+    assert_eq!(g.current_controller(t), Some(PlayerId(1)));
+    assert_eq!(g.player(A).unwrap().hand.len(), 1);
+}
+
+#[derive(Default)]
+struct MultiplayerDecisions {
+    voters: Vec<PlayerId>,
+    bidders: Vec<PlayerId>,
+}
+
+impl DecisionMaker for MultiplayerDecisions {
+    fn decide_options(&mut self, _: &GameState, c: &SelectOptionsContext) -> Vec<usize> {
+        self.voters.push(c.player);
+        vec![c.options.iter().find(|o| o.legal).unwrap().index]
+    }
+    fn decide_boolean(
+        &mut self,
+        _: &GameState,
+        c: &ironsmith::decisions::context::BooleanContext,
+    ) -> bool {
+        self.bidders.push(c.player);
+        false
+    }
+    fn decide_proliferate(
+        &mut self,
+        _: &GameState,
+        c: &ironsmith::decisions::context::ProliferateContext,
+    ) -> ironsmith::decisions::specs::ProliferateResponse {
+        ironsmith::decisions::specs::ProliferateResponse {
+            permanents: c.eligible_permanents.iter().map(|p| p.0).collect(),
+            players: c.eligible_players.iter().map(|p| p.0).collect(),
+        }
+    }
+}
+
+#[test]
+fn multiplayer_choices_and_characteristics_respect_range_and_turn_direction() {
+    let mut g = GameState::new(
+        ["A", "B", "C", "D", "E"]
+            .into_iter()
+            .map(str::to_owned)
+            .collect(),
+        20,
+    );
+    let seats: Vec<_> = (0..5).map(PlayerId).collect();
+    g.enable_limited_range_of_influence(seats.clone(), vec![1; 5])
+        .unwrap();
+    g.turn.active_player = A;
+    g.turn_store.turn_order = seats.iter().copied().rev().collect();
+    let c = PlayerId(2);
+    let golem = put(&mut g, "altar-golem", A, Zone::Battlefield);
+    let power = g.current_power(golem);
+    let distant = put(&mut g, "bayou-groff", c, Zone::Battlefield);
+    assert_eq!(g.current_power(golem), power);
+    g.add_counters(distant, CounterType::PlusOnePlusOne, 1);
+    g.player_mut(c).unwrap().poison_counters = 1;
+    g.player_mut(A).unwrap().poison_counters = 1;
+    for _ in 0..9 {
+        put(&mut g, "divination", A, Zone::Library);
+    }
+    let mut dm = MultiplayerDecisions::default();
+    resolve_spell(&mut g, "contentious-plan", vec![], &mut dm);
+    assert_eq!(g.player(A).unwrap().poison_counters, 2);
+    assert_eq!(g.player(c).unwrap().poison_counters, 1);
+    assert_eq!(g.current_power(distant), Some(6));
+    resolve_spell(&mut g, "plea-for-power", vec![], &mut dm);
+    assert_eq!(dm.voters, [A, PlayerId(4), PlayerId(1)]);
+    resolve_spell(&mut g, "pain-s-reward", vec![], &mut dm);
+    assert!(dm.bidders.contains(&PlayerId(1)));
+    assert!(!dm.bidders.contains(&c) && !dm.bidders.contains(&PlayerId(3)));
 }

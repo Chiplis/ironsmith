@@ -1808,23 +1808,31 @@ impl RestrictionExt for Restriction {
                     }
                 }
             }
-            Restriction::ActivateAbilitiesOf(filter) => {
-                // A graveyard-card prohibition applies to real ability sources
-                // there, including mana abilities. Unqualified permanent bans
-                // retain their battlefield domain.
-                fn explicit_off_battlefield(filter: &crate::target::ObjectFilter) -> bool {
-                    filter
-                        .zone
-                        .is_some_and(|zone| zone != crate::zone::Zone::Battlefield)
-                        || filter.any_of.iter().any(explicit_off_battlefield)
+            Restriction::ActivateAbilitiesOf(filter) | Restriction::ActivateNonManaAbilitiesOf(filter) => {
+                // Rules referring to sources with a chosen name follow the source
+                // into every zone. Unqualified creature/artifact bans apply to permanents.
+                fn includes_other_zones(filter: &ObjectFilter) -> bool {
+                    filter.zone.is_some_and(|zone| zone != Zone::Battlefield)
+                        || filter.name.as_deref() == Some("{chosen name}")
+                        || filter.any_of.iter().any(includes_other_zones)
                 }
-                for object in game.objects_in_deterministic_order() {
-                    if (object.zone == crate::zone::Zone::Battlefield
-                        || explicit_off_battlefield(filter))
-                        && !game.is_phased_out(object.id)
-                        && filter.matches(object, &ctx, game)
-                    {
-                        tracker.cant_activate_abilities_of.insert(object.id);
+                let prohibited = if matches!(self, Restriction::ActivateAbilitiesOf(_)) {
+                    &mut tracker.cant_activate_abilities_of
+                } else {
+                    &mut tracker.cant_activate_non_mana_abilities_of
+                };
+                let mut visit = |object: &crate::object::Object| {
+                    if !game.is_phased_out(object.id) && filter.matches(object, &ctx, game) {
+                        prohibited.insert(object.id);
+                    }
+                };
+                if includes_other_zones(filter) {
+                    for object in game.objects_in_deterministic_order() {
+                        visit(object);
+                    }
+                } else {
+                    for &id in &game.battlefield {
+                        if let Some(object) = game.object(id) { visit(object); }
                     }
                 }
             }
@@ -1834,15 +1842,6 @@ impl RestrictionExt for Restriction {
                         && filter.matches(obj, &ctx, game)
                     {
                         tracker.cant_activate_tap_abilities_of.insert(obj_id);
-                    }
-                }
-            }
-            Restriction::ActivateNonManaAbilitiesOf(filter) => {
-                for &obj_id in &game.battlefield {
-                    if let Some(obj) = game.object(obj_id)
-                        && filter.matches(obj, &ctx, game)
-                    {
-                        tracker.cant_activate_non_mana_abilities_of.insert(obj_id);
                     }
                 }
             }

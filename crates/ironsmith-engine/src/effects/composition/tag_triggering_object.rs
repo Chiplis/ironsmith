@@ -821,6 +821,7 @@ mod tests {
         entry_action_objects: Default::default(),
         cast_controlled_objects: None,
                     stack_kind: None,
+                    has_casting_ability: false,
                     ability_origins: None,
         source_definition_metadata: None,
                     chosen_subtype: None,

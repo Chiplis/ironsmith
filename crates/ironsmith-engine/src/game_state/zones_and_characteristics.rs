@@ -568,7 +568,7 @@ impl GameState {
             if context.x_value.is_none() {
                 context.x_value = source_snapshot
                     .and_then(|snapshot| snapshot.x_value)
-                    .or_else(|| self.object(source).and_then(|object| object.x_value));
+                    .or_else(|| self.object(source).and_then(Object::own_entry_x_value));
             }
             if program.source_number_pair.is_some() {
                 context.source_number_owner = Some(if preparing_entry {

@@ -8,6 +8,8 @@ use ironsmith_compiler_ast::TagRef;
 /// different opponent."): distinct from every earlier choice, including the
 /// choices the same instruction made in earlier iterations of its loop.
 pub const DISTINCT_FROM_EVERY_PRIOR_PLAYER_CHOICE: usize = usize::MAX;
+/// “Another player” refers to the last choice, or to the chooser when there was none.
+pub const ANOTHER_PLAYER_CHOICE: usize = usize::MAX - 1;
 
 #[derive(Clone, PartialEq, TagKeyWalk)]
 pub enum ChoiceActionAst {

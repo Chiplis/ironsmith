@@ -48,7 +48,7 @@ fn active_players_in_vote_order(game: &GameState, controller: PlayerId) -> Vec<P
     super::player_order::active_players_from(
         game,
         controller,
-        super::player_order::PlayerOrderBasis::Seating,
+        super::player_order::PlayerOrderBasis::TurnWithSeatingFallback,
     )
 }
 
@@ -95,7 +95,8 @@ fn candidate_object_ids_for_vote(
     let zone = filter.zone.unwrap_or(Zone::Battlefield);
     game.zone_ids(zone)
         .filter_map(|id| game.object(id).map(|obj| (id, obj)))
-        .filter(|(_, obj)| filter.matches(obj, &filter_ctx, game))
+        .filter(|(id, obj)| game.object_is_within_range(ctx.controller, *id, Some(ctx.source))
+            && filter.matches(obj, &filter_ctx, game))
         .map(|(id, _)| id)
         .collect()
 }
@@ -218,12 +219,15 @@ fn collect_object_votes(
     let mut vote_counts: HashMap<ObjectId, usize> = HashMap::new();
 
     for &player_id in players {
+        let eligible: Vec<_> = candidates.iter().copied()
+            .filter(|&id| game.object_is_within_range(player_id, id, Some(ctx.source)))
+            .collect();
         let num_votes = vote_instances_for_player(effect, game, ctx, player_id);
         for _ in 0..num_votes {
             let spec = ChooseObjectsSpec::new(
                 ctx.source,
                 "Choose an object to vote for",
-                candidates.clone(),
+                eligible.clone(),
                 min,
                 max,
             )
@@ -240,7 +244,7 @@ fn collect_object_votes(
                 return None;
             }
 
-            for object_id in chosen {
+            for object_id in chosen.into_iter().filter(|id| eligible.contains(id)) {
                 let Some(object) = game.object(object_id) else {
                     continue;
                 };
@@ -276,6 +280,7 @@ fn candidate_player_ids_for_vote(
         let filter_ctx = ctx.filter_context(game);
         resolve_player_filter_to_list(game, filter, &filter_ctx, ctx)
     })?;
+    candidates.retain(|&p| game.player_is_within_source_range(voter, p, Some(ctx.source)));
     if *exclude_voter {
         candidates.retain(|player| *player != voter);
     }
@@ -594,7 +599,8 @@ pub(crate) fn run_vote_with_outputs(
             } else {
                 game.turn.active_player
             };
-            let players = active_players_in_vote_order(game, starting_player);
+            let mut players = active_players_in_vote_order(game, starting_player);
+            players.retain(|&p| game.player_is_within_source_range(ctx.controller, p, Some(ctx.source)));
             match &effect.choice {
                 VoteChoice::NamedOptions(options) => {
                     if options.is_empty() {

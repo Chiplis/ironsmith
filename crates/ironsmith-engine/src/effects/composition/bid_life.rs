@@ -70,6 +70,7 @@ impl crate::effects::EffectExecutor for BidLifeEffect {
                         let mut high_bidder = original;
                         let mut high_bid = amount;
                         let mut players = active_players_in_turn_order(game, original);
+                        players.retain(|&p| game.player_is_within_source_range(original, p, Some(ctx.source)));
                         // "You and target spell's controller bid life"
                         // (Mages' Contest): only those two bid, in turn order.
                         if let Some(opponent) = &self.opponent {

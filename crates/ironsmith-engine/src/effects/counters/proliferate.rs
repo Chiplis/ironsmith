@@ -84,17 +84,12 @@ impl EffectExecutor for ProliferateEffect {
                                     .battlefield
                                     .iter()
                                     // CR 702.26b: phased-out permanents can't be chosen.
+                                    .filter(|&&perm_id| game.object_is_within_range(ctx.controller, perm_id, Some(ctx.source)))
                                     .filter(|&&perm_id| !game.is_phased_out(perm_id))
                                     .filter_map(|&perm_id| {
-                                        game.object(perm_id).and_then(|obj| {
-                                            if obj.counters.is_empty()
-                                                || game.is_phased_out(perm_id)
-                                            {
-                                                None
-                                            } else {
-                                                Some(perm_id)
-                                            }
-                                        })
+                                        game.object(perm_id)
+                                            .filter(|obj| !obj.counters.is_empty())
+                                            .map(|_| perm_id)
                                     })
                                     .collect();
 
@@ -104,7 +99,9 @@ impl EffectExecutor for ProliferateEffect {
                                     .filter_map(|p| {
                                         let has_counters =
                                             !p.counter_types_with_counters().is_empty();
-                                        (p.is_in_game() && has_counters).then_some(p.id)
+                                        (p.is_in_game() && has_counters
+                                            && game.player_is_within_source_range(ctx.controller, p.id, Some(ctx.source)))
+                                            .then_some(p.id)
                                     })
                                     .collect();
 

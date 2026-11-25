@@ -1644,7 +1644,17 @@ pub(super) fn compile_subject_verb_early(
             secretly,
         }) => {
             let subject = resolve_subject_verb_subject(role, player, ctx, true, true, true)?;
-            let resolved_filter = filter.clone();
+            let another = *exclude_previous_choices
+                == ironsmith_compiler_semantic::model::ast::ANOTHER_PLAYER_CHOICE;
+            let resolved_filter = if another && ctx.recent_player_choice_tags.is_empty() {
+                if *filter == PlayerFilter::Any && subject.as_chooser() == PlayerFilter::You {
+                    PlayerFilter::NotYou
+                } else {
+                    PlayerFilter::excluding(filter.clone(), subject.as_chooser())
+                }
+            } else {
+                filter.clone()
+            };
             let resolved_tag = if tag.as_str() == crate::tag::CompilerReferenceTag::It.as_str() {
                 ctx.next_tag("chosen_player")
             } else {
@@ -1656,7 +1666,8 @@ pub(super) fn compile_subject_verb_early(
                 Vec::new()
             } else {
                 let len = ctx.recent_player_choice_tags.len();
-                ctx.recent_player_choice_tags[len.saturating_sub(*exclude_previous_choices)..]
+                let count = if another { 1 } else { *exclude_previous_choices };
+                ctx.recent_player_choice_tags[len.saturating_sub(count)..]
                     .iter()
                     .cloned()
                     .collect::<Vec<_>>()
