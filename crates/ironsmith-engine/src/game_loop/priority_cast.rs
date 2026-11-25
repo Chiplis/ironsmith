@@ -9261,7 +9261,7 @@ mod counter_payment_error_bridge_tests {
     use super::*;
 
     #[test]
-    fn staged_counter_cost_clamps_replacement_tokens_to_the_budget() {
+    fn staged_counter_cost_respects_the_per_name_token_cap() {
         let player = PlayerId::from_index(0);
         let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
         let card = crate::card::CardBuilder::new(crate::ids::CardId::new(), "Counter payment source")
@@ -9279,7 +9279,7 @@ mod counter_payment_error_bridge_tests {
             ),
         );
         game.set_token_creation_limits(crate::effects::tokens::TokenCreationLimits {
-            max_created_tokens: 1, ..Default::default()
+            max_tokens_per_name_per_batch: 1, ..Default::default()
         });
         let source_snapshot = ObjectSnapshot::from_object_with_calculated_characteristics(
             game.object(source).unwrap(), &game,
@@ -9298,16 +9298,13 @@ mod counter_payment_error_bridge_tests {
             selected_removals: vec![(source, crate::CounterType::Charge, 1)], selected_total: 1,
         });
         game.take_pending_trigger_events();
-        let before_id = game.next_object_id_counter();
         let mut state = PriorityLoopState::new(2);
         state.save_checkpoint(&game);
         let mut queue = TriggerQueue::new();
         let result = continue_activation_remove_counters_among_payment(
             &mut game, &mut queue, &mut state, pending, &mut crate::decision::SelectFirstDecisionMaker, None,
         );
-        // The token budget admits one of the two replacement Treasures; the
-        // payment completes instead of failing.
-        let _ = before_id;
+        // The per-name cap admits one Treasure from this replacement batch.
         assert!(result.is_ok(), "{result:?}");
         assert_eq!(game.counter_count(source, crate::CounterType::Charge), 0);
         assert_eq!(game.battlefield.len(), 2);

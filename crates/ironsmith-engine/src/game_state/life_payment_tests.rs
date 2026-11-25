@@ -650,20 +650,15 @@ fn direct_payment_and_multiple_payer_completions_share_one_token_resource_budget
         .card_types(vec![crate::CardType::Creature])
         .power_toughness(crate::card::PowerToughness::fixed(1, 1))
         .build();
-    // `clamped` shares the token-count budget, which creates what fits; otherwise
-    // the shared instruction work guard admits only the first token program.
-    for (many_payers, clamped) in [(false, false), (true, false), (false, true), (true, true)] {
+    for (many_payers, token_limit, instruction_limit) in [
+        (false, 1, 2), (false, 2, 1), (false, 2, 2),
+        (true, 1, 2), (true, 2, 1), (true, 2, 2),
+    ] {
         let (mut game, source) = fixture();
-        game.set_token_creation_limits(if clamped {
-            crate::effects::tokens::TokenCreationLimits {
-                max_created_tokens: 1,
-                ..Default::default()
-            }
-        } else {
-            crate::effects::tokens::TokenCreationLimits {
-                max_instructions: 1,
-                ..Default::default()
-            }
+        game.set_token_creation_limits(crate::effects::tokens::TokenCreationLimits {
+            max_created_tokens: token_limit,
+            max_instructions: instruction_limit,
+            ..Default::default()
         });
         if many_payers {
             for player in [A, B] {
@@ -695,11 +690,11 @@ fn direct_payment_and_multiple_payer_completions_share_one_token_resource_budget
         } else {
             game.pay_life(A, 2)
         };
-        if clamped {
+        if token_limit == 2 && instruction_limit == 2 {
             assert!(result.is_ok(), "{result:?}");
             assert_eq!(game.player(A).unwrap().life, 18);
             assert_eq!(game.player(B).unwrap().life, if many_payers { 18 } else { 20 });
-            assert_eq!(game.battlefield.len(), 2, "one token fits the shared budget");
+            assert_eq!(game.battlefield.len(), 3, "both token programs completed");
             continue;
         }
         assert!(matches!(

@@ -207,11 +207,12 @@ retain_original_types: false, retain_original_name: false,
 }
 
 #[test]
-fn missing_definition_or_host_is_a_checked_hold_but_a_quoted_definition_can_be_rewritten() {
+fn legacy_trigger_identity_and_quoted_acquisition_survive_text_replacement() {
     let unstamped = Ability::triggered(colored_trigger(), vec![Effect::gain_life(1)]);
-    assert!(crate::continuous::text_change_programs::rewrite_triggered_ability_words(
-        triggered(&unstamped), TextChange::color(Color::Black, Color::Blue).unwrap(),
-    ).is_err());
+    let legacy = triggered(&unstamped);
+    let rewritten = rewrite(legacy, Color::Black, Color::Blue);
+    assert_eq!(filter(&rewritten), Some(ColorSet::BLUE));
+    assert_eq!(compute_trigger_identity(legacy), compute_trigger_identity(&rewritten));
     let authored = definition(7, colored_trigger(), 1);
     let quoted = rewrite(triggered(&authored), Color::Black, Color::Blue);
     assert!(quoted.trigger.acquired_identity(quoted.effects.retained_trigger_definition()).is_none());
@@ -225,8 +226,10 @@ fn missing_definition_or_host_is_a_checked_hold_but_a_quoted_definition_can_be_r
         source, PlayerId::from_index(0), vec![source],
         Modification::RewriteText(TextChange::color(Color::Black, Color::Blue).unwrap()),
     ));
-    assert_eq!(game.calculated_characteristics(source).unwrap().text_change_error,
-        Some(crate::continuous::text_changes::TextChangeDomainError::TriggeredAbility));
+    game.refresh_continuous_state().unwrap();
+    let changed = current(&game, source);
+    assert_eq!(filter(&changed), Some(ColorSet::BLUE));
+    assert_eq!(compute_trigger_identity(&old), compute_trigger_identity(&changed));
 }
 
 #[test]

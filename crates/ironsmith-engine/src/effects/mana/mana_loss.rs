@@ -666,8 +666,7 @@ mod direct_owner_resource_tests {
     use crate::target::PlayerFilter;
     #[test]
     fn direct_boundary_shares_one_budget_across_all_players_added_programs() {
-        // `None` clamps the shared token-count budget; `Some(n)` caps the shared
-        // instruction work guard, which still fails the whole boundary.
+        // Both the object and instruction work limits apply to the entire boundary.
         for limit in [None, Some(1), Some(2)] {
             let mut game = crate::tests::test_helpers::setup_two_player_game();
             let token = crate::cards::CardDefinitionBuilder::new(CardId::new(), "Loss token")
@@ -685,11 +684,7 @@ mod direct_owner_resource_tests {
                 None => crate::effects::tokens::TokenCreationLimits { max_created_tokens: 1, ..Default::default() },
             });
             let result = game.empty_mana_pools_with_dm(&mut SelectFirstDecisionMaker);
-            if limit.is_none() {
-                // Both players' programs share one budget: one token fits, no error.
-                result.unwrap(); assert_eq!(game.battlefield.len(), 1);
-                assert!(game.players.iter().all(|player| player.mana_pool.total() == 0));
-            } else if limit == Some(1) {
+            if limit != Some(2) {
                 assert!(matches!(result, Err(ExecutionError::ResourceLimitExceeded { .. })));
                 assert!(game.battlefield.is_empty()); assert_eq!(game.next_object_id_counter(), before_id);
                 assert!(game.players.iter().all(|player| player.mana_pool.green == 1));

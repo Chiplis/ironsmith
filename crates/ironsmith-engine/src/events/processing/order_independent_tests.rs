@@ -122,7 +122,7 @@ fn identical_token_doublers_apply_without_an_order_choice() {
     );
     assert_eq!(dm.prompts, 0);
     game.set_token_creation_limits(crate::effects::tokens::TokenCreationLimits {
-        max_created_tokens: 5,
+        max_tokens_per_name_per_batch: 5,
         ..Default::default()
     });
     let token = crate::cards::CardDefinitionBuilder::new(crate::ids::CardId::new(), "Doubled token")
@@ -137,8 +137,8 @@ fn identical_token_doublers_apply_without_an_order_choice() {
         &mut game,
         &mut ctx,
     )
-    .expect("creation past the budget creates what fits");
-    assert_eq!(game.battlefield.len() - before, 5, "the doubled count clamps to the budget");
+    .expect("the per-name cap applies to the final doubled batch");
+    assert_eq!(game.battlefield.len() - before, 5, "the doubled count reaches the per-name cap");
 }
 
 #[test]

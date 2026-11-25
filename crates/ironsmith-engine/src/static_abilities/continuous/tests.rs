@@ -1888,27 +1888,12 @@ fn capped_creature_type_count_is_evaluated_per_affected_creature() {
         AnthemValue::scaled_capped(1, count.clone(), 10),
         AnthemValue::scaled_capped(1, count, 10),
     );
-    let effects = anthem.generate_effects(source, alice, &game);
-    let modifier_for = |target| {
-        effects.iter().find_map(|effect| {
-            (effect.applies_to == EffectTarget::Specific(target)).then_some(&effect.modification)
-        })
-    };
-
-    assert!(matches!(
-        modifier_for(two_types),
-        Some(Modification::ModifyPowerToughness {
-            power: 2,
-            toughness: 2
-        })
+    game.object_mut(source).unwrap().abilities_mut().push(crate::Ability::static_ability(
+        crate::static_abilities::StaticAbility::new(anthem),
     ));
-    assert!(matches!(
-        modifier_for(many_types),
-        Some(Modification::ModifyPowerToughness {
-            power: 10,
-            toughness: 10
-        })
-    ));
+    game.refresh_continuous_state().unwrap();
+    assert_eq!((game.current_power(two_types), game.current_toughness(two_types)), (Some(3), Some(3)));
+    assert_eq!((game.current_power(many_types), game.current_toughness(many_types)), (Some(11), Some(11)));
 }
 
 #[test]
