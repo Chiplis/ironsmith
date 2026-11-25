@@ -1210,13 +1210,9 @@ fn mana_value_matches_scope(
         let Some(object) = game.object(object_id) else {
             return false;
         };
-        scope.matches(object, &filter_ctx, game) && object_mana_value(object) == Some(mana_value)
+        scope.matches(object, &filter_ctx, game)
+            && crate::filter::object_current_mana_value(game, object_id) as i32 == mana_value
     })
-}
-
-fn object_mana_value(object: &Object) -> Option<i32> {
-    // CR 712.8e / 712.8g: linked-face mana value for melded and back faces.
-    Some(crate::filter::object_mana_value_for_filter(object))
 }
 
 // These adapters choose characteristics only; protection rules are interpreted
@@ -1263,11 +1259,10 @@ impl ObjectSubject<'_> {
         }
     }
     fn protection_mana_value(self, game: &GameState) -> i32 {
-        // Preserve this targeting query's printed-cost policy, rather than the
-        // stack-X/split-card policy used by numeric ObjectFilter predicates.
-        self.mana_cost(game).map_or(0, |cost| {
-            ironsmith_core::quantity::clamp_i32_from_u32(cost.mana_value())
-        })
+        match self {
+            Self::Live(object) => crate::filter::object_current_mana_value(game, object.id) as i32,
+            Self::Snapshot(_) => self.mana_value(game),
+        }
     }
 }
 

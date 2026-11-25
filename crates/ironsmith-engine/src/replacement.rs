@@ -2270,11 +2270,11 @@ mod ability_origin_identity_tests {
 // does not assert that a replacement matches, or that it is safe to reorder.
 impl ReplacementAction {
     pub fn needs_mana_color_choice(&self) -> bool {
-        matches!(self, Self::RewriteMana { output: ironsmith_core::ManaRewriteOutput::ChooseColor | ironsmith_core::ManaRewriteOutput::ByBasicLandType(_), .. })
+        matches!(self, Self::RewriteMana { output: ironsmith_core::ManaRewriteOutput::ChooseColor | ironsmith_core::ManaRewriteOutput::ByBasicLandType(_) | ironsmith_core::ManaRewriteOutput::ByLandTypeClauses(_), .. })
     }
     pub fn mana_transformation_with_color(&self, color: Option<crate::mana::ManaSymbol>)
         -> Option<crate::events::mana::ManaTransformation<'_>> {
-        if let Self::RewriteMana { input, output: ironsmith_core::ManaRewriteOutput::ChooseColor | ironsmith_core::ManaRewriteOutput::ByBasicLandType(_), quantity } = self {
+        if let Self::RewriteMana { input, output: ironsmith_core::ManaRewriteOutput::ChooseColor | ironsmith_core::ManaRewriteOutput::ByBasicLandType(_) | ironsmith_core::ManaRewriteOutput::ByLandTypeClauses(_), quantity } = self {
             let symbol = color.filter(|symbol| ironsmith_core::ManaRewriteInput::Colored.matches(*symbol))?;
             Some(crate::events::mana::ManaTransformation::Rewrite { input: *input, symbol, quantity: *quantity })
         } else if color.is_none() { self.mana_transformation() } else { None }

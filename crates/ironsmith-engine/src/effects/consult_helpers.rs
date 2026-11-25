@@ -198,10 +198,7 @@ pub fn execute_library_consult_with_outputs(
                         // reveal offer may move it before the consultation resumes;
                         // its later incarnation is not the consulted library card.
                         let snapshot = ObjectSnapshot::from_object(object, game);
-                        let mana_value = object
-                            .mana_cost
-                            .as_ref()
-                            .map_or(0, |cost| cost.mana_value());
+                        let mana_value = snapshot.mana_value();
                         let matched = is_match(object, game);
                         let mut reveal = crate::effects::cards::reveal_objects_with_outputs(
                             game,
@@ -268,10 +265,7 @@ pub fn execute_library_consult_with_outputs(
                                 continue;
                             };
                             let snapshot = ObjectSnapshot::from_object(object, game);
-                            let mana_value = object
-                                .mana_cost
-                                .as_ref()
-                                .map_or(0, |cost| cost.mana_value());
+                            let mana_value = snapshot.mana_value();
                             let matched = is_match(object, game);
                             result.exposed_object_ids.push(milled_id);
                             result.exposed_snapshots.push(snapshot.clone());
@@ -354,10 +348,7 @@ pub fn execute_library_consult_with_outputs(
                                 continue;
                             };
                             let snapshot = ObjectSnapshot::from_object(object, game);
-                            let mana_value = object
-                                .mana_cost
-                                .as_ref()
-                                .map_or(0, |cost| cost.mana_value());
+                            let mana_value = snapshot.mana_value();
                             let matched = is_match(object, game);
                             game.add_exiled_with_source_link(ctx.source, exiled_id);
                             ctx.tag_object(SOURCE_EXILED_TAG, snapshot.clone());

@@ -1070,6 +1070,7 @@ pub enum AttackingGroupAttackCondition {
     AtLeastNOtherCreaturesBlock(u32),
     /// "can't block unless a creature with greater power also blocks" (Okk).
     CreatureWithGreaterPowerAlsoBlocks,
+    CreatureOfColorsAlsoAttacks(crate::ColorSet),
 }
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]

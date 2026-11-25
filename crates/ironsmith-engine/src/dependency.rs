@@ -1760,6 +1760,11 @@ pub(crate) fn apply_continuous_effect_to_chars_for_dependency(
                 *t = t.saturating_add(delta);
             }
         }
+        Modification::ModifyPowerToughnessByCreatureTypes { power: dp, toughness: dt } => {
+            let count = crate::continuous::creature_type_count(&chars.subtypes);
+            if let Some(p) = &mut chars.power { *p = (i128::from(*p) + dp.delta(count)).clamp(i32::MIN as i128, i32::MAX as i128) as i32; }
+            if let Some(t) = &mut chars.toughness { *t = (i128::from(*t) + dt.delta(count)).clamp(i32::MIN as i128, i32::MAX as i128) as i32; }
+        }
         Modification::ModifyPowerToughnessByColorCount {
             power_multiplier,
             toughness_multiplier,
@@ -3234,6 +3239,7 @@ fn is_commutative_pt_modifier(modification: &Modification) -> bool {
         Modification::ModifyPower(_)
         | Modification::ModifyToughness(_)
         | Modification::ModifyPowerToughness { .. }
+        | Modification::ModifyPowerToughnessByCreatureTypes { .. }
         | Modification::ModifyPowerToughnessByColorCount { .. } => true,
         Modification::ModifyPowerToughnessValue { power, toughness } => {
             pt_modifier_value_is_commutative(power) && pt_modifier_value_is_commutative(toughness)

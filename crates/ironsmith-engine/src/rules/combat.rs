@@ -308,6 +308,11 @@ pub(crate) fn can_block_with_view(
         }
     }
 
+    // CR 805.10e: the attacked player remains the defending player when
+    // another member of their team supplies the blocker.
+    let defender = game.combat.as_ref()
+        .and_then(|combat| crate::combat_state::defending_player_for_attacker(game, combat, attacker.id))
+        .unwrap_or_else(|| game.controller_of(blocker));
     // A blocker that can block landwalkers as though they didn't have
     // landwalk ignores every landwalk evasion of this attacker (CR 702.14).
     let blocker_ignores_landwalk = blocker_abilities
@@ -327,14 +332,13 @@ pub(crate) fn can_block_with_view(
         {
             continue;
         }
-        let blocker_controller = game.current_controller(blocker.id);
         let defending_has_required_land = game
             .battlefield
             .iter()
             .filter_map(|&id| game.object(id))
             .any(|obj| {
                 if game.is_phased_out(obj.id)
-                    || game.current_controller(obj.id) != blocker_controller
+                    || game.current_controller(obj.id) != Some(defender)
                     || !view.object_has_card_type(obj.id, CardType::Land)
                 {
                     return false;
@@ -380,13 +384,12 @@ pub(crate) fn can_block_with_view(
         .iter()
         .filter_map(|ability| ability.required_defending_player_card_type_for_unblockable())
     {
-        let blocker_controller = game.current_controller(blocker.id);
         let defending_controls_required_type = game
             .battlefield
             .iter()
             .filter_map(|&id| game.object(id))
             .any(|obj| {
-                game.current_controller(obj.id) == blocker_controller
+                !game.is_phased_out(obj.id) && game.current_controller(obj.id) == Some(defender)
                     && view.object_has_card_type(obj.id, required_card_type)
             });
         if defending_controls_required_type {
@@ -398,13 +401,12 @@ pub(crate) fn can_block_with_view(
         .iter()
         .filter_map(|ability| ability.required_defending_player_card_types_for_unblockable())
     {
-        let blocker_controller = game.current_controller(blocker.id);
         let defending_controls_required_types = game
             .battlefield
             .iter()
             .filter_map(|&id| game.object(id))
             .any(|obj| {
-                game.current_controller(obj.id) == blocker_controller
+                !game.is_phased_out(obj.id) && game.current_controller(obj.id) == Some(defender)
                     && required_card_types
                         .iter()
                         .all(|required_type| view.object_has_card_type(obj.id, *required_type))
@@ -414,19 +416,17 @@ pub(crate) fn can_block_with_view(
         }
     }
 
-    if attacker_has(StaticAbilityId::CantBeBlockedWhileDefendingPlayerControlsMostCreatures)
-        && let Some(defending_player) = game.current_controller(blocker.id)
-    {
+    if attacker_has(StaticAbilityId::CantBeBlockedWhileDefendingPlayerControlsMostCreatures) {
         let creature_count_for = |player| {
             game.battlefield
                 .iter()
                 .filter(|&&id| {
-                    game.current_controller(id) == Some(player)
+                    !game.is_phased_out(id) && game.current_controller(id) == Some(player)
                         && view.object_has_card_type(id, CardType::Creature)
                 })
                 .count()
         };
-        let defending_count = creature_count_for(defending_player);
+        let defending_count = creature_count_for(defender);
         let greatest_count = game
             .players
             .iter()

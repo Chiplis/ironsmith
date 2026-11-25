@@ -855,6 +855,41 @@ mod exact_cards {
         }
     }
     #[test]
+    fn swirl_changes_the_spending_words_but_soul_burn_still_counts_black_mana() {
+        let swirl = ironsmith_compiler_runtime::compile_to_runtime_definition("Swirl the Mists",
+            "Mana cost: {2}{U}{U}\nType: Enchantment\nAs this enchantment enters, choose a color.\nAll instances of color words in the text of spells and permanents are changed to the chosen color word.", false).unwrap();
+        for definition in pair("Soul Burn") {
+            let mut game = setup();
+            let source = game.create_object_from_definition(&swirl, A, Zone::Battlefield);
+            game.set_chosen_color(source, Color::Green);
+            let spell = game.create_object_from_definition(&definition, A, Zone::Hand);
+            let mana = &mut game.player_mut(A).unwrap().mana_pool;
+            mana.black = 1;
+            mana.colorless = 2;
+            mana.green = 3;
+            let mut choices = Choices {
+                x: 3,
+                target: Some(Target::Player(B)),
+                ..Default::default()
+            };
+            let cast = action(&game, spell, false);
+            announce(&mut game, cast, &mut choices).unwrap();
+            let stack = game.stack.last().unwrap().object_id;
+            assert_eq!(
+                game.object(stack)
+                    .unwrap()
+                    .mana_spent_on_x
+                    .unwrap()
+                    .of_color(Color::Green),
+                3
+            );
+            resolve_stack_entry_with(&mut game, &mut choices).unwrap();
+            assert_eq!(game.player(B).unwrap().life, 17);
+            assert_eq!(game.player(A).unwrap().life, 20);
+        }
+    }
+
+    #[test]
     fn soul_burn_reduction_allocation_is_a_real_locked_player_choice_with_distinct_gain() {
         for definition in pair("Soul Burn") {
             for black in [1, 3] {

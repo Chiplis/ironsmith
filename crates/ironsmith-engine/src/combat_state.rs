@@ -492,10 +492,15 @@ pub fn end_combat(combat: &mut CombatState) {
     combat.attacked_permanent_types.clear();
 }
 
-fn battlefield_static_abilities(game: &GameState) -> Vec<StaticAbility> {
+fn battlefield_static_abilities_affecting(game: &GameState, player: PlayerId) -> Vec<StaticAbility> {
     let all_effects = game.all_continuous_effects_arc();
     let mut out = Vec::new();
     for &object_id in &game.battlefield {
+        if game.limited_range_of_influence().is_some()
+            && !game.object(object_id).is_some_and(|object|
+                game.player_is_within_source_range(game.controller_of(object), player, Some(object_id))) {
+            continue;
+        }
         out.extend(static_abilities_for_object(game, object_id, &all_effects));
     }
     out
@@ -526,14 +531,14 @@ fn static_abilities_for_object(
 }
 
 pub(crate) fn max_creatures_can_attack_each_combat(game: &GameState) -> Option<usize> {
-    battlefield_static_abilities(game)
+    battlefield_static_abilities_affecting(game, game.turn.active_player)
         .iter()
         .filter_map(|ability| ability.max_creatures_can_attack_each_combat())
         .min()
 }
 
-pub(crate) fn max_creatures_can_block_each_combat(game: &GameState) -> Option<usize> {
-    battlefield_static_abilities(game)
+pub(crate) fn max_creatures_can_block_each_combat(game: &GameState, player: PlayerId) -> Option<usize> {
+    battlefield_static_abilities_affecting(game, player)
         .iter()
         .filter_map(|ability| ability.max_creatures_can_block_each_combat())
         .min()
@@ -833,12 +838,6 @@ pub fn declare_blockers(
     combat: &mut CombatState,
     declarations: Vec<(ObjectId, ObjectId)>,
 ) -> Result<(), CombatError> {
-    if !game.continuous_state_is_clean() {
-        let mut refreshed = game.clone();
-        refreshed.refresh_continuous_state().map_err(|error| CombatError::InvalidDeclaration(format!("continuous effects could not be refreshed: {error:?}")))?;
-        return declare_blockers(&refreshed, combat, declarations);
-    }
-
     declare_blockers_internal(game, combat, declarations, true, None)?;
     combat.block_declaration_complete = true;
     // Blocking changes continuous conditions even when no object is tapped.
@@ -858,6 +857,25 @@ pub(crate) fn declare_blockers_for_defending_player(
     declare_blockers_internal(game, combat, declarations, true, Some(defending_player))
 }
 
+/// Standalone declaration callers can supply their combat separately from the
+/// game. Conditional abilities and landwalk must see those same attack targets.
+pub(crate) fn blocking_query_state<'a>(
+    game: &'a GameState,
+    combat: &CombatState,
+) -> Result<std::borrow::Cow<'a, GameState>, crate::static_ability_processor::StaticEffectDiscoveryError> {
+    let same_attackers = game.combat.as_ref().is_some_and(|live| live.attackers == combat.attackers);
+    if same_attackers && game.continuous_state_is_clean() {
+        return Ok(std::borrow::Cow::Borrowed(game));
+    }
+    let mut query = game.clone();
+    if !same_attackers {
+        query.combat = Some(combat.clone());
+        query.mark_continuous_state_dirty();
+    }
+    query.refresh_continuous_state()?;
+    Ok(std::borrow::Cow::Owned(query))
+}
+
 fn declare_blockers_internal(
     game: &GameState,
     combat: &mut CombatState,
@@ -865,6 +883,9 @@ fn declare_blockers_internal(
     enforce_requirements: bool,
     requirement_player: Option<PlayerId>,
 ) -> Result<(), CombatError> {
+    let query = blocking_query_state(game, combat).map_err(|error|
+        CombatError::InvalidDeclaration(format!("continuous effects could not be refreshed: {error:?}")))?;
+    let game = query.as_ref();
     // Blocks forced by a random pile division (Camouflage) replace the
     // declaration; blocking requirements don't choose them (CR 509.1c).
     let enforce_requirements =
@@ -1038,14 +1059,17 @@ fn declare_blockers_internal(
     // With no declared blockers, every global "at most N creatures can
     // block" restriction is vacuously satisfied. Avoid deriving the static
     // abilities of the whole battlefield just to rediscover that fact.
-    if blocking_creature_count > 0
-        && let Some(max_blockers) = max_creatures_can_block_each_combat(game)
-        && blocking_creature_count > max_blockers
-    {
-        return Err(CombatError::TooManyBlockingCreatures {
-            maximum: max_blockers,
-            provided: blocking_creature_count,
-        });
+    let mut blocking_counts = std::collections::HashMap::new();
+    for &blocker in &own_blockers {
+        if let Some(object) = game.object(blocker) {
+            *blocking_counts.entry(game.controller_of(object)).or_insert(0usize) += 1;
+        }
+    }
+    for (player, count) in blocking_counts {
+        if let Some(maximum) = max_creatures_can_block_each_combat(game, player)
+            && count > maximum {
+            return Err(CombatError::TooManyBlockingCreatures { maximum, provided: count });
+        }
     }
     // "[player] can't block with more than N creatures" (Mirri, Weatherlight
     // Duelist) caps that player's own blocking creatures (CR 509.1c).
@@ -1649,9 +1673,11 @@ fn block_declaration_obeying_more_requirements_exists(
         let (blocker, attacker) = candidates[index];
         let blocker_count = attackers_by_blocker.get(&blocker).map_or(0, Vec::len);
         let attacker_count = blockers_by_attacker.get(&attacker).map_or(0, Vec::len);
-        let distinct_blockers = attackers_by_blocker.len();
+        let controller = game.object(blocker).map(|object| game.controller_of(object));
+        let distinct_blockers = attackers_by_blocker.keys().filter(|id|
+            game.object(**id).is_some_and(|o| Some(game.controller_of(o)) == controller)).count();
         let introduces_blocker = !attackers_by_blocker.contains_key(&blocker);
-        let within_global_cap = max_creatures_can_block_each_combat(game)
+        let within_global_cap = controller.and_then(|player| max_creatures_can_block_each_combat(game, player))
             .is_none_or(|maximum| distinct_blockers + usize::from(introduces_blocker) <= maximum)
             && (!introduces_blocker
                 || game.object(blocker).is_none_or(|object| {

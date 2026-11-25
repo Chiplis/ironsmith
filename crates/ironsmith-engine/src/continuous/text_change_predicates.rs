@@ -9,7 +9,7 @@ use super::text_changes::TextChangeDomainError;
 use ironsmith_core::{
     AnthemCountExpression, AttachmentConditionHost, ChoiceAggregateConstraint, ChooseSpec,
     CastEventQuantity, Condition, EventValueSpec, FilterComparison, ObjectFilter,
-    PlayerFilter, PriorEffectMetricQuery, TextChange, TextWord, TurnHistoryCondition, TurnHistoryCount, Value,
+    PlayerFilter, PriorEffectMetricQuery, TextChange, TurnHistoryCondition, TurnHistoryCount, Value,
 };
 
 type RewriteResult<T> = Result<T, TextChangeDomainError>;
@@ -96,7 +96,9 @@ pub(crate) fn rewrite_filter_words(filter: &ObjectFilter, change: TextChange) ->
     // Opaque ability markers can encode a landwalk subtype or protection
     // color. Neither treating them as neutral nor parsing their strings is a
     // sound typed implementation. Keep the entire containing definition held.
-    if !filter.ability_markers.is_empty() || !filter.excluded_ability_markers.is_empty() {
+    if filter.ability_markers.iter().chain(&filter.excluded_ability_markers).any(|marker|
+        !matches!(marker.as_str(), "mana ability" | "disturb" | "decayed" | "freerunning" | "flying" | "flashback" | "cycling" | "changeling")
+    ) {
         return Err(TextChangeDomainError::ObjectFilter);
     }
     let mut residual = filter.clone();
@@ -107,7 +109,7 @@ pub(crate) fn rewrite_filter_words(filter: &ObjectFilter, change: TextChange) ->
     // This positive field inventory makes nondefault future fields fail closed.
     // String-valued names and surfaces are preserved verbatim, never interpreted.
     admit!(
-        zone, match_current_state, has_cumulative_upkeep, controller, cast_by, excluded_cast_origin_zone,
+        use_face_up_characteristics, ability_markers, excluded_ability_markers, zone, match_current_state, has_cumulative_upkeep, controller, cast_by, excluded_cast_origin_zone,
         cast_this_turn, first_spell_cast_each_turn, spell_cast_ordinal_each_turn,
         spell_cast_minimum_each_turn, mana_from_source_spent_to_cast, owner,
         single_graveyard, targets_player, targets_object, targets_any_of, stack_kind,
@@ -170,7 +172,9 @@ pub(crate) fn rewrite_filter_words(filter: &ObjectFilter, change: TextChange) ->
         shares_color, last_drawn_this_turn, mana_symbol_count, colored_mana_symbol_count, physical_card, not_cast,
         match_captured_public_destination, castable_face_match,
     );
-    if residual != empty { return Err(TextChangeDomainError::ObjectFilter); }
+    if residual != empty {
+        return Err(TextChangeDomainError::ObjectFilter);
+    }
     let mut rewritten_filter = filter.clone();
     // One exclusive view of the fields: several are edited together below.
     let rewritten = &mut *rewritten_filter;
@@ -387,13 +391,8 @@ pub(crate) fn rewrite_value_words(value: &Value, change: TextChange) -> RewriteR
                 | EventValueSpec::ExcessDamage => {}
             }
         }
-        Value::ManaSpentOnX(color) => {
-            // Its grammar accepts either a color name or a mana code, but
-            // this model retains no distinction between those word roles.
-            if change.from() == TextWord::Color(*color) {
-                return Err(TextChangeDomainError::Value);
-            }
-        }
+        // This quantity counts printed mana symbols (for example Soul Burn's {B}).
+        Value::ManaSpentOnX(_) => {}
         Value::Devotion { player, color } => {
             *player = rewrite_player_filter_words(player, change)?;
             change.replace_color_word(color);
@@ -582,6 +581,15 @@ fn rewrite_turn_history_condition_words(condition: &TurnHistoryCondition, change
 pub(crate) fn rewrite_condition_words(condition: &Condition, change: TextChange) -> RewriteResult<Condition> {
     let mut rewritten = condition.clone();
     match &mut rewritten {
+        Condition::SourceChosenOption(option) => {
+            // A characteristic description used as a branch key must follow its menu.
+            // Bare names such as the Phyrexian faction remain selected identities.
+            if option.starts_with("a ") && option.contains(" creature with base power and toughness ") {
+                let mut options = vec![option.clone()];
+                super::text_change_statics::rewrite_named_options(&mut options, change);
+                *option = options.pop().unwrap();
+            }
+        }
         Condition::Not(inner) | Condition::TriggerEventOnly(inner) => {
             **inner = rewrite_condition_words(inner, change)?
         }
@@ -732,7 +740,7 @@ pub(crate) fn rewrite_condition_words(condition: &Condition, change: TextChange)
         | Condition::SourceIsEquipped | Condition::SourceIsEnchanted | Condition::EnchantedPermanentIsCreature
         | Condition::EnchantedPermanentIsLand | Condition::EnchantedPermanentIsEquipment | Condition::EnchantedPermanentIsVehicle
         | Condition::EquippedCreatureTapped | Condition::EquippedCreatureUntapped | Condition::EquippedCreatureAttacking
-        | Condition::SourceChosenOption(_) | Condition::SecretChoicesMatch | Condition::VoteOptionGetsMoreVotes(_)
+        | Condition::SecretChoicesMatch | Condition::VoteOptionGetsMoreVotes(_)
         | Condition::VoteOptionGetsMoreVotesOrTied(_) | Condition::OwnsCardExiledWithCounter(_)
         | Condition::SourceAttackedThisTurn | Condition::SourceAttackedBattleThisTurn | Condition::SourceSuspected
         | Condition::SourceCameUnderYourControlThisTurn | Condition::SourceCameUnderYourControlSinceYourLastUpkeep
@@ -958,7 +966,7 @@ mod tests {
         let original = condition.clone();
         assert_eq!(rewrite_condition_words(&condition, black_to_blue()), Err(TextChangeDomainError::Condition));
         assert_eq!(condition, original);
-        assert_eq!(rewrite_value_words(&Value::ManaSpentOnX(Color::Black), black_to_blue()), Err(TextChangeDomainError::Value));
+        assert_eq!(rewrite_value_words(&Value::ManaSpentOnX(Color::Black), black_to_blue()).unwrap(), Value::ManaSpentOnX(Color::Black));
         assert_eq!(rewrite_value_words(&Value::ManaSpentOnX(Color::Red), black_to_blue()).unwrap(), Value::ManaSpentOnX(Color::Red));
     }
 }

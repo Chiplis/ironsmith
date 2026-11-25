@@ -3496,7 +3496,9 @@ impl GameState {
                         "land" => Some(crate::types::CardType::Land),
                         _ => None,
                     };
-                    if let Some((color, subtype)) = named_color_creature_type_option(self, &option) {
+                    if let Some(color) = crate::color::Color::from_name(&option.to_ascii_lowercase()) {
+                        choices.chosen_color = Some(color);
+                    } else if let Some((color, subtype)) = named_color_creature_type_option(self, &option) {
                         choices.chosen_color = Some(color);
                         choices.chosen_creature_type = Some(subtype);
                     } else if let Some(subtype) = named_subtype_option(self, &option) {
@@ -8591,6 +8593,7 @@ retain_original_types: false, retain_original_name: false,
             | Modification::ModifyToughness(_)
             | Modification::ModifyPowerToughness { .. }
             | Modification::ModifyPowerToughnessValue { .. }
+            | Modification::ModifyPowerToughnessByCreatureTypes { .. }
             | Modification::ModifyPowerToughnessByColorCount { .. }
             | Modification::SwitchPowerToughness => false,
         }

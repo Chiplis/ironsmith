@@ -2900,6 +2900,7 @@ pub enum StaticAbilityPayload<T, E, C, Cond, ICond = Condition> {
     /// Nerys, Firebrand); the entry only marks them, and the controller
     /// chooses what each attacks once it has entered (CR 508.4).
     EntersTappedAndAttackingForFilter(ObjectFilter),
+    OpponentsMustTargetSubtype(Subtype),
 }
 
 /// The printed ticket cost of a sticker-sheet row: one {TK} per ticket
@@ -3894,6 +3895,7 @@ where
                 source_filter,
                 display,
             },
+            StaticAbilityPayload::OpponentsMustTargetSubtype(kind) => StaticAbilityPayload::OpponentsMustTargetSubtype(kind),
             StaticAbilityPayload::OpponentsMustTargetFlagbearers => {
                 StaticAbilityPayload::OpponentsMustTargetFlagbearers
             }

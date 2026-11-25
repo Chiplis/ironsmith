@@ -16,7 +16,23 @@ use ironsmith_core::{ObjectFilter, PlayerFilter, TextChange, trigger_model as mo
 
 /// The caller memoizes changed immutable definitions. No-op rewrites preserve
 /// the original matcher allocation, including any earlier captured clone.
-pub(crate) fn rewrite_trigger_words(trigger: &Trigger, change: TextChange) -> Result<Trigger, Error> {
+pub(crate) fn rewrite_trigger_words(
+    trigger: &Trigger,
+    change: TextChange,
+) -> Result<Trigger, Error> {
+    if let Some(matcher) = trigger.downcast_ref::<crate::triggers::DamagePreventedThisWayTrigger>()
+    {
+        let mut revised = matcher.clone();
+        rewrite_optional_filter(&mut revised.source_filter, change)?;
+        if &revised == matcher {
+            return Ok(trigger.clone());
+        }
+        let mut updated = Trigger::new(revised);
+        if let Some(surface) = trigger.intro_surface() {
+            updated = updated.with_intro_surface(surface);
+        }
+        return Ok(updated);
+    }
     let original = complete_model(trigger)?;
     let rewritten = rewrite_trigger_model_words(&original, change)?;
     if rewritten == original { return Ok(trigger.clone()); }
@@ -498,6 +514,21 @@ fn native_kind(trigger: &Trigger) -> Result<model::TriggerKind, Error> {
             trigger: Box::new(complete_model(trigger)?), condition: condition.clone(),
             surface: surface.clone(), stun_counter_reminder_surface: *stun_counter_reminder_surface,
         });
+    }
+    if let Some(native) = trigger.downcast_ref::<native::TapForManaTrigger>() {
+        return exact_native_kind(
+            native,
+            K::PlayerTapsForMana {
+                player: native.player.clone(),
+                filter: native.filter.clone(),
+            },
+        );
+    }
+    if trigger
+        .downcast_ref::<native::EndOfCombatTrigger>()
+        .is_some()
+    {
+        return Ok(K::EndOfCombat);
     }
     if let Some(native) = trigger.downcast_ref::<native::ZoneChangeTrigger>() {
         let (from, from_zones, from_excluded) = match &native.from {

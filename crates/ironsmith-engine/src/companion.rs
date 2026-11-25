@@ -61,53 +61,101 @@ fn companion_object_condition(object: &Object) -> Option<&CompanionDeckCondition
     })
 }
 
-pub fn companion_deck_facts_from_definition(definition: &CardDefinition) -> CompanionDeckCardFacts {
-    CompanionDeckCardFacts {
-        name: definition.card.name.clone(),
-        mana_cost: definition.card.mana_cost.clone(),
-        card_types: definition.card.card_types.clone(),
-        subtypes: definition.card.subtypes.clone(),
-        has_all_creature_types: definition.abilities.iter().any(|ability| {
-            matches!(
-                &ability.kind,
-                AbilityKind::Static(ability) if ability.id() == StaticAbilityId::Changeling
-            )
-        }),
-        // CR 305.6: a basic land type grants its intrinsic mana ability,
-        // which the card's printed ability list does not carry.
-        has_activated_ability: definition
-            .abilities
-            .iter()
-            .any(|ability| matches!(ability.kind, AbilityKind::Activated(_)))
-            || definition
-                .card
-                .subtypes
-                .iter()
-                .any(|subtype| subtype.is_basic_land_type()),
-    }
+/// Whether a supplied static ability can define this card before the game.
+/// Earlier compiled definitions omit OutsideGame from an explicit zone
+/// exclusion. CR 113.6c also applies that exclusion before the game begins.
+fn pregame_static(ability: &crate::Ability) -> bool {
+    let AbilityKind::Static(rule) = &ability.kind else {
+        return false;
+    };
+    rule.may_generate_continuous_effects() && (ability.functions_in(&Zone::OutsideGame)
+        || rule.compiled_model().is_some_and(|model| matches!(&model.payload,
+            ironsmith_core::StaticAbilityPayload::Conditional { condition: crate::ConditionExpr::Not(inner), .. }
+                if matches!(inner.as_ref(), crate::ConditionExpr::SourceIsInZone(zone) if *zone != Zone::OutsideGame))))
 }
 
 pub fn companion_deck_facts_from_object(object: &Object) -> CompanionDeckCardFacts {
-    CompanionDeckCardFacts {
+    let mut facts = CompanionDeckCardFacts {
         name: object.name.to_owned_string(),
-        mana_cost: object.mana_cost.as_ref().map(|cost| cost.to_owned_value()),
-        card_types: object.card_types.to_vec(),
-        subtypes: object.subtypes.to_vec(),
-        has_all_creature_types: object.abilities.iter().any(|ability| {
-            matches!(
-                &ability.kind,
-                AbilityKind::Static(ability) if ability.id() == StaticAbilityId::Changeling
-            )
-        }),
-        has_activated_ability: object
-            .abilities
-            .iter()
-            .any(|ability| matches!(ability.kind, AbilityKind::Activated(_)))
-            || object
-                .subtypes
-                .iter()
-                .any(|subtype| subtype.is_basic_land_type()),
+        mana_cost: object
+            .split_combined_mana_cost()
+            .or_else(|| object.mana_cost.as_ref().map(|cost| cost.to_owned_value())),
+        card_types: object.zone_card_types().to_vec(),
+        subtypes: object.zone_subtypes().to_vec(),
+        has_all_creature_types: false,
+        has_activated_ability: false,
+    };
+    let abilities = object.abilities.iter().chain(
+        object
+            .split_combined_active()
+            .into_iter()
+            .flat_map(|c| c.other_half_abilities.iter()),
+    );
+    for ability in abilities {
+        match &ability.kind {
+            AbilityKind::Activated(_) => facts.has_activated_ability = true,
+            AbilityKind::Static(rule) if rule.id() == StaticAbilityId::Changeling => {
+                facts.has_all_creature_types = true
+            }
+            _ => {}
+        }
     }
+    // No battlefield effects apply during deck construction. Evaluate only
+    // the card's own pregame abilities, in a world isolated from the match.
+    if object.abilities.iter().any(pregame_static) {
+        let mut card = object.clone();
+        let owner = PlayerId(0);
+        card.owner = owner;
+        card.initial_controller = owner;
+        card.zone = Zone::OutsideGame;
+        for ability in card
+            .abilities_mut()
+            .iter_mut()
+            .filter(|a| pregame_static(a))
+        {
+            if !ability.functions_in(&Zone::OutsideGame) {
+                ability.functional_zones.push(Zone::OutsideGame);
+            }
+        }
+        let mut pregame = GameState::new(vec![String::from("Owner")], 20);
+        pregame.add_object(card);
+        if let Some(chars) = pregame.current_characteristics(object.id) {
+            facts.card_types = chars.card_types.to_vec();
+            facts.subtypes = chars.subtypes.to_vec();
+        }
+    }
+    facts.has_activated_ability |= facts.subtypes.iter().any(|s| s.is_basic_land_type());
+    facts
+}
+
+fn definition_facts(
+    definition: &CardDefinition,
+    other: Option<&CardDefinition>,
+) -> CompanionDeckCardFacts {
+    let make_object = |def: &CardDefinition| {
+        Object::from_card_definition(ObjectId(0), def, PlayerId(0), Zone::OutsideGame)
+    };
+    let mut object = make_object(definition);
+    if let Some(other) = other {
+        object.linked_face_mana_cost = other.card.mana_cost.clone().map(Into::into);
+        object.split_combined = Some(
+            crate::object::SplitCombinedCharacteristics::from_halves(&object, &make_object(other))
+                .into(),
+        );
+    }
+    companion_deck_facts_from_object(&object)
+}
+
+pub fn companion_deck_facts_from_definition(definition: &CardDefinition) -> CompanionDeckCardFacts {
+    let other = (definition.card.linked_face_layout == crate::card::LinkedFaceLayout::Split)
+        .then(|| {
+            crate::cards::linked_face_definition_by_name_or_id(
+                definition.card.other_face_name.as_deref(),
+                definition.card.other_face,
+            )
+        })
+        .flatten();
+    definition_facts(definition, other.as_ref())
 }
 
 pub fn validate_companion_definition(
@@ -115,19 +163,47 @@ pub fn validate_companion_definition(
     starting_deck: &[CardDefinition],
     minimum_deck_size: usize,
 ) -> Result<(), CompanionDesignationError> {
-    let condition = companion_definition_condition(companion)
-        .ok_or(CompanionDesignationError::NoCompanionAbility)?;
-    let facts = starting_deck
-        .iter()
-        .map(companion_deck_facts_from_definition)
-        .collect::<Vec<_>>();
-    condition
-        .is_fulfilled_by(&facts, minimum_deck_size)
-        .then_some(())
-        .ok_or(CompanionDesignationError::ConditionNotFulfilled)
+    GameState::new(vec![String::from("Owner")], 20).validate_companion_definition(
+        companion,
+        starting_deck,
+        minimum_deck_size,
+    )
 }
 
 impl GameState {
+    /// CR 709.4: deck construction requires the complete registered split
+    /// family, including when the supplied definitions came from a local catalog.
+    pub fn validate_companion_definition(
+        &self,
+        companion: &CardDefinition,
+        starting_deck: &[CardDefinition],
+        minimum_deck_size: usize,
+    ) -> Result<(), CompanionDesignationError> {
+        let condition = companion_definition_condition(companion)
+            .ok_or(CompanionDesignationError::NoCompanionAbility)?;
+        let facts = starting_deck
+            .iter()
+            .map(|def| {
+                let other = if def.card.linked_face_layout == crate::card::LinkedFaceLayout::Split {
+                    Some(
+                        self.linked_face_definition_by_name_or_id(
+                            def.card.other_face_name.as_deref(),
+                            def.card.other_face,
+                        )
+                        .ok_or(CompanionDesignationError::StartingDeckCardMissing)?,
+                    )
+                } else {
+                    None
+                };
+                Ok(definition_facts(def, other.as_ref()))
+            })
+            .collect::<Result<Vec<_>, CompanionDesignationError>>()?;
+        condition
+            .is_fulfilled_by(&facts, minimum_deck_size)
+            .then_some(())
+            .ok_or(CompanionDesignationError::ConditionNotFulfilled)
+    }
+
     /// Reveal and record one owned outside-game companion after validating the
     /// complete CR 103.2 starting deck. This operation mutates only on success.
     pub fn designate_companion(

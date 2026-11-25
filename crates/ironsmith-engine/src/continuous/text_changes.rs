@@ -1,5 +1,5 @@
 //! Authored-word transformation in layer 3. This is deliberately independent
-//! of Oracle strings and rendered labels. Unimplemented model domains return
+//! of rendered labels for replacements. Unimplemented model domains return
 //! an error through checked characteristic calculation, never a partial edit.
 
 use super::CalculatedCharacteristics;
@@ -232,8 +232,12 @@ pub(crate) fn rewrite_static_model(
     Ok(Some(StaticAbility::from_model(rewritten)))
 }
 
-fn rewrite_ability(ability: &Ability, change: TextChange) -> Result<Ability, TextChangeDomainError> {
+fn rewrite_ability(
+    ability: &Ability,
+    change: TextChange,
+) -> Result<Ability, TextChangeDomainError> {
     let result = if let AbilityKind::Triggered(triggered) = &ability.kind
+        && triggered.effects.retained_trigger_definition().is_some()
         && triggered.trigger.acquired_identity(triggered.effects.retained_trigger_definition()).is_none()
     {
         Err(TextChangeDomainError::TriggeredAbility)
@@ -243,6 +247,32 @@ fn rewrite_ability(ability: &Ability, change: TextChange) -> Result<Ability, Tex
     // A held ability whose complete image has no source word is unaffected;
     // its identity and acquisition stay exactly those of the original.
     unchanged_unless_word_present(ability, || ability_structural_image(ability), change, result)
+}
+
+/// A retained printed line can establish that a selected word is absent.
+/// It cannot establish an executable replacement. Earlier changes may have
+/// introduced the word, in which case the native typed traversal decides.
+fn printed_line_excludes_word(line: &str, changes: &[TextChange], change: TextChange) -> bool {
+    if line.is_empty() || changes.iter().any(|prior| prior.to() == change.from()) {
+        return false;
+    }
+    let word = match change.from() {
+        ironsmith_core::TextWord::Color(color) => color.name().to_owned(),
+        ironsmith_core::TextWord::BasicLandType(subtype) => {
+            subtype.display_name().to_ascii_lowercase()
+        }
+        ironsmith_core::TextWord::CreatureType(ironsmith_core::Subtype::Custom(_)) => return false,
+        ironsmith_core::TextWord::CreatureType(subtype) => {
+            let name = subtype.display_name().to_ascii_lowercase();
+            // Use a conservative stem so plurals, cycling and landwalk
+            // compounds cannot be mistaken for an absent authored word.
+            if matches!(name.as_str(), "mouse" | "goose" | "ox" | "elf") {
+                return false;
+            }
+            name.chars().take(3).collect()
+        }
+    };
+    !line.to_ascii_lowercase().contains(&word)
 }
 
 pub(crate) fn apply_text_change(
@@ -259,13 +289,26 @@ pub(crate) fn apply_text_change(
         let program = match chars.spell_effect.as_ref() {
             crate::snapshot::SpellProgramState::Unavailable if object.zone == crate::zone::Zone::Stack =>
                 return Err(TextChangeDomainError::SpellProgram),
-            crate::snapshot::SpellProgramState::Present(program) => crate::snapshot::SpellProgramState::Present(
-                unchanged_unless_word_present(program, || format!("{program:?}"), change,
-                    super::text_change_programs::rewrite_program_words(program, change))?),
+            crate::snapshot::SpellProgramState::Present(program) => {
+                let result = super::text_change_programs::rewrite_program_words(program, change);
+                let rewritten = match result {
+                    Err(_) if printed_line_excludes_word(&chars.compiled_card_text, &chars.text_changes, change) =>
+                        program.clone(),
+                    result => unchanged_unless_word_present(program, || format!("{program:?}"), change, result)?,
+                };
+                crate::snapshot::SpellProgramState::Present(rewritten)
+            }
             other => other.clone(),
         };
         let mut abilities = chars.abilities.clone();
-        abilities.try_map_rules_text(|ability| rewrite_ability(ability, change))?;
+        abilities.try_map_rules_text(|origin, ability| {
+            match (rewrite_ability(ability, change), origin) {
+                (Err(_), super::AbilityOrigin::Printed(slot)) if chars.ability_labels.get(*slot).is_some_and(|label|
+                    chars.compiled_card_text.lines().any(|line| line == label)
+                        && printed_line_excludes_word(label, &chars.text_changes, change)) => Ok(ability.clone()),
+                (result, _) => result,
+            }
+        })?;
         let mut subtypes = chars.subtypes.to_vec();
         change.replace_subtype_words(&mut subtypes);
         chars.abilities = abilities;

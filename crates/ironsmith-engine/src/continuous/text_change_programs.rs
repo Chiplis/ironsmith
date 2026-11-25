@@ -48,8 +48,8 @@ pub fn rewrite_ability_words(ability: &Ability, change: TextChange) -> Result<Ab
         AbilityKind::Activated(ability) => {
             // Legacy executable restrictions have no typed word provenance.
             // A restriction without the source word is left as authored.
-            if ability.additional_restrictions.iter().any(|restriction|
-                super::text_changes::structural_image_may_hold_source_word(restriction, change))
+            if ability.activation_condition.is_none() && ability.additional_restrictions.iter().any(|restriction|
+                !restriction.starts_with("__ironsmith_activation_label:") && super::text_changes::structural_image_may_hold_source_word(restriction, change))
             { return Err(Error::ActivatedAbility); }
             ability.mana_cost = rewrite_total_cost_words(&ability.mana_cost, change)?;
             ability.effects = rewrite_program_words(&ability.effects, change)?;
@@ -67,17 +67,27 @@ pub fn rewrite_ability_words(ability: &Ability, change: TextChange) -> Result<Ab
     Ok(rewritten)
 }
 
-pub(crate) fn rewrite_triggered_ability_words(ability: &crate::ability::TriggeredAbility, change: TextChange)
-    -> Result<crate::ability::TriggeredAbility, Error>
-{
+pub(crate) fn rewrite_triggered_ability_words(
+    ability: &crate::ability::TriggeredAbility,
+    change: TextChange,
+) -> Result<crate::ability::TriggeredAbility, Error> {
     // This helper also visits quoted future grants, which have an authored
     // occurrence but no acquisition yet. Active rules text proves acquisition
     // separately at the Layer-3 entry point.
-    if ability.effects.retained_trigger_definition().is_none() {
-        return Err(Error::TriggeredAbility);
-    }
     let mut rewritten = ability.clone();
-    rewritten.trigger = ability.trigger.with_text_change(change)?;
+    // State-trigger descriptions identify a presentation surface. Its
+    // executable condition lives on the ability and is visited below.
+    if !(ability.intervening_if.is_some()
+        && ability
+            .trigger
+            .downcast_ref::<crate::triggers::StateTrigger>()
+            .is_some_and(|trigger| trigger.objects.is_none()))
+    {
+        rewritten.trigger = ability.trigger.with_text_change(change)?;
+    }
+    if ability.effects.retained_trigger_definition().is_none() {
+        rewritten.trigger.legacy_text_identity = Some(crate::triggers::compute_trigger_identity(ability));
+    }
     rewritten.effects = rewrite_program_words(&ability.effects, change)?;
     rewritten.choices = rewrite_choices(&ability.choices, change)?;
     rewritten.intervening_if = ability.intervening_if.as_ref()
@@ -263,7 +273,10 @@ fn rewrite_result_predicate(predicate: &EffectPredicate, change: TextChange) -> 
 /// `None` proves the complete admitted model is unchanged. A changed result
 /// intentionally drops the old retained transport model; its native encoder
 /// must encode the rewritten typed payload, never reuse stale serialized data.
-pub(crate) fn rewrite_effect_words(effect: &Effect, change: TextChange) -> Result<Option<Effect>, Error> {
+pub(crate) fn rewrite_effect_words(
+    effect: &Effect,
+    change: TextChange,
+) -> Result<Option<Effect>, Error> {
     if let Some(model)=effect.downcast_ref::<LinkExiledCardsEffect>() {
         let mut changed=model.clone();changed.cards=rewrite_choose_spec_words(&model.cards,change)?;
         changed.host=rewrite_choose_spec_words(&model.host,change)?;
@@ -275,11 +288,22 @@ pub(crate) fn rewrite_effect_words(effect: &Effect, change: TextChange) -> Resul
             || roles.colors == ironsmith_core::TokenWordRole::Unrecorded
             || roles.subtypes == ironsmith_core::TokenWordRole::Unrecorded
             || roles.abilities.contains(&ironsmith_core::TokenWordRole::Unrecorded)
-            || model.token.spell_effect.is_some() || model.token.aura_attach_filter.is_some()
+
             || !model.token.alternative_casts.is_empty() || !model.token.optional_costs.is_empty()
             || !model.token.additional_cost.as_all().is_some_and(|costs| costs.is_empty())
         { return Err(Error::TokenDefinition); }
         let mut changed = model.clone();
+        // Predefined Role tokens carry their enchant ability and spell program by rule.
+        if roles.subtypes == ironsmith_core::TokenWordRole::Authored {
+            if let Some(attachment) = &mut changed.token.aura_attach_filter {
+                *attachment = super::text_changes::rewrite_attachment_words(attachment, change)?;
+            }
+            if let Some(program) = &mut changed.token.spell_effect { *program = rewrite_program_words(program, change)?; }
+        }
+        if let Some((power, toughness)) = &mut changed.dynamic_power_toughness {
+            *power = rewrite_value_words(power, change)?;
+            *toughness = rewrite_value_words(toughness, change)?;
+        }
         changed.count = rewrite_value_words(&model.count, change)?;
         changed.controller = rewrite_player_filter_words(&model.controller, change)?;
         changed.controller_target = model.controller_target.as_ref()
@@ -654,6 +678,131 @@ pub(crate) fn rewrite_effect_words(effect: &Effect, change: TextChange) -> Resul
         model.choices = rewrite_choices(&model.choices, change)?;
         model.intervening_if = model.intervening_if.as_ref().map(|condition| rewrite_condition_words(condition, change)).transpose()?;
     });
+
+    visit!(ChooseNamedOptionEffect, model, {
+        model.chooser = rewrite_player_filter_words(&model.chooser, change)?;
+        super::text_change_statics::rewrite_named_options(&mut model.options, change);
+    });
+    visit!(RegisterManaSpendPermissionEffect, model, {
+        super::text_change_statics::rewrite_mana_spending_permission(
+            &mut model.permission,
+            change,
+        )?;
+    });
+    visit!(RegisterManaRewriteEffect, model, {
+        super::text_change_statics::rewrite_mana_production_words(&mut model.rule, change)?;
+        if let Some(target) = &mut model.target {
+            *target = rewrite_choose_spec_words(target, change)?;
+        }
+    });
+    if let Some(original) = effect.downcast_ref::<GrantBySpecEffect>() {
+        let mut model = original.clone();
+        model.player = rewrite_player_filter_words(&model.player, change)?;
+        super::text_change_statics::rewrite_grant_spec(
+            &mut model.spec,
+            change,
+            |ability, change| ability.with_text_change(change),
+        )?;
+        return Ok(Some(Effect::new(model)));
+    }
+    visit!(VillainousChoiceEffect, model, {
+        model.player = rewrite_player_filter_words(&model.player, change)?;
+        for mode in &mut model.modes {
+            mode.effects = rewrite_effects(&mode.effects, change)?;
+        }
+    });
+    visit!(VoteEffect, model, {
+        match &mut model.choice {
+            ironsmith_core::VoteChoice::NamedOptions(options) => {
+                for option in options {
+                    option.effects_per_vote = rewrite_effects(&option.effects_per_vote, change)?;
+                }
+            }
+            ironsmith_core::VoteChoice::Objects { filter, .. } => {
+                *filter = rewrite_filter_words(filter, change)?
+            }
+            ironsmith_core::VoteChoice::Players { filter, .. } => {
+                *filter = rewrite_player_filter_words(filter, change)?
+            }
+        }
+        for payload in &mut model.payloads {
+            let (ironsmith_core::VotePayload::Effects(effects)
+            | ironsmith_core::VotePayload::ForEachVote { effects, .. }) = payload;
+            *effects = rewrite_effects(effects, change)?;
+        }
+    });
+    visit!(RedirectNextDamageToTargetEffect, model, {
+        model.amount = rewrite_value_words(&model.amount, change)?;
+        for target in [&mut model.protected_target, &mut model.destination_target]
+            .into_iter()
+            .flatten()
+        {
+            *target = rewrite_choose_spec_words(target, change)?;
+        }
+        if let Some(filter) = &mut model.protect_you_and_permanents {
+            *filter = rewrite_filter_words(filter, change)?;
+        }
+    });
+    child_list!(CollectManaPaymentsEffect);
+    visit!(RegisterNextBatchEnterWithCountersEffect, model, {
+        model.filter = rewrite_filter_words(&model.filter, change)?;
+        model.count = rewrite_value_words(&model.count, change)?;
+    });
+    visit!(ConniveEffect, model, {
+        model.target = rewrite_choose_spec_words(&model.target, change)?;
+        model.count = rewrite_value_words(&model.count, change)?;
+    });
+    visit!(TagLastDamageSourceEffect, model, {
+        for spec in model.query.reference_specs_mut() {
+            *spec = rewrite_choose_spec_words(spec, change)?;
+        }
+        for filter in model.query.object_filters_mut() {
+            *filter = rewrite_filter_words(filter, change)?;
+        }
+        if let Some(player) = model.query.player_filter_mut() {
+            *player = rewrite_player_filter_words(player, change)?;
+        }
+    });
+    visit!(CastTaggedEffect, model, {
+        model.player = rewrite_player_filter_words(&model.player, change)?;
+        if let Some(filter) = &mut model.required_spell {
+            *filter = rewrite_filter_words(filter, change)?;
+        }
+        if let Some(cost) = &mut model.alternative_cost {
+            *cost = rewrite_total_cost_words(cost, change)?;
+        }
+    });
+    if let Some(original) = effect.downcast_ref::<GrantPlayTaggedEffect>() {
+        let mut model = original.clone();
+        model.player = rewrite_player_filter_words(&model.player, change)?;
+        for filter in [
+            &mut model.filter,
+            &mut model.spell_filter,
+            &mut model.spell_cost_increase_unless_targets,
+            &mut model.while_player_controls,
+            &mut model.control_duration,
+        ]
+        .into_iter()
+        .flatten()
+        {
+            *filter = rewrite_filter_words(filter, change)?;
+        }
+        if let Some(condition) = &mut model.during_turns_attacked_with {
+            condition.filter = rewrite_filter_words(&condition.filter, change)?;
+        }
+        if let Some(cost) = &mut model.alternative_cost {
+            *cost = rewrite_total_cost_words(cost, change)?;
+        }
+        model.cast_this_way_statics = rewrite_static_list(&model.cast_this_way_statics, change)?;
+        return Ok(Some(Effect::new(model)));
+    }
+    if let Some(original) = effect.downcast_ref::<CreateEmblemEffect>() {
+        let mut model = original.clone();
+        for ability in &mut model.emblem.abilities {
+            *ability = rewrite_ability_words(ability, change)?;
+        }
+        return Ok(Some(Effect::new(model)));
+    }
     visit!(ChooseModeEffect, model, {
         for mode in &mut model.modes { mode.effects = rewrite_effects(&mode.effects, change)?; }
         model.common_prefix_effects = rewrite_effects(&model.common_prefix_effects, change)?;
@@ -848,6 +997,343 @@ pub(crate) fn rewrite_effect_words(effect: &Effect, change: TextChange) -> Resul
         model.follow_up_effects = rewrite_effects(&model.follow_up_effects, change)?;
     });
 
+    visit!(AddManaOfLandProducedTypesEffect, model, {
+        model.amount = rewrite_value_words(&model.amount, change)?;
+        model.player = rewrite_player_filter_words(&model.player, change)?;
+        model.land_filter = rewrite_filter_words(&model.land_filter, change)?;
+    });
+    visit!(BindXValueEffect, model, {
+        model.value = rewrite_value_words(&model.value, change)?;
+        model.effects = rewrite_effects(&model.effects, change)?;
+    });
+    visit!(ChooseCardNameEffect, model, {
+        model.chooser = rewrite_player_filter_words(&model.chooser, change)?;
+        model.filter = model
+            .filter
+            .as_ref()
+            .map(|field| rewrite_filter_words(field, change))
+            .transpose()?;
+    });
+    visit!(ConsultTopOfLibraryEffect, model, {
+        model.player = rewrite_player_filter_words(&model.player, change)?;
+        model.filter = rewrite_filter_words(&model.filter, change)?;
+        model.max_exposed = model
+            .max_exposed
+            .as_ref()
+            .map(|field| rewrite_value_words(field, change))
+            .transpose()?;
+    });
+    visit!(CopySpellForEachTargetEffect, model, {
+        model.target = rewrite_choose_spec_words(&model.target, change)?;
+        model.object_filter = model
+            .object_filter
+            .as_ref()
+            .map(|field| rewrite_filter_words(field, change))
+            .transpose()?;
+        model.player_filter = model
+            .player_filter
+            .as_ref()
+            .map(|field| rewrite_player_filter_words(field, change))
+            .transpose()?;
+        model.copier = rewrite_player_filter_words(&model.copier, change)?;
+    });
+    visit!(DealDamageToRecipientsEffect, model, {
+        model.amount = rewrite_value_words(&model.amount, change)?;
+        model.recipients = model
+            .recipients
+            .iter()
+            .map(|field| rewrite_choose_spec_words(field, change))
+            .collect::<Result<_, _>>()?;
+    });
+    visit!(DealDistributedDamageEffect, model, {
+        model.amount = rewrite_value_words(&model.amount, change)?;
+        model.target = rewrite_choose_spec_words(&model.target, change)?;
+        model.source = rewrite_choose_spec_words(&model.source, change)?;
+        model.chooser = rewrite_player_filter_words(&model.chooser, change)?;
+    });
+    visit!(ExileUntilEffect, model, {
+        model.spec = rewrite_choose_spec_words(&model.spec, change)?;
+        model.leave_watcher = model
+            .leave_watcher
+            .as_ref()
+            .map(|field| rewrite_choose_spec_words(field, change))
+            .transpose()?;
+    });
+    visit!(ExploreEffect, model, {
+        model.target = rewrite_choose_spec_words(&model.target, change)?;
+    });
+    visit!(FightEffect, model, {
+        model.creature1 = rewrite_choose_spec_words(&model.creature1, change)?;
+        model.creature2 = rewrite_choose_spec_words(&model.creature2, change)?;
+    });
+    visit!(GrantEndThisEffectPaymentEffect, model, {
+        model.player = rewrite_player_filter_words(&model.player, change)?;
+    });
+    visit!(GrantNextSpellCostReductionEffect, model, {
+        model.player = rewrite_player_filter_words(&model.player, change)?;
+        model.filter = rewrite_filter_words(&model.filter, change)?;
+        model.generic_reduction = model
+            .generic_reduction
+            .as_ref()
+            .map(|field| rewrite_value_words(field, change))
+            .transpose()?;
+        model.duration = until(&model.duration, change)?;
+    });
+    visit!(HauntExileEffect, model, {
+        model.haunt_effects = rewrite_effects(&model.haunt_effects, change)?;
+        model.haunt_choices = model
+            .haunt_choices
+            .iter()
+            .map(|field| rewrite_choose_spec_words(field, change))
+            .collect::<Result<_, _>>()?;
+    });
+    visit!(IncubateEffect, model, {
+        model.amount = rewrite_value_words(&model.amount, change)?;
+        model.count = rewrite_value_words(&model.count, change)?;
+        model.controller = rewrite_player_filter_words(&model.controller, change)?;
+        model.controller_target = model
+            .controller_target
+            .as_ref()
+            .map(|field| rewrite_choose_spec_words(field, change))
+            .transpose()?;
+    });
+    visit!(LookAtObjectsEffect, model, {
+        model.filter = rewrite_filter_words(&model.filter, change)?;
+        model.viewer = rewrite_player_filter_words(&model.viewer, change)?;
+        model.subject = rewrite_player_filter_words(&model.subject, change)?;
+    });
+    visit!(LookAtTopCardsEffect, model, {
+        model.player = rewrite_player_filter_words(&model.player, change)?;
+        model.viewer = rewrite_player_filter_words(&model.viewer, change)?;
+        model.count = rewrite_value_words(&model.count, change)?;
+    });
+    visit!(MoveToLibraryNthFromTopEffect, model, {
+        model.target = rewrite_choose_spec_words(&model.target, change)?;
+        model.position = rewrite_value_words(&model.position, change)?;
+    });
+    visit!(PayAnyLifeEffect, model, {
+        model.player = rewrite_choose_spec_words(&model.player, change)?;
+        model.maximum = model
+            .maximum
+            .as_ref()
+            .map(|field| rewrite_value_words(field, change))
+            .transpose()?;
+    });
+    visit!(ReflexiveTriggerEffect, model, {
+        model.predicate = rewrite_result_predicate(&model.predicate, change)?;
+        model.effects = rewrite_effects(&model.effects, change)?;
+        model.choices = model
+            .choices
+            .iter()
+            .map(|field| rewrite_choose_spec_words(field, change))
+            .collect::<Result<_, _>>()?;
+        model.intervening_if = model
+            .intervening_if
+            .as_ref()
+            .map(|field| rewrite_condition_words(field, change))
+            .transpose()?;
+    });
+    visit!(RegisterDrawReplacementEffect, model, {
+        model.player = rewrite_player_filter_words(&model.player, change)?;
+        model.replacement_effects = rewrite_effects(&model.replacement_effects, change)?;
+        model.player_target = model
+            .player_target
+            .as_ref()
+            .map(|field| rewrite_choose_spec_words(field, change))
+            .transpose()?;
+    });
+    visit!(RemoveAnyCountersAmongEffect, model, {
+        model.filter = rewrite_filter_words(&model.filter, change)?;
+    });
+    visit!(RemoveUpToAnyCountersEffect, model, {
+        model.max_count = rewrite_value_words(&model.max_count, change)?;
+        model.target = rewrite_choose_spec_words(&model.target, change)?;
+    });
+    visit!(ScryEffect, model, {
+        model.count = rewrite_value_words(&model.count, change)?;
+        model.player = rewrite_player_filter_words(&model.player, change)?;
+    });
+    visit!(TagOtherBlockParticipantEffect, model, {
+        model.filter = model
+            .filter
+            .as_ref()
+            .map(|field| rewrite_filter_words(field, change))
+            .transpose()?;
+        model.subject_filter = model
+            .subject_filter
+            .as_ref()
+            .map(|field| rewrite_filter_words(field, change))
+            .transpose()?;
+    });
+    visit!(TagTriggeringBlockersEffect, model, {
+        model.filter = model
+            .filter
+            .as_ref()
+            .map(|field| rewrite_filter_words(field, change))
+            .transpose()?;
+    });
+    visit!(TransformEffect, model, {
+        model.target = rewrite_choose_spec_words(&model.target, change)?;
+    });
+    visit!(SearchLibrarySlotsEffect, model, {
+        model.chooser = rewrite_player_filter_words(&model.chooser, change)?;
+        model.player = rewrite_player_filter_words(&model.player, change)?;
+        for slot in &mut model.slots {
+            slot.filter = rewrite_filter_words(&slot.filter, change)?;
+        }
+    });
+    visit!(ChooseCreatureTypeEffect, model, {
+        model.chooser = rewrite_player_filter_words(&model.chooser, change)?;
+        change.replace_subtype_words(&mut model.excluded_subtypes);
+        change.replace_subtype_words(&mut model.allowed_subtypes);
+    });
+    visit!(BeholdEffect, model, {
+        model.chooser = rewrite_player_filter_words(&model.chooser, change)?;
+        change.replace_subtype_word(&mut model.subtype);
+    });
+    visit!(AmassEffect, model, {
+        model.amount = rewrite_value_words(&model.amount, change)?;
+        model.player = model
+            .player
+            .as_ref()
+            .map(|field| rewrite_player_filter_words(field, change))
+            .transpose()?;
+        if let Some(subtype) = &mut model.subtype {
+            change.replace_subtype_word(subtype);
+        }
+    });
+    visit!(BecomeBasicLandTypeChoiceEffect, model, {
+        model.target = rewrite_choose_spec_words(&model.target, change)?;
+        model.duration = until(&model.duration, change)?;
+        model.chooser = rewrite_player_filter_words(&model.chooser, change)?;
+        if let Some(subtype) = &mut model.fixed_subtype {
+            change.replace_subtype_word(subtype);
+        }
+        change.replace_subtype_words(&mut model.allowed_subtypes);
+    });
+    visit!(BecomeCreatureTypeChoiceEffect, model, {
+        model.target = rewrite_choose_spec_words(&model.target, change)?;
+        model.duration = until(&model.duration, change)?;
+        model.chooser = rewrite_player_filter_words(&model.chooser, change)?;
+        change.replace_subtype_words(&mut model.excluded_subtypes);
+    });
+    visit!(ScheduleDelayedTriggerEffect, model, {
+        model.target_filter = model
+            .target_filter
+            .as_ref()
+            .map(|field| rewrite_filter_words(field, change))
+            .transpose()?;
+        model.controller = rewrite_player_filter_words(&model.controller, change)?;
+        model.duration_player = model
+            .duration_player
+            .as_ref()
+            .map(|field| rewrite_player_filter_words(field, change))
+            .transpose()?;
+        model.intervening_if = model
+            .intervening_if
+            .as_ref()
+            .map(|field| rewrite_condition_words(field, change))
+            .transpose()?;
+        model.trigger = model.trigger.with_text_change(change)?;
+        model.effects = rewrite_program_words(&model.effects, change)?;
+        if let Some(prepayment) = &mut model.prepayment {
+            prepayment.player = rewrite_player_filter_words(&prepayment.player, change)?;
+            prepayment.cost = rewrite_total_cost_words(&prepayment.cost, change)?;
+        }
+    });
+    visit!(PreventNextTimeDamageEffect, model, {
+        model.reflect_source_filter = model
+            .reflect_source_filter
+            .as_ref()
+            .map(|field| rewrite_filter_words(field, change))
+            .transpose()?;
+        model.follow_up_effects = rewrite_effects(&model.follow_up_effects, change)?;
+        use crate::effects::{
+            PreventNextTimeDamageSource as Source, PreventNextTimeDamageTarget as Target,
+        };
+        match &mut model.source {
+            Source::ChoiceMatching(f) | Source::Filter(f) => *f = rewrite_filter_words(f, change)?,
+            Source::Target(s) => *s = rewrite_choose_spec_words(s, change)?,
+            Source::Choice => {}
+        }
+        match &mut model.target {
+            Target::YouAndPermanents(f) => *f = rewrite_filter_words(f, change)?,
+            Target::Target(s) => *s = rewrite_choose_spec_words(s, change)?,
+            _ => {}
+        }
+    });
+    visit!(PreventAllDamageToTargetEffect, model, {
+        model.target = rewrite_choose_spec_words(&model.target, change)?;
+        model.duration = until(&model.duration, change)?;
+        model.follow_up_effects = rewrite_effects(&model.follow_up_effects, change)?;
+        model.damage_filter = rewrite_damage_filter_words(&model.damage_filter, change)?;
+    });
+    visit!(RegisterFutureZoneReplacementEffect, model, {
+        model.filter = rewrite_filter_words(&model.filter, change)?;
+        if let Some(cause) = &mut model.cause_filter {
+            cause.source_filter = cause
+                .source_filter
+                .as_ref()
+                .map(|filter| rewrite_filter_words(filter, change))
+                .transpose()?;
+        }
+    });
+    visit!(RetainManaUntilEndOfTurnEffect, model, {
+        model.player = rewrite_player_filter_words(&model.player, change)?;
+        if let Some(color) = &mut model.color {
+            change.replace_color_word(color);
+        }
+    });
+    visit!(CantEffect, model, {
+        model.duration = until(&model.duration, change)?;
+        super::text_change_statics::restriction_words(&mut model.restriction, change)?;
+    });
+    visit!(CreateTokenCopyEffect, model, {
+        model.target = rewrite_choose_spec_words(&model.target, change)?;
+        model.count = rewrite_value_words(&model.count, change)?;
+        model.controller = rewrite_player_filter_words(&model.controller, change)?;
+        model.ability_loss_until = model
+            .ability_loss_until
+            .as_ref()
+            .map(|field| until(field, change))
+            .transpose()?;
+        model.must_attack_player_this_turn = model
+            .must_attack_player_this_turn
+            .as_ref()
+            .map(|field| rewrite_player_filter_words(field, change))
+            .transpose()?;
+        model.next_end_step_player =
+            rewrite_player_filter_words(&model.next_end_step_player, change)?;
+        model.enters_blocking = model
+            .enters_blocking
+            .as_ref()
+            .map(|field| rewrite_choose_spec_words(field, change))
+            .transpose()?;
+        // Embalm and eternalize define the copy exceptions in their keyword rules.
+        if model.creation_method.is_none() {
+            change.replace_subtype_words(&mut model.added_subtypes);
+            if let Some(types) = &mut model.set_subtypes {
+                change.replace_subtype_words(types);
+            }
+            if let Some(colors) = &mut model.set_colors {
+                change.replace_color_words(colors);
+            }
+            change.replace_color_words(&mut model.added_colors);
+        }
+        if let Some((power, toughness)) = &mut model.set_base_power_toughness_value {
+            *power = rewrite_value_words(power, change)?;
+            *toughness = rewrite_value_words(toughness, change)?;
+        }
+        model.granted_static_abilities =
+            rewrite_static_list(&model.granted_static_abilities, change)?;
+        if let Some(
+            ironsmith_core::CopyAttackTargetMode::Player(player)
+            | ironsmith_core::CopyAttackTargetMode::PlayerOrPlaneswalkerControlledBy(player),
+        ) = &mut model.attack_target_mode
+        {
+            *player = rewrite_player_filter_words(player, change)?;
+        }
+    });
     // These complete native payloads consist solely of non-word identities,
     // counter kinds, source references or wordless rules operations.
     if effect.downcast_ref::<CipherEffect>().is_some()

@@ -310,7 +310,7 @@ pub(super) fn can_pay_scoped_tap(
     let payable = |power: i32, resources: &[ObjectId]| {
         let locked = mana_cost_with_locked_x_and_generic_reduction(cost, x, 0);
         let reduced = locked.reduce_generic(power.max(0) as u32);
-        let reduced = apply_minimum_spell_total_mana_with_view(&view, &reduced);
+        let reduced = apply_minimum_spell_total_mana_with_view(&view, player, &reduced);
         let mut request = crate::mana_payment::ManaPaymentRequest::new(
             player,
             spell.id,

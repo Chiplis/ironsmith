@@ -1657,7 +1657,8 @@ impl GameState {
         if self.player(player).is_none() || !self.may_have_cast_or_activate_payment_restriction() {
             return false;
         }
-        self.with_active_battlefield_static_abilities(|_, _, ability| {
+        self.with_active_battlefield_static_abilities(|source, controller, ability| {
+            if !self.player_is_within_source_range(controller, player, Some(source)) { return None; }
             ability
                 .forbids_paying_life_for_cast_or_activate()
                 .then_some(true)
@@ -1682,7 +1683,8 @@ impl GameState {
         if self.player(player).is_none() || !self.may_have_cast_or_activate_payment_restriction() {
             return false;
         }
-        self.with_active_battlefield_static_abilities(|_, _, ability| {
+        self.with_active_battlefield_static_abilities(|source, controller, ability| {
+            if !self.player_is_within_source_range(controller, player, Some(source)) { return None; }
             ability
                 .forbids_paying_life_for_cast_or_activate()
                 .then_some(true)
@@ -1701,6 +1703,7 @@ impl GameState {
             return false;
         }
         self.with_active_battlefield_static_abilities_with_effects(all_effects, |source, controller, ability| {
+            if !self.player_is_within_source_range(controller, player, Some(source)) { return None; }
             let scoped = ability.rule_restriction_parts().is_some_and(|(restriction, _, _)| {
                 matches!(restriction, crate::effect::Restriction::CastOrActivatePayments { player: filter, pay_life: true, .. }
                     if filter.matches_player(player, &self.filter_context_for(controller, Some(source))))
@@ -1714,7 +1717,8 @@ impl GameState {
         if self.player(player).is_none() || !self.may_have_cast_or_activate_payment_restriction() {
             return false;
         }
-        self.with_active_battlefield_static_abilities(|_, _, ability| {
+        self.with_active_battlefield_static_abilities(|source, controller, ability| {
+            if !self.player_is_within_source_range(controller, player, Some(source)) { return None; }
             ability
                 .forbids_sacrificing_nonland_for_cast_or_activate()
                 .then_some(true)
@@ -1961,6 +1965,7 @@ impl GameState {
             | Modification::ModifyToughness(_)
             | Modification::ModifyPowerToughness { .. }
             | Modification::ModifyPowerToughnessValue { .. }
+            | Modification::ModifyPowerToughnessByCreatureTypes { .. }
             | Modification::ModifyPowerToughnessByColorCount { .. }
             | Modification::SwitchPowerToughness => false,
         }
@@ -5753,6 +5758,7 @@ impl GameState {
             | Modification::ModifyToughness(_)
             | Modification::ModifyPowerToughness { .. }
             | Modification::ModifyPowerToughnessValue { .. }
+            | Modification::ModifyPowerToughnessByCreatureTypes { .. }
             | Modification::ModifyPowerToughnessByColorCount { .. }
             | Modification::SwitchPowerToughness => false,
         }

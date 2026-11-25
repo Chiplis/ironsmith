@@ -289,6 +289,7 @@ pub struct Trigger {
     intro_surface: Option<TriggerIntroSurface>,
     retained_model: Option<Arc<ironsmith_core::trigger_model::Trigger>>,
     acquisition: Option<acquisition::TriggerAcquisition>,
+    pub(crate) legacy_text_identity: Option<TriggerIdentity>,
     text_change_cache: Arc<std::sync::Mutex<std::collections::HashMap<
         (ironsmith_core::TextChange, Option<TriggerIntroSurface>, Option<acquisition::TriggerAcquisition>),
         Result<Trigger, crate::continuous::text_changes::TextChangeDomainError>>>>,
@@ -311,6 +312,7 @@ impl Clone for Trigger {
             intro_surface: self.intro_surface,
             retained_model: self.retained_model.clone(),
             acquisition: self.acquisition.clone(),
+            legacy_text_identity: self.legacy_text_identity,
             text_change_cache: Arc::clone(&self.text_change_cache),
         }
     }
@@ -356,6 +358,7 @@ impl Trigger {
             intro_surface,
             retained_model,
             acquisition: None,
+            legacy_text_identity: None,
             text_change_cache: Default::default(),
         }
     }
@@ -373,6 +376,9 @@ impl Trigger {
             .map(|mut rewritten| {
                 rewritten.acquisition = self.acquisition.clone();
                 rewritten
+            }).or_else(|error| {
+                if crate::continuous::text_changes::structural_image_may_hold_source_word(
+                    &self.compiled_model().map_or_else(|| format!("{:?}", self.matcher), |model| format!("{:?}", model.kind)), change) { Err(error) } else { Ok(self.clone()) }
             });
         if value.as_ref().is_ok_and(|rewritten| Arc::ptr_eq(&self.matcher, &rewritten.matcher)) {
             // Caching the original clone would create an Arc ownership cycle.

@@ -458,7 +458,7 @@ impl<'a> CastLegalityContext<'a> {
                 .temporary_spell_cost_reductions
                 .iter()
                 .any(|effect| effect.player == player && effect.is_active(game)),
-            minimum_total_spell_mana_payment: view.minimum_total_spell_mana_payment(),
+            minimum_total_spell_mana_payment: view.minimum_spell_mana_for_payer(Some(player)),
             strips_life_pips_for_casts: view.player_cant_pay_life_to_cast_or_activate(player),
             perf: RefCell::new(CastLegalityPerfBreakdown::default()),
         }

@@ -32,6 +32,10 @@ pub trait EffectModelInterpreterHooks<M: EffectModel> {
         definition: M::CardDefinition,
     ) -> Result<crate::cards::CardDefinition, Self::Error>;
 
+    /// Older compiled token descriptions can recover word roles when their owner
+    /// retained the complete creating instruction. Standalone unknowns stay opaque.
+    fn legacy_token_word_roles(&self, _token: &crate::effects::CreateTokenEffect) -> Option<ironsmith_core::TokenTextRoles> { None }
+
     fn runtime_ability_hook(
         &mut self,
         ability: M::Ability,
@@ -422,6 +426,7 @@ where
         converted.link_only_last_source_exiled = payload.link_only_last_source_exiled;
         converted.entry_counters = payload.entry_counters.clone();
         converted.must_attack_player_this_turn = payload.must_attack_player_this_turn.clone();
+        if converted.text_roles.is_none() { converted.text_roles = hooks.legacy_token_word_roles(&converted); }
         return Ok(Effect::new(converted));
     }
     clone_direct!(

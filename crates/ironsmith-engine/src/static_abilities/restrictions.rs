@@ -152,10 +152,11 @@ impl StaticAbilityKind for PlayersCantSearch {
         "Players can't search libraries".to_string()
     }
 
-    fn apply_restrictions(&self, game: &mut GameState, source: ObjectId, _controller: PlayerId) {
+    fn apply_restrictions(&self, game: &mut GameState, source: ObjectId, controller: PlayerId) {
         let mut tracker = CantEffectTracker::default();
         for player in game.players.iter().filter(|player| player.is_in_game()) {
-            if !game.player_ignores_source_static_effect_this_turn(source, player.id) {
+            if game.player_is_within_source_range(controller, player.id, Some(source))
+                && !game.player_ignores_source_static_effect_this_turn(source, player.id) {
                 tracker.cant_search.insert(player.id);
             }
         }

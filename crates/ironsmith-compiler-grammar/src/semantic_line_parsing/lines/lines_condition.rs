@@ -92,5 +92,10 @@ pub(super) fn fixed_standard_gift_creature_definition(
     name: &str, subtype: Subtype, colors: ColorSet, power_toughness: (i32, i32),
 ) -> crate::model::token_definition::TokenDefinitionSpec {
     // The Gift keyword implies the characteristics without printed token-description words.
-    crate::grammar::token_definitions::fixed_creature(name, vec![subtype], colors, power_toughness, None)
+    crate::grammar::token_definitions::fixed_creature(name, vec![subtype], colors, power_toughness,
+        Some(crate::model::token_definition::TokenDescriptionTextRoles {
+            name: ironsmith_core::TokenNameTextRole::SubtypeDerived,
+            colors: ironsmith_core::TokenWordRole::RulesImplied, subtypes: ironsmith_core::TokenWordRole::RulesImplied,
+            abilities: ironsmith_core::TokenWordRole::RulesImplied,
+        }))
 }

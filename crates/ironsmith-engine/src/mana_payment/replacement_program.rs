@@ -152,7 +152,7 @@ impl CompiledManaReplacements {
             // Preserve unknown so the checked/native owner can request it.
             let crate::replacement::ReplacementAction::RewriteMana { output, .. } = &effect.replacement else { return None; };
             let outputs = crate::events::mana::mana_rewrite_output_choices(*output, &branch.event, game);
-            let chooser = if matches!(output, ironsmith_core::ManaRewriteOutput::ByBasicLandType(_)) {
+            let chooser = if matches!(output, ironsmith_core::ManaRewriteOutput::ByBasicLandType(_) | ironsmith_core::ManaRewriteOutput::ByLandTypeClauses(_)) {
                 branch.event.controller
             } else { effect.controller };
             if outputs.len() > 1 && game.controlling_player_for(chooser) != game.controlling_player_for(branch.event.player) {
@@ -585,6 +585,32 @@ mod typed_output_rewrite_tests {
             .with_production_provenance(crate::events::mana::ManaProductionProvenance::TappedSourceForMana);
         (game, event)
     }
+    #[test]
+    fn text_changes_to_the_same_land_type_preserve_each_mana_choice() {
+        use ironsmith_core::{ManaOutputRewrite, ManaOutputRewriteSurface, ManaRewriteInput, ManaRewriteOutput, ManaRewriteQuantity, Subtype, TextChange};
+
+        let mut rule = ManaOutputRewrite {
+            source_filter: ObjectFilter::land(),
+            controller: None,
+            tapped_for_mana: true,
+            input: ManaRewriteInput::Any,
+            output: ManaRewriteOutput::ByBasicLandType([Some(ManaSymbol::Red), None, None, None, Some(ManaSymbol::Black)]),
+            quantity: ManaRewriteQuantity::Preserve,
+            surface: ManaOutputRewriteSurface::Passive,
+        };
+        let change = TextChange::basic_land_type(Subtype::Plains, Subtype::Forest).unwrap();
+        crate::continuous::text_change_statics::rewrite_mana_production_words(&mut rule, change).unwrap();
+        let (mut game, event) = setup(rule.output, rule.quantity);
+        game.object_mut(event.source).unwrap().subtypes = vec![Subtype::Forest].into();
+        game.refresh_continuous_state().unwrap();
+        let program = CompiledManaReplacements::compile(&game).unwrap();
+        let branches = program.branches(&game, event, &ReplacementResources::default(), 16).unwrap();
+        let choices: Vec<_> = branches.iter().map(|branch| branch.decisions[0].color.unwrap()).collect();
+        assert_eq!(choices.len(), 2);
+        assert!(choices.contains(&ManaSymbol::Red));
+        assert!(choices.contains(&ManaSymbol::Black));
+    }
+
     #[test]
     fn selected_color_is_part_of_the_witness_and_unavailable_colors_fail_replay() {
         let output = ironsmith_core::ManaRewriteOutput::ByBasicLandType([

@@ -66,7 +66,7 @@ pub(crate) fn apply_removed_mask(chars:&mut CalculatedCharacteristics,mask:u64,o
   }
   labels[*slot]=variant.ability_labels[source_index].clone();replacements.push(replacement);source_index+=1;
  }
- let mut next=0;let result=chars.abilities.try_map_rules_text::<()>(|_|{let replacement=replacements[next].clone();next+=1;Ok(replacement)});debug_assert!(result.is_ok());
+ let mut next=0;let result=chars.abilities.try_map_rules_text::<()>(|_,_|{let replacement=replacements[next].clone();next+=1;Ok(replacement)});debug_assert!(result.is_ok());
  chars.ability_labels=labels.into();if !variant.canonical_text.is_empty(){chars.compiled_card_text=variant.canonical_text.into();}chars.aura_attach_filter=variant.aura_attach_filter;
  chars.spell_effect=Arc::new(crate::snapshot::SpellProgramState::from_option(variant.spell_effect));
  chars.static_abilities=crate::ability::extract_static_abilities(&chars.abilities).into();

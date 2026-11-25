@@ -3409,7 +3409,8 @@ pub fn token_dies_create_dragon_with_firebreathing_ability() -> Ability {
         kind: AbilityKind::Triggered(TriggeredAbility {
             trigger: Trigger::this_dies(),
             effects: crate::resolution::ResolutionProgram::from_effects(vec![
-                Effect::create_tokens(dragon, Value::Fixed(1)),
+                Effect::new(ironsmith_core::CreateTokenEffect::you(dragon, 1)
+                    .with_text_roles(ironsmith_core::TokenTextRoles::authored(ironsmith_core::TokenNameTextRole::SubtypeDerived, 2))),
             ]),
             choices: Vec::new(),
             intervening_if: None,

@@ -1146,7 +1146,30 @@ impl StaticAbilityKind for UntapStepChosenCardTypeOnly {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct OpponentsMustTargetFlagbearers;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct OpponentsMustTargetSubtype(pub crate::types::Subtype);
+
+impl StaticAbilityKind for OpponentsMustTargetSubtype {
+    fn id(&self) -> StaticAbilityId {
+        StaticAbilityId::OpponentsMustTargetFlagbearers
+    }
+    fn display(&self) -> String {
+        OpponentsMustTargetFlagbearers
+            .display()
+            .replace("Flagbearer", &self.0.display_name())
+    }
+    fn canonical_model(&self) -> Option<super::CompiledStaticAbility> {
+        let mut model = super::CompiledStaticAbility::opponents_must_target_flagbearers();
+        model.payload = ironsmith_core::StaticAbilityPayload::OpponentsMustTargetSubtype(self.0);
+        Some(model)
+    }
+}
+
 impl StaticAbilityKind for OpponentsMustTargetFlagbearers {
+    fn canonical_model(&self) -> Option<super::CompiledStaticAbility> {
+        Some(super::CompiledStaticAbility::opponents_must_target_flagbearers())
+    }
+
     fn id(&self) -> StaticAbilityId {
         StaticAbilityId::OpponentsMustTargetFlagbearers
     }

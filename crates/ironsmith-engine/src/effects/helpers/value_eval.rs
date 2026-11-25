@@ -854,9 +854,8 @@ pub(crate) fn resolve_wide(
                         return Ok(i64::from(
                             resolve_objects_from_spec(game, target_spec, ctx)?
                                 .into_iter()
-                                .filter_map(|id| game.object(id))
-                                .filter_map(|object| object.mana_cost.as_deref())
-                                .map(count_symbols)
+                                .filter_map(|id| crate::filter::object_current_mana_cost(game, id))
+                                .map(|cost| count_symbols(&cost))
                                 .sum::<i64>(),
                         ));
                     }
@@ -881,8 +880,9 @@ pub(crate) fn resolve_wide(
                     {
                         Ok(latest_tagged_lki_snapshot(game, snapshot)
                             .unwrap_or(snapshot).mana_cost.as_ref().map_or(0, count_symbols))
-                    } else if let Some(obj) = game.object(target_id) {
-                        Ok(obj.mana_cost.as_deref().map_or(0, count_symbols))
+                    } else if game.object(target_id).is_some() {
+                        Ok(crate::filter::object_current_mana_cost(game, target_id)
+                            .as_ref().map_or(0, count_symbols))
                     } else if let Some(snapshot) = tagged_snapshot {
                         Ok(snapshot.mana_cost.as_ref().map_or(0, count_symbols))
                     } else if let Some(snapshot) = object_lki_snapshot(ctx, target_id) {

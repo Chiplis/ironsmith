@@ -164,6 +164,7 @@ pub(crate) fn rewrite_modification_words(modification: &Modification, change: Te
         | Modification::RemoveStaticAbilityFamily(_) | Modification::RemoveAllAbilities
         | Modification::RemoveAllAbilitiesExceptMana | Modification::ModifyPower(_)
         | Modification::ModifyToughness(_) | Modification::ModifyPowerToughness { .. }
+        | Modification::ModifyPowerToughnessByCreatureTypes { .. }
         | Modification::ModifyPowerToughnessByColorCount { .. }
         | Modification::SwitchPowerToughness | Modification::RemoveLandRulesTextAbilities => {}
     }

@@ -558,6 +558,7 @@ pub enum TokenDefinitionSpec {
 impl TokenDefinitionSpec {
     pub fn text_roles(&self) -> Option<TokenDescriptionTextRoles> {
         match self {
+            Self::Construct(_) => Some(TokenDescriptionTextRoles::authored(ironsmith_core::TokenNameTextRole::SubtypeDerived)),
             Self::Builtin(builtin) => Some(builtin.text_roles()),
             Self::ModifiedBuiltin(shape) => Some(shape.text_roles()),
             Self::Vehicle(shape) => shape.text_roles.clone(),

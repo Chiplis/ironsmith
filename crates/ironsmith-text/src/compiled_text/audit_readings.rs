@@ -561,6 +561,10 @@ fn cant_attack_unless(
             Group::AtLeastNOtherCreaturesAttack(count) => {
                 ("attack", format!("at least {count} other creatures attack"))
             }
+            Group::CreatureOfColorsAlsoAttacks(colors) => {
+                let names = ironsmith_core::Color::ALL.into_iter().filter(|c| colors.contains(*c)).map(|c| c.name()).collect::<Vec<_>>().join(" or ");
+                ("attack", format!("a {names} creature also attacks"))
+            }
             Group::BlackOrGreenCreatureAlsoAttacks => {
                 ("attack", "a black or green creature also attacks".to_string())
             }
@@ -1182,12 +1186,12 @@ pub(crate) fn mana_output_rewrite(rule: &ironsmith_core::ManaOutputRewrite) -> S
     }
     let source = objects(&rule.source_filter);
     match &rule.output {
-        Out::ByBasicLandType(mapping) => {
-            let types = ["Plains", "Islands", "Swamps", "Mountains", "Forests"];
-            let pairs = types
-                .iter()
-                .zip(mapping.iter())
-                .filter_map(|(land, output)| output.as_ref().map(|output| format!("{land} produce {}", symbol(output))))
+        output @ (Out::ByBasicLandType(_) | Out::ByLandTypeClauses(_)) => {
+            let pairs = output.land_type_clauses().unwrap().into_iter()
+                .filter_map(|(land, output)| output.map(|output| {
+                    let suffix = if land == ironsmith_core::Subtype::Plains { "" } else { "s" };
+                    format!("{}{suffix} produce {}", land.display_name(), symbol(&output))
+                }))
                 .collect::<Vec<_>>();
             let pairs = match pairs.len() {
                 0 => String::new(),
@@ -1209,7 +1213,7 @@ pub(crate) fn mana_output_rewrite(rule: &ironsmith_core::ManaOutputRewrite) -> S
                     "one mana of a color of your choice".to_string()
                 }
                 Out::ChooseColor => "mana of a color of your choice".to_string(),
-                Out::ByBasicLandType(_) => unreachable!(),
+                Out::ByBasicLandType(_) | Out::ByLandTypeClauses(_) => unreachable!(),
             };
             let head = match (&rule.controller, rule.tapped_for_mana) {
                 // "if you tap a land you control for mana" (Deep Water,

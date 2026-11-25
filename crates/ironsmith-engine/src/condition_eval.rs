@@ -4309,6 +4309,8 @@ fn resolve_condition_player_external(
         PlayerFilter::IteratedPlayer => ctx.iterated_player,
         PlayerFilter::Defending => ctx
             .defending_player
+            .or_else(|| game.combat.as_ref().and_then(|combat|
+                crate::combat_state::defending_player_for_attacker(game, combat, ctx.source)))
             .or_else(|| combat_defending_player(game)),
         PlayerFilter::Attacking => Some(ctx.attacking_player.unwrap_or(ctx.controller)),
         _ => resolve_condition_player_simple(game, ctx.controller, player),
@@ -6444,25 +6446,18 @@ fn evaluate_condition_in_context(
                 count < limit
             })
         }
-        Condition::SourceIsEquipped => {
+        Condition::SourceIsEquipped | Condition::SourceIsEnchanted => {
             if ctx.is_cast_time() {
                 return Ok(false);
             }
-            Ok(game.object(ctx.source).is_some_and(|source_obj| {
-                source_obj.attachments.iter().any(|id| {
-                    game.object(*id)
-                        .is_some_and(|obj| obj.subtypes.contains(&crate::types::Subtype::Equipment))
-                })
-            }))
-        }
-        Condition::SourceIsEnchanted => {
-            if ctx.is_cast_time() {
-                return Ok(false);
-            }
-            Ok(game.object(ctx.source).is_some_and(|source_obj| {
-                source_obj.attachments.iter().any(|id| {
-                    game.object(*id)
-                        .is_some_and(|obj| obj.subtypes.contains(&crate::types::Subtype::Aura))
+            let subtype = if matches!(condition, Condition::SourceIsEquipped) {
+                crate::types::Subtype::Equipment
+            } else {
+                crate::types::Subtype::Aura
+            };
+            Ok(game.object(ctx.source).is_some_and(|host| {
+                host.attachments.iter().any(|&id| {
+                    !game.is_phased_out(id) && game.calculated_subtypes(id).contains(&subtype)
                 })
             }))
         }

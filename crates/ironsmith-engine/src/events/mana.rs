@@ -311,7 +311,7 @@ pub(crate) fn mana_rewrite_output_choices(
             .map(ManaSymbol::from_color)
             .collect(),
         ironsmith_core::ManaRewriteOutput::ChosenColor => Vec::new(),
-        ironsmith_core::ManaRewriteOutput::ByBasicLandType(mapping) => {
+        output @ (ironsmith_core::ManaRewriteOutput::ByBasicLandType(_) | ironsmith_core::ManaRewriteOutput::ByLandTypeClauses(_)) => {
             let subtypes = game
                 .object(event.source)
                 .filter(|_| !game.is_phased_out(event.source))
@@ -324,16 +324,7 @@ pub(crate) fn mana_rewrite_output_choices(
                 })
                 .unwrap_or_default();
             let mut colors = Vec::new();
-            for (land_type, output) in [
-                crate::types::Subtype::Plains,
-                crate::types::Subtype::Island,
-                crate::types::Subtype::Swamp,
-                crate::types::Subtype::Mountain,
-                crate::types::Subtype::Forest,
-            ]
-            .into_iter()
-            .zip(mapping)
-            {
+            for (land_type, output) in output.land_type_clauses().unwrap() {
                 if subtypes.contains(&land_type)
                     && let Some(output) = output
                     && !colors.contains(&output)
@@ -355,7 +346,7 @@ pub struct ManaEventPredicate<'a> {
     pub minimum_amount: usize,
     pub controller: Option<&'a crate::target::PlayerFilter>,
     pub input: ironsmith_core::ManaRewriteInput,
-    pub land_type_outputs: Option<&'a [Option<ManaSymbol>; 5]>,
+    pub land_type_outputs: Option<ironsmith_core::ManaRewriteOutput>,
 }
 
 impl ManaEventPredicate<'_> {
@@ -376,7 +367,7 @@ impl ManaEventPredicate<'_> {
             || !event.mana.iter().any(|symbol| self.input.matches(*symbol))
             || self.land_type_outputs.is_some_and(|mapping| {
                 mana_rewrite_output_choices(
-                    ironsmith_core::ManaRewriteOutput::ByBasicLandType(*mapping),
+                    mapping,
                     event,
                     game,
                 )
@@ -494,10 +485,7 @@ pub mod matchers {
                 minimum_amount: 1,
                 controller: self.rule.controller.as_ref(),
                 input: self.rule.input,
-                land_type_outputs: match &self.rule.output {
-                    ironsmith_core::ManaRewriteOutput::ByBasicLandType(mapping) => Some(mapping),
-                    _ => None,
-                },
+                land_type_outputs: self.rule.output.land_type_clauses().map(|_| self.rule.output),
             })
         }
         fn matches_prepared_event(

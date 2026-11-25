@@ -204,14 +204,9 @@ pub fn aggregate_object_value(
             .into_iter()
             .flatten()
             .fold(0i32, |mask, card_type| mask | (1 << card_type as u32)),
-        ChoiceAggregateMetric::ManaValue => object
-            .mana_cost
-            .as_ref()
-            .map_or(0, |cost| cost.mana_value() as i32),
-        ChoiceAggregateMetric::ManaSymbolsOfColor(color) => object
-            .mana_cost
-            .as_ref()
-            .map_or(0, |cost| mana_symbols_of_color(cost, color)),
+        ChoiceAggregateMetric::ManaValue => crate::filter::object_current_mana_value(game, id) as i32,
+        ChoiceAggregateMetric::ManaSymbolsOfColor(color) => crate::filter::object_current_mana_cost(game, id)
+            .as_ref().map_or(0, |cost| mana_symbols_of_color(cost, color)),
     }
 }
 

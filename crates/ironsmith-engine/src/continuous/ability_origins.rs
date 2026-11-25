@@ -424,11 +424,13 @@ impl CalculatedAbilities {
     /// generating occurrence paired with its original slot.
     pub(crate) fn try_map_rules_text<E>(
         &mut self,
-        mut map: impl FnMut(&Ability) -> Result<Ability, E>,
+        mut map: impl FnMut(&AbilityOrigin, &Ability) -> Result<Ability, E>,
     ) -> Result<(), E> {
         let mut definitions = self.definitions.to_vec();
         for (definition, origin) in definitions.iter_mut().zip(self.origins.iter()) {
-            if origin.is_rules_text() { *definition = map(definition)?; }
+            if origin.is_rules_text() {
+                *definition = map(origin, definition)?;
+            }
         }
         self.definitions = definitions.into();
         Ok(())

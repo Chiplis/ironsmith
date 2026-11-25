@@ -246,6 +246,9 @@ impl StaticAbilityModelInterpreter {
             ironsmith_core::AttackingGroupAttackCondition::AtLeastNOtherCreaturesAttack(count) => {
                 super::AttackingGroupAttackCondition::AtLeastNOtherCreaturesAttack(*count)
             }
+            ironsmith_core::AttackingGroupAttackCondition::CreatureOfColorsAlsoAttacks(colors) => {
+                super::AttackingGroupAttackCondition::CreatureOfColorsAlsoAttacks(*colors)
+            }
             ironsmith_core::AttackingGroupAttackCondition::BlackOrGreenCreatureAlsoAttacks => {
                 super::AttackingGroupAttackCondition::BlackOrGreenCreatureAlsoAttacks
             }
@@ -1557,6 +1560,7 @@ impl StaticAbilityModelInterpreter {
                 source_filter.clone(),
                 display.clone(),
             ),
+            ironsmith_core::StaticAbilityPayload::OpponentsMustTargetSubtype(subtype) => StaticAbility::new(super::misc::OpponentsMustTargetSubtype(*subtype)),
             ironsmith_core::StaticAbilityPayload::OpponentsMustTargetFlagbearers => {
                 StaticAbility::opponents_must_target_flagbearers()
             }

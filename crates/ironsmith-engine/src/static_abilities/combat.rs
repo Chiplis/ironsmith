@@ -2057,6 +2057,7 @@ pub enum AttackingGroupAttackCondition {
     BlackOrGreenCreatureAlsoAttacks,
     AtLeastNOtherCreaturesBlock(u32),
     CreatureWithGreaterPowerAlsoBlocks,
+    CreatureOfColorsAlsoAttacks(crate::color::ColorSet),
 }
 
 impl AttackingGroupAttackCondition {
@@ -2216,6 +2217,9 @@ impl CantAttackUnlessCondition {
                     }
                     AttackingGroupAttackCondition::CreatureWithGreaterPowerAlsoAttacks => {
                         "a creature with greater power also attacks".to_string()
+                    }
+                    AttackingGroupAttackCondition::CreatureOfColorsAlsoAttacks(colors) => {
+                        format!("a {} creature also attacks", crate::color::Color::ALL.into_iter().filter(|c| colors.contains(*c)).map(|c| c.name()).collect::<Vec<_>>().join(" or "))
                     }
                     AttackingGroupAttackCondition::BlackOrGreenCreatureAlsoAttacks => {
                         "a black or green creature also attacks".to_string()
@@ -2504,7 +2508,11 @@ impl CantAttackUnlessCondition {
                         })
                     }))
                 }
-                AttackingGroupAttackCondition::BlackOrGreenCreatureAlsoAttacks => {
+                colors_condition @ (AttackingGroupAttackCondition::BlackOrGreenCreatureAlsoAttacks | AttackingGroupAttackCondition::CreatureOfColorsAlsoAttacks(_)) => {
+                    let required = match colors_condition {
+                        AttackingGroupAttackCondition::CreatureOfColorsAlsoAttacks(colors) => *colors,
+                        _ => crate::color::ColorSet::BLACK.union(crate::color::ColorSet::GREEN),
+                    };
                     Some(attacking_creatures.iter().any(|id| {
                         if *id == source {
                             return false;
@@ -2515,8 +2523,7 @@ impl CantAttackUnlessCondition {
                                     .calculated_characteristics(obj.id)
                                     .map(|chars| chars.colors)
                                     .unwrap_or(obj.colors());
-                                colors.contains(crate::color::Color::Black)
-                                    || colors.contains(crate::color::Color::Green)
+                                !colors.intersection(required).is_empty()
                             }
                         })
                     }))

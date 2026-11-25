@@ -759,7 +759,7 @@ impl WasmGame {
                 }
             }
 
-            ironsmith::validate_companion_definition(
+            self.game.validate_companion_definition(
                 &companion,
                 &starting_deck,
                 Self::companion_minimum_deck_size(config.format),
@@ -1421,7 +1421,7 @@ impl WasmGame {
             .is_empty()
         {
             card.has_supertype(Supertype::Legendary)
-                && (card.has_card_type(CardType::Creature)
+                && (ironsmith::companion_deck_facts_from_definition(definition).card_types.contains(&CardType::Creature)
                     || card.has_subtype(Subtype::Vehicle)
                     || (card.has_subtype(Subtype::Spacecraft) && card.power_toughness.is_some()))
         } else {
@@ -4441,6 +4441,16 @@ mod commander_setup_tests {
             &[],
         )
         .expect("a legendary creature and 99 in-identity basic lands should be legal");
+
+        game.validate_commander_setup(
+            MatchFormatInput::Commander,
+            2,
+            &two_player_lists(repeated("Forest", 99)),
+            &two_player_lists(vec!["Grist, the Hunger Tide".to_string()]),
+            None,
+            &[],
+        )
+        .expect("Grist is a legendary creature before the game begins");
 
         game.validate_commander_setup(
             MatchFormatInput::Commander,

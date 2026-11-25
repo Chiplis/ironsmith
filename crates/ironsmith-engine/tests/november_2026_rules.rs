@@ -30,6 +30,106 @@ fn creature(g: &mut GameState, name: &str, p: i32, t: i32) -> ObjectId {
 
 fn card(route: &str) -> ironsmith::CardDefinition {
     let (name, block) = match route {
+        "arctic-foxes" => (
+            "Arctic Foxes",
+            "Mana cost: {1}{W}\nType: Creature — Fox\nPower/Toughness: 1/1\nThis creature can't be blocked by creatures with power 2 or greater as long as defending player controls a snow land.",
+        ),
+        "armory-veteran" => (
+            "Armory Veteran",
+            "Mana cost: {1}{R}\nType: Creature — Orc Warrior\nPower/Toughness: 2/2\nAs long as this creature is equipped, it has menace. (It can't be blocked except by two or more creatures.)",
+        ),
+        "bouncing-beebles" => (
+            "Bouncing Beebles",
+            "Mana cost: {2}{U}\nType: Creature — Beeble\nPower/Toughness: 2/2\nThis creature can't be blocked as long as defending player controls an artifact.",
+        ),
+        "chill" => (
+            "Chill",
+            "Mana cost: {1}{U}\nType: Enchantment\nRed spells cost {2} more to cast.",
+        ),
+        "foundry-inspector" => (
+            "Foundry Inspector",
+            "Mana cost: {3}\nType: Artifact Creature — Construct\nPower/Toughness: 3/2\nArtifact spells you cast cost {1} less to cast.",
+        ),
+        "ghostfire" => (
+            "Ghostfire",
+            "Mana cost: {2}{R}\nType: Instant\nGhostfire is colorless.\nGhostfire deals 3 damage to any target.",
+        ),
+        "grist-the-hunger-tide" => (
+            "Grist, the Hunger Tide",
+            "Mana cost: {1}{B}{G}\nType: Legendary Planeswalker — Grist\nLoyalty: 3\nAs long as Grist isn't on the battlefield, it's a 1/1 Insect creature in addition to its other types.\n+1: Create a 1/1 black and green Insect creature token, then mill a card. If an Insect card was milled this way, put a loyalty counter on Grist and repeat this process.\n−2: You may sacrifice a creature. When you do, destroy target creature or planeswalker.\n−5: Each opponent loses life equal to the number of creature cards in your graveyard.",
+        ),
+        "hazy-homunculus" => (
+            "Hazy Homunculus",
+            "Mana cost: {1}{U}\nType: Creature — Homunculus Illusion\nPower/Toughness: 1/1\nThis creature can't be blocked as long as defending player controls an untapped land.",
+        ),
+        "iona-shield-of-emeria" => (
+            "Iona, Shield of Emeria",
+            "Mana cost: {6}{W}{W}{W}\nType: Legendary Creature — Angel\nPower/Toughness: 7/7\nFlying\nAs Iona enters, choose a color.\nYour opponents can't cast spells of the chosen color.",
+        ),
+        "jegantha-the-wellspring" => (
+            "Jegantha, the Wellspring",
+            "Mana cost: {4}{R/G}\nType: Legendary Creature — Elemental Elk\nPower/Toughness: 5/5\nCompanion — No card in your starting deck has more than one of the same mana symbol in its mana cost. (If this card is your chosen companion, you may put it into your hand from outside the game for {3} as a sorcery.)\n{T}: Add {W}{U}{B}{R}{G}. This mana can't be spent to pay generic mana costs.",
+        ),
+        "kaheera-the-orphanguard" => (
+            "Kaheera, the Orphanguard",
+            "Mana cost: {1}{G/W}{G/W}\nType: Legendary Creature — Cat Beast\nPower/Toughness: 3/2\nCompanion — Each creature card in your starting deck is a Cat, Elemental, Nightmare, Dinosaur, or Beast card. (If this card is your chosen companion, you may put it into your hand from outside the game for {3} as a sorcery.)\nVigilance\nEach other creature you control that's a Cat, Elemental, Nightmare, Dinosaur, or Beast gets +1/+1 and has vigilance.",
+        ),
+        "keruga-the-macrosage" => (
+            "Keruga, the Macrosage",
+            "Mana cost: {3}{G/U}{G/U}\nType: Legendary Creature — Dinosaur Hippo\nPower/Toughness: 5/4\nCompanion — Your starting deck contains only cards with mana value 3 or greater and land cards. (If this card is your chosen companion, you may put it into your hand from outside the game for {3} as a sorcery.)\nWhen Keruga enters, draw a card for each other permanent you control with mana value 3 or greater.",
+        ),
+        "maelstrom-pulse" => (
+            "Maelstrom Pulse",
+            "Mana cost: {1}{B}{G}\nType: Sorcery\nDestroy target nonland permanent and all other permanents with the same name as that permanent.",
+        ),
+        "mistform-ultimus" => (
+            "Mistform Ultimus",
+            "Mana cost: {3}{U}\nType: Legendary Creature — Illusion\nPower/Toughness: 3/3\nMistform Ultimus is every creature type (even if this card isn't on the battlefield).",
+        ),
+        "pacifism" => (
+            "Pacifism",
+            "Mana cost: {1}{W}\nType: Enchantment — Aura\nEnchant creature\nEnchanted creature can't attack or block.",
+        ),
+        "paradise-mantle" => (
+            "Paradise Mantle",
+            "Mana cost: {0}\nType: Artifact — Equipment\nEquipped creature has \"{T}: Add one mana of any color.\"\nEquip {1}",
+        ),
+        "river-boa" => (
+            "River Boa",
+            "Mana cost: {1}{G}\nType: Creature — Snake\nPower/Toughness: 2/1\nIslandwalk (This creature can't be blocked as long as defending player controls an Island.)\n{G}: Regenerate this creature.",
+        ),
+        "snow-covered-forest" => (
+            "Snow-Covered Forest",
+            "Mana cost: \nType: Basic Snow Land — Forest\n({T}: Add {G}.)",
+        ),
+        "sol-ring" => (
+            "Sol Ring",
+            "Mana cost: {1}\nType: Artifact\n{T}: Add {C}{C}.",
+        ),
+        "sphinx-of-the-guildpact" => (
+            "Sphinx of the Guildpact",
+            "Mana cost: {7}\nType: Artifact Creature — Sphinx\nPower/Toughness: 5/5\nSphinx of the Guildpact is all colors.\nFlying\nHexproof from monocolored (This creature can't be the target of monocolored spells or abilities your opponents control.)",
+        ),
+        "spy-kit" => (
+            "Spy Kit",
+            "Mana cost: {2}\nType: Artifact — Equipment\nEquipped creature gets +1/+1 and has all names of nonlegendary creature cards in addition to its name.\nEquip {2}",
+        ),
+        "thran-golem" => (
+            "Thran Golem",
+            "Mana cost: {5}\nType: Artifact Creature — Golem\nPower/Toughness: 3/3\nAs long as this creature is enchanted, it gets +2/+2 and has flying, first strike, and trample.",
+        ),
+        "umori-the-collector" => (
+            "Umori, the Collector",
+            "Mana cost: {2}{B/G}{B/G}\nType: Legendary Creature — Ooze\nPower/Toughness: 4/5\nCompanion — Each nonland card in your starting deck shares a card type. (If this card is your chosen companion, you may put it into your hand from outside the game for {3} as a sorcery.)\nAs Umori enters, choose a card type.\nSpells you cast of the chosen type cost {1} less to cast.",
+        ),
+        "willbender" => (
+            "Willbender",
+            "Mana cost: {1}{U}\nType: Creature — Human Wizard\nPower/Toughness: 1/2\nMorph {1}{U} (You may cast this card face down as a 2/2 creature for {3}. Turn it face up any time for its morph cost.)\nWhen this creature is turned face up, change the target of target spell or ability with a single target.",
+        ),
+        "wind-drake" => (
+            "Wind Drake",
+            "Mana cost: {2}{U}\nType: Creature — Drake\nPower/Toughness: 2/2\nFlying",
+        ),
         "abyssal-harvester" => (
             "Abyssal Harvester",
             "Mana cost: {1}{B}{B}\nType: Creature — Demon Warlock\nFirst printed set: Foundations\nPower/Toughness: 3/2\n{T}: Exile target creature card from a graveyard that was put there this turn. Create a token that's a copy of it, except it's a Nightmare in addition to its other types. Then exile all other Nightmare tokens you control.",
@@ -869,3 +969,9 @@ fn multiplayer_choices_and_characteristics_respect_range_and_turn_direction() {
 
 #[path = "november_2026_rules/characteristic_interactions.rs"]
 mod characteristic_interactions;
+
+#[path = "november_2026_rules/expanded_interactions.rs"]
+mod expanded_interactions;
+
+#[path = "november_2026_rules/gameplay_audit.rs"]
+mod gameplay_audit;

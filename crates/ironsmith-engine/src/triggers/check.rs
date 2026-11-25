@@ -676,7 +676,7 @@ pub fn compute_trigger_identity(trigger_ability: &TriggeredAbility) -> TriggerId
     {
         return identity;
     }
-    compute_trigger_matching_identity(trigger_ability)
+    trigger_ability.trigger.legacy_text_identity.unwrap_or_else(|| compute_trigger_matching_identity(trigger_ability))
 }
 
 /// Structural equivalence for optional UI ordering automation. Acquisition

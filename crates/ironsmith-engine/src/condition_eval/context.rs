@@ -161,6 +161,13 @@ impl<'a, 'event> ConditionContext<'a, 'event> {
                 self.shared().triggering_event,
             ),
         };
+        // The quantified player and the controller restriction inside its
+        // permanent filter refer to the same combat participant.
+        if *player == PlayerFilter::Defending {
+            filter_ctx.defending_player = Some(candidate);
+            filter_ctx.defending_players.clear();
+            filter_ctx.defending_player_reference = None;
+        }
         filter_ctx.iterated_player = Some(candidate);
         filter_ctx
     }

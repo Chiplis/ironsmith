@@ -1576,6 +1576,31 @@ fn spell_view_for_cost_filter_match(
     changed.then_some(view)
 }
 
+/// CR 601.2a/e/f: layers see the chosen spell face on the stack, including
+/// when a menu is querying an unannounced spell in another zone. Keep the
+/// caller's origin-zone view available for restrictions on where it was cast.
+fn game_for_spell_characteristics<'a>(
+    game: &'a GameState,
+    face: &crate::object::Object,
+    caster: PlayerId,
+) -> std::borrow::Cow<'a, GameState> {
+    use std::borrow::Cow;
+    let Some(live) = game.object(face.id) else { return Cow::Borrowed(game); };
+    if live.zone == Zone::Stack {
+        return Cow::Borrowed(game);
+    }
+    let mut proposed = game.clone();
+    proposed.project_spell_for_payment(face.id);
+    let mut spell = face.clone();
+    spell.zone = Zone::Stack;
+    spell.initial_controller = caster;
+    *proposed.object_mut(face.id).expect("projected spell exists") = spell;
+    if face.face_down_cast_state.is_some() {
+        proposed.set_face_down(face.id);
+    }
+    Cow::Owned(proposed)
+}
+
 pub(crate) fn optional_life_cost_reduction_costs_for_cast(
     game: &GameState,
     caster: PlayerId,
@@ -1602,19 +1627,10 @@ pub(crate) fn optional_life_cost_reduction_costs_for_cast(
     }
     view.prewarm_characteristics_forced(&prewarm_ids);
 
-    let spell_for_filter =
-        spell_view_for_cost_filter_match(game, caster, spell, casting_method, cast_from_zone)
-            .unwrap_or_else(|| {
-                let mut spell_for_filter = spell.clone();
-                if let Some(chars) = view.current_characteristics_arc(spell_id) {
-                    spell_for_filter.name = chars.name.clone();
-                    spell_for_filter.card_types = chars.card_types.to_vec().into();
-                    spell_for_filter.subtypes = chars.subtypes.to_vec().into();
-                    spell_for_filter.supertypes = chars.supertypes.to_vec().into();
-                    spell_for_filter.color_override = Some(chars.colors);
-                }
-                spell_for_filter
-            });
+    let overlaid_spell =
+        spell_view_for_cost_filter_match(game, caster, spell, casting_method, cast_from_zone);
+    let spell_for_filter = overlaid_spell.as_ref().unwrap_or(spell);
+    let proposed = game_for_spell_characteristics(game, spell_for_filter, caster);
 
     let mut costs = Vec::new();
     for perm_id in modifier_sources {
@@ -1645,7 +1661,7 @@ pub(crate) fn optional_life_cost_reduction_costs_for_cast(
             };
             if reduction
                 .filter
-                .matches_non_recursive(&spell_for_filter, &filter_ctx, game)
+                .matches(spell_for_filter, &filter_ctx, &proposed)
             {
                 costs.push((perm_id, optional.clone()));
             }
@@ -1824,25 +1840,7 @@ pub(crate) fn violates_any_cant_cast_restriction_from_other_sources(
     } else {
         spell
     };
-    // CR 601.3e / 709.3a / 715.3a / 718.3a: when the proposal uses alternative
-    // characteristics (a split half, an Adventure, a prototype...), only those
-    // characteristics are evaluated, not the live card's calculated ones.
-    let alternative_snapshot = game
-        .object(spell.id)
-        .is_some_and(|live| {
-            live.name != spell.name
-                || live.card_types != spell.card_types
-                || live.subtypes != spell.subtypes
-                || live.mana_cost != spell.mana_cost
-                || live.color_override != spell.color_override
-                || live.base_power != spell.base_power
-                || live.base_toughness != spell.base_toughness
-                // A split card in hand also has its other half's name (CR
-                // 709.4a); the live card's characteristics would match a
-                // name prohibition aimed only at the half not being cast.
-                || live.split_other_half_name() != spell.split_other_half_name()
-        })
-        .then(|| crate::snapshot::ObjectSnapshot::from_object(spell, game));
+    let proposed = game_for_spell_characteristics(game, spell, player);
     filters.iter().any(|restriction| {
         if ignore_source.is_some() && restriction.source == ignore_source {
             return false;
@@ -1862,10 +1860,7 @@ pub(crate) fn violates_any_cant_cast_restriction_from_other_sources(
             ctx = with_source_exiled_tagged_objects(game, ctx.with_source(source), source);
         }
         ctx.source_number_owner=restriction.source_number_owner.clone();
-        match alternative_snapshot.as_ref() {
-            Some(snapshot) => restriction.filter.matches_snapshot(snapshot, &ctx, game),
-            None => restriction.filter.matches(spell, &ctx, game),
-        }
+        restriction.filter.matches(spell, &ctx, &proposed)
     })
 }
 
@@ -2040,7 +2035,7 @@ where
                 }
             }
             apply_minimum_spell_total_mana_with_view(
-                &hypothetical_view, &effective.reduce_generic(reduction),
+                &hypothetical_view, player, &effective.reduce_generic(reduction),
             )
         });
         let max_x = effective_cost
@@ -4796,6 +4791,7 @@ pub(crate) fn can_cast_spell_with_context(
         } else {
             apply_minimum_spell_total_mana_with_view(
                 view,
+                player,
                 &apply_payment_reason_mana_adjustments(
                     game,
                     player,
@@ -5329,6 +5325,7 @@ pub(crate) fn can_cast_with_cost_with_context(
         } else {
             apply_minimum_spell_total_mana_with_view(
                 view,
+                player,
                 &apply_payment_reason_mana_adjustments(
                     game,
                     player,
@@ -5369,6 +5366,7 @@ pub(crate) fn can_cast_with_cost_with_context(
                         resource.map_or(0, |id| game.current_power(id).unwrap_or(0).max(0) as u32);
                     let reduced = apply_minimum_spell_total_mana_with_view(
                         view,
+                        player,
                         &full_cost.reduce_generic(reduction),
                     );
                     let mut request = crate::mana_payment::ManaPaymentRequest::new(
@@ -6332,9 +6330,10 @@ pub(crate) fn apply_payment_reason_mana_adjustments(
 
 pub(crate) fn apply_minimum_spell_total_mana_with_view(
     view: &DerivedGameView<'_>,
+    payer: PlayerId,
     cost: &crate::mana::ManaCost,
 ) -> crate::mana::ManaCost {
-    if let Some(minimum) = view.minimum_total_spell_mana_payment()
+    if let Some(minimum) = view.minimum_spell_mana_for_payer(Some(payer))
         && cost.mana_value() < minimum
     {
         return cost.add_generic(minimum - cost.mana_value());
@@ -6684,12 +6683,19 @@ pub(crate) fn with_spell_mana_spending_rules(
             && let Some(rule) = active_spending_rule(game, player, spell.id, model)
         { base_cost = base_cost.with_spending_restriction(rule.clone()); }
     }
-    for ability in spell.abilities.iter() {
-        if let AbilityKind::Static(ability) = &ability.kind
-            && let Some(model) = ability.compiled_model()
-            && let Some(rule) = active_spending_rule(game, player, spell.id, model)
-        {
-            base_cost = base_cost.with_spending_restriction(rule.clone());
+    // Printed spending clauses follow the selected face onto the stack. A
+    // text-changing static may apply there for the first time (CR 601.2f).
+    if spell.abilities.iter().any(|ability| matches!(&ability.kind, AbilityKind::Static(ability)
+        if ability.compiled_model().is_some_and(|model| matches!(&model.payload,
+            ironsmith_core::StaticAbilityPayload::SpellManaSpendingRestriction(_) | ironsmith_core::StaticAbilityPayload::Conditional { .. })))) {
+        let proposed = game_for_spell_characteristics(game, spell, player);
+        for ability in proposed.current_abilities(spell.id).unwrap_or_else(|| spell.abilities_vec()) {
+            if let AbilityKind::Static(ability) = &ability.kind
+                && let Some(model) = ability.compiled_model()
+                && let Some(rule) = active_spending_rule(&proposed, player, spell.id, model)
+            {
+                base_cost = base_cost.with_spending_restriction(rule.clone());
+            }
         }
     }
     base_cost
@@ -6845,7 +6851,7 @@ pub(crate) fn calculate_effective_mana_cost_options_with_targets_internal(
         crate::costs::PaymentReason::CastSpell,
     );
 
-    let current_cost=apply_minimum_spell_total_mana_with_view(view, &current_cost);
+    let current_cost=apply_minimum_spell_total_mana_with_view(view, player, &current_cost);
     let cost = with_source_generic_tap_payment(game,player,spell,current_cost,false);
     if !options.contains(&cost) { options.push(cost); }
     }
@@ -7725,66 +7731,20 @@ fn spell_matches_cost_modifier_filter(
     cast_filter.targets_only_any_of = false;
     cast_filter.target_count = None;
     cast_filter.alternative_cast = None;
-    let mut overlaid_spell =
+    let overlaid_spell =
         spell_view_for_cost_filter_match(game, caster, spell, casting_method, cast_from_zone);
-    // CR 601.2f, 613.1d: the total cost is determined for the spell as it is
-    // on the stack, including subtypes continuous effects give it ("creature
-    // spells you control are every creature type", Maskwood Nexus). The
-    // matcher below reads printed subtypes, so add the layer-granted ones.
-    if filter_reads_subtypes(&cast_filter)
-        && let Some(added) = layer_added_subtypes_for_cost_filter(game, spell)
-    {
-        let mut view = overlaid_spell.take().unwrap_or_else(|| spell.clone());
-        let mut subtypes = view.subtypes.to_vec();
-        for subtype in added {
-            if !subtypes.contains(&subtype) {
-                subtypes.push(subtype);
-            }
-        }
-        view.subtypes = subtypes.into();
-        overlaid_spell = Some(view);
-    }
-    let spell_for_match = overlaid_spell.as_ref().unwrap_or(spell);
-    let matches =
-        cast_filter.matches_non_recursive(
-            spell_for_match,
-            &ctx.clone()
-                .with_caster(Some(caster))
-                .with_prospective_cast(spell.id),
-            game,
-        ) || disturb_linked_face_matches_cost_filter(game, caster, spell, &cast_filter, ctx);
+    let face = overlaid_spell.as_ref().unwrap_or(spell);
+    let proposed = game_for_spell_characteristics(game, face, caster);
+    let matches = cast_filter.matches(
+        face,
+        &ctx.clone().with_caster(Some(caster)).with_prospective_cast(spell.id),
+        &proposed,
+    ) || disturb_linked_face_matches_cost_filter(game, caster, spell, &cast_filter, ctx);
     targets_match
         && matches
         && alternative_cast.is_none_or(|kind| {
             casting_method_matches_alternative_kind(game, caster, spell, casting_method, kind)
         })
-}
-
-fn filter_reads_subtypes(filter: &crate::target::ObjectFilter) -> bool {
-    !filter.subtypes.is_empty()
-        || !filter.all_subtypes.is_empty()
-        || filter.any_of.iter().any(filter_reads_subtypes)
-}
-
-/// Subtypes continuous effects add to the card `spell` (in its current zone)
-/// beyond its printed ones; `None` when there are none.
-fn layer_added_subtypes_for_cost_filter(
-    game: &GameState,
-    spell: &crate::object::Object,
-) -> Option<Vec<crate::types::Subtype>> {
-    let physical = game.object(spell.id)?;
-    if crate::continuous::characteristics_calculation_in_progress(game, spell.id) {
-        return None;
-    }
-    let chars = game.current_characteristics(spell.id)?;
-    let printed = physical.zone_subtypes();
-    let added: Vec<_> = chars
-        .subtypes
-        .iter()
-        .filter(|subtype| !printed.contains(*subtype))
-        .cloned()
-        .collect();
-    (!added.is_empty()).then_some(added)
 }
 
 pub(crate) fn collect_battlefield_spell_cost_modifiers(
@@ -8197,6 +8157,7 @@ fn affordable_with_max_cost_payment_sacrifice_reduction(
             casting_method,
             &apply_minimum_spell_total_mana_with_view(
                 view,
+                player,
                 &effective_cost.reduce_generic(reduction),
             ),
             view,

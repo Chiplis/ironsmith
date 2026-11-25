@@ -859,7 +859,12 @@ impl crate::effect_model_interpreter::EffectModel for WireEffectModel {
 // The owning restore codec supplies complete retained template snapshots. Keep
 // the resolver scoped to this materialization; no global identity/model cache.
 struct WireEffectModelHooks<'a> {
-    card_definition: &'a mut dyn FnMut(wire::WireCardDefinition) -> Result<crate::cards::CardDefinition, ArtifactMaterializationError>,
+    creator_text: &'a str,
+    card_definition:
+        &'a mut dyn FnMut(
+            wire::WireCardDefinition,
+        )
+            -> Result<crate::cards::CardDefinition, ArtifactMaterializationError>,
 }
 
 impl WireEffectModelHooks<'_> {
@@ -947,6 +952,58 @@ impl crate::effect_model_interpreter::EffectModelInterpreterHooks<WireEffectMode
 
     fn unsupported_effect(&mut self, detail: String) -> Self::Error {
         ArtifactMaterializationError::UnsupportedEffect { detail }
+    }
+
+    fn legacy_token_word_roles(
+        &self,
+        create: &crate::effects::CreateTokenEffect,
+    ) -> Option<ironsmith_core::TokenTextRoles> {
+        use ironsmith_core::{Subtype, TokenNameTextRole, TokenTextRoles};
+        let card = &create.token.card;
+        // Old compact creature templates stored the subtype as their internal
+        // name. Require the original creating clause to confirm its role.
+        let [subtype] = card.subtypes.as_slice() else {
+            return None;
+        };
+        if !subtype.is_creature_type() || !card.name.eq_ignore_ascii_case(&subtype.display_name()) {
+            return None;
+        }
+        let name = TokenNameTextRole::SubtypeDerived;
+        let count = create.token.abilities.len();
+        if create.controller == ironsmith_core::PlayerFilter::ChosenPlayer {
+            let gift = match subtype {
+                Subtype::Octopus => "gift an octopus",
+                Subtype::Fish if create.enters_tapped => "gift a tapped fish",
+                _ => "",
+            };
+            if !gift.is_empty()
+                && self
+                    .creator_text
+                    .lines()
+                    .any(|line| line.trim_end_matches('.') == gift)
+            {
+                return Some(TokenTextRoles::rules_implied(name, count));
+            }
+        }
+        let word = subtype.display_name().to_lowercase();
+        let creature = format!("{word} creature token");
+        let artifact = format!("{word} artifact creature token");
+        let authored = self.creator_text.split("create").skip(1).any(|clause| {
+            let description = clause.split(['.', ';']).next().unwrap_or_default();
+            let Some((shape, tail)) = description
+                .split_once(&creature)
+                .or_else(|| description.split_once(&artifact))
+            else {
+                return false;
+            };
+            !shape.contains("named ")
+                && !tail
+                    .trim_start_matches('s')
+                    .trim_start()
+                    .starts_with("named ")
+                && shape.split_whitespace().any(|part| part.contains('/'))
+        });
+        authored.then(|| TokenTextRoles::authored(name, count))
     }
 
     fn runtime_static_ability_hook(
@@ -1189,11 +1246,16 @@ fn runtime_effect_from_core_model(
 /// this boundary does not infer identity from CardId or model equality.
 fn runtime_effect_from_core_model_with_card_definitions(
     effect: wire::WireEffect,
-    card_definition: &mut dyn FnMut(wire::WireCardDefinition) -> Result<crate::cards::CardDefinition, ArtifactMaterializationError>,
+    card_definition: &mut dyn FnMut(
+        wire::WireCardDefinition,
+    ) -> Result<
+        crate::cards::CardDefinition,
+        ArtifactMaterializationError,
+    >,
 ) -> Result<crate::effect::Effect, ArtifactMaterializationError> {
     crate::effect_model_interpreter::interpret_effect_model::<WireEffectModel, _>(
         effect,
-        &mut WireEffectModelHooks { card_definition },
+        &mut WireEffectModelHooks { card_definition, creator_text: "" },
     )
 }
 
@@ -1517,12 +1579,31 @@ fn apply_class_level_runtime_gates(definition: &mut crate::cards::CardDefinition
 fn runtime_definition_from_core_model(
     definition: wire::WireCardDefinition,
 ) -> Result<crate::cards::CardDefinition, ArtifactMaterializationError> {
+    let text = definition.canonical_text.to_ascii_lowercase();
+    runtime_definition_with_creator_text(definition, &text)
+}
+
+fn runtime_definition_with_creator_text(
+    definition: wire::WireCardDefinition,
+    creator_text: &str,
+) -> Result<crate::cards::CardDefinition, ArtifactMaterializationError> {
+    let mut nested = |child: wire::WireCardDefinition| {
+        if child.card.is_token {
+            runtime_definition_with_creator_text(child, creator_text)
+        } else {
+            runtime_definition_from_core_model(child)
+        }
+    };
+    let hooks = std::cell::RefCell::new(WireEffectModelHooks {
+        card_definition: &mut nested,
+        creator_text,
+    });
     let mut definition = definition.try_map(
-        runtime_ability_from_core_model,
-        runtime_effect_from_core_model,
-        runtime_cost_from_core_model,
-        convert_alternative_cast,
-        runtime_optional_cost_from_core_model,
+        |a| hooks.borrow_mut().ability(a),
+        |e| hooks.borrow_mut().effect(e),
+        |c| hooks.borrow_mut().cost(c),
+        |m| hooks.borrow_mut().alternative_cast(m),
+        |o| o.try_map(|c| hooks.borrow_mut().cost(c)),
     )?;
     definition.abilities = combine_level_ability_statics(definition.abilities);
     apply_class_level_runtime_gates(&mut definition);
@@ -2001,7 +2082,10 @@ pub fn materialize_artifact(
     // merely because their executable abilities still decode structurally.
     artifact.validate().map_err(ArtifactMaterializationError::InvalidArtifact)?;
     validate_card_creation_graph(&artifact.payload.definition)?;
-    let mut definition = runtime_definition_from_core_model(artifact.payload.definition.clone())?;
+    let mut definition = runtime_definition_with_creator_text(
+        artifact.payload.definition.clone(),
+        &artifact.payload.canonical_text.to_ascii_lowercase(),
+    )?;
     definition.canonical_text = artifact.payload.canonical_text.clone();
     definition.ability_labels = artifact.payload.ability_labels.clone();
     Ok(definition)

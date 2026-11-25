@@ -243,6 +243,7 @@ pub(crate) fn attachments_grant_all_nonlegendary_creature_card_names(
     attachments.iter().any(|id| {
         game.object(*id).is_some_and(|attachment| {
             attachment.zone == Zone::Battlefield
+                && !game.is_phased_out(*id)
                 && attachment.abilities.iter().any(|ability| {
                     matches!(&ability.kind, AbilityKind::Static(rule)
                         if rule.id() == StaticAbilityId::AttachedHasAllNonlegendaryCreatureCardNames)
@@ -320,29 +321,20 @@ pub(crate) fn names_share(
 }
 
 pub(crate) fn object_mana_value_for_filter(object: &Object) -> i32 {
-    if let Some(mana_value) = object.linked_face_mana_value() {
-        return mana_value as i32;
-    }
-    object.mana_cost.as_ref().map_or(0, |mana_cost| {
-        if object.zone == Zone::Stack {
-            mana_cost.mana_value_with_x(object.x_value.unwrap_or(0)) as i32
-        } else {
-            mana_cost.mana_value() as i32
-        }
-    })
+    let value = object.linked_face_mana_value().unwrap_or_else(|| {
+        object.mana_cost.as_ref().map_or(0, |cost| {
+            if object.zone == Zone::Stack {
+                cost.mana_value_with_x(object.x_value.unwrap_or(0))
+            } else {
+                cost.mana_value()
+            }
+        })
+    });
+    ironsmith_core::quantity::clamp_i32_from_u32(value)
 }
 
 pub(crate) fn snapshot_mana_value_for_filter(snapshot: &ObjectSnapshot) -> i32 {
-    if let Some(mana_value) = snapshot.linked_face_mana_value {
-        return mana_value as i32;
-    }
-    snapshot.mana_cost.as_ref().map_or(0, |mana_cost| {
-        if snapshot.zone == Zone::Stack {
-            mana_cost.mana_value_with_x(snapshot.x_value.unwrap_or(0)) as i32
-        } else {
-            mana_cost.mana_value() as i32
-        }
-    })
+    ironsmith_core::quantity::clamp_i32_from_u32(snapshot.mana_value())
 }
 
 fn object_is_enlist_eligible(game: &GameState, id: ObjectId) -> bool {
@@ -1605,16 +1597,16 @@ pub(crate) fn calculated_mana_value_for_filter(
     object: &Object,
     chars: &CalculatedCharacteristics,
 ) -> i32 {
-    if let Some(value) = chars.linked_face_mana_value {
-        return value as i32;
-    }
-    chars.mana_cost.as_ref().map_or(0, |cost| {
-        if object.zone == Zone::Stack {
-            cost.mana_value_with_x(object.x_value.unwrap_or(0)) as i32
-        } else {
-            cost.mana_value() as i32
-        }
-    })
+    let value = chars.linked_face_mana_value.unwrap_or_else(|| {
+        chars.mana_cost.as_ref().map_or(0, |cost| {
+            if object.zone == Zone::Stack {
+                cost.mana_value_with_x(object.x_value.unwrap_or(0))
+            } else {
+                cost.mana_value()
+            }
+        })
+    });
+    ironsmith_core::quantity::clamp_i32_from_u32(value)
 }
 
 fn object_current_mana_value_for_relation(object: &Object, game: &GameState) -> i32 {

@@ -1507,12 +1507,14 @@ impl RestrictionExt for Restriction {
         {
             ctx.tagged_players.entry("enchanted".into()).or_insert_with(|| vec![player]);
         }
+        let affected = game.range_players_for_source(controller, source);
         let player_matches_restriction_filter =
             |player_id, filter: &crate::target::PlayerFilter| {
-                filter.matches_player(player_id, &ctx)
+                affected.as_ref().is_none_or(|players| players.contains(&player_id))
+                    && (filter.matches_player(player_id, &ctx)
                     || player_matches_filter_with_combat(
                         player_id, filter, game, controller, combat,
-                    )
+                    ))
             };
 
         match self {

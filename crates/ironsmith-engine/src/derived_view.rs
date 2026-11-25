@@ -1861,10 +1861,21 @@ impl<'a> DerivedGameView<'a> {
     }
 
     pub(crate) fn minimum_total_spell_mana_payment(&self) -> Option<u32> {
+        self.minimum_spell_mana_for_payer(None)
+    }
+
+    pub(crate) fn minimum_spell_mana_for_payer(&self, payer: Option<PlayerId>) -> Option<u32> {
         self.ensure_memo_context();
+        let in_range = |source| {
+            self.game.limited_range_of_influence().is_none() || payer.is_none_or(|payer| {
+                self.current_controller(source).is_some_and(|controller|
+                    self.game.player_is_within_source_range(controller, payer, Some(source)))
+            })
+        };
         let mut minimum = None;
         if self.can_scan_non_layered_minimum_total_spell_mana() {
             for &perm_id in &self.game.battlefield {
+                if !in_range(perm_id) { continue; }
                 self.for_each_active_non_layered_static_ability(perm_id, |static_ability| {
                     if let Some(candidate) = static_ability.minimum_total_spell_mana() {
                         minimum =
@@ -1877,6 +1888,7 @@ impl<'a> DerivedGameView<'a> {
 
         self.prewarm_characteristics(&self.game.battlefield);
         for &perm_id in &self.game.battlefield {
+            if !in_range(perm_id) { continue; }
             let Some(static_abilities) = self.static_abilities_rc(perm_id) else {
                 continue;
             };

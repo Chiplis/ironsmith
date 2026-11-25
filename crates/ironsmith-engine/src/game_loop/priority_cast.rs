@@ -2927,7 +2927,7 @@ fn optional_mana_cost_is_affordable_with_spell_modifiers(
     if let Some(reduction) = pending.effect_mana_cost_reduction.as_ref() {
         // CR 601.2f: reductions come before any minimum-total floor.
         effective_cost = crate::decision::apply_minimum_spell_total_mana_with_view(
-            &crate::derived_view::DerivedGameView::new(game),
+            &crate::derived_view::DerivedGameView::new(game), pending.caster,
             &crate::decision::reduce_mana_cost(&effective_cost, reduction),
         );
     }
@@ -4268,28 +4268,28 @@ fn enforce_flagbearer_targeting(
     if chooser != player {
         return;
     }
-    let locked = game.battlefield.iter().any(|&id| {
-        game.object(id).is_some_and(|object| {
-            let controller = game.controller_of(object);
-            controller != player
-                && game.are_opponents(controller, player)
-                && game.object_has_static_ability_id(
-                    id,
-                    crate::static_abilities::StaticAbilityId::OpponentsMustTargetFlagbearers,
-                )
-        })
-    });
-    if !locked {
-        return;
-    }
-    let is_flagbearer = |target: &Target| match target {
-        Target::Object(id) => {
-            game.battlefield.contains(id)
-                && game
-                    .calculated_subtypes(*id)
-                    .contains(&crate::types::Subtype::Flagbearer)
+    let mut required_types = Vec::new();
+    for &source in &game.battlefield {
+        let Some(object) = game.object(source) else { continue };
+        let controller = game.controller_of(object);
+        if !game.are_opponents(controller, player) || !game.player_is_within_source_range(controller, player, Some(source))
+            || !game.object_has_static_ability_id(source, crate::static_abilities::StaticAbilityId::OpponentsMustTargetFlagbearers) { continue; }
+        let Some(chars) = game.calculated_characteristics(source) else { continue };
+        for ability in chars.static_abilities.iter().filter(|a| a.id() == crate::static_abilities::StaticAbilityId::OpponentsMustTargetFlagbearers) {
+            let subtype = match ability.canonical_model().map(|m| m.payload) {
+                Some(ironsmith_core::StaticAbilityPayload::OpponentsMustTargetSubtype(subtype)) => subtype,
+                _ => crate::types::Subtype::Flagbearer,
+            };
+            if !required_types.contains(&subtype) { required_types.push(subtype); }
         }
-        Target::Player(_) => false,
+    }
+    if required_types.is_empty() { return; }
+    let is_flagbearer = |target: &Target| match target {
+        Target::Object(id) if game.battlefield.contains(id) => {
+            let subtypes = game.calculated_subtypes(*id);
+            required_types.iter().any(|ty| subtypes.contains(ty))
+        }
+        _ => false,
     };
     if let Some(requirement) = requirements
         .iter_mut()
@@ -4872,7 +4872,7 @@ pub(super) fn continue_spell_next_cost_or_finalize(
             // A payment-linked reduction is still a reduction of the total
             // cost (CR 601.2f), so the minimum-total floor applies afterwards.
             let reduced = crate::decision::apply_minimum_spell_total_mana_with_view(
-                &crate::derived_view::DerivedGameView::new(game), &reduced,
+                &crate::derived_view::DerivedGameView::new(game), pending.caster, &reduced,
             );
             pending.mana_cost_to_pay = Some(reduced).filter(|cost| !cost.is_empty());
             if pending.mana_cost_to_pay.is_none() {
@@ -6208,7 +6208,7 @@ pub(super) fn continue_to_mana_payment(
                 |reduction| effective.reduced_by_mana_cost_options_with_spill(reduction, false),
             );
             options.into_iter().map(|effective| crate::decision::apply_minimum_spell_total_mana_with_view(
-                &crate::derived_view::DerivedGameView::new(game), &effective,
+                &crate::derived_view::DerivedGameView::new(game), pending.caster, &effective,
             )).collect::<Vec<_>>()
             }).fold(Vec::new(), |mut options, cost| {
                 if !options.contains(&cost) { options.push(cost); }
@@ -6689,13 +6689,12 @@ pub(super) fn get_legal_exile_from_hand_cards(
                     if color_filter.is_some() && game.is_hidden_card_placeholder(card_id) {
                         return true;
                     }
-                    game.object(card_id).is_some_and(|obj| {
-                        if let Some(required_colors) = color_filter {
-                            !obj.colors().intersection(required_colors).is_empty()
-                        } else {
-                            true
-                        }
-                    })
+                    match color_filter {
+                        Some(required_colors) => game.current_colors(card_id).is_some_and(|colors| {
+                            !colors.intersection(required_colors).is_empty()
+                        }),
+                        None => game.object(card_id).is_some(),
+                    }
                 })
                 .collect()
         })

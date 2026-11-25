@@ -1259,6 +1259,26 @@ fn anthem_value_as_layer_value(value: &AnthemValue) -> Option<Value> {
     }
 }
 
+fn creature_type_scale(value: &AnthemValue) -> Option<crate::continuous::TypeCountScale> {
+    let (multiplier, maximum) = match value {
+        AnthemValue::Fixed(0) => (0, None),
+        AnthemValue::PerCount {
+            multiplier,
+            count: AnthemCountExpression::CreatureTypesAmong(filter),
+        } if filter == &ObjectFilter::source() => (*multiplier, None),
+        AnthemValue::CappedPerCount {
+            multiplier,
+            count: AnthemCountExpression::CreatureTypesAmong(filter),
+            maximum,
+        } if filter == &ObjectFilter::source() => (*multiplier, Some(*maximum)),
+        _ => return None,
+    };
+    Some(crate::continuous::TypeCountScale {
+        multiplier,
+        maximum,
+    })
+}
+
 fn color_count_multiplier(value: &AnthemValue) -> Option<i32> {
     match value {
         AnthemValue::Fixed(0) => Some(0),
@@ -5378,6 +5398,27 @@ impl StaticAbilityKind for Anthem {
         controller: PlayerId,
         game: &GameState,
     ) -> Vec<ContinuousEffect> {
+        if let (Some(power), Some(toughness)) = (
+            creature_type_scale(&self.power),
+            creature_type_scale(&self.toughness),
+        ) && (power.multiplier != 0 || toughness.multiplier != 0)
+        {
+            let target = if self.source_only {
+                EffectTarget::Source
+            } else {
+                effect_target_for_filter(source, &self.filter)
+            };
+            return vec![effect_with_optional_static_condition(
+                ContinuousEffect::new(
+                    source,
+                    controller,
+                    target,
+                    Modification::ModifyPowerToughnessByCreatureTypes { power, toughness },
+                )
+                .with_source_type(EffectSourceType::StaticAbility),
+                &self.condition,
+            )];
+        }
         // Color-count anthems need the affected object's layer-5 colors, so keep
         // the target dynamic and defer the count until layer 7 applies.
         if let (Some(power_multiplier), Some(toughness_multiplier)) = (

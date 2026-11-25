@@ -2216,6 +2216,7 @@ fn complete_modification_schema_propagates_nested_payload_failure() {
 #[cfg(feature = "serialization")]
 fn retained_copy_schema_fixture() -> crate::snapshot::RetainedCopiableValues<String> {
     crate::snapshot::RetainedCopiableValues {
+        has_additional_casting_cost: false,
         definition_dependencies:None,
         copy_face_layout: Default::default(), other_copy_face: None, alternative_casts: vec![], optional_costs: vec![],
         name: "Retained characteristics".into(),
@@ -2272,6 +2273,7 @@ fn retained_copy_text_schema_preserves_complete_metadata_and_requires_abilities(
         _ => unreachable!(),
     };
     let native = CopiableValues {
+        has_additional_casting_cost: copy.has_additional_casting_cost,
         definition_dependencies:None,
         copy_face_layout: Default::default(), other_copy_face: None, alternative_casts: vec![], optional_costs: vec![],
         name: copy.name,

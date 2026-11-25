@@ -436,7 +436,7 @@ impl ManaCost {
                     .max()
                     .unwrap_or(0)
             })
-            .sum()
+            .fold(0, u32::saturating_add)
     }
 
     /// Returns the pips in this mana cost.
@@ -830,6 +830,7 @@ mod tests {
 
         assert_eq!(cost.mana_value(), 1);
         assert_eq!(cost.mana_value_with_x(3), 7);
+        assert_eq!(cost.mana_value_with_x(u32::MAX), u32::MAX);
     }
 
     #[test]
@@ -1024,6 +1025,22 @@ pub enum ManaRewriteOutput {
     /// production, in Plains/Island/Swamp/Mountain/Forest order. Multiple land
     /// types do not create multiple independently applicable effects.
     ByBasicLandType([Option<ManaSymbol>; 5]),
+    /// Text changes can make several printed clauses refer to the same land type.
+    ByLandTypeClauses([(crate::Subtype, Option<ManaSymbol>); 5]),
+}
+
+impl ManaRewriteOutput {
+    pub fn land_type_clauses(self) -> Option<[(crate::Subtype, Option<ManaSymbol>); 5]> {
+        use crate::Subtype::{Plains, Island, Swamp, Mountain, Forest};
+        match self {
+            Self::ByBasicLandType(outputs) => {
+                let lands = [Plains, Island, Swamp, Mountain, Forest];
+                Some(std::array::from_fn(|i| (lands[i], outputs[i])))
+            }
+            Self::ByLandTypeClauses(clauses) => Some(clauses),
+            _ => None,
+        }
+    }
 }
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]

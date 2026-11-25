@@ -1895,6 +1895,8 @@ impl StaticAbility {
         let value = match self.0.rewrite_text_words(change) {
             Ok(None) => return Ok(self.clone()),
             Ok(Some(mut rewritten)) => { rewritten.1 = self.1; Ok(rewritten) },
+            Err(_) if !crate::continuous::text_changes::structural_image_may_hold_source_word(
+                &self.compiled_model().map_or_else(|| format!("{:?}", self.0), |model| format!("{model:?}")), change) => return Ok(self.clone()),
             Err(error) => Err(error),
         };
         if let Some(key) = preview_key {

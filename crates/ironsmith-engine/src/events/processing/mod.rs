@@ -7610,7 +7610,7 @@ fn choose_mana_rewrite_color(
         })?;
     let chooser = if matches!(
         output,
-        ironsmith_core::ManaRewriteOutput::ByBasicLandType(_)
+        ironsmith_core::ManaRewriteOutput::ByBasicLandType(_) | ironsmith_core::ManaRewriteOutput::ByLandTypeClauses(_)
     ) {
         mana.controller
     } else {

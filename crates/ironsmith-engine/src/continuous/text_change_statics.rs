@@ -33,6 +33,13 @@ fn hold(model: &CompiledStaticAbility) -> Error {
     Error::StaticAbility(model.id.unwrap_or(StaticAbilityId::RuleFallbackText))
 }
 
+pub(super) fn replace_mana_color_word(symbol: &mut ironsmith_core::ManaSymbol, change: TextChange) {
+    if let Some(mut color) = symbol.unit_color() {
+        change.replace_color_word(&mut color);
+        *symbol = ironsmith_core::ManaSymbol::from_color(color);
+    }
+}
+
 fn optional_filter(filter: &mut Option<ObjectFilter>, change: TextChange) -> Result<(), Error> {
     if let Some(filter) = filter { *filter = rewrite_filter_words(filter, change)?; }
     Ok(())
@@ -235,6 +242,25 @@ pub(crate) fn rewrite_static_model_words(
         | P::AlternativeCastFromZoneForFilter { filter, .. } => {
             *filter = rewrite_filter_words(filter, change)?;
         }
+        P::EventReplacementWithEffects { event, replacement_effects, .. } => {
+            use ironsmith_core::ReplacedEventSpec as E;
+            match event {
+                E::DamageToObject { target, source_filter, .. } => {
+                    *target = rewrite_filter_words(target, change)?;
+                    optional_filter(source_filter, change)?;
+                }
+                E::DamageToPlayer { player, source_filter, .. } => {
+                    *player = rewrite_player_filter_words(player, change)?;
+                    optional_filter(source_filter, change)?;
+                }
+                E::LifeGain {player, ..} | E::LifeLoss { player } | E::DrawInstruction {player, ..}
+                | E::LifeReducedToZeroOrLess {player} | E::LifePayment {player, ..} => *player = rewrite_player_filter_words(player, change)?,
+                E::Destroy {target: object} | E::Untap {object, ..} | E::ZoneChange {object, ..}
+                | E::ZoneChangeExcluding {object, ..} => *object = rewrite_filter_words(object, change)?,
+                E::SourceDestructionRegenerates => {}
+            }
+            effects_words(replacement_effects, change)?;
+        }
         P::ConditionalAttackRequirement { trigger, required } => {
             *trigger = rewrite_filter_words(trigger, change)?;
             *required = rewrite_filter_words(required, change)?;
@@ -308,9 +334,17 @@ pub(crate) fn rewrite_static_model_words(
             spell_cost_condition_words(&mut spec.condition, change)?;
         }
         P::ThisSpellCastRestriction { kind, .. } => {
-            // Historical label-only kinds still infer executable predicates
-            // from strings. Only the newer closed timing enum is complete.
-            if kind.timing.is_none() { return Err(hold(model)); }
+            // Restore the stored cast-history predicate before visiting its color filter.
+            if kind.condition.is_none() && kind.label == "if you cast another green spell this turn" {
+                kind.condition = Some(Condition::ValueComparison {
+                    left: Value::SpellsCastThisTurnMatching {
+                        player: PlayerFilter::You, filter: ObjectFilter::default().with_colors(ironsmith_core::ColorSet::GREEN),
+                        exclude_source: true,
+                    },
+                    operator: ironsmith_core::ValueComparisonOperator::GreaterThan, right: Value::Fixed(0),
+                });
+            }
+            optional_condition(&mut kind.condition, change)?;
         }
         P::ThisSpellXMaximum { maximum, definition, .. } => {
             *maximum = rewrite_value_words(maximum, change)?;
@@ -540,13 +574,18 @@ pub(crate) fn rewrite_static_model_words(
             *controller = rewrite_player_filter_words(controller, change)?;
             optional_filter(token_filter, change)?;
         }
-        P::AddTokenCreationReplacement { controller, token_filter, additional_token, additional, per_created, .. } => {
-            // The Squirrel shortcut also implies green and a type-derived
-            // token name without retaining which words were actually authored.
-            if *additional_token == ironsmith_core::AdditionalTokenKind::Squirrel
-                || (*per_created && *additional != 1) { return Err(hold(model)); }
+        P::AddTokenCreationReplacement { controller, token_filter, additional_token, additional, per_created, display } => {
             *controller = rewrite_player_filter_words(controller, change)?;
             *token_filter = rewrite_filter_words(token_filter, change)?;
+            if *additional_token == ironsmith_core::AdditionalTokenKind::Squirrel {
+                let token = crate::cards::tokens::squirrel_token_definition();
+                let roles = ironsmith_core::TokenTextRoles::authored(ironsmith_core::TokenNameTextRole::SubtypeDerived, token.abilities.len());
+                let template = crate::effects::CreateTokenEffect::you(token, *additional as i32).with_text_roles(roles);
+                let template = Effect::new(template).with_text_change(change)?;
+                return Ok(CompiledStaticAbility::token_creation_templates(controller.clone(), token_filter.clone(), vec![template],
+                    if *per_created { ironsmith_core::TokenCreationTemplateMode::AppendForEach } else { ironsmith_core::TokenCreationTemplateMode::AppendOnce },
+                    false, false, display.clone()));
+            }
         }
         P::CreateOneOfEachTokenReplacement { kinds, .. } => {
             if kinds.contains(&ironsmith_core::AdditionalTokenKind::Squirrel) { return Err(hold(model)); }
@@ -583,25 +622,7 @@ pub(crate) fn rewrite_static_model_words(
         | P::PreventDamageToYouFromSourceFilter { source_filter, .. } => {
             *source_filter = rewrite_filter_words(source_filter, change)?;
         }
-        P::ManaSpendPermission { permission, .. } => {
-            // This symbol selector also encodes prose such as "black mana";
-            // no field distinguishes that word from an authored mana symbol.
-            if permission.any_color_mana_symbol.is_some() || permission.mana_symbol_as.is_some() {
-                return Err(hold(model));
-            }
-            permission.player = rewrite_player_filter_words(&permission.player, change)?;
-            optional_filter(&mut permission.mana_source_filter, change)?;
-            match &mut permission.scope {
-                ironsmith_core::ManaSpendScope::ActivationCostsOf(filter)
-                | ironsmith_core::ManaSpendScope::CastingSpellsMatching(filter)
-                | ironsmith_core::ManaSpendScope::ActivationCostsOfAbilityKind { filter, .. } => {
-                    *filter = rewrite_filter_words(filter, change)?;
-                }
-                ironsmith_core::ManaSpendScope::AllCosts
-                | ironsmith_core::ManaSpendScope::OneSpellCast
-                | ironsmith_core::ManaSpendScope::CastingSpellsWithStableIds(_) => {}
-            }
-        }
+        P::ManaSpendPermission { permission, .. } => rewrite_mana_spending_permission(permission, change)?,
         P::PreventDamageToSelfRemoveCounter { amount, follow_up, one_damage_per_counter, surface, .. } => {
             if *one_damage_per_counter && (*amount != Value::EventValue(ironsmith_core::EventValueSpec::Amount)
                 || follow_up.is_some() || *surface != ironsmith_core::CounterRemovalPreventionSurface::Conjoined) {
@@ -619,15 +640,7 @@ pub(crate) fn rewrite_static_model_words(
             *source_filter = rewrite_filter_words(source_filter, change)?;
             *target_filter = rewrite_filter_words(target_filter, change)?;
         }
-        P::Grants(spec) => {
-            spec.filter = rewrite_filter_words(&spec.filter, change)?;
-            spec.beneficiary = rewrite_player_filter_words(&spec.beneficiary, change)?;
-            optional_filter(&mut spec.cast_this_way_filter, change)?;
-            effects_words(&mut spec.on_use_effects, change)?;
-            statics_words(&mut spec.cast_this_way_grants, change)?;
-            statics_words(&mut spec.permanent_this_way_grants, change)?;
-            grantable_words(&mut spec.grantable, change)?;
-        }
+        P::Grants(spec) => rewrite_grant_spec(spec, change, rewrite_static_model_words)?,
         P::EntersTappedUnlessCondition { condition, .. } => *condition = rewrite_condition_words(condition, change)?,
         P::EntersWithCountersIfCondition { count, condition, added_abilities, .. } => {
             *count = rewrite_value_words(count, change)?;
@@ -669,7 +682,7 @@ pub(crate) fn rewrite_static_model_words(
         P::SpellManaSpendingRestriction(restriction) => match restriction {
             ironsmith_core::mana::ManaSpendingRestriction::ProducedBy(filter) => mana_producer_words(filter, change),
             // The color set conflates an authored list with the word "colored".
-            ironsmith_core::mana::ManaSpendingRestriction::OnX { .. } => return Err(hold(model)),
+            ironsmith_core::mana::ManaSpendingRestriction::OnX { colors, .. } => change.replace_color_words(colors),
             ironsmith_core::mana::ManaSpendingRestriction::NoMana
             | ironsmith_core::mana::ManaSpendingRestriction::UnspentActivationColors
             | ironsmith_core::mana::ManaSpendingRestriction::SourceChosenColor
@@ -678,18 +691,9 @@ pub(crate) fn rewrite_static_model_words(
             | ironsmith_core::mana::ManaSpendingRestriction::AtLeastColors(_)
             | ironsmith_core::mana::ManaSpendingRestriction::GenericManaByMinusOneCounters => {}
             // Color words would need text-change rewriting (CR 612.2).
-            ironsmith_core::mana::ManaSpendingRestriction::Colors(_) => return Err(hold(model)),
+            ironsmith_core::mana::ManaSpendingRestriction::Colors(colors) => change.replace_color_words(colors),
         },
-        P::ManaProductionRewrite { rule, .. } => {
-            // Symbol input lacks symbol-versus-word provenance. Basic-land
-            // arrays cannot represent replacement collisions faithfully.
-            if matches!(rule.input, ironsmith_core::mana::ManaRewriteInput::Symbol(_))
-                || matches!(rule.output, ironsmith_core::mana::ManaRewriteOutput::ByBasicLandType(_)) {
-                return Err(hold(model));
-            }
-            rule.source_filter = rewrite_filter_words(&rule.source_filter, change)?;
-            optional_player(&mut rule.controller, change)?;
-        }
+        P::ManaProductionRewrite { rule, .. } => rewrite_mana_production_words(rule, change)?,
         // Complete payloads with no authored words in the supported families.
         // Strings in these variants are presentation or names only; keyword
         // rules, chosen types and actual mana symbols remain untouched.
@@ -730,18 +734,32 @@ pub(crate) fn rewrite_static_model_words(
         | P::ForetellSpecialActionModifier { .. } | P::FlashIfCastChoice(_) => {}
         // These variants encode literal qualities or executable prices in an
         // enum name/string without enough authored-word role information.
-        P::OpponentsMustTargetFlagbearers | P::FirstEquipCostAlternative(_)
-        | P::ChooseNamedOptionAsEnters { .. } | P::ConvertUnspentMana { .. }
+        P::AdditionalSacrificePerManaSymbol { symbol, sacrifice, .. } => {
+            replace_mana_color_word(symbol, change);
+            *sacrifice = rewrite_filter_words(sacrifice, change)?;
+        }
+        P::ConvertUnspentMana { player, symbol } => {
+            *player = rewrite_player_filter_words(player, change)?;
+            replace_mana_color_word(symbol, change);
+        }
+        P::ChooseNamedOptionAsEnters { options, .. } => rewrite_named_options(options, change),
+        P::OpponentsMustTargetFlagbearers => {
+            let mut subtype = Subtype::Flagbearer;
+            change.replace_subtype_word(&mut subtype);
+            if subtype != Subtype::Flagbearer { rewritten.payload = P::OpponentsMustTargetSubtype(subtype); }
+        }
+        P::OpponentsMustTargetSubtype(subtype) => change.replace_subtype_word(subtype),
+        P::FirstEquipCostAlternative(_)
+
         // A generic instead-replacement's event selectors are not yet
         // rewritten; hold rather than change only part of its words.
-        | P::EventReplacementWithEffects { .. }
+
         | P::MaySkipDrawStepWithFollowup { .. }
         | P::EchoCostAlternative { .. }
         | P::EventAmountReplacement { .. }
         // The authored display would go stale if only the filter changed.
         | P::CastTargetRestriction { .. }
         | P::EntersAttachedToChosenObject { .. }
-        | P::AdditionalSacrificePerManaSymbol { .. }
         | P::ControllerCounterExilePermission { .. }
         | P::AttackingPlayerChoosesBlocks { .. }
         | P::AttachedControllerMayPayCostToIgnoreSourceEffectUntilEndOfTurn { .. } => {
@@ -751,6 +769,105 @@ pub(crate) fn rewrite_static_model_words(
     Ok(rewritten)
 }
 
+pub(super) fn rewrite_mana_spending_permission(
+    permission: &mut ironsmith_core::ManaSpendPermission,
+    change: TextChange,
+) -> Result<(), Error> {
+    if let Some(symbol) = &mut permission.any_color_mana_symbol {
+        replace_mana_color_word(symbol, change);
+    }
+    if let Some((from, to)) = &mut permission.mana_symbol_as {
+        replace_mana_color_word(from, change);
+        replace_mana_color_word(to, change);
+    }
+    permission.player = rewrite_player_filter_words(&permission.player, change)?;
+    optional_filter(&mut permission.mana_source_filter, change)?;
+    match &mut permission.scope {
+        ironsmith_core::ManaSpendScope::ActivationCostsOf(filter)
+        | ironsmith_core::ManaSpendScope::CastingSpellsMatching(filter)
+        | ironsmith_core::ManaSpendScope::ActivationCostsOfAbilityKind { filter, .. } => {
+            *filter = rewrite_filter_words(filter, change)?;
+        }
+        ironsmith_core::ManaSpendScope::AllCosts
+        | ironsmith_core::ManaSpendScope::OneSpellCast
+        | ironsmith_core::ManaSpendScope::CastingSpellsWithStableIds(_) => {}
+    }
+    Ok(())
+}
+
+pub(crate) fn rewrite_mana_production_words(
+    rule: &mut ironsmith_core::ManaOutputRewrite,
+    change: TextChange,
+) -> Result<(), Error> {
+    rule.source_filter = rewrite_filter_words(&rule.source_filter, change)?;
+    optional_player(&mut rule.controller, change)?;
+    if let Some(mut clauses) = rule.output.land_type_clauses() {
+        let original = clauses;
+        for (land, _) in &mut clauses {
+            change.replace_subtype_word(land);
+        }
+        if original != clauses {
+            rule.output = ironsmith_core::ManaRewriteOutput::ByLandTypeClauses(clauses);
+        }
+    } else if rule.surface == ironsmith_core::ManaOutputRewriteSurface::SpellsAndAbilitiesWouldAdd
+        && let ironsmith_core::ManaRewriteOutput::Symbol(symbol) = &mut rule.output
+    {
+        replace_mana_color_word(symbol, change);
+    }
+    Ok(())
+}
+
+/// Named factions and active choices are identities. Only menus whose options
+/// describe characteristics contain the corresponding rules words.
+pub(crate) fn rewrite_named_options(options: &mut Vec<String>, change: TextChange) {
+    use ironsmith_core::{Color, TextWord};
+    fn subtype_name(name: &str) -> bool {
+        Subtype::all_creature_types()
+            .iter()
+            .chain(Subtype::all_land_types())
+            .any(|s| s.display_name().eq_ignore_ascii_case(name))
+    }
+    fn quality(option: &str) -> bool {
+        let lower = option.to_ascii_lowercase();
+        let color_type = |s: &str| {
+            s.split_once(' ')
+                .is_some_and(|(color, ty)| Color::from_name(color).is_some() && subtype_name(ty))
+        };
+        Color::from_name(&lower).is_some()
+            || subtype_name(&lower)
+            || color_type(&lower)
+            || lower
+                .strip_prefix("a ")
+                .and_then(|s| s.split_once(" creature with base power and toughness "))
+                .is_some_and(|(qualities, _)| color_type(qualities))
+    }
+    if !options.iter().all(|option| quality(option)) {
+        return;
+    }
+    let spelling = |word| match word {
+        TextWord::Color(color) => color.name().to_owned(),
+        TextWord::CreatureType(ty) | TextWord::BasicLandType(ty) => ty.display_name(),
+    };
+    let from = spelling(change.from()).to_lowercase();
+    let to = spelling(change.to());
+    for option in options.iter_mut() {
+        let original = option.to_ascii_lowercase();
+        let Some(start) = original.find(&from) else {
+            continue;
+        };
+        let end = start + from.len();
+        if (start == 0 || original.as_bytes()[start - 1] == b' ')
+            && (end == original.len() || original.as_bytes()[end] == b' ')
+        {
+            let replacement = if option[start..end].chars().all(|c| !c.is_uppercase()) {
+                to.to_lowercase()
+            } else {
+                to.clone()
+            };
+            option.replace_range(start..end, &replacement);
+        }
+    }
+}
 fn damage_filters(source: &mut ObjectFilter, player: &mut Option<PlayerFilter>, object: &mut Option<ObjectFilter>, change: TextChange)
     -> Result<(), Error>
 {
@@ -778,6 +895,8 @@ fn wordless_leaf(id: Option<StaticAbilityId>) -> bool {
         | StaticAbilityId::Cascade | StaticAbilityId::ReadAhead | StaticAbilityId::Unleash
         | StaticAbilityId::Delve | StaticAbilityId::Convoke | StaticAbilityId::Improvise
         // "color words" / "the chosen color word" name the family, not a word.
+        | StaticAbilityId::MustAttack | StaticAbilityId::DoesntUntap | StaticAbilityId::Unblockable
+        | StaticAbilityId::CanAttackAsThoughNoDefender | StaticAbilityId::DoubleCountersReplacement
         | StaticAbilityId::AllColorWordsBecomeChosenColor
     ))
 }
@@ -841,9 +960,10 @@ fn spell_cost_condition_words(condition: &mut ThisSpellCostCondition, change: Te
     Ok(())
 }
 
-fn attack_condition_words(condition: &mut ironsmith_core::CantAttackUnlessConditionSpec, change: TextChange)
-    -> Result<(), Error>
-{
+fn attack_condition_words(
+    condition: &mut ironsmith_core::CantAttackUnlessConditionSpec,
+    change: TextChange,
+) -> Result<(), Error> {
     use ironsmith_core::{AttackCostCondition as Cost, AttackingGroupAttackCondition as Group,
         CantAttackUnlessConditionSpec as C, DefendingPlayerAttackCondition as Defender};
     match condition {
@@ -854,8 +974,13 @@ fn attack_condition_words(condition: &mut ironsmith_core::CantAttackUnlessCondit
             Cost::PayGenericPerSourceCounter { .. } => {}
         },
         C::AttackingGroupCondition(group) => match group {
-            // The model cannot express a replacement of either literal color.
-            Group::BlackOrGreenCreatureAlsoAttacks => return Err(Error::Condition),
+            Group::BlackOrGreenCreatureAlsoAttacks => {
+                let original = ironsmith_core::ColorSet::BLACK.union(ironsmith_core::ColorSet::GREEN);
+                let mut colors = original;
+                change.replace_color_words(&mut colors);
+                if colors != original { *group = Group::CreatureOfColorsAlsoAttacks(colors); }
+            }
+            Group::CreatureOfColorsAlsoAttacks(colors) => change.replace_color_words(colors),
             Group::AtLeastNOtherCreaturesAttack(_) | Group::CreatureWithGreaterPowerAlsoAttacks
             | Group::AtLeastNOtherCreaturesBlock(_) | Group::CreatureWithGreaterPowerAlsoBlocks => {}
         },
@@ -873,7 +998,10 @@ fn attack_condition_words(condition: &mut ironsmith_core::CantAttackUnlessCondit
     Ok(())
 }
 
-fn restriction_words(restriction: &mut ironsmith_core::Restriction, change: TextChange) -> Result<(), Error> {
+pub(super) fn restriction_words(
+    restriction: &mut ironsmith_core::Restriction,
+    change: TextChange,
+) -> Result<(), Error> {
     use ironsmith_core::Restriction as R;
     match restriction {
         R::MoveBetweenZones { .. } => {},
@@ -978,13 +1106,33 @@ fn mana_producer_words(filter: &mut ironsmith_core::mana::ManaProducerFilter, ch
     }
 }
 
-fn grantable_words(
-    grantable: &mut ironsmith_core::Grantable<CompiledStaticAbility, Effect, Cost, ThisSpellCostCondition>,
+pub(super) fn rewrite_grant_spec<S>(
+    spec: &mut ironsmith_core::GrantSpec<S, Effect, Cost, ThisSpellCostCondition>,
     change: TextChange,
+    rewrite_static: impl Fn(&S, TextChange) -> Result<S, Error>,
+) -> Result<(), Error> {
+    spec.filter = rewrite_filter_words(&spec.filter, change)?;
+    spec.beneficiary = rewrite_player_filter_words(&spec.beneficiary, change)?;
+    optional_filter(&mut spec.cast_this_way_filter, change)?;
+    effects_words(&mut spec.on_use_effects, change)?;
+    for ability in spec
+        .cast_this_way_grants
+        .iter_mut()
+        .chain(&mut spec.permanent_this_way_grants)
+    {
+        *ability = rewrite_static(ability, change)?;
+    }
+    grantable_words(&mut spec.grantable, change, rewrite_static)
+}
+
+fn grantable_words<S>(
+    grantable: &mut ironsmith_core::Grantable<S, Effect, Cost, ThisSpellCostCondition>,
+    change: TextChange,
+    rewrite_static: impl Fn(&S, TextChange) -> Result<S, Error>,
 ) -> Result<(), Error> {
     use ironsmith_core::{AlternativeCastingMethod as A, DerivedAlternativeCast as D, Grantable as G};
     match grantable {
-        G::Ability(model) => *model = rewrite_static_model_words(model, change)?,
+        G::Ability(model) => *model = rewrite_static(model, change)?,
         G::PlayFrom => {}
         G::AlternativePrice { costs, .. } => {
             *costs = costs.iter().map(|cost| rewrite_cost_words(cost, change)).collect::<Result<_, _>>()?;
@@ -1030,7 +1178,13 @@ fn grantable_words(
             // Composed still dispatches keyword semantics by name. Awaken's
             // program contains a generated Elemental instruction; there is no
             // distinction between that implied type and an authored one.
-            A::Composed { .. } | A::Awaken { .. } => return Err(Error::Cost),
+            A::Composed { total_cost, instructions, .. } => {
+                *total_cost = rewrite_total_cost_words(total_cost, change)?;
+                // A named keyword supplies its own rules (including freerunning's Assassin condition).
+                for (_, filter) in &mut instructions.generic_cost_reductions { *filter = rewrite_filter_words(filter, change)?; }
+                for (_, condition) in &mut instructions.conditional_mana_reductions { spell_cost_condition_words(condition, change)?; }
+            }
+            A::Awaken { .. } => return Err(Error::Cost),
             A::Dash { .. } | A::Plot { .. } | A::Suspend { .. } | A::Disturb { .. }
             | A::Miracle { .. } | A::Foretell { .. } | A::Trap { .. } | A::Mutate { .. } => {}
         },
@@ -1253,7 +1407,7 @@ mod tests {
     fn opaque_child_and_lossy_native_combinations_hold_without_mutating_parent() {
         let original = model(P::EquipmentGrant(vec![
             CompiledStaticAbility::protection(ironsmith_core::ProtectionFrom::Color(ColorSet::BLACK)),
-            model(P::ChooseNamedOptionAsEnters { options: vec!["black".into()], display: String::new(), at_random: false, each_player: false }),
+            model(P::SetColors { filter: black(), colors: Color::ALL.into_iter().collect(), exclude_from_color_identity: false }),
         ]));
         assert!(matches!(rewrite_static_model_words(&original, change()), Err(Error::StaticAbility(_))));
         let P::EquipmentGrant(children) = &original.payload else { unreachable!() };
@@ -1271,7 +1425,6 @@ mod tests {
                 count: Value::Fixed(1), count_condition: Some(Condition::YouControl(black())),
                 otherwise_count: None, subtypes: vec![Subtype::Elf],
             }),
-            model(P::OpponentsMustTargetFlagbearers),
         ];
         for original in lossy {
             assert!(matches!(rewrite_static_model_words(&original, change()), Err(Error::StaticAbility(_))));
@@ -1356,10 +1509,9 @@ mod tests {
         let mut grantable=ironsmith_core::Grantable::DerivedAlternativeCast(ironsmith_core::DerivedAlternativeCast::ExilePreparationFromCardManaCost {
             reduction:2,optional_cast:true,label:Some("black human preparation".into()),
         });
-        grantable_words(&mut grantable,change()).unwrap();
+        grantable_words(&mut grantable, change(), rewrite_static_model_words).unwrap();
         assert!(matches!(grantable,ironsmith_core::Grantable::DerivedAlternativeCast(ironsmith_core::DerivedAlternativeCast::ExilePreparationFromCardManaCost {
             reduction:2,optional_cast:true,label:Some(label),
         }) if label=="black human preparation"));
     }
-
 }

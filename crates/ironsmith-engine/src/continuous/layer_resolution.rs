@@ -745,6 +745,7 @@ pub(super) fn calculate_with_layers(
                 | Modification::ModifyToughness(_)
                 | Modification::ModifyPowerToughness { .. }
                 | Modification::ModifyPowerToughnessValue { .. }
+                | Modification::ModifyPowerToughnessByCreatureTypes { .. }
                 | Modification::ModifyPowerToughnessByColorCount { .. }
                 | Modification::SwitchPowerToughness => {}
             }
@@ -1124,6 +1125,11 @@ pub(super) fn apply_layer_7_effects(
                     &mut chars.numeric_range_error,
                     "toughness",
                 );
+            }
+            Modification::ModifyPowerToughnessByCreatureTypes { power: dp, toughness: dt } => {
+                let count = crate::continuous::creature_type_count(&chars.subtypes);
+                add_pt_checked(&mut power, dp.delta(count), &mut chars.numeric_range_error, "power");
+                add_pt_checked(&mut toughness, dt.delta(count), &mut chars.numeric_range_error, "toughness");
             }
             Modification::ModifyPowerToughnessByColorCount {
                 power_multiplier,

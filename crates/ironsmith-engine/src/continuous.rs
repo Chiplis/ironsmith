@@ -799,6 +799,27 @@ pub enum ContinuousModification<S, A, C, T, R, H> {
     RewriteText(ironsmith_core::TextChange),
     /// A physical merge participates in layer 1a at the merge timestamp.
     MergeComponent { component: crate::ids::StableId, on_top: bool },
+    /// Count the affected object's creature types after layer 4 (CR 613.1d).
+    ModifyPowerToughnessByCreatureTypes { power: TypeCountScale, toughness: TypeCountScale },
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[cfg_attr(feature = "serialization", derive(serde::Serialize, serde::Deserialize))]
+pub struct TypeCountScale {
+    pub multiplier: i32,
+    pub maximum: Option<i32>,
+}
+
+impl TypeCountScale {
+    pub(crate) fn delta(self, count: usize) -> i128 {
+        let value = i128::from(self.multiplier) * count as i128;
+        self.maximum.map_or(value, |limit| value.min(i128::from(limit)))
+    }
+}
+
+pub(crate) fn creature_type_count(subtypes: &[Subtype]) -> usize {
+    subtypes.iter().filter(|ty| ty.is_creature_type()).copied()
+        .collect::<std::collections::HashSet<_>>().len()
 }
 
 impl<S, A, C, T, R, H> ContinuousModification<S, A, C, T, R, H> {
@@ -981,6 +1002,8 @@ retain_original_types,
                 power_multiplier,
                 toughness_multiplier,
             },
+            Self::ModifyPowerToughnessByCreatureTypes { power, toughness } =>
+                ContinuousModification::ModifyPowerToughnessByCreatureTypes { power, toughness },
             Self::SwitchPowerToughness => ContinuousModification::SwitchPowerToughness,
         })
     }
@@ -1141,6 +1164,7 @@ impl Modification {
             | Modification::ModifyToughness(_)
             | Modification::ModifyPowerToughness { .. }
             | Modification::ModifyPowerToughnessValue { .. }
+            | Modification::ModifyPowerToughnessByCreatureTypes { .. }
             | Modification::ModifyPowerToughnessByColorCount { .. }
             | Modification::SwitchPowerToughness => Layer::PowerToughness,
         }
@@ -1213,6 +1237,7 @@ impl Modification {
             | Modification::ModifyToughness(_)
             | Modification::ModifyPowerToughness { .. }
             | Modification::ModifyPowerToughnessValue { .. }
+            | Modification::ModifyPowerToughnessByCreatureTypes { .. }
             | Modification::ModifyPowerToughnessByColorCount { .. } => Some(PtSublayer::Modifying),
 
             Modification::SwitchPowerToughness => Some(PtSublayer::Switching),
@@ -8304,6 +8329,11 @@ fn apply_modification_to_chars(
                 &mut chars.numeric_range_error,
                 "toughness",
             );
+        }
+        Modification::ModifyPowerToughnessByCreatureTypes { power: dp, toughness: dt } => {
+            let count = crate::continuous::creature_type_count(&chars.subtypes);
+            add_pt_checked(&mut chars.power, dp.delta(count), &mut chars.numeric_range_error, "power");
+            add_pt_checked(&mut chars.toughness, dt.delta(count), &mut chars.numeric_range_error, "toughness");
         }
         Modification::ModifyPowerToughnessByColorCount {
             power_multiplier,

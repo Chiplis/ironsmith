@@ -327,18 +327,8 @@ impl<'a, 'game> LayerValueContext<'a, 'game> {
         let controller = self.controller;
         let source = self.source;
         {
-            let symbol = crate::mana::ManaSymbol::from_color(*color);
-            let count_symbols = |object: &Object| {
-                object
-                    .mana_cost
-                    .as_ref()
-                    .map(|cost| {
-                        cost.pips()
-                            .iter()
-                            .filter(|pip| pip.contains(&symbol))
-                            .count() as i32
-                    })
-                    .unwrap_or(0)
+            let count_symbols = |chars: &CalculatedCharacteristics| {
+                chars.mana_cost.as_deref().map_or(0, |cost| crate::targeting::mana_symbols_of_color(cost, *color))
             };
             if let ChooseSpec::All(filter) = spec.unhinted() {
                 let mut total = 0i32;
@@ -347,13 +337,13 @@ impl<'a, 'game> LayerValueContext<'a, 'game> {
                     filter,
                     controller,
                     source,
-                    |object, _| total = total.saturating_add(count_symbols(object)),
+                    |_, chars| total = total.saturating_add(count_symbols(chars)),
                 );
                 total
             } else {
                 object_for_value_spec(spec, ctx, source)
-                    .map(count_symbols)
-                    .unwrap_or(0)
+                    .and_then(|object| ctx.effects.calculate_characteristics(object.id, ctx.objects, ctx.battlefield, ctx.game))
+                    .map_or(0, |chars| count_symbols(&chars))
             }
         }
     }
