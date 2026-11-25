@@ -23,7 +23,8 @@ impl EffectExecutor for ChooseFriendsOrFoesEffect {
         let players = game
             .players
             .iter()
-            .filter(|player| player.is_in_game())
+            .filter(|player| player.is_in_game()
+                && game.player_is_within_source_range(chooser, player.id, Some(ctx.source)))
             .map(|player| (player.id, player.name.to_string()))
             .collect::<Vec<_>>();
         let Some(choices) =

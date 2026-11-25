@@ -79,8 +79,7 @@ fn referenced_mana_cost_pips(
     };
     let Some(cost) = objects
         .first()
-        .and_then(|&id| game.object(id))
-        .and_then(|object| object.mana_cost_owned())
+        .and_then(|&id| crate::filter::object_current_mana_cost(game, id))
     else {
         return Ok(Vec::new());
     };

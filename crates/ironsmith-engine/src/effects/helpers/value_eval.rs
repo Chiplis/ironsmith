@@ -309,7 +309,7 @@ pub(crate) fn resolve_wide(
         Value::CreatureTypesAmong(filter) => {
             let mut seen = HashSet::new();
             context.visit_property_objects(filter, |object| {
-                for subtype in object.subtypes(game, true) {
+                for &subtype in object.subtypes() {
                     if subtype.is_creature_type() {
                         seen.insert(subtype);
                     }
@@ -320,7 +320,7 @@ pub(crate) fn resolve_wide(
         Value::PlaneswalkerTypesAmong(filter) => {
             let mut seen = HashSet::new();
             context.visit_property_objects(filter, |object| {
-                for subtype in object.subtypes(game, true) {
+                for &subtype in object.subtypes() {
                     if subtype.is_planeswalker_subtype() {
                         seen.insert(subtype);
                     }
@@ -342,7 +342,7 @@ pub(crate) fn resolve_wide(
         Value::CardTypesSharedByAll(filter) => {
             let mut shared: Option<HashSet<_>> = None;
             context.visit_property_objects(filter, |object| {
-                let types: HashSet<_> = object.card_types(game).into_iter().collect();
+                let types: HashSet<_> = object.card_types().iter().copied().collect();
                 shared = Some(match shared.take() {
                     None => types,
                     Some(prior) => prior.intersection(&types).copied().collect(),
@@ -353,7 +353,7 @@ pub(crate) fn resolve_wide(
         Value::CardTypesAmong(filter) => {
             let mut seen = HashSet::new();
             context.visit_property_objects(filter, |object| {
-                seen.extend(object.card_types(game));
+                seen.extend(object.card_types().iter().copied());
             });
             Ok(i64::from(seen.len() as i64))
         }
@@ -364,8 +364,8 @@ pub(crate) fn resolve_wide(
             context.visit_property_objects(filter, |object| {
                 seen.extend(
                     object
-                        .card_types(game)
-                        .into_iter()
+                        .card_types()
+                        .iter().copied()
                         .filter(|card_type| card_type.is_permanent_type()),
                 );
             });
@@ -383,21 +383,9 @@ pub(crate) fn resolve_wide(
             Ok(i64::from(seen.len() as i64))
         }
         Value::ColorsAmong(filter) => {
-            let mut seen = HashSet::new();
-            context.visit_property_objects(filter, |object| {
-                for color in [
-                    crate::color::Color::White,
-                    crate::color::Color::Blue,
-                    crate::color::Color::Black,
-                    crate::color::Color::Red,
-                    crate::color::Color::Green,
-                ] {
-                    if object.colors().contains(color) {
-                        seen.insert(color);
-                    }
-                }
-            });
-            Ok(i64::from(seen.len() as i64))
+            let mut colors = crate::color::ColorSet::COLORLESS;
+            context.visit_property_objects(filter, |object| colors = colors.union(object.colors()));
+            Ok(i64::from(colors.count()))
         }
         Value::ColorPairsAmong(filter) => {
             let mut seen = HashSet::new();
@@ -429,16 +417,7 @@ pub(crate) fn resolve_wide(
         Value::DistinctManaCosts(filter) => {
             let mut seen = HashSet::new();
             context.visit_property_objects(filter, |object| {
-                let cost = match object {
-                    // CR 709.4b: a split card outside the stack and the
-                    // battlefield has the combined cost of both halves.
-                    context::PropertyObject::Live(object)
-                    | context::PropertyObject::LayerBaseline(object) => object
-                        .split_combined_mana_cost()
-                        .or_else(|| object.mana_cost_owned()),
-                    context::PropertyObject::Snapshot(snapshot) => snapshot.mana_cost.clone(),
-                };
-                let Some(cost) = cost else {
+                let Some(cost) = object.mana_cost() else {
                     return;
                 };
                 // Compare costs, not their spelling: combined halves such as
@@ -472,8 +451,7 @@ pub(crate) fn resolve_wide(
         Value::UnlockedDoorsAmong(filter) => {
             let mut doors = 0i64;
             context.visit_property_objects(filter, |object| {
-                let (context::PropertyObject::Live(object)
-                | context::PropertyObject::LayerBaseline(object)) = object
+                let context::PropertyObject::Current(object, _) = object
                 else {
                     return;
                 };
@@ -486,7 +464,7 @@ pub(crate) fn resolve_wide(
         Value::DistinctPowers(filter) => {
             let mut seen = HashSet::new();
             context.visit_property_objects(filter, |object| {
-                if let Some(power) = object.power(game) {
+                if let Some(power) = object.power() {
                     seen.insert(power);
                 }
             });
@@ -1381,18 +1359,13 @@ pub(crate) fn resolve_wide(
             let player_ids = context.counter_player_ids(value, player_spec)?;
             let mut types = HashSet::new();
             for player_id in player_ids {
-                let player = game
-                    .player(player_id)
-                    .ok_or(ExecutionError::PlayerNotFound(player_id))?;
-                for &card_id in &player.graveyard {
-                    let Some(obj) = game.object(card_id) else {
-                        continue;
-                    };
-                    // CR 709.4: a split card has both halves' card types.
-                    for card_type in obj.zone_card_types() {
-                        types.insert(*card_type);
-                    }
-                }
+                game.player(player_id).ok_or(ExecutionError::PlayerNotFound(player_id))?;
+                let filter = crate::target::ObjectFilter::default()
+                    .in_zone(Zone::Graveyard)
+                    .owned_by(PlayerFilter::Specific(player_id));
+                context.visit_property_objects(&filter, |object| {
+                    types.extend(object.card_types().iter().copied());
+                });
             }
 
             Ok(i64::from(types.len() as i64))

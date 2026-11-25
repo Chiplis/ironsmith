@@ -181,14 +181,6 @@ impl<'a, 'game> LayerValueContext<'a, 'game> {
             self.source,
         )
     }
-    pub fn visit_candidates(&self, filter: &ObjectFilter, mut visitor: impl FnMut(&Object)) {
-        let filter_ctx = self.filter_context();
-        for_each_filter_candidate(self.calculation, filter, self.controller, Some(self.source), |object| {
-            if filter.matches_non_recursive(object, &filter_ctx, self.calculation.game) {
-                visitor(object);
-            }
-        });
-    }
     pub fn visit_layered(
         &self,
         filter: &ObjectFilter,

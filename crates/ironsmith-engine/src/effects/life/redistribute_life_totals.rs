@@ -44,7 +44,11 @@ impl EffectExecutor for RedistributeLifeTotalsEffect {
         let candidates: Vec<PlayerId> = game
             .players
             .iter()
-            .filter(|player| player.is_in_game())
+            .filter(|player| {
+                player.is_in_game()
+                    && game.player_is_within_source_range(chooser, player.id, Some(ctx.source))
+                    && game.player_is_within_source_range(ctx.controller, player.id, Some(ctx.source))
+            })
             .map(|player| player.id)
             .collect();
         let mut chosen = Vec::new();

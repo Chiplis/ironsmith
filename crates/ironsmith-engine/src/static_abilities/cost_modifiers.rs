@@ -3685,18 +3685,7 @@ pub fn this_spell_cost_condition_is_active_for_player_with_optional_costs_paid(
                 > 0
         }
         ThisSpellCostCondition::DistinctCardTypesInYourGraveyardOrMore(n) => {
-            let Some(player) = game.player(controller) else {
-                return false;
-            };
-            let mut card_types = std::collections::HashSet::<CardType>::new();
-            for &card_id in &player.graveyard {
-                if let Some(card) = game.object(card_id) {
-                    for card_type in &card.card_types {
-                        card_types.insert(*card_type);
-                    }
-                }
-            }
-            card_types.len() >= *n as usize
+            crate::condition_eval::count_distinct_card_types_in_graveyard(game, controller) >= *n as usize
         }
         ThisSpellCostCondition::YouHaveCardsInYourGraveyardOrMore(n) => game
             .player(controller)

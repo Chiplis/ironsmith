@@ -4124,7 +4124,7 @@ fn condition_object_matches_player_zone(
     }
 }
 
-fn count_distinct_card_types_in_graveyard(game: &GameState, player_id: PlayerId) -> usize {
+pub(crate) fn count_distinct_card_types_in_graveyard(game: &GameState, player_id: PlayerId) -> usize {
     use std::collections::HashSet;
 
     let Some(player_state) = game.player(player_id) else {
@@ -4133,7 +4133,7 @@ fn count_distinct_card_types_in_graveyard(game: &GameState, player_id: PlayerId)
 
     let mut seen = HashSet::new();
     for &object_id in &player_state.graveyard {
-        for card_type in game.calculated_card_types(object_id) {
+        for card_type in game.current_card_types(object_id).unwrap_or_default() {
             seen.insert(card_type);
         }
     }

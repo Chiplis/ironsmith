@@ -3392,8 +3392,10 @@ pub(crate) fn resolve_turn_history_count(
                 let Some(object) = game.object(object_id) else {
                     continue;
                 };
-                if player.matches_player(game.controller_of(object), filter_ctx) {
-                    colors = colors.union(object.colors());
+                if player.matches_player(game.controller_of(object), filter_ctx)
+                    && let Some(current) = game.current_colors(object_id)
+                {
+                    colors = colors.union(current);
                 }
             }
             for record in history.projected_records() {

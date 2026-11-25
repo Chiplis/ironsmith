@@ -3,7 +3,7 @@
 //! Used by Chrome Mox and Pit of Offerings-style permanents to produce mana
 //! based on the colors of the cards they exiled.
 
-use crate::color::Color;
+use crate::color::{Color, ColorSet};
 use crate::effects::EffectExecutor;
 use crate::effects::{ExecutionContext, ExecutionError};
 use crate::game_state::GameState;
@@ -56,19 +56,19 @@ pub(super) fn linked_exiled_card_colors(
 ) -> Vec<Color> {
     let imprinted = game.get_imprinted_cards(source);
     let exiled_with = game.get_exiled_with_source_links(source);
-    [
-        Color::White,
-        Color::Blue,
-        Color::Black,
-        Color::Red,
-        Color::Green,
-    ]
-    .into_iter()
-    .filter(|color| {
-        imprinted.iter().chain(exiled_with).any(|&id| {
-            game.object(id)
-                .is_some_and(|object| object.colors().contains(*color))
-        })
-    })
-    .collect()
+    let mut colors = ColorSet::COLORLESS;
+    for &id in imprinted.iter().chain(exiled_with) {
+        if !game.object(id).is_some_and(|object| object.zone == crate::Zone::Exile) {
+            continue;
+        }
+        match game.try_current_characteristics(id) {
+            Ok(Some(chars)) => colors = colors.union(chars.colors),
+            Ok(None) => {}
+            Err(error) => {
+                game.record_token_resource_failure(&ExecutionError::ContinuousDiscovery(error));
+                return Vec::new();
+            }
+        }
+    }
+    Color::ALL.into_iter().filter(|&color| colors.contains(color)).collect()
 }

@@ -166,6 +166,82 @@ fn card(route: &str) -> ironsmith::CardDefinition {
             "Yixlid Jailer",
             "Mana cost: {1}{B}\nType: Creature — Zombie Wizard\nFirst printed set: Future Sight\nPower/Toughness: 2/1\nCards in graveyards lose all abilities.",
         ),
+        "biotransference" => (
+            "Biotransference",
+            "Mana cost: {2}{B}{B}\nType: Enchantment\nFirst printed set: Warhammer 40,000 Commander\nCreatures you control are artifacts in addition to their other types. The same is true for creature spells you control and creature cards you own that aren't on the battlefield.\nWhenever you cast an artifact spell, you lose 1 life and create a 2/2 black Necron Warrior artifact creature token.",
+        ),
+        "chromatic-orrery" => (
+            "Chromatic Orrery",
+            "Mana cost: {7}\nType: Legendary Artifact\nFirst printed set: Core Set 2021\nYou may spend mana as though it were mana of any color.\n{T}: Add {C}{C}{C}{C}{C}.\n{5}, {T}: Draw a card for each color among permanents you control.",
+        ),
+        "chrome-mox" => (
+            "Chrome Mox",
+            "Mana cost: {0}\nType: Artifact\nFirst printed set: Mirrodin\nImprint — When this artifact enters, you may exile a nonartifact, nonland card from your hand.\n{T}: Add one mana of any of the exiled card's colors.",
+        ),
+        "dusk-feaster" => (
+            "Dusk Feaster",
+            "Mana cost: {5}{B}{B}\nType: Creature — Vampire\nFirst printed set: Eldritch Moon\nPower/Toughness: 4/5\nDelirium — This spell costs {2} less to cast if there are four or more card types among cards in your graveyard.\nFlying",
+        ),
+        "elemental-resonance" => (
+            "Elemental Resonance",
+            "Mana cost: {2}{G}{G}\nType: Enchantment — Aura\nFirst printed set: Dissension\nEnchant permanent\nAt the beginning of your first main phase, add mana equal to enchanted permanent's mana cost. (Mana cost includes color. If a mana symbol has multiple colors, choose one.)",
+        ),
+        "faeburrow-elder" => (
+            "Faeburrow Elder",
+            "Mana cost: {1}{G}{W}\nType: Creature — Treefolk Druid\nFirst printed set: Throne of Eldraine\nPower/Toughness: 0/0\nVigilance\nThis creature gets +1/+1 for each color among permanents you control.\n{T}: For each color among permanents you control, add one mana of that color.",
+        ),
+        "forest" => (
+            "Forest",
+            "Type: Basic Land — Forest\nFirst printed set: Limited Edition Alpha\n({T}: Add {G}.)",
+        ),
+        "hill-giant" => (
+            "Hill Giant",
+            "Mana cost: {3}{R}\nType: Creature — Giant\nFirst printed set: Limited Edition Alpha\nPower/Toughness: 3/3",
+        ),
+        "lunar-insight" => (
+            "Lunar Insight",
+            "Mana cost: {2}{U}\nType: Sorcery\nFirst printed set: Foundations\nDraw a card for each different mana value among nonland permanents you control.",
+        ),
+        "mirrorweave" => (
+            "Mirrorweave",
+            "Mana cost: {2}{W/U}{W/U}\nType: Instant\nFirst printed set: Shadowmoor\nEach other creature becomes a copy of target nonlegendary creature until end of turn.",
+        ),
+        "mycosynth-lattice" => (
+            "Mycosynth Lattice",
+            "Mana cost: {6}\nType: Artifact\nFirst printed set: Darksteel\nAll permanents are artifacts in addition to their other types.\nAll cards that aren't on the battlefield, spells, and permanents are colorless.\nPlayers may spend mana as though it were mana of any color.",
+        ),
+        "nighthawk-scavenger" => (
+            "Nighthawk Scavenger",
+            "Mana cost: {1}{B}{B}\nType: Creature — Vampire Rogue\nFirst printed set: Zendikar Rising Promos\nPower/Toughness: 1+*/3\nFlying, deathtouch, lifelink\nNighthawk Scavenger's power is equal to 1 plus the number of card types among cards in your opponents' graveyards.",
+        ),
+        "painter-s-servant" => (
+            "Painter's Servant",
+            "Mana cost: {2}\nType: Artifact Creature — Scarecrow\nFirst printed set: Shadowmoor\nPower/Toughness: 1/3\nAs this creature enters, choose a color.\nAll cards that aren't on the battlefield, spells, and permanents are the chosen color in addition to their other colors.",
+        ),
+        "pit-of-offerings" => (
+            "Pit of Offerings",
+            "Type: Land — Cave\nFirst printed set: The Lost Caverns of Ixalan\nThis land enters tapped.\nWhen this land enters, exile up to three target cards from graveyards.\n{T}: Add {C}.\n{T}: Add one mana of any of the exiled cards' colors.",
+        ),
+        "reverse-the-sands" => (
+            "Reverse the Sands",
+            "Mana cost: {6}{W}{W}\nType: Sorcery\nFirst printed set: Champions of Kamigawa\nRedistribute any number of players' life totals. (Each of those players gets one life total back.)",
+        ),
+        "savannah-lions" => (
+            "Savannah Lions",
+            "Mana cost: {W}\nType: Creature — Cat\nFirst printed set: Limited Edition Alpha\nPower/Toughness: 2/1",
+        ),
+        "tarmogoyf" => (
+            "Tarmogoyf",
+            "Mana cost: {1}{G}\nType: Creature — Lhurgoyf\nFirst printed set: Future Sight\nPower/Toughness: */1+*\nTarmogoyf's power is equal to the number of card types among cards in all graveyards and its toughness is equal to that number plus 1.",
+        ),
+        "dark-ritual" => (
+            "Dark Ritual",
+            "Mana cost: {B}\nType: Instant\nFirst printed set: Limited Edition Alpha\nAdd {B}{B}{B}.",
+        ),
+        "opt" => (
+            "Opt",
+            "Mana cost: {U}\nType: Instant\nFirst printed set: Invasion\nScry 1. (Look at the top card of your library. You may put that card on the bottom.)\nDraw a card.",
+        ),
         _ => panic!("unknown regression fixture {route}"),
     };
     ironsmith_compiler_runtime::compile_to_runtime_definition(name, block, false).unwrap()
@@ -790,3 +866,6 @@ fn multiplayer_choices_and_characteristics_respect_range_and_turn_direction() {
     assert!(dm.bidders.contains(&PlayerId(1)));
     assert!(!dm.bidders.contains(&c) && !dm.bidders.contains(&PlayerId(3)));
 }
+
+#[path = "november_2026_rules/characteristic_interactions.rs"]
+mod characteristic_interactions;

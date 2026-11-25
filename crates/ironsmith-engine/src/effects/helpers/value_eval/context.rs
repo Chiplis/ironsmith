@@ -554,16 +554,7 @@ impl<'a, 'game> EvaluationContext<'a, 'game> {
         filter: &ObjectFilter,
         mut visit: impl FnMut(&[Subtype]),
     ) {
-        match self.mode {
-            Mode::Execution(_) => self.visit_property_objects(filter, |object| {
-                visit(&object.subtypes(self.game, true));
-            }),
-            // Domain must see type-changing effects from layer 4 when it is
-            // evaluated for power/toughness in layer 7, including batch calculations.
-            Mode::Continuous(layer) => layer.visit_layered(filter, |_, chars| {
-                visit(&chars.subtypes);
-            }),
-        }
+        self.visit_property_objects(filter, |object| visit(object.subtypes()));
     }
 
     /// Current-name reductions must observe layer-one copy and name changes.
@@ -656,81 +647,81 @@ impl<'a, 'game> EvaluationContext<'a, 'game> {
                         if let Some(object) = self.game.object(id)
                             && filter.matches(object, &filter_ctx, self.game)
                         {
-                            visit(PropertyObject::Live(object));
+                            match self.game.try_current_characteristics(id) {
+                                Ok(Some(chars)) => visit(PropertyObject::Current(object, &chars)),
+                                Ok(None) => {}
+                                Err(error) => self.game.record_token_resource_failure(
+                                    &ExecutionError::ContinuousDiscovery(error),
+                                ),
+                            }
                         }
                     }
                 }
             }
-            Mode::Continuous(layer) => layer.visit_candidates(filter, |object| {
-                visit(PropertyObject::LayerBaseline(object))
+            Mode::Continuous(layer) => layer.visit_layered(filter, |object, chars| {
+                visit(PropertyObject::Current(object, chars))
             }),
         }
     }
 }
 
 pub(super) enum PropertyObject<'a> {
-    Live(&'a Object),
+    Current(&'a Object, &'a crate::continuous::CalculatedCharacteristics),
     Snapshot(&'a ObjectSnapshot),
-    LayerBaseline(&'a Object),
 }
 
 impl PropertyObject<'_> {
-    pub(super) fn subtypes(&self, game: &GameState, current: bool) -> Vec<Subtype> {
+    pub(super) fn subtypes(&self) -> &[Subtype] {
         match self {
-            Self::Live(object) if current => game
-                .current_subtypes(object.id)
-                .unwrap_or_else(|| object.subtypes.to_vec()),
-            Self::Live(object) | Self::LayerBaseline(object) => object.subtypes.to_vec(),
-            Self::Snapshot(snapshot) => snapshot.subtypes.to_vec(),
+            Self::Current(_, chars) => &chars.subtypes,
+            Self::Snapshot(snapshot) => &snapshot.subtypes,
         }
     }
-    pub(super) fn card_types(&self, game: &GameState) -> Vec<CardType> {
+    pub(super) fn card_types(&self) -> &[CardType] {
         match self {
-            Self::Live(object) => game
-                .current_card_types(object.id)
-                .unwrap_or_else(|| object.card_types.to_vec()),
-            Self::LayerBaseline(object) => object.card_types.to_vec(),
-            Self::Snapshot(snapshot) => snapshot.card_types.to_vec(),
+            Self::Current(_, chars) => &chars.card_types,
+            Self::Snapshot(snapshot) => &snapshot.card_types,
         }
     }
     pub(super) fn colors(&self) -> crate::color::ColorSet {
         match self {
-            Self::Live(object) | Self::LayerBaseline(object) => object.colors(),
+            Self::Current(_, chars) => chars.colors,
             Self::Snapshot(snapshot) => snapshot.colors,
         }
     }
     pub(super) fn counters(&self) -> &std::collections::BTreeMap<crate::object::CounterType, u32> {
         match self {
-            Self::Live(object) | Self::LayerBaseline(object) => &object.counters,
+            Self::Current(object, _) => &object.counters,
             Self::Snapshot(snapshot) => &snapshot.counters,
         }
     }
     pub(super) fn filter_mana_value(&self) -> i32 {
         match self {
-            Self::Live(object) | Self::LayerBaseline(object) => {
-                crate::filter::object_mana_value_for_filter(object)
-            }
+            Self::Current(object, chars) => crate::filter::calculated_mana_value_for_filter(object, chars),
             Self::Snapshot(snapshot) => crate::filter::snapshot_mana_value_for_filter(snapshot),
         }
     }
-    pub(super) fn power(&self, game: &GameState) -> Option<i32> {
+    pub(super) fn mana_cost(&self) -> Option<&crate::mana::ManaCost> {
         match self {
-            Self::Live(object) | Self::LayerBaseline(object) => {
-                game.calculated_power(object.id).or_else(|| object.power())
-            }
+            Self::Current(_, chars) => chars.mana_cost.as_deref(),
+            Self::Snapshot(snapshot) => snapshot.mana_cost.as_ref(),
+        }
+    }
+    pub(super) fn power(&self) -> Option<i32> {
+        match self {
+            Self::Current(_, chars) => chars.power,
             Self::Snapshot(snapshot) => snapshot.power,
         }
     }
     pub(super) fn has_ability(
         &self,
         game: &GameState,
-        ability: ironsmith_core::StaticAbilityId,
+        id: ironsmith_core::StaticAbilityId,
     ) -> bool {
         match self {
-            Self::Live(object) | Self::LayerBaseline(object) => {
-                game.current_has_static_ability_id(object.id, ability)
-            }
-            Self::Snapshot(snapshot) => snapshot.has_static_ability_id(ability),
+            Self::Current(object, chars) => chars.static_abilities.iter()
+                .any(|ability| ability.id() == id && ability.is_active(game, object.id)),
+            Self::Snapshot(snapshot) => snapshot.has_static_ability_id(id),
         }
     }
 }

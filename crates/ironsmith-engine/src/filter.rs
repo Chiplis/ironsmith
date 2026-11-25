@@ -2990,8 +2990,10 @@ fn resolve_filter_comparison_rhs_value(
             }
             let mut colors = ColorSet::new();
             for object in game.objects_in_deterministic_order() {
-                if filter.matches(object, ctx, game) {
-                    colors = colors.union(object.colors());
+                if filter.matches(object, ctx, game)
+                    && let Some(chars) = checked_relation_characteristics(game, object.id).ok()?
+                {
+                    colors = colors.union(chars.colors);
                 }
             }
             Some(colors.count() as i64)

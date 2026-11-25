@@ -246,6 +246,15 @@ pub fn supports_controller_state_anthem_value(value: &Value) -> bool {
         | Value::MaxCardsDrawnThisTurn(
             PlayerFilter::Any | PlayerFilter::Opponent | PlayerFilter::You,
         ) => true,
+        // Characteristic aggregates need their layer-4/5 inputs before they
+        // can modify P/T in layer 7. "Other" is relative to the ability source.
+        Value::ColorsAmong(filter) | Value::ColorPairsAmong(filter)
+        | Value::CardTypesAmong(filter) | Value::CreatureTypesAmong(filter)
+        | Value::PlaneswalkerTypesAmong(filter) | Value::PermanentTypesAmong(filter) => {
+            let mut candidates = filter.clone();
+            candidates.other = false;
+            controller_state_filter(&candidates)
+        }
         Value::TurnHistoryCount(crate::TurnHistoryCount::EnteredBattlefield(filter))
         | Value::Count(filter)
         | Value::GreatestPower(filter)
