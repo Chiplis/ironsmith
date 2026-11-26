@@ -1803,6 +1803,11 @@ struct RuntimeCacheState {
     /// (`retain_continuous_state_after_mana_activation`).
     derived_tap_reads_before_dirty: Cell<bool>,
     derived_mana_reads_before_dirty: Cell<bool>,
+    /// Set while the payment planner simulates a mana activation it has
+    /// proven changes nothing a continuous effect can observe
+    /// (`hold_continuous_state_for_mana_activation`). Invalidations are
+    /// ignored until the hold is released.
+    continuous_state_hold: Cell<bool>,
     /// Same, for reads of the stack's entries (`TrackedValue::derived_read`
     /// on `GameState::stack` holds the reads since the last invalidation).
     /// While neither is set, no retained derived result depends on what is on
@@ -1879,6 +1884,8 @@ impl Clone for RuntimeCacheState {
             derived_state_read_mana: Cell::new(self.derived_state_read_mana.get()),
             derived_tap_reads_before_dirty: Cell::new(self.derived_tap_reads_before_dirty.get()),
             derived_mana_reads_before_dirty: Cell::new(self.derived_mana_reads_before_dirty.get()),
+            // A hold belongs to the activation running on the original.
+            continuous_state_hold: Cell::new(false),
             derived_stack_reads_before_dirty: Cell::new(self.derived_stack_reads_before_dirty.get()),
             continuous_state_active_player: Cell::new(self.continuous_state_active_player.get()),
             continuous_state_phase: Cell::new(self.continuous_state_phase.get()),
@@ -1949,6 +1956,7 @@ impl RuntimeCacheState {
             derived_state_read_mana: Cell::new(false),
             derived_tap_reads_before_dirty: Cell::new(false),
             derived_mana_reads_before_dirty: Cell::new(false),
+            continuous_state_hold: Cell::new(false),
             derived_stack_reads_before_dirty: Cell::new(false),
             continuous_state_active_player: Cell::new(active_player),
             continuous_state_phase: Cell::new(Phase::Beginning),
@@ -7852,6 +7860,9 @@ impl GameState {
     }
 
     pub(crate) fn mark_continuous_state_dirty(&self) {
+        if self.runtime_cache.continuous_state_hold.get() {
+            return;
+        }
         let counter = &self
             .runtime_cache
             .work_counters
@@ -8210,6 +8221,12 @@ impl GameState {
         self.mark_continuous_state_dirty();
     }
 
+    /// Diagnostics accessor: whether a mana activation could change any
+    /// continuous effect's result (see `continuous_effects_are_tap_sensitive`).
+    pub fn continuous_effects_are_tap_sensitive_public(&self) -> bool {
+        self.continuous_effects_are_tap_sensitive()
+    }
+
     pub(crate) fn continuous_state_is_clean(&self) -> bool {
         self.observe_player_mutations();
         self.observe_stack_mutations();
@@ -8316,6 +8333,35 @@ impl GameState {
             // no scalar dependency is hidden by effect generation.
             P::MakeColorless(filter) | P::AddSubtypes { filter, .. } => {
                 Self::object_filter_is_tap_sensitive(filter)
+            }
+            // Entry replacements apply as an object enters; tapping a source
+            // for mana neither creates nor removes them.
+            P::EntersTappedUnlessCondition { .. }
+            | P::EntersTappedForFilter(_)
+            | P::EntersUntappedForFilter(_) => false,
+            // Parameterless keywords and landwalk read no tapped state or mana.
+            P::Landwalk(_) => false,
+            P::None if ability.id().is_keyword() => false,
+            P::CharacteristicDefiningPt { power, toughness } => {
+                Self::value_is_tap_sensitive(power) || Self::value_is_tap_sensitive(toughness)
+            }
+            // The attachment itself is not changed by a mana activation, so
+            // only the granted statics can carry a dependency.
+            P::AttachedAbilityGrant(grant) => {
+                grant
+                    .condition
+                    .as_ref()
+                    .is_some_and(Self::condition_is_mana_sensitive)
+                    || std::iter::once(&grant.ability)
+                        .chain(&grant.additional_abilities)
+                        .any(|ability| match &ability.kind {
+                            ironsmith_core::AbilityKind::Static(ability) => {
+                                Self::static_ability_is_mana_sensitive(&StaticAbility::from_model(
+                                    ability.clone(),
+                                ))
+                            }
+                            _ => false,
+                        })
             }
             // A currently inactive wrapper may become active after production.
             P::Conditional { ability, condition, .. } => {
@@ -8424,7 +8470,11 @@ impl GameState {
         match value {
             crate::effect::Value::Fixed(_)
             | crate::effect::Value::LifeLostThisTurn(crate::target::PlayerFilter::You)
-            | crate::effect::Value::LifeGainedThisTurn(crate::target::PlayerFilter::You) => false,
+            | crate::effect::Value::LifeGainedThisTurn(crate::target::PlayerFilter::You)
+            // Tapping a source and adding mana changes no life total.
+            | crate::effect::Value::LifeTotal(_)
+            | crate::effect::Value::StartingLifeTotal(_)
+            | crate::effect::Value::MaximumLifeTotal(_) => false,
             crate::effect::Value::SurfaceHinted { value, .. }
             | crate::effect::Value::Scaled(value, _)
             | crate::effect::Value::DividedRoundedDown(value, _)
@@ -8450,6 +8500,46 @@ impl GameState {
         // This classifier is also used across a complete mana activation,
         // which can change the source's activation history as well as tap it.
         Self::filter_reads_tapped_state_or_activation_history(filter, true)
+    }
+
+    /// Keeps the cached continuous state through a mana activation the caller
+    /// has proven only taps its source and adds mana
+    /// (`mana_ability_is_undo_safe`, no mana triggers or replacements).
+    ///
+    /// Such an activation still marks the state dirty several times over
+    /// (the pool, the activation record, its events), and every query between
+    /// those marks rederived the whole board to the same result. Returns false,
+    /// holding nothing, unless the state is clean and no retained derivation
+    /// read tapped state or a mana pool. Pair with
+    /// `release_continuous_state_hold`.
+    pub(crate) fn hold_continuous_state_for_mana_activation(&self) -> bool {
+        if !self.continuous_state_is_clean()
+            || self.derived_state_read_tapped()
+            || self.runtime_cache.derived_state_read_mana.get()
+            || self.continuous_effects_are_tap_sensitive()
+        {
+            return false;
+        }
+        self.runtime_cache.continuous_state_hold.set(true);
+        true
+    }
+
+    /// Ends a hold. The state stays clean only if the activation added or
+    /// removed no continuous effect and stayed in the same turn context;
+    /// otherwise it is invalidated now.
+    pub(crate) fn release_continuous_state_hold(&self) {
+        if !self.runtime_cache.continuous_state_hold.replace(false) {
+            return;
+        }
+        if self.runtime_cache.continuous_state_revision.get()
+            != self.effect_store.continuous_effects.revision()
+            || !self.cached_continuous_turn_state_matches_current()
+        {
+            self.mark_continuous_state_dirty();
+            return;
+        }
+        // The pool changed and nothing else on the players did.
+        *self.runtime_cache.observed_players.borrow_mut() = Some(self.players.cursor());
     }
 
     /// Restores the cached continuous state after a mana activation that only

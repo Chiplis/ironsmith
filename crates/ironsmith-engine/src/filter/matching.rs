@@ -1225,12 +1225,16 @@ pub(super) fn matches_subject(
     if (filter.tapped || filter.untapped) && subject.zone() != crate::zone::Zone::Battlefield {
         return false;
     }
-    let is_tapped = subject.tapped(game);
-    if filter.tapped && !is_tapped {
-        return false;
-    }
-    if filter.untapped && is_tapped {
-        return false;
+    // Read tapped state only for a filter that asks about it: the read marks
+    // every cached derivation as invalidated by a later tap.
+    if filter.tapped || filter.untapped {
+        let is_tapped = subject.tapped(game);
+        if filter.tapped && !is_tapped {
+            return false;
+        }
+        if filter.untapped && is_tapped {
+            return false;
+        }
     }
     if filter.enlist_eligible && !object_is_enlist_eligible(game, subject.object_id()) {
         return false;

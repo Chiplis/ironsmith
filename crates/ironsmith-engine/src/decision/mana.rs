@@ -2045,7 +2045,14 @@ where
             .unwrap_or(0);
 
         for x_value in 0..=max_x {
-            if effective_cost.as_ref().is_some_and(|cost| {
+            // Paying a larger X never takes less mana, so X = 0 decides
+            // whether this proposal can be afforded at all. Larger values are
+            // still offered to the predicate (a target can depend on X) but
+            // are not searched for a payment: that search ran once per value
+            // and each one nearer the limit was the planner's hardest case.
+            // The exact maximum is settled when X is announced (CR 601.2b).
+            if x_value > 0 {
+            } else if effective_cost.as_ref().is_some_and(|cost| {
                 !payment_characteristic_preview::can_pay_scoped_tap(
                     hypothetical, player, &proposal, casting_method,
                     unreduced_effective_cost.as_ref().unwrap_or(cost), true, x_value,
@@ -2074,7 +2081,7 @@ where
                             )
                         }))
             }) {
-                continue;
+                break;
             }
 
             if !effective_cost.as_ref().is_some_and(|cost| cost.has_x()) {

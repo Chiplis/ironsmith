@@ -1761,6 +1761,13 @@ impl ManaPaymentPlanner {
         let meter = scope.meter();
         let mut staged = game.clone();
         staged.bind_token_query_meter(meter.clone());
+        // A payment asked for in the middle of a resolution starts from a
+        // state whose continuous effects are not yet rederived. Every lookup
+        // on such a state derives the whole board by itself, and the scans
+        // below look at every object in the game.
+        if !staged.continuous_state_is_clean() {
+            let _ = staged.refresh_continuous_state();
+        }
         let mut result = match super::validate_waterbend_scope(request)
             .and_then(|()| validate_payment_unit_scope(request))
         {
@@ -2879,7 +2886,10 @@ pub(super) fn prepare_owned_activation(
     )
     .with_stored_colors(choice.stored_color_choices.clone())
     .with_pool_only_payment();
-    if let Err(error) = activate_with_mana_witnesses(
+    // A merge-safe activation changes nothing a continuous effect observes,
+    // so the board need not be rederived between its steps either.
+    let held = retainable && merge_safe && staged.hold_continuous_state_for_mana_activation();
+    let activated = activate_with_mana_witnesses(
         &mut staged,
         request,
         choice.source,
@@ -2888,7 +2898,11 @@ pub(super) fn prepare_owned_activation(
         &mut decision_maker,
         retainable,
         choice.replacement_witnesses.as_deref(),
-    ) {
+    );
+    if held {
+        staged.release_continuous_state_hold();
+    }
+    if let Err(error) = activated {
         if let ManaPaymentFailure::EffectExecutionFailed(error) =
             ManaPaymentFailure::from_execution(error)
         {

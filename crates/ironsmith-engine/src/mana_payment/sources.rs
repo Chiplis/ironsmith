@@ -391,6 +391,13 @@ pub(crate) fn has_potential_mana_triggers(game: &GameState, view: &DerivedGameVi
         return true;
     }
     let scan = || {
+        // The scan asks for every object in the game, cards in libraries
+        // included. Derived one at a time, each card a layer can reach takes
+        // a pass over the whole board; one batch shares that pass.
+        if game.continuous_state_is_clean() {
+            let ids: Vec<_> = game.objects_map().keys().copied().collect();
+            game.prewarm_calculated_characteristics(&ids);
+        }
         game.objects_map().values().any(|object| {
             view.abilities_rc(object.id).is_some_and(|abilities| abilities.iter().any(|ability| {
                 ability.functions_in(&object.zone) && matches!(&ability.kind, AbilityKind::Triggered(trigger)

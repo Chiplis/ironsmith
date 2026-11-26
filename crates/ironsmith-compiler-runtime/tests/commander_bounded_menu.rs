@@ -174,3 +174,102 @@ fn supply_bound_counts_what_a_mana_ability_costs() {
     let (offered, _) = bounded_menu_offers(&game, commander);
     assert!(offered);
 }
+
+/// Ordinary permanents from the slow playtest board: a check land, an
+/// equipment granting landwalk, a changeling, a tribal anthem and creatures
+/// whose size is a count or a life total. None of them can tell whether a
+/// land is tapped, so tapping for mana must not throw away the computed board.
+fn ordinary_statics_board() -> (GameState, ObjectId) {
+    let mut game = GameState::new(vec!["A".into(), "B".into(), "C".into()], 40);
+    game.turn.phase = ironsmith::Phase::FirstMain;
+    game.turn.step = None;
+    game.turn.active_player = A;
+    game.turn.priority_player = Some(A);
+    let forest = land(&mut game, "Test Forest", "{T}: Add {G}.");
+    put(
+        &mut game,
+        "Test Catacomb",
+        "Type: Land\nThis land enters tapped unless you control an Island or a Swamp.\n{T}: Add {U} or {B}.",
+        Zone::Battlefield,
+    );
+    put(
+        &mut game,
+        "Test Boots",
+        "Mana cost: {1}\nType: Artifact — Equipment\nEquipped creature has nonbasic landwalk.\nEquip {1}",
+        Zone::Battlefield,
+    );
+    put(
+        &mut game,
+        "Test Outcast",
+        "Mana cost: {B}\nType: Creature — Shapeshifter\nPower/Toughness: 1/1\nChangeling",
+        Zone::Battlefield,
+    );
+    put(
+        &mut game,
+        "Test Lord",
+        "Mana cost: {1}{G}{G}\nType: Creature — Elf\nPower/Toughness: 2/2\nOther Elf creatures you control get +1/+1.",
+        Zone::Battlefield,
+    );
+    put(
+        &mut game,
+        "Test Archers",
+        "Mana cost: {2}{G}\nType: Creature — Elf Archer\nPower/Toughness: */*\nThis creature's power and toughness are each equal to the number of Elves you control.",
+        Zone::Battlefield,
+    );
+    put(
+        &mut game,
+        "Test Scourge",
+        "Mana cost: {1}{B}\nType: Creature — Elemental\nPower/Toughness: */*\nThis creature's power and toughness are each equal to 20 minus the highest life total among players.",
+        Zone::Battlefield,
+    );
+    game.refresh_continuous_state().unwrap();
+    (game, forest)
+}
+
+#[test]
+fn ordinary_statics_do_not_make_the_board_tap_sensitive() {
+    let (game, _) = ordinary_statics_board();
+    assert!(!game.continuous_effects_are_tap_sensitive_public());
+}
+
+#[test]
+fn tapping_a_land_keeps_the_computed_board() {
+    let (mut game, forest) = ordinary_statics_board();
+    assert!(game.continuous_state_is_clean_public());
+    game.tap(forest);
+    assert!(
+        game.continuous_state_is_clean_public(),
+        "no effect on this board reads tapped state, so a tap must stay local"
+    );
+}
+
+/// An X spell is affordable when X = 0 is; the menu must not search a payment
+/// for every larger X as well.
+#[test]
+fn x_spell_is_offered_on_its_minimum_cost() {
+    let mut game = GameState::new(vec!["A".into(), "B".into(), "C".into()], 40);
+    game.turn.phase = ironsmith::Phase::FirstMain;
+    game.turn.step = None;
+    game.turn.active_player = A;
+    game.turn.priority_player = Some(A);
+    for index in 0..12 {
+        land(&mut game, &format!("Test Forest {index}"), "{T}: Add {G}.");
+    }
+    let blaze = put(
+        &mut game,
+        "Test Blaze",
+        "Mana cost: {X}{R}\nType: Sorcery\nTest Blaze deals X damage to any target.",
+        Zone::Hand,
+    );
+    let offered = |game: &GameState| {
+        analyze_priority_context(game, A).unwrap().actions.iter_with_labels().any(|(action, _)| {
+            matches!(action, LegalAction::CastSpell { spell_id, .. } if *spell_id == blaze)
+        })
+    };
+    assert!(!offered(&game), "twelve Forests make no red mana");
+    land(&mut game, "Test Mountain", "{T}: Add {R}.");
+    let started = std::time::Instant::now();
+    assert!(offered(&game));
+    let elapsed = started.elapsed();
+    assert!(elapsed < std::time::Duration::from_secs(5), "X spell menu took {elapsed:?}");
+}
