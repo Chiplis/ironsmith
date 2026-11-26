@@ -147,6 +147,23 @@ fn max_matching(pips: &[u8], units: &[u8]) -> usize {
     matched
 }
 
+/// Mana an ability certainly takes to activate: the units of its plain
+/// generic, colored and colorless pips. A pip that could be paid another way
+/// or whose size is not fixed counts for nothing, which only overestimates
+/// what the ability nets.
+fn certain_activation_mana(costs: &[crate::costs::Cost]) -> usize {
+    costs
+        .iter()
+        .filter_map(|cost| cost.mana_cost_ref())
+        .flat_map(|cost| cost.pips().iter())
+        .map(|pip| match pip.as_slice() {
+            [ManaSymbol::Generic(amount)] => usize::from(*amount),
+            [symbol] if symbol_mask(*symbol).is_some() => 1,
+            _ => 0,
+        })
+        .sum()
+}
+
 /// Minimum demand of the cost as acceptable-symbol masks, one per mana unit.
 /// `None` when a symbol is outside this model.
 fn demand(game: &GameState, request: &ManaPaymentRequest) -> Option<Vec<u8>> {
@@ -248,6 +265,8 @@ fn rules_out_payment_inner(
     if units.len() >= demand.len() && max_matching(&demand, &units) == demand.len() {
         return Some(false);
     }
+    // Units counted below that their own abilities' mana costs take back.
+    let mut activation_mana = 0usize;
     if request.allow_mana_abilities {
         let effects = &game.effect_store;
         let checks: [(&str, &dyn Fn() -> bool); 12] = [
@@ -285,7 +304,11 @@ fn rules_out_payment_inner(
             let Some(abilities) = view.abilities_rc(object.id) else { return bail("abilities"); };
             let controller = game.controller_of(object);
             let mut tap_group: Vec<u8> = Vec::new();
+            // The most any one tap ability of this source nets after its own
+            // mana cost.
+            let mut tap_net = 0usize;
             let mut once_units: Vec<u8> = Vec::new();
+            let mut once_activation_mana = 0usize;
             let mut has_tap_ability = false;
             for ability in abilities.iter().filter(|ability| ability.functions_in(&object.zone)) {
                 let AbilityKind::Activated(activated) = &ability.kind else {
@@ -346,8 +369,10 @@ fn rules_out_payment_inner(
                         return bail("site7");
                     }
                 }
+                let spent = certain_activation_mana(costs).min(produced.len());
                 if taps {
                     has_tap_ability = true;
+                    tap_net = tap_net.max(produced.len() - spent);
                     // Tap abilities of one source exclude each other: keep the
                     // largest count, each unit any symbol one of them makes.
                     let union = produced.iter().fold(0u8, |mask, unit| mask | unit);
@@ -355,6 +380,7 @@ fn rules_out_payment_inner(
                     let count = tap_group.len().max(produced.len());
                     tap_group = vec![union; count];
                 } else {
+                    once_activation_mana += spent;
                     once_units.extend(produced);
                 }
             }
@@ -365,16 +391,21 @@ fn rules_out_payment_inner(
                         && view.object_has_card_type(object.id, crate::types::CardType::Creature)
                         && !view.object_has_haste_for_activation(object.id));
                 if !unusable {
+                    activation_mana += tap_group.len() - tap_net;
                     units.extend(tap_group);
                 }
             }
+            activation_mana += once_activation_mana;
             units.extend(once_units);
         }
         if stateful && !super::color_reachability::stable_characteristics(game, view) {
             return bail("site8");
         }
     }
-    let vetoed = units.len() < demand.len() || max_matching(&demand, &units) < demand.len();
+    // Whatever is activated, the mana left for this cost is what was made less
+    // what the activations themselves took: at most each source's best net.
+    let vetoed = units.len() - activation_mana.min(units.len()) < demand.len()
+        || max_matching(&demand, &units) < demand.len();
     if debug_enabled() {
         eprintln!("TALLY result vetoed={vetoed} demand={demand:?} units={units:?}");
     }

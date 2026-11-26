@@ -8285,6 +8285,7 @@ impl GameState {
                         crate::effect::Restriction::AdditionalLandPlays(_, _)
                             | crate::effect::Restriction::NoMaximumHandSize(_)
                             | crate::effect::Restriction::ReduceMaximumHandSize(_, _)
+                            | crate::effect::Restriction::PreventDamage
                     )
                 }) =>
             {
@@ -8386,6 +8387,8 @@ impl GameState {
             | ConditionExpr::ThisSpellWasCastFromZone(_)
             | ConditionExpr::ThisSpellWasCastFromNonHand
             | ConditionExpr::ThisSpellWasForetold => false,
+            // X is announced before any cost is paid (CR 601.2b).
+            ConditionExpr::XValueAtLeast(_) => false,
             _ => true,
         }
     }

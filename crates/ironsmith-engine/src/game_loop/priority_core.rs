@@ -392,10 +392,7 @@ fn proven_bounded_menu(
             settled.push(source);
         }
     }
-    let proven_only = u32::try_from(player.index())
-        .ok()
-        .and_then(|index| 1u64.checked_shl(index))
-        .is_some_and(|bit| priority_analysis_proven_offers_only() & bit != 0);
+    let proven_only = offers_are_proven_only(player);
     actions.retain(|action| {
         !needs_proof(action)
             || proven.contains(action)
@@ -403,6 +400,47 @@ fn proven_bounded_menu(
                 && !settled.contains(&legal_action_source(action))
                 && !announcement_reveals_hidden_information(game, action))
     });
+    Ok(actions)
+}
+
+/// Whether `player` is only ever offered actions whose payment was proven.
+fn offers_are_proven_only(player: PlayerId) -> bool {
+    u32::try_from(player.index())
+        .ok()
+        .and_then(|index| 1u64.checked_shl(index))
+        .is_some_and(|bit| priority_analysis_proven_offers_only() & bit != 0)
+}
+
+/// Commander casts under the bounded menu policy.
+///
+/// A commander in the command zone is asked about at every priority, and an
+/// exact answer for one that cannot be paid for has to exhaust the payment
+/// search, which grows exponentially with the mana sources in play. As for the
+/// rest of the bounded menu: the negative-only bound rules out what certainly
+/// cannot be paid, a search limited to `budget` units proves what it can, and
+/// an unfinished search keeps the unproven offer (its payment prompt opens
+/// unfunded and can be cancelled) unless the player is marked proven-only.
+fn bounded_commander_actions(
+    game: &GameState,
+    player: PlayerId,
+    budget: usize,
+) -> Result<Vec<LegalAction>, GameLoopError> {
+    let mut actions = crate::decision::with_bounded_payment_recheck(true, || {
+        compute_commander_actions(game, player)
+    })?;
+    if actions.is_empty() || budget == 0 {
+        return Ok(actions);
+    }
+    let mut session = crate::decision::ManaAnalysisSession::menu_bound();
+    let (found, complete) =
+        session.run_for_game(game, budget, || compute_commander_actions(game, player));
+    // A search that failed to calculate proved nothing.
+    let (proven, settled) = match found {
+        Ok(found) if session.failure().is_none() => (found, complete),
+        _ => (Vec::new(), false),
+    };
+    let proven_only = offers_are_proven_only(player);
+    actions.retain(|action| proven.contains(action) || (!proven_only && !settled));
     Ok(actions)
 }
 
@@ -471,7 +509,12 @@ pub fn analyze_priority_context(
     }
     let mut commander_actions = Vec::new();
     for player in priority_players {
-        for action in compute_commander_actions(game, player)? {
+        let offered = if priority_analysis_bounded() {
+            bounded_commander_actions(game, player, priority_analysis_bounded_proof_budget())?
+        } else {
+            compute_commander_actions(game, player)?
+        };
+        for action in offered {
             if !commander_actions.contains(&action) && !actions.contains(&action) {
                 commander_actions.push(action);
             }

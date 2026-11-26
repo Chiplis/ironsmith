@@ -28,6 +28,11 @@ const MAX_TOTAL_PLANS: usize = 32;
 const PROMPT_FIRST_PLAN_BUDGET: usize = 16;
 /// First-plan budget for synchronous callers that chose bounded priority menus.
 const BOUNDED_FIRST_PLAN_BUDGET: usize = 64;
+/// Budget for re-planning after such a caller's player picks or drops a
+/// source. Picks that settle the payment finish in a handful of units; only a
+/// search for how to complete a partial pick, or to prove one cannot be
+/// completed, runs long.
+const BOUNDED_REPLAN_BUDGET: usize = 512;
 
 /// Diagnostic counters for the most recent `plan_mana_payment` call.
 ///
@@ -264,7 +269,12 @@ fn plan_prompt_mana_payment_inner(
     initial: bool,
 ) -> Result<ManaPaymentPlan, ManaPaymentFailure> {
     let deferred = crate::game_loop::priority_analysis_deferred();
-    if initial && (deferred || crate::game_loop::priority_analysis_bounded()) {
+    let bounded = crate::game_loop::priority_analysis_bounded();
+    // A bounded synchronous caller has no background worker: an edit that
+    // leaves the cost unpayable would otherwise search every activation order
+    // while the player waits. It gets the same treatment as the first
+    // proposal, with more room.
+    if (initial && (deferred || bounded)) || (bounded && !deferred) {
         // Simple boards finish the ordinary first-plan search in a handful of
         // nodes. Only a search that exceeds this deterministic budget opens
         // unfunded and leaves the funded proposal to the background worker
@@ -272,7 +282,13 @@ fn plan_prompt_mana_payment_inner(
         // callers). The proposal is a convenience: proving a cost unpayable is
         // the search's exponential worst case, and the payment window itself
         // still validates every activation exactly.
-        let budget = if deferred { PROMPT_FIRST_PLAN_BUDGET } else { BOUNDED_FIRST_PLAN_BUDGET };
+        let budget = if deferred {
+            PROMPT_FIRST_PLAN_BUDGET
+        } else if initial {
+            BOUNDED_FIRST_PLAN_BUDGET
+        } else {
+            BOUNDED_REPLAN_BUDGET
+        };
         match ManaPaymentAnalysis::new(game, request.clone()).step(budget) {
             Some(Ok(plan)) => return Ok(plan),
             Some(Err(ManaPaymentFailure::NoLegalPlan

@@ -413,6 +413,11 @@ impl StaticAbilityKind for Cascade {
         StaticAbilityId::Cascade
     }
 
+    // A marker read where spells are cast and countered; it emits no effect.
+    fn may_generate_continuous_effects(&self) -> bool {
+        false
+    }
+
     fn display(&self) -> String {
         "Cascade".to_string()
     }
@@ -691,6 +696,11 @@ pub struct CantBeCountered;
 impl StaticAbilityKind for CantBeCountered {
     fn id(&self) -> StaticAbilityId {
         StaticAbilityId::CantBeCountered
+    }
+
+    // A marker read where spells are cast and countered; it emits no effect.
+    fn may_generate_continuous_effects(&self) -> bool {
+        false
     }
 
     fn display(&self) -> String {
@@ -997,6 +1007,9 @@ impl StaticAbilityKind for RuleRestriction {
                         Restriction::AdditionalLandPlays(_, _)
                             | Restriction::NoMaximumHandSize(_)
                             | Restriction::ReduceMaximumHandSize(_, _)
+                            // "Damage can't be prevented" touches no
+                            // characteristic and no mana source.
+                            | Restriction::PreventDamage
                     )
                 })
     }

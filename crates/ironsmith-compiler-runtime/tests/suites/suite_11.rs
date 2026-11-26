@@ -11,6 +11,9 @@ mod r#causal_event_participants;
 #[path = "../chosen_source_shields_and_redirects.rs"]
 mod r#chosen_source_shields_and_redirects;
 
+#[path = "../commander_bounded_menu.rs"]
+mod r#commander_bounded_menu;
+
 #[path = "../conditional_anaphoric_restrictions.rs"]
 mod r#conditional_anaphoric_restrictions;
 
