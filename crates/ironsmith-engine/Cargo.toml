@@ -171,3 +171,7 @@ path = "tests/combined_object_choices.rs"
 [[test]]
 name = "cr_audit_pending"
 path = "tests/cr_audit_pending/main.rs"
+
+[[test]]
+name = "deferred_mana_priority"
+path = "tests/deferred_mana_priority.rs"
