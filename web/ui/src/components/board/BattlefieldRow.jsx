@@ -51,6 +51,7 @@ const LIVE_DAMAGE_ANIMATION_MS = 300;
 const BATTLEFIELD_LAYOUT_SETTLE_MIN_DELTA_PX = 1.25;
 // Four 60 fps frames: by then the hover grow has covered most of its distance.
 const BATTLEFIELD_POINTER_HOVER_REPORT_DELAY_MS = 64;
+const BATTLEFIELD_POINTER_LEFT_MARK_MS = 600;
 const BATTLEFIELD_LAYOUT_SETTLE_MIN_MS = 180;
 const BATTLEFIELD_LAYOUT_SETTLE_MAX_MS = 380;
 const GHOST_BASE_ANIMATION_MS = 520;
@@ -993,6 +994,23 @@ export default function BattlefieldRow({
     });
   }, [cancelPointerHover, setHoveredCard]);
   useEffect(() => cancelPointerHover, [cancelPointerHover]);
+  // The card the pointer just left still carries its app-reported hover until
+  // the clear has rendered. Marking the node directly lets its shrink start on
+  // time; the mark only needs to outlive that render.
+  const pointerLeftTimersRef = useRef(new WeakMap());
+  const markPointerOnCard = useCallback((node) => {
+    if (!node) return;
+    clearTimeout(pointerLeftTimersRef.current.get(node));
+    delete node.dataset.pointerLeft;
+  }, []);
+  const markPointerLeftCard = useCallback((node) => {
+    if (!node) return;
+    clearTimeout(pointerLeftTimersRef.current.get(node));
+    node.dataset.pointerLeft = "true";
+    pointerLeftTimersRef.current.set(node, setTimeout(() => {
+      delete node.dataset.pointerLeft;
+    }, BATTLEFIELD_POINTER_LEFT_MARK_MS));
+  }, []);
 
   useEffect(() => {
     const handleHandInspectionState = (event) => {
@@ -2969,9 +2987,10 @@ export default function BattlefieldRow({
                 clearAnchoredCardPreview();
                 return;
               }
+              markPointerOnCard(event.currentTarget);
               closeManaPopover(); hoverCardAfterPaint(card.id); event.currentTarget.focus({ preventScroll: true });
             })}
-            onMouseLeave={isLayoutHold ? undefined : (() => { clearHover(); leaveManaPopover(); })}
+            onMouseLeave={isLayoutHold ? undefined : ((event) => { markPointerLeftCard(event.currentTarget); clearHover(); leaveManaPopover(); })}
             onFocus={isLayoutHold ? undefined : (() => {
               closeManaPopover();
               // Touch browsers focus the card before delivering its click.

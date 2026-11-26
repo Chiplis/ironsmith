@@ -29,6 +29,26 @@ import { ComicTooltipHostVisible } from "@/components/ui/comic-tooltip";
 const PREVIEW_OPEN_DELAY_MS = 500;
 const PREVIEW_CLOSE_DELAY_MS = 240;
 const PREVIEW_FADE_MS = 220;
+
+// The preview of a battlefield card grows out of that card and shrinks back
+// into it (Manabrew's preview-in / preview-out). The numbers that shape it
+// live with the keyframes in design-system.css.
+function fieldHeroMotion(objectId, positionStyle) {
+  if (objectId == null || !positionStyle || typeof document === "undefined") return null;
+  const source = [...document.querySelectorAll(".game-card.field-card[data-object-id]")]
+    .find(element => element.getAttribute("data-object-id") === String(objectId));
+  if (!source) return null;
+  const width = Number.parseFloat(positionStyle.width), height = Number.parseFloat(positionStyle.height);
+  if (!(width > 0) || !(height > 0)) return null;
+  const rect = source.getBoundingClientRect();
+  // The card may be mid-way through its own hover growth; measure it at rest.
+  const ownScale = Number.parseFloat(getComputedStyle(source).scale) || 1;
+  return {
+    "--preview-hero-shift-x": `${Math.round(rect.left + rect.width / 2 - (positionStyle.left + width / 2))}px`,
+    "--preview-hero-shift-y": `${Math.round(rect.top + rect.height / 2 - (positionStyle.top + height / 2))}px`,
+    "--preview-hero-scale-from": Math.max(0.25, Math.min(0.85, rect.width / ownScale / width)).toFixed(3),
+  };
+}
 const FALLBACK_SIZE = { width: 380, height: 531 };
 
 function phaseToolbarTop(fallbackTop = 0) {
@@ -355,6 +375,8 @@ function CardPreviewSurface({
   const [size, setSize] = useState(FALLBACK_SIZE);
   const [accent, setAccent] = useState(null);
   const [previewHovered, setPreviewHovered] = useState(false);
+  const [heroOpenedId, setHeroOpenedId] = useState(null);
+  const [heroSettledId, setHeroSettledId] = useState(null);
   const excludedIds = useMemo(
     () => new Set(excludedObjectIds.filter((id) => id != null).map(String)),
     [excludedObjectIds]
@@ -659,6 +681,16 @@ function CardPreviewSurface({
       }
       return previewPosition(renderedObjectId, size, previewFrames);
     })();
+  const heroStyle = previewFrames === 1 && !stackPreview && lockedObjectId == null
+    && decisionPreviewSource(renderedObjectId) == null
+    ? fieldHeroMotion(renderedObjectId, positionStyle) : null;
+  if (renderedObjectId == null && (heroOpenedId != null || heroSettledId != null)) {
+    setHeroOpenedId(null);
+    setHeroSettledId(null);
+  }
+  const heroPhase = !heroStyle ? undefined
+    : visible ? (heroSettledId === renderedObjectId ? "open" : "in")
+      : heroOpenedId === renderedObjectId ? "out" : undefined;
   const accentStyle = accent
     ? {
       ...playerAccentVars(accent),
@@ -694,7 +726,18 @@ function CardPreviewSurface({
       // null and the stylesheet's default corner takes over -- the frame jumps
       // across the screen for the few frames it is still on its way out. With
       // no place to be, it is not shown at all.
-      style={{ ...accentStyle, ...(positionStyle || { visibility: "hidden" }), transform: "none" }}
+      data-hero={heroPhase}
+      onAnimationStart={(event) => {
+        if (event.target !== event.currentTarget) return;
+        if (event.animationName === "floating-preview-hero-in") setHeroOpenedId(renderedObjectId);
+        if (event.animationName === "floating-preview-hero-out") setHeroSettledId(null);
+      }}
+      onAnimationEnd={(event) => {
+        if (event.target !== event.currentTarget) return;
+        if (event.animationName === "floating-preview-hero-in") setHeroSettledId(renderedObjectId);
+        if (event.animationName === "floating-preview-hero-out") setHeroSettledId(null);
+      }}
+      style={{ ...accentStyle, ...(positionStyle || { visibility: "hidden" }), ...heroStyle, transform: "none" }}
       onMouseEnter={() => {
         // Always call off a pending close, targeting or not: reaching the frame
         // is exactly what the grace period was held open for.

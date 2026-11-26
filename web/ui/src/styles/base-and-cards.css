@@ -1274,13 +1274,6 @@
     inset 0 0 14px rgba(0, 0, 0, 0.26);
 }
 
-/* Linked hovers (an action or payment option pointing at this card) keep a
-   small lift so the card is found without jumping into its neighbours. */
-.game-card.field-card:not(.battlefield-token-card).hovered {
-  --card-scale: 1.02;
-  --card-translate-y: -1px;
-}
-
 /* Pointer hover on a battlefield object matches Manabrew's board: the object
    grows to 1.08x about its centre with no lift, closing 20% of the remaining
    distance per 60 fps frame (the sampled curve below), and holds for 60 ms
@@ -1295,6 +1288,22 @@
     0.9856, 1
   );
   --field-hover-transition: scale 333ms var(--field-hover-ease) 60ms;
+}
+
+/* A hover reported by the app (`.hovered`: the pointer's own card once the
+   hover is known, or a card an action or payment option points at) grows the
+   same way. The older per-state lifts are cancelled, or they would stack on
+   top of the growth the moment the pointer leaves. */
+.game-card.field-card.hovered {
+  --card-scale: 1 !important;
+  --card-translate-y: 0px !important;
+}
+
+/* `data-pointer-left` marks the card the pointer just left, whose reported
+   hover is still being cleared; it shrinks without waiting for that. */
+.game-card.field-card.hovered:not([data-pointer-left]) {
+  --field-hover-transition: scale 333ms var(--field-hover-ease);
+  scale: var(--field-hover-scale);
 }
 
 @media (hover: hover) and (pointer: fine) {

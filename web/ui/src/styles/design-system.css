@@ -103,6 +103,54 @@
   }
 }
 
+/* A battlefield card's preview grows out of the card and shrinks back into it,
+   as Manabrew's does: 220ms out of the card, 130ms back, opaque for all but
+   the first/last 40% of the trip. The shift and starting scale are measured
+   from the source card (FloatingCardPreview's fieldHeroMotion). */
+@keyframes floating-preview-hero-in {
+  from {
+    opacity: 0;
+    visibility: visible;
+    transform: translate(var(--preview-hero-shift-x, 0px), var(--preview-hero-shift-y, 0px))
+      scale(var(--preview-hero-scale-from, 0.95));
+  }
+  40% { opacity: 1; }
+  to { opacity: 1; visibility: visible; transform: translate(0, 0) scale(1); }
+}
+
+@keyframes floating-preview-hero-out {
+  from { opacity: 1; visibility: visible; transform: translate(0, 0) scale(1); }
+  60% { opacity: 1; }
+  to {
+    opacity: 0;
+    visibility: hidden;
+    transform: translate(var(--preview-hero-shift-x, 0px), var(--preview-hero-shift-y, 0px))
+      scale(var(--preview-hero-scale-from, 0.95));
+  }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .floating-card-preview[data-hero] {
+    transform-origin: center;
+    transition: none;
+  }
+
+  .floating-card-preview[data-hero="in"] {
+    animation: floating-preview-hero-in 220ms cubic-bezier(0.16, 1, 0.3, 1) both;
+  }
+
+  .floating-card-preview[data-hero="out"] {
+    animation: floating-preview-hero-out 130ms ease-in both;
+  }
+
+  /* The frame crosses the pointer on its way out of the card; it must not
+     take the hover from the card until it has landed. */
+  .floating-card-preview:is([data-hero="in"], [data-hero="out"]),
+  .floating-card-preview:is([data-hero="in"], [data-hero="out"]) * {
+    pointer-events: none !important;
+  }
+}
+
 .has-zone-piles {
   position: relative;
   box-sizing: border-box;
