@@ -39,6 +39,29 @@ async function loadEsbuild() {
 
 const esbuild = await loadEsbuild();
 const outfile = resolve(outDir, "verified-session.js");
+// Two modules the session shares with the web app (foil-cards, lobby-deck)
+// also export React hooks beside the plain functions the session calls. The
+// bundle must build without React installed and must not carry it: `react`
+// resolves to the session's own hook runtime, and a hook that runtime does
+// not provide fails loudly if anything ever calls it headless.
+const hookRuntime = resolve(uiDir, "src/lib/verified-session/hook-runtime.js");
+const headlessReact = {
+  name: "headless-react",
+  setup(build) {
+    build.onResolve({ filter: /^react$/ }, () => ({ path: "react", namespace: "headless-react" }));
+    build.onLoad({ filter: /.*/, namespace: "headless-react" }, () => ({
+      resolveDir: uiDir,
+      contents: `
+        export { useState, useRef, useCallback, useEffect } from ${JSON.stringify(hookRuntime)};
+        const unavailable = (name) => () => {
+          throw new Error(\`React's \${name} is not available in the headless Verified session\`);
+        };
+        export const useMemo = unavailable("useMemo");
+        export const useSyncExternalStore = unavailable("useSyncExternalStore");
+      `,
+    }));
+  },
+};
 await esbuild.build({
   entryPoints: [resolve(uiDir, "src/lib/verified-session/index.js")],
   bundle: true,
@@ -47,6 +70,7 @@ await esbuild.build({
   target: "es2022",
   minify: true,
   legalComments: "none",
+  plugins: [headlessReact],
   outfile,
   logLevel: "warning",
 });
