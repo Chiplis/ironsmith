@@ -1323,6 +1323,13 @@ pub enum Value {
 }
 
 impl Value {
+    /// CR 201.2b counts objects whose names are pairwise disjoint. Without this
+    /// set constraint DistinctNames counts individual names (such as Room doors).
+    pub fn differently_named_objects(mut filter: ObjectFilter) -> Self {
+        filter.distinct_names = true;
+        Self::DistinctNames(filter)
+    }
+
     pub fn devotion_to_colors(player: PlayerFilter, colors: ColorSet) -> Self {
         if colors.count() == 1 {
             let color = Color::ALL.into_iter().find(|color| colors.contains(*color)).unwrap();

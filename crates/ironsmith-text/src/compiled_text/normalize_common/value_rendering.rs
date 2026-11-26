@@ -7914,9 +7914,18 @@ pub(crate) fn describe_value(value: &Value) -> String {
             "the number of kinds of counters among {}",
             describe_count_filter_value_subject(filter)
         ),
-        Value::DistinctNames(filter) => format!(
-            "the number of differently named {}",
-            describe_count_filter_value_subject(filter)
+        Value::DistinctNames(filter) => {
+            let subject = describe_count_filter_value_subject(&filter.without_distinct_names());
+            let phrase = if filter.distinct_names {
+                format!("the number of differently named {subject}")
+            } else {
+                format!("the number of different names among {subject}")
+            };
+            phrase
+        }
+        Value::UnlockedDoorsAmong(filter) if filter.distinct_names => format!(
+            "the number of different names among unlocked doors of {}",
+            describe_count_filter_value_subject(&filter.without_distinct_names())
         ),
         Value::UnlockedDoorsAmong(filter) => format!(
             "the number of unlocked doors among {}",

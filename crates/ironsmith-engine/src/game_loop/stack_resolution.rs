@@ -897,10 +897,15 @@ fn execute_resolution_program_with_trigger_matching_outputs_typed(
                 match_triggers_per_instruction,
                 |game| {
                     let previous_designations = std::mem::take(&mut ctx.cause.resolving_ability_designations);
+                    let outer_searches = std::mem::replace(
+                        &mut ctx.library_search_groups,
+                        crate::effects::cards::search_group::LibrarySearchGroups::for_program(program),
+                    );
                     let result = execute_resolution_program_inner(
                         game, ctx, program, chosen_modes, valid_target_assignments,
                         match_triggers_per_instruction,
                     );
+                    ctx.library_search_groups = outer_searches;
                     ctx.cause.resolving_ability_designations = previous_designations;
                     let mut execution = result?;
                     // Reported events a boundary already matched are not matched

@@ -303,7 +303,7 @@ pub fn parse_aggregate_scope_value_words(words: &[&str]) -> Option<Value> {
         }),
         AggregateValueMetric::Colors => Some(Value::ColorsAmong(filter)),
         AggregateValueMetric::ColorPairs => Some(Value::ColorPairsAmong(filter)),
-        AggregateValueMetric::DistinctNames => Some(Value::DistinctNames(filter)),
+        AggregateValueMetric::DistinctNames => Some(Value::differently_named_objects(filter)),
         AggregateValueMetric::DistinctManaValues => Some(Value::DistinctManaValues(filter)),
         AggregateValueMetric::DistinctManaCosts => Some(Value::DistinctManaCosts(filter)),
         AggregateValueMetric::UnlockedDoors => Some(Value::UnlockedDoorsAmong(filter)),

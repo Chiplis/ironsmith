@@ -46,7 +46,9 @@ mod subject_tests;
 #[cfg(test)]
 mod tests;
 
-fn normalize_name_for_match(name: &str) -> String {
+pub(crate) mod name_groups;
+
+pub(crate) fn normalize_name_for_match(name: &str) -> String {
     name.chars()
         .filter(|ch| ch.is_ascii_alphanumeric())
         .map(|ch| ch.to_ascii_lowercase())
@@ -169,134 +171,157 @@ pub(crate) fn names_match(lhs: &str, rhs: &str) -> bool {
     if name_is_nameless(lhs) || name_is_nameless(rhs) {
         return false;
     }
-    if lhs.eq_ignore_ascii_case(rhs) {
-        return true;
-    }
-    let (normalized_lhs, normalized_rhs) =
-        (normalize_name_for_match(lhs), normalize_name_for_match(rhs));
-    if normalized_lhs == normalized_rhs
-        || normalized_names_are_interchangeable(&normalized_lhs, &normalized_rhs)
-    {
-        return true;
-    }
-    // A combined "A // B" name (a fused split spell, or a fully unlocked
-    // Room, CR 709.4d / 709.5) is both names, so it matches either half.
-    if lhs.contains(" // ") || rhs.contains(" // ") {
-        return lhs.split(" // ").any(|left| {
-            rhs.split(" // ").any(|right| {
-                let (left, right) = (left.trim(), right.trim());
-                !left.is_empty()
-                    && !right.is_empty()
-                    && (left.eq_ignore_ascii_case(right)
-                        || normalize_name_for_match(left) == normalize_name_for_match(right))
-            })
-        });
-    }
-    false
+    lhs.split(" // ").any(|left| {
+        rhs.split(" // ").any(|right| {
+            let (left, right) = (left.trim(), right.trim());
+            if name_is_nameless(left) || name_is_nameless(right) {
+                return false;
+            }
+            if left.eq_ignore_ascii_case(right) {
+                return true;
+            }
+            let left = normalize_name_for_match(left);
+            let right = normalize_name_for_match(right);
+            left == right || normalized_names_are_interchangeable(&left, &right)
+        })
+    })
 }
 
 /// Whether `name` is the name of a nonlegendary creature card (Spy Kit). The
 /// card catalog decides; a name the catalog doesn't carry falls back to the
 /// physical cards in this game.
 pub(crate) fn is_nonlegendary_creature_card_name(name: &str, game: &GameState) -> bool {
-    use std::collections::HashMap;
-    use std::sync::{Mutex, OnceLock};
-    static CATALOG: OnceLock<Mutex<HashMap<String, Option<bool>>>> = OnceLock::new();
-    if name_is_nameless(name) {
-        return false;
+    let records = crate::cards::oracle_face_types(oracle_name_for_lookup(name));
+    if !records.is_empty() {
+        return records.iter().any(|(supertypes, types)| {
+            types.contains(&CardType::Creature) && !supertypes.contains(&Supertype::Legendary)
+        });
     }
-    let key = normalize_name_for_match(name);
-    let cache = CATALOG.get_or_init(|| Mutex::new(HashMap::new()));
-    let cached = cache.lock().ok().and_then(|cache| cache.get(&key).copied());
-    let catalog = match cached {
-        Some(known) => known,
-        None => {
-            let mut registry = crate::cards::CardRegistry::new();
-            registry.ensure_cards_loaded([name]);
-            let known = registry.get(name).map(|definition| {
-                definition.card.card_types.contains(&CardType::Creature)
-                    && !definition.card.supertypes.contains(&Supertype::Legendary)
-            });
-            if let Ok(mut cache) = cache.lock() {
-                cache.insert(key, known);
-            }
-            known
-        }
-    };
-    catalog.unwrap_or_else(|| {
-        game.objects_map().values().any(|object| {
-            matches!(object.kind, ObjectKind::Card)
-                && names_match(&object.name, name)
-                && object.card_types.contains(&CardType::Creature)
-                && !object.supertypes.contains(&Supertype::Legendary)
-        })
+    // Games can also register custom card definitions outside the Oracle catalog.
+    !name_is_nameless(name) && game.objects_map().values().any(|object| {
+        object.kind == ObjectKind::Card && names_match(&object.name, name)
+            && object.card_types.contains(&CardType::Creature)
+            && !object.supertypes.contains(&Supertype::Legendary)
     })
+}
+
+/// CR 612.7 includes nonlegendary creature names on either face of a card.
+pub(crate) fn all_nonlegendary_creature_card_names(game: &GameState) -> impl Iterator<Item = &str> {
+    use std::sync::OnceLock;
+    static NAMES: OnceLock<Vec<&'static str>> = OnceLock::new();
+    let oracle = NAMES.get_or_init(|| {
+        let mut names: Vec<_> = crate::cards::oracle_face_names().filter(|name| {
+            crate::cards::oracle_face_types(name).iter().any(|(supertypes, types)| {
+                types.contains(&CardType::Creature) && !supertypes.contains(&Supertype::Legendary)
+            })
+        }).map(interchangeable_name_key).collect();
+        names.sort_unstable();
+        names.dedup();
+        names
+    });
+    let custom = game.objects_map().values().filter(|object| {
+        object.kind == ObjectKind::Card && object.card_types.contains(&CardType::Creature)
+            && !object.supertypes.contains(&Supertype::Legendary)
+            && !crate::cards::is_oracle_card_name(&object.name)
+    }).map(|object| object.name.as_ref());
+    oracle.iter().copied().chain(custom)
 }
 
 /// Whether one of `attachments` (still attached on the battlefield) gives its
 /// host every nonlegendary creature card name in addition to its own (Spy
 /// Kit). The names come from that source's static ability, not the host's.
-pub(crate) fn attachments_grant_all_nonlegendary_creature_card_names(
+pub(crate) fn grants_creature_names(
     attachments: &[ObjectId],
+    name_set: Option<u64>,
     game: &GameState,
 ) -> bool {
     attachments.iter().any(|id| {
         game.object(*id).is_some_and(|attachment| {
-            attachment.zone == Zone::Battlefield
-                && !game.is_phased_out(*id)
+            attachment.zone == Zone::Battlefield && !game.is_phased_out(*id)
                 && attachment.abilities.iter().any(|ability| {
                     matches!(&ability.kind, AbilityKind::Static(rule)
                         if rule.id() == StaticAbilityId::AttachedHasAllNonlegendaryCreatureCardNames)
                 })
-                && !host_renamed_after_attachment(attachment, game)
+                && name_set.is_none_or(|stamp| game.effect_store.continuous_effects
+                    .get_object_timestamp(*id).unwrap_or(0) > stamp)
         })
     })
 }
 
-/// CR 612.7/612.8/613.7: a name-setting effect with a later timestamp than
-/// the attachment's grant leaves the host only that name.
-fn host_renamed_after_attachment(attachment: &Object, game: &GameState) -> bool {
-    let Some(crate::object::AttachmentTarget::Object(host)) = attachment.attached_to else {
+/// Snapshot and raw-filter callers may run during layer discovery. Reuse a held
+/// frame when available, without starting another characteristic calculation.
+pub(crate) fn raw_grants_creature_names(id: ObjectId, attachments: &[ObjectId], game: &GameState) -> bool {
+    if attachments.is_empty() {
         return false;
+    }
+    let name_set = if let Some(chars) = crate::continuous::in_progress_characteristics(game, id) {
+        chars.name_set_timestamp
+    } else if let Some(Some(chars)) = game.calculated_characteristics_if_held(id) {
+        chars.name_set_timestamp
+    } else {
+        game.effect_store.continuous_effects.effects().iter().filter(|effect| {
+            matches!(effect.modification, crate::continuous::Modification::SetName(_))
+                && (matches!(effect.applies_to, crate::continuous::EffectTarget::Specific(target) if target == id)
+                    || matches!(&effect.source_type, crate::continuous::EffectSourceType::Resolution { locked_targets }
+                        if locked_targets.contains(&id)))
+        }).map(|effect| effect.timestamp).max()
     };
-    let grant_timestamp = game
-        .effect_store
-        .continuous_effects
-        .get_object_timestamp(attachment.id)
-        .unwrap_or(0);
-    // Registered (resolution) effects only: reading them can't re-enter the
-    // static-effect discovery that may be calling this filter.
-    game.effect_store.continuous_effects.effects().iter().any(|effect| {
-        matches!(effect.modification, crate::continuous::Modification::SetName(_))
-            && effect.timestamp > grant_timestamp
-            && (matches!(effect.applies_to, crate::continuous::EffectTarget::Specific(target) if target == host)
-                || matches!(&effect.source_type,
-                    crate::continuous::EffectSourceType::Resolution { locked_targets }
-                        if locked_targets.contains(&host)))
-    })
+    grants_creature_names(attachments, name_set, game)
 }
 
-/// `names_share`, also counting the names an attached Spy Kit adds to either
-/// object.
-fn names_share_with_attachments(
-    left: (&str, Option<&str>, &[ObjectId]),
-    right: (&str, Option<&str>, &[ObjectId]),
-    game: &GameState,
-) -> bool {
-    if names_share(left.0, left.1, right.0, right.1) {
-        return true;
+#[derive(Clone, Copy)]
+pub(crate) struct ObjectNames<'a> {
+    pub name: &'a str,
+    pub alternate: Option<&'a str>,
+    pub creature_names: bool,
+}
+
+impl<'a> ObjectNames<'a> {
+    pub fn layered(
+        object: &Object,
+        chars: &'a CalculatedCharacteristics,
+        game: &GameState,
+    ) -> Self {
+        Self {
+            name: &chars.name,
+            alternate: chars.alternate_name.as_deref(),
+            creature_names: grants_creature_names(
+                &object.attachments,
+                chars.name_set_timestamp,
+                game,
+            ),
+        }
     }
-    let left_all = attachments_grant_all_nonlegendary_creature_card_names(left.2, game);
-    let right_all = attachments_grant_all_nonlegendary_creature_card_names(right.2, game);
-    (left_all && right_all)
-        || (left_all
-            && std::iter::once(right.0)
-                .chain(right.1)
-                .any(|name| is_nonlegendary_creature_card_name(name, game)))
-        || (right_all
-            && std::iter::once(left.0)
-                .chain(left.1)
-                .any(|name| is_nonlegendary_creature_card_name(name, game)))
+
+    pub fn snapshot(snapshot: &'a ObjectSnapshot) -> Self {
+        Self {
+            name: &snapshot.name,
+            alternate: snapshot.split_other_half_name(),
+            creature_names: snapshot.all_nonlegendary_creature_names,
+        }
+    }
+
+    pub fn literals(self) -> impl Iterator<Item = &'a str> {
+        std::iter::once(self.name)
+            .chain(self.alternate)
+            .filter(move |_| !name_is_nameless(self.name))
+            .flat_map(|name| name.split(" // "))
+            .map(str::trim)
+            .filter(|name| !name_is_nameless(name))
+    }
+
+    pub fn shares(self, other: Self, game: &GameState) -> bool {
+        names_share(self.name, self.alternate, other.name, other.alternate)
+            || (self.creature_names && other.creature_names)
+            || (self.creature_names
+                && other
+                    .literals()
+                    .any(|n| is_nonlegendary_creature_card_name(n, game)))
+            || (other.creature_names
+                && self
+                    .literals()
+                    .any(|n| is_nonlegendary_creature_card_name(n, game)))
+    }
 }
 
 /// Whether two objects share a name, each given as its primary name plus the
@@ -536,6 +561,16 @@ pub(crate) trait TaggedConstraintSubject {
     fn subject_attached_to(&self) -> Option<ObjectId>;
     fn subject_attached_to_player(&self) -> Option<PlayerId>;
     fn subject_attachments(&self) -> &[ObjectId];
+    fn subject_creature_names(&self, game: &GameState) -> bool {
+        raw_grants_creature_names(self.subject_object_id(), self.subject_attachments(), game)
+    }
+    fn subject_names(&self, game: &GameState) -> ObjectNames<'_> {
+        ObjectNames {
+            name: self.subject_name(),
+            alternate: self.subject_alternate_name(),
+            creature_names: self.subject_creature_names(game),
+        }
+    }
     fn subject_was_enchanted(&self) -> bool;
 }
 
@@ -776,6 +811,10 @@ impl TaggedConstraintSubject for LayeredSubject<'_> {
             .and_then(|target| target.player_id())
     }
 
+    fn subject_creature_names(&self, game: &GameState) -> bool {
+        grants_creature_names(&self.object.attachments, self.chars.name_set_timestamp, game)
+    }
+
     fn subject_attachments(&self) -> &[ObjectId] {
         &self.object.attachments
     }
@@ -908,6 +947,10 @@ impl TaggedConstraintSubject for ObjectSnapshot {
 
     fn subject_attached_to_player(&self) -> Option<PlayerId> {
         self.attached_to.and_then(|target| target.player_id())
+    }
+
+    fn subject_creature_names(&self, _: &GameState) -> bool {
+        self.all_nonlegendary_creature_names
     }
 
     fn subject_attachments(&self) -> &[ObjectId] {
@@ -1058,10 +1101,7 @@ fn subject_has_name_in_game<S: TailMatchSubject>(
     game: &GameState,
 ) -> bool {
     subject_has_name(subject, name)
-        || (attachments_grant_all_nonlegendary_creature_card_names(
-            subject.subject_attachments(),
-            game,
-        ) && is_nonlegendary_creature_card_name(name, game))
+        || (subject.subject_creature_names(game) && is_nonlegendary_creature_card_name(name, game))
 }
 
 /// CR 206.3a-c: the names originally printed in the sets that Oracle text
@@ -1603,7 +1643,7 @@ pub(crate) fn calculated_mana_value_for_filter(
     ironsmith_core::quantity::clamp_i32_from_u32(value)
 }
 
-fn object_current_mana_value_for_relation(object: &Object, game: &GameState) -> i32 {
+pub(crate) fn object_current_mana_value_for_relation(object: &Object, game: &GameState) -> i32 {
     game.current_characteristics(object.id).map_or_else(
         || object_mana_value_for_filter(object),
         |chars| calculated_mana_value_for_filter(object, &chars),
@@ -1678,12 +1718,7 @@ fn subject_shares_characteristic_with_object(
             .ok()
             .flatten()
             .is_some_and(|chars| {
-                names_share(
-                    subject.subject_name(),
-                    subject.subject_alternate_name(),
-                    &chars.name,
-                    chars.alternate_name.as_deref(),
-                )
+                subject.subject_names(game).shares(ObjectNames::layered(object, &chars, game), game)
             }),
     }
 }
@@ -2008,29 +2043,14 @@ fn tagged_constraint_matches_subject(
             .iter()
             .any(|snapshot| snapshot.stable_id == subject.subject_stable_id()),
         TaggedOpbjectRelation::SameNameAsTagged => tagged_snapshots.iter().any(|snapshot| {
-            names_share_with_attachments(
-                (&snapshot.name, snapshot.split_other_half_name(), &snapshot.attachments),
-                (
-                    subject.subject_name(),
-                    subject.subject_alternate_name(),
-                    subject.subject_attachments(),
-                ),
-                game,
-            )
+            ObjectNames::snapshot(snapshot).shares(subject.subject_names(game), game)
         }),
         // CR 201.2c: a nameless object never has a different name.
         TaggedOpbjectRelation::DifferentNameFromTagged => {
-            !name_is_nameless(subject.subject_name())
+            let names = subject.subject_names(game);
+            (names.creature_names || names.literals().next().is_some())
                 && tagged_snapshots.iter().all(|snapshot| {
-                    !names_share_with_attachments(
-                        (&snapshot.name, snapshot.split_other_half_name(), &snapshot.attachments),
-                        (
-                            subject.subject_name(),
-                            subject.subject_alternate_name(),
-                            subject.subject_attachments(),
-                        ),
-                        game,
-                    )
+                    !ObjectNames::snapshot(snapshot).shares(names, game)
                 })
         }
         TaggedOpbjectRelation::SameControllerAsTagged => tagged_snapshots
@@ -2075,15 +2095,7 @@ fn tagged_constraint_matches_subject(
             .iter()
             .filter(|snapshot| snapshot.controller == subject.subject_owner())
             .any(|snapshot| {
-                names_share_with_attachments(
-                    (&snapshot.name, snapshot.split_other_half_name(), &snapshot.attachments),
-                    (
-                        subject.subject_name(),
-                        subject.subject_alternate_name(),
-                        subject.subject_attachments(),
-                    ),
-                    game,
-                )
+                ObjectNames::snapshot(snapshot).shares(subject.subject_names(game), game)
             }),
         TaggedOpbjectRelation::SharesNoCardTypeWithTagged => {
             !tagged_snapshots.is_empty()
@@ -2900,30 +2912,23 @@ fn resolve_filter_comparison_rhs_value(
             Some(crate::static_abilities::set_constrained_count(filter, matching, game) as i64)
         }
         Value::DistinctNames(filter) => {
-            let mut names = std::collections::HashSet::new();
-            let mut insert = |name: &str| {
-                for part in name.split(" // ") {
-                    if !name_is_nameless(part) {
-                        names.insert(interchangeable_name_key(part.trim()).to_string());
-                    }
-                }
-            };
+            let mut names = Vec::new();
             if let Some(snapshots) = aggregate_tagged_snapshots(filter, ctx) {
                 for snapshot in snapshots {
                     if filter.matches_snapshot(snapshot, ctx, game) {
-                        insert(&snapshot.name);
+                        names.push(ObjectNames::snapshot(snapshot).into());
                     }
                 }
             } else {
-                let ids = game.objects_in_deterministic_order().into_iter()
+                let ids: Vec<_> = game.objects_in_deterministic_order().into_iter()
                     .filter(|object| !game.is_phased_out(object.id) && filter.matches(object, ctx, game))
-                    .map(|object| object.id).collect::<Vec<_>>();
+                    .map(|object| object.id).collect();
                 let frame = game.try_current_characteristics_batch(&ids).ok()?;
                 for id in ids {
-                    insert(&frame.get(&id)?.name);
+                    names.push(ObjectNames::layered(game.object(id)?, frame.get(&id)?, game).into());
                 }
             }
-            i64::try_from(names.len()).ok()
+            Some(name_groups::distinct_count(names, filter.distinct_names, game))
         }
         Value::CountScaled(filter, factor) => {
             let objects = game.objects_in_deterministic_order();
@@ -5084,7 +5089,22 @@ impl ObjectFilterExt for ObjectFilter {
             {
                 continue;
             }
-            if !tagged_constraint_matches_subject(
+            // A reference to the departing permanent uses its battlefield names.
+            // A reference to the card in its new zone uses its new characteristics.
+            if constraint.relation == TaggedOpbjectRelation::SameNameAsTagged
+                && self.same_name_antecedent_surface() != Some(SameNameAntecedentSurface::Card)
+                && let Some(history) = ctx.tagged_objects.get(&ironsmith_core::tag::pre_move_history_tag(&constraint.tag))
+            {
+                let matches = tagged_snapshots.iter().any(|result| {
+                    let before = history.iter()
+                        .find(|old| old.stable_id == result.stable_id && old.zone == Zone::Battlefield)
+                        .unwrap_or(result);
+                    ObjectNames::snapshot(before).shares(subject.subject_names(game), game)
+                });
+                if !matches {
+                    return false;
+                }
+            } else if !tagged_constraint_matches_subject(
                 subject,
                 tagged_snapshots,
                 constraint.relation,
@@ -5098,7 +5118,8 @@ impl ObjectFilterExt for ObjectFilter {
             if self.other
                 && matches!(
                     constraint.relation,
-                    TaggedOpbjectRelation::SharesCardType
+                    TaggedOpbjectRelation::SameNameAsTagged
+                        | TaggedOpbjectRelation::SharesCardType
                         | TaggedOpbjectRelation::SharesPermanentType
                         | TaggedOpbjectRelation::SharesColorWithTagged
                         | TaggedOpbjectRelation::SharesSubtypeWithTagged

@@ -162,7 +162,7 @@ pub use self::priority_mana::{
     apply_decision_context_with_dm, expand_mana_cost_to_display_pips, mana_ability_is_undo_safe,
 };
 pub(crate) use self::targeting::{
-    CoordinatedTargetState, count_target_selection_slots_for_coordinated_child,
+    CoordinatedTargetState, coordinated_child_target_slots,
     count_target_selection_slots_for_isolated_effect,
     extract_target_requirements_for_effect_with_state, spell_has_legal_targets_with_mode_preview,
     spell_has_legal_targets_with_modes, spell_has_legal_targets_with_modes_and_view,

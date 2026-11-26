@@ -628,7 +628,7 @@ pub(super) fn apply_trait_replacement(
             // is read as it would exist on the battlefield, so external
             // static effects (an anthem) already apply.
             let prospective = if etb_value_uses_revealed_choice(selected_count)
-                || etb_value_reads_entering_pt(selected_count)
+                || (!replacement_source_is_other_permanent && etb_value_reads_entering_pt(selected_count))
             {
                 crate::events::downcast_event::<crate::events::EnterBattlefieldEvent>(event.inner())
                     .and_then(|etb| etb.prospective_game_state(game))
@@ -2037,7 +2037,8 @@ fn apply_trait_enter_with_counter_entries(
         _ => return None,
     };
     for (kind, count) in counters { entering = entering.with_counters(*kind, *count); }
-    Some(event.rewrap(entering.with_added_subtypes(added_subtypes).with_added_abilities(added_abilities)))
+    entering.entry_granted_subtypes.extend_from_slice(added_subtypes);
+    Some(event.rewrap(entering.with_added_abilities(added_abilities)))
 }
 
 fn apply_trait_enter_as_copy(
@@ -2802,7 +2803,7 @@ mod counter_kind_entry_projection_tests {
             assert!(etb.enters_tapped);
             assert_eq!(etb.enters_as_copy_of, Some(donor));
             assert!(etb.added_subtypes.contains(&Subtype::Vehicle));
-            assert!(etb.added_subtypes.contains(&Subtype::Dinosaur));
+            assert!(etb.entry_granted_subtypes.contains(&Subtype::Dinosaur));
             assert_eq!(etb.enters_with_counters.iter().find(|(kind, _)| *kind == CounterType::Charge).unwrap().1, if entries.is_empty() { 3 } else { 4 });
             assert_eq!(etb.enters_with_counters.iter().any(|(kind, _)| *kind == CounterType::Flying), !entries.is_empty());
             assert_eq!(changed.provenance(), event.provenance());

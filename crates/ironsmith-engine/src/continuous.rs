@@ -2444,6 +2444,8 @@ pub struct CalculatedCharacteristics {
     pub name: SharedStr,
     /// A second current split-card name, cleared when layer 1 replaces names.
     pub alternate_name: Option<String>,
+    /// Layer 3 timestamp of the most recent effect that replaced all names.
+    pub name_set_timestamp: Option<u64>,
     // Shared with the object when no effect rewrote it.
     pub mana_cost: Option<crate::object::SharedValue<ManaCost>>,
     /// Noncopiable linked-face mana value of the current view. Copy and
@@ -3349,6 +3351,7 @@ fn object_text_box_characteristics(object: &Object) -> CalculatedCharacteristics
     let mut chars = CalculatedCharacteristics {
         copy_values: Some(copy_values),
         alternate_name: object.split_other_half_name().map(str::to_string),
+        name_set_timestamp: None,
         name: object.name.clone(),
         mana_cost: object
             .split_combined_mana_cost()
@@ -5429,6 +5432,7 @@ fn apply_text_box_modification_to_chars(
             chars.static_abilities = extract_static_abilities(&chars.abilities).into();
         }
         Modification::SetName(name) => {
+            chars.name_set_timestamp = Some(effect.timestamp);
             chars.name = name.clone().into();
             chars.alternate_name = None;
         }
@@ -7783,6 +7787,7 @@ fn apply_modification_to_chars(
             chars.static_abilities = extract_static_abilities(&chars.abilities).into();
         }
         Modification::SetName(name) => {
+            chars.name_set_timestamp = Some(effect.timestamp);
             chars.name = name.clone().into();
             chars.alternate_name = None;
         }

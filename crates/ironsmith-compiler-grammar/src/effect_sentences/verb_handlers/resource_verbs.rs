@@ -1558,6 +1558,7 @@ pub(super) fn assimilate_card_movement(target: TargetAst) -> EffectAst {
             added_card_types: vec![CardType::Artifact, CardType::Creature],
             removed_subtype_families: vec![crate::types::SubtypeFamily::Creature],
             added_subtypes: vec![Subtype::Borg],
+            ..Default::default()
         });
         entry_counters.push(ironsmith_core::BattlefieldEntryCounterSpec::new(
             crate::object::CounterType::PlusOnePlusOne, 1, ironsmith_core::BattlefieldEntryCounterSurface::Inline));

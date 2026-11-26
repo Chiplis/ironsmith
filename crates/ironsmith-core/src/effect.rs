@@ -3879,6 +3879,12 @@ pub enum BattlefieldEntryColorChange {
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, Default, PartialEq, TagKeyWalk)]
 pub struct BattlefieldEntryTypeChanges {
+    /// A descriptive P/T setting applies at entry (CR 611.2e).
+    #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "Option::is_none"))]
+    pub base_power_toughness: Option<(i32, i32)>,
+    /// Minimum declared X for a conditional entry description.
+    #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "Option::is_none"))]
+    pub minimum_x: Option<u32>,
     /// Color clauses from the same descriptive entry instruction, in order.
     #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "Vec::is_empty"))]
     pub color_changes: Vec<BattlefieldEntryColorChange>,

@@ -992,7 +992,6 @@ fn parse_control_gate(tokens: &[OwnedLexToken]) -> Result<Option<PredicateAst>, 
         )));
     }
     if distinct_names {
-        filter.distinct_names = false;
         filter.union_surface = filter.union_surface.with_differently_named_prefix(differently_named_prefix);
         if filter.zone.is_none() {
             filter.zone = Some(Zone::Battlefield);
@@ -1001,7 +1000,7 @@ fn parse_control_gate(tokens: &[OwnedLexToken]) -> Result<Option<PredicateAst>, 
             return Ok(None);
         };
         return Ok(Some(PredicateAst::ValueComparison {
-            left: Value::DistinctNames(filter),
+            left: Value::differently_named_objects(filter),
             operator: crate::effect::ValueComparisonOperator::GreaterThanOrEqual,
             right: Value::Fixed(count as i32),
         }));

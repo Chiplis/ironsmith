@@ -7475,7 +7475,7 @@ pub fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, CardTex
     {
         crate::word_claims::claim_tokens(tokens);
         return Ok(PredicateAst::ValueComparison {
-            left: Value::DistinctNames(ObjectFilter::tagged(
+            left: Value::differently_named_objects(ObjectFilter::tagged(
                 crate::tag::CompilerReferenceTag::It.bind(),
             )),
             operator: ValueComparisonOperator::GreaterThanOrEqual,

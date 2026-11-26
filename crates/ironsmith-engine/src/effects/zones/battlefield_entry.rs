@@ -670,7 +670,8 @@ fn prepare_battlefield_entry_batch_inner(
     let prohibited_entries = requests.iter().enumerate()
         .filter_map(|(index, (object, options))| {
             std::iter::once(*object).chain(options.physical_components.iter().copied())
-                .any(|component| game.zone_move_is_prohibited(component, Zone::Battlefield)).then_some(index)
+                .any(|component| game.zone_move_is_prohibited(component, Zone::Battlefield)
+                    || game.source_zone_prohibits_entry(component)).then_some(index)
         })
         .collect::<std::collections::HashSet<_>>();
     // Original zone snapshots and observer lookback precede provisional faces,
@@ -818,14 +819,14 @@ fn prepare_battlefield_entry_batch_inner(
         if !options.entry_modifications.is_empty() {
             eprintln!("ENTRY_PROJECTION eligibility object={object:?} raw={:?} current={:?} forbidden={} effects={:?}",
                 working.object(*object).map(|object| object.card_types.to_vec()),
-                working.current_card_types(*object), working.card_cannot_enter_battlefield(*object),
+                working.current_card_types(*object), working.card_cannot_enter_as_presented(*object),
                 working.effect_store.continuous_effects.effects());
         }
         let eligible = !working
             .object(*object)
             .is_some_and(|object| object.zone == Zone::Battlefield)
             && (!options.transformed || transformed_entry_states.contains_key(&index))
-            && !working.card_cannot_enter_battlefield(*object)
+            && !working.card_cannot_enter_as_presented(*object)
             && battlefield_entry_controller(&working, *object, options).is_some_and(|controller| {
                 working
                     .player(controller)

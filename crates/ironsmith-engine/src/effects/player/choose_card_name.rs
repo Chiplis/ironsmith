@@ -85,6 +85,7 @@ pub(crate) fn synthetic_chosen_name_snapshot(
         transform_count: 0,
         attached_to: None,
         attachments: Vec::new(),
+        all_nonlegendary_creature_names: false,
         attachment_snapshots: Vec::new(),
                     related_exiled_cards: Default::default(),
         was_enchanted: false,

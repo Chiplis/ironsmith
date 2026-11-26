@@ -7063,11 +7063,28 @@ impl GameState {
         true
     }
 
-    pub fn note_card_name_for_owner(&mut self,owner:crate::linked_exile::LinkedExileOwner,name:impl Into<String>)->bool {
-        let name=name.into();let name=name.trim();
-        if name.is_empty() || self.noted_card_names_for_owner(&owner).iter().any(|noted|crate::filter::names_match(noted,name)){return false;}
-        self.object_annotations_mut().noted_card_names.entry(owner).or_default().push(name.to_owned());
-        self.mark_continuous_state_dirty();self.bump_mutation_revision();true
+    pub fn note_card_name_for_owner(&mut self, owner: crate::linked_exile::LinkedExileOwner, name: impl Into<String>) -> bool {
+        self.note_card_names_for_owner(owner, std::iter::once(name.into().as_str())) != 0
+    }
+
+    pub(crate) fn note_card_names_for_owner<'a>(
+        &mut self,
+        owner: crate::linked_exile::LinkedExileOwner,
+        names: impl Iterator<Item = &'a str>,
+    ) -> usize {
+        let key = |name: &str| crate::filter::normalize_name_for_match(crate::filter::interchangeable_name_key(name));
+        let mut seen: std::collections::HashSet<_> = self.noted_card_names_for_owner(&owner)
+            .iter().flat_map(|name| name.split(" // ")).map(key).collect();
+        let new_names: Vec<_> = names.flat_map(|name| name.split(" // ")).map(str::trim)
+            .filter(|name| !crate::filter::name_is_nameless(name) && seen.insert(key(name)))
+            .map(str::to_owned).collect();
+        let count = new_names.len();
+        if count > 0 {
+            self.object_annotations_mut().noted_card_names.entry(owner).or_default().extend(new_names);
+            self.mark_continuous_state_dirty();
+            self.bump_mutation_revision();
+        }
+        count
     }
     pub fn noted_card_names_for_owner(&self,owner:&crate::linked_exile::LinkedExileOwner)->&[String]{
         self.object_annotations.noted_card_names.get(owner).map(Vec::as_slice).unwrap_or(&[])

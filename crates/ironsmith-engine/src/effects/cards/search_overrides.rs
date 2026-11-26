@@ -25,7 +25,6 @@ pub(crate) struct LibrarySearchRequest {
     pub library_owner: Option<PlayerId>,
     pub search_library: bool,
     pub require_library_access: bool,
-    pub restrict_initial_view: bool,
     /// An explicitly captured subset of the library being searched. Both
     /// private inspection and in-search casting stay inside this scope.
     pub library_scope_cards: Option<Vec<ObjectId>>,
@@ -37,6 +36,7 @@ pub(crate) struct LibrarySearchRequest {
 pub(crate) struct LibrarySearchScope {
     pub chooser: PlayerId,
     pub library_cards: Vec<ObjectId>,
+    pub library_access: bool,
     pub found_card_policy: Option<OppositionAgentSearch>,
     pub event: Option<crate::triggers::TriggerEvent>,
     /// Actual in-search casts, already published at their native boundaries.
@@ -56,18 +56,20 @@ pub(crate) fn execute_library_search_scope<'a>(
         LibrarySearchScope,
     ) -> Result<crate::effect::EffectOutcome, ExecutionError>,
 ) -> Result<crate::effect::EffectOutcome, ExecutionError> {
-    let found_card_policy = request
-        .library_owner
-        .and_then(|owner| opposition_agent_search(game, request.chooser, owner));
     let can_search = request.library_owner.is_some_and(|owner| {
         game.can_search_library_from_effect(request.chooser, owner, ctx.controller)
     });
     if request.require_library_access && request.library_owner.is_some() && !can_search {
         return Ok(crate::effect::EffectOutcome::prevented());
     }
+    let found_card_policy = request
+        .library_owner
+        .filter(|_| can_search)
+        .and_then(|owner| opposition_agent_search(game, request.chooser, owner));
     let control = begin_opposition_agent_search_control(game, request.chooser, found_card_policy);
     let result = (|| {
         let mut library_cards = Vec::new();
+        let mut first_search = true;
         let mut completed_outputs = Vec::new();
         let access_now = |game: &GameState, ctx: &ExecutionContext| {
             if request.refresh_library_access {
@@ -79,47 +81,64 @@ pub(crate) fn execute_library_search_scope<'a>(
             }
         };
         if let Some(owner) = request.library_owner.filter(|_| access_now(game, ctx)) {
-            library_cards = request.library_scope_cards.clone().unwrap_or_else(|| {
-                game.player(owner)
-                    .map(|player| player.library.to_vec())
-                    .unwrap_or_default()
-            });
-            library_cards.retain(|id| {
-                game.object(*id).is_some_and(|object| {
-                    object.zone == Zone::Library && object.owner == owner
-                })
-            });
-            if request.restrict_initial_view {
-                game.restrict_library_search_candidates(request.chooser, &mut library_cards);
-            }
-            crate::effects::helpers::view_hidden_candidate_objects(
-                game,
-                ctx,
+            library_cards = game
+                .player(owner)
+                .map(|player| player.library.to_vec())
+                .unwrap_or_default();
+            first_search = ctx.library_search_groups.begin(
+                ctx.executing_effect,
                 request.chooser,
-                &library_cards,
-                "Search library",
-                false,
+                owner,
+                &mut library_cards,
+                |cards| game.restrict_library_search_candidates(request.chooser, cards),
             );
+            if let Some(scope) = &request.library_scope_cards {
+                let scope: std::collections::HashSet<_> = scope.iter().copied().collect();
+                library_cards.retain(|id| scope.contains(id));
+            }
+            if first_search {
+                crate::effects::helpers::view_hidden_candidate_objects(
+                    game,
+                    ctx,
+                    request.chooser,
+                    &library_cards,
+                    "Search library",
+                    false,
+                );
+            }
         }
-        if let Some(owner) = request.library_owner.filter(|_| access_now(game, ctx)) {
+        if let Some(owner) = request
+            .library_owner
+            .filter(|&owner| first_search && owner == request.chooser && access_now(game, ctx))
+        {
             completed_outputs = offer_library_search_casts(game, ctx, owner, &library_cards)?;
             if ctx.decision_maker.awaiting_choice() {
                 return Ok(crate::effect::EffectOutcome::count(0));
             }
+            if !completed_outputs.is_empty() {
+                // Paying for an in-search spell can move other cards out of the library.
+                library_cards.retain(|id| {
+                    game.object(*id)
+                        .is_some_and(|obj| obj.zone == Zone::Library)
+                });
+            }
         }
-        let event = (request.search_library
-            && (request.library_owner.is_none() || access_now(game, ctx)))
-        .then(|| {
-            crate::triggers::TriggerEvent::new_with_provenance(
-                crate::events::SearchLibraryEvent::new(request.chooser, request.library_owner),
-                ctx.provenance,
-            )
-        });
+        let library_access = request.library_owner.is_some_and(|_| access_now(game, ctx));
+        let event = (first_search
+            && request.search_library
+            && (request.library_owner.is_none() || library_access))
+            .then(|| {
+                crate::triggers::TriggerEvent::new_with_provenance(
+                    crate::events::SearchLibraryEvent::new(request.chooser, request.library_owner),
+                    ctx.provenance,
+                )
+            });
         body(
             game,
             ctx,
             LibrarySearchScope {
                 chooser: request.chooser,
+                library_access,
                 library_cards,
                 found_card_policy,
                 event,
@@ -169,7 +188,9 @@ pub(crate) fn opposition_agent_search(
             continue;
         };
         let controller = game.controller_of(object);
-        if controller == searching_player {
+        if !game.are_opponents(controller, searching_player)
+            || !game.player_is_within_range(controller, searching_player)
+        {
             continue;
         }
         if game.current_has_static_ability_id(
@@ -221,8 +242,6 @@ fn grant_opposition_agent_play_permission(
         return;
     }
 
-    let stable_id = object.stable_id;
-    let is_land = object.is_land();
     game.effect_store.grant_registry.grant_to_card(
         card_id,
         Zone::Exile,
@@ -234,23 +253,24 @@ fn grant_opposition_agent_play_permission(
         },
     );
 
-    if !is_land {
-        game.effect_store
-            .mana_spend_effects
-            .permissions
-            .push(ActiveManaSpendPermission {
-                play_permission_identities: None,
-                permission: ManaSpendPermission::any_color_for_casting_stable_ids(
-                    PlayerFilter::You,
-                    vec![stable_id],
-                ),
-                controller: permission.controller,
-                source: ManaSpendPermissionSource::Effect {
-                    source_id: permission.source,
-                    expires_end_of_turn: u32::MAX,
-                },
-            });
-    }
+    // The card keeps this spending permission while continuously exiled,
+    // including if another effect also permits casting it. The matching
+    // filter checks the cast-origin snapshot after the card reaches the stack.
+    game.effect_store
+        .mana_spend_effects
+        .permissions
+        .push(ActiveManaSpendPermission {
+            play_permission_identities: None,
+            permission: ManaSpendPermission::any_color_for_casting_matching(
+                PlayerFilter::You,
+                crate::filter::ObjectFilter::specific(card_id).in_zone(Zone::Exile),
+            ),
+            controller: permission.controller,
+            source: ManaSpendPermissionSource::Effect {
+                source_id: permission.source,
+                expires_end_of_turn: u32::MAX,
+            },
+        });
 }
 
 #[derive(Debug)]
@@ -352,7 +372,8 @@ pub(crate) fn exile_found_cards_for_opposition_agent_with_outputs(
                 .filter_map(|&source| {
                     let object = game.object(source)?;
                     let controller = game.controller_of(object);
-                    (controller != searching_player
+                    (game.are_opponents(controller, searching_player)
+                        && game.player_is_within_range(controller, searching_player)
                         && game.current_has_static_ability_id(
                             source,
                             StaticAbilityId::OpponentSearchExileFoundCards,

@@ -610,6 +610,7 @@ fn collect_candidates_in_zone(
     ctx: &ExecutionContext,
     chooser_id: PlayerId,
     search_zone: Zone,
+    library_scope: Option<&[ObjectId]>,
 ) -> Result<Vec<ObjectId>, ExecutionError> {
     let filter_ctx = choice_filter_context(effect, game, ctx, chooser_id);
     let top_only_limit = top_only_selection_limit(effect, ctx.x_value);
@@ -703,82 +704,40 @@ fn collect_candidates_in_zone(
             }
         }
         Zone::Library => {
-            let mut library_ids: Vec<ObjectId> = {
-                let owner_ids =
-                    library_candidate_players(effect, game, ctx, &filter_ctx, chooser_id)?
-                        .into_iter()
-                        .filter(|owner| {
-                            !effect.is_search
-                                || game.can_search_library_from_effect(
-                                    chooser_id,
-                                    *owner,
-                                    ctx.controller,
-                                )
-                        })
-                        .collect::<Vec<_>>();
+            let tagged_pool = filter_references_tagged_pool(effect);
+            let matches = |id: &ObjectId| {
+                game.object(*id).is_some_and(|obj| {
+                    let placeholder = game.is_hidden_card_placeholder(*id)
+                        || (obj.zone == Zone::Library && obj.name == "Hidden Card");
+                    let in_pool = (effect.is_search && !tagged_pool)
+                        || (tagged_pool && pool_filter.matches(obj, &filter_ctx, game));
+                    (placeholder && in_pool) || hidden_zone_filter.matches(obj, &filter_ctx, game)
+                })
+            };
+            let mut library_ids = Vec::new();
+            let mut collect = |ids: &[ObjectId]| {
                 if effect.top_only {
-                    let mut top_matches = Vec::new();
-                    for owner_id in owner_ids {
-                        if top_matches.len() >= top_only_limit {
-                            break;
-                        }
-                        let Some(player) = game.player(owner_id) else {
-                            continue;
-                        };
-                        for (id, obj) in player
-                            .library
-                            .iter()
-                            .rev()
-                            .filter_map(|&id| game.object(id).map(|obj| (id, obj)))
-                        {
-                            if ((effect.is_search && !filter_references_tagged_pool(effect))
-                                || (filter_references_tagged_pool(effect)
-                                    && pool_filter.matches(obj, &filter_ctx, game)))
-                                && (game.is_hidden_card_placeholder(id)
-                                    || (obj.zone == Zone::Library && obj.name == "Hidden Card"))
-                            {
-                                top_matches.push(id);
-                                if top_matches.len() >= top_only_limit {
-                                    break;
-                                }
-                                continue;
-                            }
-                            if !hidden_zone_filter.matches(obj, &filter_ctx, game) {
-                                continue;
-                            }
-                            top_matches.push(id);
-                            if top_matches.len() >= top_only_limit {
-                                break;
-                            }
-                        }
-                    }
-                    top_matches
+                    let remaining = top_only_limit.saturating_sub(library_ids.len());
+                    library_ids.extend(ids.iter().rev().copied().filter(matches).take(remaining));
                 } else {
-                    owner_ids
-                        .iter()
-                        .filter_map(|owner_id| game.player(*owner_id))
-                        .flat_map(|player| player.library.iter())
-                        .filter_map(|&id| {
-                            let obj = game.object(id)?;
-                            if ((effect.is_search && !filter_references_tagged_pool(effect))
-                                || (filter_references_tagged_pool(effect)
-                                    && pool_filter.matches(obj, &filter_ctx, game)))
-                                && (game.is_hidden_card_placeholder(id)
-                                    || (obj.zone == Zone::Library && obj.name == "Hidden Card"))
-                            {
-                                return Some(id);
-                            }
-                            hidden_zone_filter
-                                .matches(obj, &filter_ctx, game)
-                                .then_some(id)
-                        })
-                        .collect()
+                    library_ids.extend(ids.iter().copied().filter(matches));
                 }
             };
-            if effect.is_search {
-                // "that player searches the top four cards of that library
-                // instead" (Aven Mindcensor).
-                game.restrict_library_search_candidates(chooser_id, &mut library_ids);
+            if let Some(cards) = library_scope {
+                collect(cards);
+            } else {
+                for owner in library_candidate_players(effect, game, ctx, &filter_ctx, chooser_id)?
+                {
+                    if (!effect.is_search
+                        || game.can_search_library_from_effect(chooser_id, owner, ctx.controller))
+                        && let Some(player) = game.player(owner)
+                    {
+                        collect(&player.library);
+                    }
+                }
+                if effect.is_search {
+                    game.restrict_library_search_candidates(chooser_id, &mut library_ids);
+                }
             }
             library_ids
         }
@@ -810,6 +769,7 @@ pub(super) fn collect_candidates(
     game: &GameState,
     ctx: &ExecutionContext,
     chooser_id: PlayerId,
+    library_scope: Option<&[ObjectId]>,
 ) -> Result<Vec<ObjectId>, ExecutionError> {
     if !crate::object_query::require_captured_public_collections(
         game,
@@ -823,7 +783,7 @@ pub(super) fn collect_candidates(
     let mut candidates = Vec::new();
     let zones = effective_search_zones(effect, game, chooser_id)?;
     for zone in zones.iter().copied() {
-        for id in collect_candidates_in_zone(effect, game, ctx, chooser_id, zone)? {
+        for id in collect_candidates_in_zone(effect, game, ctx, chooser_id, zone, library_scope)? {
             if !candidates.contains(&id) {
                 candidates.push(id);
             }
@@ -870,45 +830,6 @@ pub(super) fn collect_candidates(
         }
     }
     Ok(candidates)
-}
-
-fn hidden_library_search_candidates(
-    effect: &ChooseObjectsEffect,
-    game: &GameState,
-    ctx: &ExecutionContext,
-    owner: PlayerId,
-    chooser_id: PlayerId,
-) -> Vec<ObjectId> {
-    let Some(player) = game.player(owner) else {
-        return Vec::new();
-    };
-    let mut ids: Box<dyn Iterator<Item = ObjectId> + '_> = if effect.top_only {
-        Box::new(player.library.iter().rev().copied())
-    } else {
-        Box::new(player.library.iter().copied())
-    };
-    let mut candidates = Vec::new();
-    let limit = if effect.top_only || effect.bottom_only {
-        top_only_selection_limit(effect, ctx.x_value)
-    } else {
-        usize::MAX
-    };
-    let pool_filter = hidden_library_pool_filter(effect);
-    let filter_ctx = choice_filter_context(effect, game, ctx, chooser_id);
-    let tagged_pool = filter_references_tagged_pool(effect);
-    for id in ids.by_ref() {
-        if candidates.len() >= limit {
-            break;
-        }
-        if game.is_hidden_card_placeholder(id)
-            && (!tagged_pool || game.object(id).is_some_and(|object| {
-                pool_filter.matches(object, &filter_ctx, game)
-            }))
-        {
-            candidates.push(id);
-        }
-    }
-    candidates
 }
 
 fn compute_choice_bounds(count: ChoiceCount, candidate_count: usize) -> (usize, usize) {
@@ -1515,7 +1436,7 @@ pub(crate) fn fixed_choice_requirement_is_unmet(
     {
         return Ok(false);
     }
-    let mut candidates = collect_candidates(effect, game, ctx, chooser_id)?;
+    let mut candidates = collect_candidates(effect, game, ctx, chooser_id, None)?;
     if !game.source_snapshot_is_exempt_from_range(Some(ctx.source), ctx.source_snapshot.as_ref()) {
         candidates
             .retain(|object| game.object_is_within_range(chooser_id, *object, Some(ctx.source)));
@@ -1873,10 +1794,6 @@ fn run_choose_objects_phase_with_outputs(
                     library_owner,
                     search_library: effect.is_search && search_zones.contains(&Zone::Library),
                     require_library_access: effect.is_search && search_zones == vec![Zone::Library],
-                    // A tagged sub-library search must intersect its captured
-                    // pool with effects that limit searches to the top N cards.
-                    // Ordinary searches retain their existing view policy.
-                    restrict_initial_view: library_scope_cards.is_some(),
                     library_scope_cards,
                     refresh_library_access: true,
                 },
@@ -1885,7 +1802,13 @@ fn run_choose_objects_phase_with_outputs(
                     let search_viewer = search.chooser;
                     let search_override = search.found_card_policy;
                     let search_event = search.event;
-                    let mut candidates = collect_candidates(effect, game, ctx, chooser_id)?;
+                    let mut candidates = collect_candidates(
+                        effect,
+                        game,
+                        ctx,
+                        chooser_id,
+                        library_owner.map(|_| search.library_cards.as_slice()),
+                    )?;
                     let relation_cost = ctx.cause.cause_type
                         == crate::events::cause::CauseType::Cost
                         && super::selection_relations::has_relations(&effect.filter);
@@ -1920,49 +1843,6 @@ fn run_choose_objects_phase_with_outputs(
                                 .is_none_or(|object| object.zone != Zone::Battlefield)
                                 || game.can_be_sacrificed(*id)
                         });
-                    }
-                    let hidden_library_candidates = if effect.is_search
-                        && search_zones.contains(&Zone::Library)
-                    {
-                        library_owner
-                            .map(|owner| hidden_library_search_candidates(effect, game, ctx, owner, chooser_id))
-                            .unwrap_or_default()
-                    } else {
-                        Vec::new()
-                    };
-                    for id in &hidden_library_candidates {
-                        if !candidates.contains(id) {
-                            candidates.push(*id);
-                        }
-                    }
-                    if candidates.is_empty()
-                        && effect.is_search
-                        && !filter_references_tagged_pool(effect)
-                        && search_zones.contains(&Zone::Library)
-                    {
-                        for player in &game.players {
-                            if !game.can_search_library_from_effect(
-                                chooser_id,
-                                player.id,
-                                ctx.controller,
-                            ) {
-                                continue;
-                            }
-                            for &id in &player.library {
-                                let is_hidden_library_card = game.is_hidden_card_placeholder(id)
-                                    || game.object(id).is_some_and(|obj| {
-                                        obj.zone == Zone::Library && obj.name == "Hidden Card"
-                                    });
-                                if is_hidden_library_card && !candidates.contains(&id) {
-                                    candidates.push(id);
-                                }
-                            }
-                        }
-                    }
-                    if effect.is_search && search_zones.contains(&Zone::Library) {
-                        // The placeholders added above bypassed the zone scan's "search
-                        // the top N cards instead" restriction (Aven Mindcensor).
-                        game.restrict_library_search_candidates(chooser_id, &mut candidates);
                     }
                     // A random pick among qualifying hand cards ("exile a nonland card at
                     // random from your hand"): every peer must shuffle the same set, so
@@ -2066,8 +1946,7 @@ fn run_choose_objects_phase_with_outputs(
                     }
 
                     let has_hidden_search_zones = effect.is_search
-                        && (search_zones.iter().any(Zone::is_hidden)
-                            || !hidden_library_candidates.is_empty());
+                        && search_zones.iter().any(Zone::is_hidden);
                     if has_hidden_search_zones && library_owner.is_none() {
                         view_hidden_candidate_objects(
                             game,

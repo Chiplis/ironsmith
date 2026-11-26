@@ -337,32 +337,6 @@ impl<'a, 'game> EvaluationContext<'a, 'game> {
         .unwrap_or(i32::MAX)
     }
 
-    /// Size of the largest group of matching objects sharing one name.
-    pub(super) fn greatest_shared_name_count(&self, filter: &ObjectFilter) -> i32 {
-        let filter_ctx = self.filter_context(self.game);
-        let mut names: Vec<String> = Vec::new();
-        match self.mode {
-            Mode::Execution(ctx) => {
-                for id in value_candidate_ids_for_filter(self.game, filter, ctx) {
-                    if let Some(object) = self.game.object(id)
-                        && filter.matches(object, &filter_ctx, self.game)
-                    {
-                        names.push(object.name.to_string());
-                    }
-                }
-            }
-            Mode::Continuous(layer) => {
-                layer.visit_layered(filter, |object, _| names.push(object.name.to_string()));
-            }
-        }
-        let mut counts: std::collections::HashMap<String, i32> = std::collections::HashMap::new();
-        for name in names {
-            let count = counts.entry(name).or_default();
-            *count = count.saturating_add(1);
-        }
-        counts.into_values().max().unwrap_or(0)
-    }
-
     pub(super) fn greatest_per_controller(
         &self,
         filter: &ObjectFilter,
@@ -559,18 +533,9 @@ impl<'a, 'game> EvaluationContext<'a, 'game> {
 
     /// Current-name reductions must observe layer-one copy and name changes.
     /// Tagged historical collections continue to use their captured names.
-    pub(super) fn distinct_names(&self, filter: &ObjectFilter) -> Result<i64, ExecutionError> {
-        // CR 201.2a: a nameless object adds no name. CR 709.4 / 709.5: a
-        // combined "A // B" name (a split card outside the stack, a fully
-        // unlocked Room) is both names, each counted on its own.
-        let mut names = std::collections::HashSet::new();
-        let mut insert_names = |name: &str| {
-            for part in name.split(" // ") {
-                if !crate::filter::name_is_nameless(part) {
-                    names.insert(crate::filter::interchangeable_name_key(part.trim()).to_string());
-                }
-            }
-        };
+    fn matching_name_sets(&self, filter: &ObjectFilter) -> Result<Vec<(ObjectId, crate::filter::name_groups::NameSet)>, ExecutionError> {
+        use crate::filter::ObjectNames;
+        let mut names = Vec::new();
         match self.mode {
             Mode::Execution(ctx) => {
                 let filter_ctx = ctx.filter_context(self.game);
@@ -583,10 +548,7 @@ impl<'a, 'game> EvaluationContext<'a, 'game> {
                             snapshot,
                         )
                     }) {
-                        insert_names(&snapshot.name);
-                        if let Some(other) = snapshot.split_other_half_name() {
-                            insert_names(other);
-                        }
+                        names.push((snapshot.object_id, ObjectNames::snapshot(snapshot).into()));
                     }
                 } else {
                     let ids = value_candidate_ids_for_filter(self.game, filter, ctx)
@@ -611,21 +573,26 @@ impl<'a, 'game> EvaluationContext<'a, 'game> {
                                 "distinct names has no current characteristics for object {id:?}"
                             ))
                         })?;
-                        insert_names(&chars.name);
-                        if let Some(other) = chars.alternate_name.as_deref() {
-                            insert_names(other);
-                        }
+                        names.push((id, ObjectNames::layered(object, chars, self.game).into()));
                     }
                 }
             }
-            Mode::Continuous(layer) => layer.visit_layered(filter, |_, chars| {
-                insert_names(&chars.name);
-                if let Some(other) = chars.alternate_name.as_deref() {
-                    insert_names(other);
-                }
+            Mode::Continuous(layer) => layer.visit_layered(filter, |object, chars| {
+                names.push((object.id, ObjectNames::layered(object, chars, self.game).into()));
             }),
         }
-        Ok(i64::try_from(names.len()).unwrap_or(i64::MAX))
+        Ok(names)
+    }
+
+    pub(super) fn distinct_names(&self, filter: &ObjectFilter) -> Result<i64, ExecutionError> {
+        let sets = self.matching_name_sets(filter)?.into_iter().map(|(_, names)| names);
+        Ok(crate::filter::name_groups::distinct_count(sets, filter.distinct_names, self.game))
+    }
+
+    pub(super) fn greatest_shared_name_count(&self, filter: &ObjectFilter) -> Result<i64, ExecutionError> {
+        let objects = self.matching_name_sets(filter)?;
+        Ok(crate::filter::name_groups::shared_groups(&objects, self.game)
+            .iter().map(|(_, group)| group.len()).max().unwrap_or(0) as i64)
     }
 
     pub(super) fn visit_property_objects(

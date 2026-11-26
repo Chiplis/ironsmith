@@ -61,6 +61,10 @@ impl<'a, 'game> LayerValueContext<'a, 'game> {
         {
             let mut snapshot = ObjectSnapshot::from_object(object, self.calculation.game);
             if let Some(chars) = in_progress_characteristics(self.calculation.game, object.id) {
+                snapshot.name = chars.name.to_string();
+                snapshot.other_face_name = chars.alternate_name.clone();
+                snapshot.all_nonlegendary_creature_names =
+                    crate::filter::ObjectNames::layered(object, &chars, self.calculation.game).creature_names;
                 snapshot.subtypes = chars.subtypes.to_vec();
                 snapshot.card_types = chars.card_types.to_vec();
             }

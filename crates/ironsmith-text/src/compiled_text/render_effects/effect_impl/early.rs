@@ -4150,8 +4150,8 @@ if filter.zone == Some(Zone::Hand)
                 })
                 .collect::<Option<Vec<_>>>()
             && move_to_zone.entry_type_changes.as_ref().is_none_or(|changes| {
-                changes.set_card_types.is_none()
-                    && changes.color_changes.is_empty()
+                changes.base_power_toughness.is_none() && changes.minimum_x.is_none()
+                    && changes.set_card_types.is_none() && changes.color_changes.is_empty()
                     && changes.added_card_types.is_empty()
                     && changes.removed_subtype_families.is_empty()
                     && !changes.added_subtypes.is_empty()
@@ -4198,7 +4198,8 @@ if filter.zone == Some(Zone::Hand)
         if let Some(changes) = &move_to_zone.entry_type_changes {
             // Recognize the keyword from its complete entry operations. Any
             // extra move rider remains in the expanded rendering below.
-            if changes.set_card_types.is_none() && changes.color_changes.is_empty()
+            if changes.minimum_x.is_none() && changes.base_power_toughness.is_none()
+                && changes.set_card_types.is_none() && changes.color_changes.is_empty()
                 && changes.added_card_types == [crate::types::CardType::Artifact, crate::types::CardType::Creature]
                 && changes.removed_subtype_families == [crate::types::SubtypeFamily::Creature]
                 && changes.added_subtypes == [crate::types::Subtype::Borg]
@@ -4248,11 +4249,19 @@ if filter.zone == Some(Zone::Hand)
                 let others = if words.is_empty() { "types" } else { "colors and types" };
                 words.extend(changes.added_subtypes.iter().map(|kind| format!("{kind}")));
                 words.extend(changes.added_card_types.iter().map(|kind| kind.name().to_string()));
-                return format!(
-                    "{}. It's {} in addition to its other {others}",
-                    rendered.trim_end_matches('.'),
-                    with_indefinite_article(&words.join(" "))
-                );
+                let mut description = with_indefinite_article(&words.join(" "));
+                if let Some((power, toughness)) = changes.base_power_toughness {
+                    description.push_str(&format!(" with base power and toughness {power}/{toughness}"));
+                }
+                let plural = move_to_zone.target_plural_surface || choose_spec_is_plural(&move_to_zone.target);
+                let subject = match (changes.minimum_x, plural) {
+                    (Some(minimum), true) => format!("If X is {minimum} or more, each of them is"),
+                    (Some(minimum), false) => format!("If X is {minimum} or more, it is"),
+                    (None, true) => "Each of them is".into(),
+                    (None, false) => "It's".into(),
+                };
+                return format!("{}. {subject} {} in addition to its other {others}",
+                    rendered.trim_end_matches('.'), description);
             }
             let mut clauses = changes.removed_subtype_families.iter()
                 .map(|family| format!("it loses all {}s", family.type_phrase())).collect::<Vec<_>>();
@@ -4278,7 +4287,12 @@ if filter.zone == Some(Zone::Hand)
                 clauses.push(format!("it has the {} subtypes in addition to its other subtypes",
                     changes.added_subtypes.iter().map(|kind| format!("{kind}")).collect::<Vec<_>>().join(" and ")));
             }
-            return format!("{}. As it enters, {}", rendered.trim_end_matches('.'), clauses.join(", and "));
+            if let Some((power, toughness)) = changes.base_power_toughness {
+                clauses.push(format!("its base power and toughness are {power}/{toughness}"));
+            }
+            let prefix = changes.minimum_x.map_or_else(|| "As it enters".to_owned(),
+                |minimum| format!("If X is {minimum} or more, as it enters"));
+            return format!("{}. {prefix}, {}", rendered.trim_end_matches('.'), clauses.join(", and "));
         }
         if move_to_zone.enters_as_non_aura {
             // "return this card to the battlefield ... as a non-Aura

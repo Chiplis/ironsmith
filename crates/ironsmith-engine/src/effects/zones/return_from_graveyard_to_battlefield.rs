@@ -185,30 +185,20 @@ impl EffectExecutor for ReturnFromGraveyardToBattlefieldEffect {
                     }
                     Err(error) => return Err(error),
                 };
+                // Each target refers to its announced incarnation. An earlier instruction
+                // may already have moved it (CR 400.7, 608.2b, 609.3).
+                let returning_source = matches!(self.target.base(), ChooseSpec::Source);
+                let (target_ids, memories): (Vec<_>, Vec<_>) = target_ids.into_iter()
+                    .filter_map(|id| {
+                        let object = game.object(id)?;
+                        (object.zone == Zone::Graveyard || (returning_source && object.zone == Zone::Exile))
+                            .then(|| (id, ObjectSnapshot::from_object(object, game)))
+                    })
+                    .unzip();
                 if target_ids.is_empty() {
                     return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
                         EffectOutcome::target_invalid(),
                     ));
-                }
-
-                let mut memories = Vec::new();
-                for target_id in &target_ids {
-                    let obj = game
-                        .object(*target_id)
-                        .ok_or(ExecutionError::ObjectNotFound(*target_id))?;
-
-                    // An ability that functions while its source is exiled ("return
-                    // Cosima to the battlefield", granted to the exiled card) returns
-                    // the source from exile; the source identity already proves it is
-                    // the same object (CR 400.7).
-                    let source_in_exile =
-                        matches!(self.target.base(), ChooseSpec::Source) && obj.zone == Zone::Exile;
-                    if obj.zone != Zone::Graveyard && !source_in_exile {
-                        return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
-                            EffectOutcome::target_invalid(),
-                        ));
-                    }
-                    memories.push(Clone::clone(&ObjectSnapshot::from_object(obj, game)));
                 }
 
                 let attachment_target = if let Some(as_aura) = &self.as_aura {

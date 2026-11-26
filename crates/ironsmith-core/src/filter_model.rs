@@ -4001,6 +4001,15 @@ impl std::fmt::Debug for ObjectFilter {
 }
 
 impl ObjectFilter {
+    /// The noun phrase alone, when the enclosing value supplies the name constraint.
+    pub fn without_distinct_names(&self) -> Self {
+        let mut subject = self.clone();
+        if subject.distinct_names {
+            subject.distinct_names = false;
+        }
+        subject
+    }
+
     /// Whether this filter carries the complete permanent card-type domain.
     ///
     /// Parsers use this typed representation for an authored `permanent`

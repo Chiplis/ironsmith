@@ -6773,8 +6773,15 @@ pub(crate) fn describe_condition(condition: &Condition) -> String {
                 && *count >= 1
             {
                 let count_text = number_word(*count).unwrap_or_else(|| count.to_string());
+                let name_subject;
+                let subject = if matches!(left.unhinted(), Value::DistinctNames(_) | Value::UnlockedDoorsAmong(_)) {
+                    name_subject = filter.without_distinct_names();
+                    &name_subject
+                } else {
+                    filter
+                };
                 let plural = pluralize_noun_phrase(strip_leading_article(
-                    &describe_count_filter_value_subject(filter),
+                    &describe_count_filter_value_subject(subject),
                 ));
                 return match left.unhinted() {
                     // "If cards with five or more different mana values are
@@ -6791,17 +6798,14 @@ pub(crate) fn describe_condition(condition: &Condition) -> String {
                     Value::DistinctManaValues(_) => {
                         format!("there are {count_text} or more mana values among {plural}")
                     }
+                    Value::UnlockedDoorsAmong(filter) if filter.distinct_names => {
+                        format!("there are {count_text} or more different names among unlocked doors of {plural}")
+                    }
                     Value::UnlockedDoorsAmong(_) => {
                         format!("there are {count_text} or more unlocked doors among {plural}")
                     }
-                    // A Room's names are those of its unlocked doors (CR
-                    // 709.5), so distinct names among Rooms are door names.
-                    Value::DistinctNames(filter)
-                        if filter.subtypes.contains(&crate::types::Subtype::Room) =>
-                    {
-                        format!(
-                            "there are {count_text} or more different names among unlocked doors of {plural}"
-                        )
+                    Value::DistinctNames(filter) if !filter.distinct_names => {
+                        format!("there are {count_text} or more different names among {plural}")
                     }
                     _ => match plural.strip_suffix(" you control") {
                         // "you control five or more differently named lands"
@@ -6941,6 +6945,7 @@ pub(crate) fn describe_condition(condition: &Condition) -> String {
                 let mut objects = filter.clone();
                 objects.controller = None;
                 objects.zone = None;
+                objects.distinct_names = false;
                 let count_text = number_word(*count).unwrap_or_else(|| count.to_string());
                 let relation = if matches!(left.unhinted(), Value::DistinctNames(_)) {
                     "with different names"

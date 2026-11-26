@@ -119,7 +119,7 @@ fn choice(
     let filter_ctx = ctx.filter_context(game);
     let mut pool: Vec<_> =
         if let Some(choose) = first.downcast_ref::<crate::effects::ChooseObjectsEffect>() {
-            super::choose_objects_runtime::collect_candidates(choose, game, ctx, player)?
+            super::choose_objects_runtime::collect_candidates(choose, game, ctx, player, None)?
         } else {
             zones
                 .iter()

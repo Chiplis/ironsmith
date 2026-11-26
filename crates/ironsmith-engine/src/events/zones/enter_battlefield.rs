@@ -57,6 +57,8 @@ pub struct EnterBattlefieldEvent {
     pub removed_supertypes: Vec<Supertype>,
     /// Additional subtypes granted by the copy-as-enters replacement.
     pub added_subtypes: Vec<Subtype>,
+    /// Layer-four changes from entry replacements independent of a copy effect.
+    pub entry_granted_subtypes: Vec<Subtype>,
     /// Additional abilities granted by the copy-as-enters replacement.
     pub added_abilities: Vec<Ability>,
     /// Base power/toughness set as the object enters.
@@ -128,6 +130,7 @@ impl EnterBattlefieldEvent {
             && self.added_supertypes.is_empty()
             && self.removed_supertypes.is_empty()
             && self.added_subtypes.is_empty()
+            && self.entry_granted_subtypes.is_empty()
             && self.added_abilities.is_empty()
             && self.set_base_power_toughness.is_none()
             && self.pending_program.is_none()
@@ -228,6 +231,7 @@ impl EnterBattlefieldEvent {
             added_supertypes: Vec::new(),
             removed_supertypes: Vec::new(),
             added_subtypes: Vec::new(),
+            entry_granted_subtypes: Vec::new(),
             added_abilities: Vec::new(),
             set_base_power_toughness: None,
             controller_override: None,
@@ -262,6 +266,7 @@ impl EnterBattlefieldEvent {
             added_supertypes: Vec::new(),
             removed_supertypes: Vec::new(),
             added_subtypes: Vec::new(),
+            entry_granted_subtypes: Vec::new(),
             added_abilities: Vec::new(),
             set_base_power_toughness: None,
             controller_override: None,
@@ -567,6 +572,7 @@ retain_original_types: false, retain_original_name: false,
         if !prospective.battlefield.contains(&self.object) {
             prospective.battlefield.push(self.object);
         }
+        prospective.install_entry_subtypes(self.object, &self.entry_granted_subtypes);
         if self.creation.is_some() { prospective.activate_originless_entry_projection(self.object); }
         if let Some(controller) = self.controller_override {
             prospective.stage_initial_controller_for_assembly(self.object, controller);

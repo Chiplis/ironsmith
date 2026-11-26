@@ -7,42 +7,152 @@ fn is_arrival_reference(target: &TargetAst) -> bool {
 }
 
 /// CR 611.2e: a descriptive type rider belongs to the arrival itself. Only
-/// additive type, fixed color, and ability descriptions are owned here;
+/// permanent type, color, base P/T, and ability descriptions are owned here;
 /// ordinary "becomes" and "gains" instructions retain their separate owners.
 pub(crate) fn parse_entry_type_rider(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    if !tokens.iter().any(|token| token.matches_word("battlefield")) {
+        return Ok(None);
+    }
     let sentences = split_lexed_sentences(tokens);
-    if let Some(program) = conditional_described_entry(&sentences)? { return Ok(Some(program)); }
-    let [prefix @ .., rider] = sentences.as_slice() else {
-        return Ok(None);
-    };
-    if prefix.is_empty() {
-        return Ok(None);
+    if let Some(program) = conditional_described_entry(&sentences)? {
+        return Ok(Some(program));
     }
-    let words = crate::lexer::token_word_refs(rider);
-    // Only a descriptive clause belongs to entry. "It gains" and "it
-    // becomes" remain ordinary instructions after the move.
-    if !matches!(words.as_slice(), ["it", "has" | "is", ..] | ["it's" | "its" | "it’s", ..] | ["that", "creature" | "permanent", "has" | "is", ..]) {
-        return Ok(None);
+    for index in 1..sentences.len() {
+        let rider = sentences[index];
+        let view = crate::lexer::TokenWordView::new(rider);
+        let all_words = view.word_refs();
+        // A conditional is evaluated on the declared X, before replacing the entry.
+        let copula_start = if all_words.starts_with(&["if", "x"]) {
+            let Some(comma) = rider
+                .iter()
+                .position(|t| t.kind == crate::lexer::TokenKind::Comma)
+            else {
+                continue;
+            };
+            crate::lexer::token_word_refs(&rider[..comma]).len()
+        } else {
+            0
+        };
+        let words = &all_words[copula_start..];
+        let plural = matches!(
+            words,
+            ["theyre" | "they're" | "they’re", ..]
+                | ["they", "are" | "have", ..]
+                | [
+                    "those",
+                    "permanents" | "creatures" | "cards",
+                    "are" | "have",
+                    ..
+                ]
+                | ["each", "of", "them", "is" | "has", ..]
+                | [
+                    "each",
+                    "of",
+                    "those",
+                    "creatures" | "permanents" | "cards",
+                    "is" | "has",
+                    ..
+                ]
+        );
+        if !plural
+            && !matches!(
+                words,
+                ["it", "has" | "is", ..]
+                    | ["it's" | "its" | "it’s", ..]
+                    | ["that", "creature" | "permanent", "has" | "is", ..]
+            )
+        {
+            continue;
+        }
+        // In "they're black Zombies ... and they gain decayed" only the
+        // description travels with the cards. Keep the subsequent grant in order.
+        let split = all_words.windows(3).position(|w| {
+            matches!(
+                w,
+                ["and", "they", "gain" | "become"] | ["and", "it", "gains" | "becomes"]
+            )
+        });
+        let end = split.unwrap_or(all_words.len());
+        if all_words[copula_start..end]
+            .iter()
+            .any(|w| matches!(*w, "become" | "becomes" | "gain" | "gains"))
+        {
+            continue;
+        }
+        let Some(range) = view.token_span_for_words(0, end) else {
+            continue;
+        };
+        let description = &rider[range];
+        let Ok(parsed) = effect_sentences::parse_effect_sentences_lexed(description) else {
+            continue;
+        };
+        let mut changes = BattlefieldEntryTypeChanges::default();
+        let mut grants = Vec::new();
+        let body = if copula_start > 0 {
+            let [
+                EffectAst::Conditionals(ConditionalEffectAst::Conditional {
+                    predicate:
+                        PredicateAst::ValueComparison {
+                            left: Value::X,
+                            operator: crate::effect::ValueComparisonOperator::GreaterThanOrEqual,
+                            right: Value::Fixed(minimum),
+                        },
+                    if_true,
+                    if_false,
+                }),
+            ] = parsed.as_slice()
+            else {
+                continue;
+            };
+            if !if_false.is_empty() || *minimum < 0 {
+                continue;
+            }
+            changes.minimum_x = Some(*minimum as u32);
+            if_true.as_slice()
+        } else {
+            parsed.as_slice()
+        };
+        if !collect_descriptions(body, &mut changes, &mut grants)
+            || (changes.minimum_x.is_some() && !grants.is_empty())
+        {
+            continue;
+        }
+        let assemble = |slices: &[&[OwnedLexToken]]| {
+            let mut tokens = Vec::new();
+            for slice in slices {
+                tokens.extend_from_slice(slice);
+                tokens.push(OwnedLexToken::period(TextSpan::synthetic()));
+            }
+            tokens
+        };
+        let Ok(mut prior) =
+            effect_sentences::parse_effect_sentences_lexed(&assemble(&sentences[..index]))
+        else {
+            continue;
+        };
+        if !attach_to_arrival(&mut prior, &changes, &grants, plural) {
+            continue;
+        }
+        let mut suffix = Vec::new();
+        if let Some(split) = split {
+            let Some(range) = view.token_span_for_words(split + 1, all_words.len()) else {
+                continue;
+            };
+            suffix.push(&rider[range]);
+        }
+        suffix.extend_from_slice(&sentences[index + 1..]);
+        if !suffix.is_empty() {
+            let Ok(tail) = effect_sentences::parse_effect_sentences_lexed(&assemble(&suffix))
+            else {
+                continue;
+            };
+            prior.extend(tail);
+        }
+        return Ok(Some(prior));
     }
-    if words.iter().any(|word| matches!(*word, "becomes" | "become" | "gains" | "gain")) { return Ok(None); }
-    // A rider this reading can't parse belongs to another owner (token
-    // definitions, "its ... cost" prices, "still a" type riders).
-    let Ok(parsed) = effect_sentences::parse_effect_sentence_lexed(rider) else { return Ok(None); };
-    let mut changes = BattlefieldEntryTypeChanges::default();
-    let mut grants = Vec::new();
-    if !collect_descriptions(&parsed, &mut changes, &mut grants) { return Ok(None); }
-    let mut prior_tokens = Vec::new();
-    for sentence in prefix {
-        prior_tokens.extend_from_slice(sentence);
-        prior_tokens.push(OwnedLexToken::period(TextSpan::synthetic()));
-    }
-    let Ok(mut effects) = effect_sentences::parse_effect_sentences_lexed(&prior_tokens) else { return Ok(None); };
-    if !attach_to_arrival(&mut effects, &changes, &grants) {
-        return Ok(None);
-    }
-    Ok(Some(effects))
+    Ok(None)
 }
 
 /// The program reader's exact-type sentence ("It's a Treasure artifact with
@@ -50,29 +160,85 @@ pub(crate) fn parse_entry_type_rider(
 /// the arrival printed just before it (CR 611.2e): fold it into that move's
 /// entry characteristics so the object never enters with its old types.
 /// Leaves `effects` untouched and returns false when no arrival owns it.
-pub(crate) fn attach_described_entry(effects: &mut Vec<EffectAst>, description: &[EffectAst]) -> bool {
+pub(crate) fn attach_described_entry(
+    effects: &mut Vec<EffectAst>,
+    description: &[EffectAst],
+) -> bool {
     let mut changes = BattlefieldEntryTypeChanges::default();
     let mut grants = Vec::new();
     if !collect_descriptions(description, &mut changes, &mut grants) {
         return false;
     }
     let mut attached = effects.clone();
-    if !attach_to_arrival(&mut attached, &changes, &grants) {
+    if !attach_to_arrival(&mut attached, &changes, &grants, false) {
         return false;
     }
     *effects = attached;
     true
 }
 
-fn attach_to_arrival(effects: &mut [EffectAst], changes: &BattlefieldEntryTypeChanges, grants: &[GrantedAbilityAst]) -> bool {
+fn is_arrival_counter(effect: &EffectAst) -> bool {
+    match effect {
+        EffectAst::SourceSentence { effects, .. } => {
+            !effects.is_empty() && effects.iter().all(is_arrival_counter)
+        }
+        EffectAst::SubjectVerb(SubjectVerbEffectAst {
+            action:
+                SubjectVerbActionAst::Counters(crate::cards::builders::CounterActionAst::PutCounters {
+                    target,
+                    ..
+                }),
+            ..
+        }) => is_arrival_reference(target),
+        _ => false,
+    }
+}
+
+fn attach_to_arrival(
+    effects: &mut [EffectAst],
+    changes: &BattlefieldEntryTypeChanges,
+    grants: &[GrantedAbilityAst],
+    plural: bool,
+) -> bool {
     for effect in effects.iter_mut().rev() {
-        // Inline counters already belong to this arrival and are fused by the
-        // normal lowering pass. They do not replace its antecedent.
-        if matches!(effect, EffectAst::SubjectVerb(SubjectVerbEffectAst {
-            action: SubjectVerbActionAst::Counters(crate::cards::builders::CounterActionAst::PutCounters { count, target, .. }), ..
-        }) if count.has_surface_hint(ironsmith_core::ValueSurfaceHint::InlineBattlefieldEntryCounter) && is_arrival_reference(target))
-        {
+        // A counter instruction on the entrant keeps its own timing.
+        if is_arrival_counter(effect) {
             continue;
+        }
+        if let EffectAst::SubjectVerb(SubjectVerbEffectAst {
+            subject,
+            action:
+                SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::ReturnAllToBattlefield {
+                    filter,
+                    tapped,
+                    face_down: false,
+                    controller,
+                    verb_surface,
+                    aura_attachment_filter: None,
+                }),
+        }) = effect
+        {
+            let mut movement = EffectAst::subject_verb_move_to_zone(
+                TargetAst::Object(filter.clone(), None, None),
+                Zone::Battlefield,
+                false,
+                *controller,
+                *tapped,
+                None,
+            );
+            if let EffectAst::SubjectVerb(m) = &mut movement {
+                m.subject = subject.clone();
+                if let SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::MoveToZone {
+                    all,
+                    verb_surface: verb,
+                    ..
+                }) = &mut m.action
+                {
+                    *all = true;
+                    *verb = *verb_surface;
+                }
+            }
+            *effect = movement;
         }
         if let EffectAst::SubjectVerb(SubjectVerbEffectAst {
             action:
@@ -117,8 +283,27 @@ fn attach_to_arrival(effects: &mut [EffectAst], changes: &BattlefieldEntryTypeCh
             }
             *effect = movement;
         }
+        if plural {
+            match effect {
+                EffectAst::Coordinated { effects, .. } => {
+                    return effects
+                        .iter_mut()
+                        .all(|e| attach_to_arrival(std::slice::from_mut(e), changes, grants, true));
+                }
+                EffectAst::Coordination(coord) => {
+                    return coord.members.iter_mut().all(|member| {
+                        attach_to_arrival(&mut member.effects, changes, grants, true)
+                    });
+                }
+                _ => {}
+            }
+        }
         return match effect {
-            EffectAst::Coordination(coordination) => coordination.members.last_mut().is_some_and(|member| attach_to_arrival(&mut member.effects, changes, grants)),
+            EffectAst::Coordination(coordination) => {
+                coordination.members.last_mut().is_some_and(|member| {
+                    attach_to_arrival(&mut member.effects, changes, grants, plural)
+                })
+            }
             EffectAst::SubjectVerb(SubjectVerbEffectAst {
                 action:
                     SubjectVerbActionAst::ZoneMoves(ZoneMoveActionAst::MoveToZone {
@@ -129,8 +314,17 @@ fn attach_to_arrival(effects: &mut [EffectAst], changes: &BattlefieldEntryTypeCh
                     }),
                 ..
             }) => {
-                entry_grants.extend_from_slice(grants);
                 let entry = entry_type_changes.get_or_insert_with(Default::default);
+                if entry.minimum_x != changes.minimum_x
+                    && *entry != BattlefieldEntryTypeChanges::default()
+                {
+                    return false;
+                }
+                entry_grants.extend_from_slice(grants);
+                entry.minimum_x = changes.minimum_x;
+                if let Some(pt) = changes.base_power_toughness {
+                    entry.base_power_toughness = Some(pt);
+                }
                 entry
                     .color_changes
                     .extend(changes.color_changes.iter().copied());
@@ -158,44 +352,72 @@ fn attach_to_arrival(effects: &mut [EffectAst], changes: &BattlefieldEntryTypeCh
                 | PermissionEffectAst::MayByPlayer { effects, .. },
             )
             | EffectAst::Sequence { effects }
+            | EffectAst::SourceSentence { effects, .. }
             | EffectAst::Coordinated { effects, .. }
-            | EffectAst::CommaThen { effects } => attach_to_arrival(effects, changes, grants),
+            | EffectAst::CommaThen { effects } => {
+                attach_to_arrival(effects, changes, grants, plural)
+            }
             EffectAst::Conditionals(ConditionalEffectAst::Conditional {
                 if_true,
                 if_false,
                 ..
-            }) if if_false.is_empty() => attach_to_arrival(if_true, changes, grants),
+            }) if if_false.is_empty() => attach_to_arrival(if_true, changes, grants, plural),
             // "You may pay {1}. If you do, return that card to the
             // battlefield ... It's a Treasure artifact" (Vraska, the
             // Silencer): the gated arrival still owns the description.
             EffectAst::Conditionals(
                 ConditionalEffectAst::IfResult { effects, .. }
                 | ConditionalEffectAst::ResolvedIfResult { effects, .. }
-                | ConditionalEffectAst::IfEffectResult { if_true: effects, .. },
-            ) => attach_to_arrival(effects, changes, grants),
+                | ConditionalEffectAst::IfEffectResult {
+                    if_true: effects, ..
+                },
+            ) => attach_to_arrival(effects, changes, grants, plural),
             _ => false,
         };
     }
     false
 }
 
-fn collect_descriptions(effects: &[EffectAst], changes: &mut BattlefieldEntryTypeChanges, grants: &mut Vec<GrantedAbilityAst>) -> bool {
+fn collect_descriptions(
+    effects: &[EffectAst],
+    changes: &mut BattlefieldEntryTypeChanges,
+    grants: &mut Vec<GrantedAbilityAst>,
+) -> bool {
     for effect in effects {
         match effect {
             EffectAst::Coordination(coordination) => {
                 for member in &coordination.members {
-                    if !collect_descriptions(&member.effects, changes, grants) { return false; }
+                    if !collect_descriptions(&member.effects, changes, grants) {
+                        return false;
+                    }
                 }
             }
-            EffectAst::SubjectVerb(SubjectVerbEffectAst { action: SubjectVerbActionAst::Characteristics(CharacteristicActionAst::AddSubtypes {
-                target, subtypes, duration: ironsmith_core::Until::Forever,
-            }), .. }) if is_arrival_reference(target) => changes.added_subtypes.extend_from_slice(subtypes),
+            EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                action:
+                    SubjectVerbActionAst::Characteristics(CharacteristicActionAst::AddSubtypes {
+                        target,
+                        subtypes,
+                        duration: ironsmith_core::Until::Forever,
+                    }),
+                ..
+            }) if is_arrival_reference(target) => {
+                changes.added_subtypes.extend_from_slice(subtypes)
+            }
             // "It's a Treasure artifact ... and it loses all other card
             // types": the arrival's replacement card types (CR 205.1a). A
             // subtype must correspond to one of its types (CR 205.3d).
-            EffectAst::SubjectVerb(SubjectVerbEffectAst { action: SubjectVerbActionAst::Characteristics(CharacteristicActionAst::SetCardTypes {
-                target, card_types, duration: ironsmith_core::Until::Forever,
-            }), .. }) if is_arrival_reference(target) && !card_types.is_empty() && changes.set_card_types.is_none() => {
+            EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                action:
+                    SubjectVerbActionAst::Characteristics(CharacteristicActionAst::SetCardTypes {
+                        target,
+                        card_types,
+                        duration: ironsmith_core::Until::Forever,
+                    }),
+                ..
+            }) if is_arrival_reference(target)
+                && !card_types.is_empty()
+                && changes.set_card_types.is_none() =>
+            {
                 use crate::types::{CardType, SubtypeFamily};
                 for (card_type, family) in [
                     (CardType::Creature, SubtypeFamily::Creature),
@@ -205,30 +427,81 @@ fn collect_descriptions(effects: &[EffectAst], changes: &mut BattlefieldEntryTyp
                     (CardType::Planeswalker, SubtypeFamily::Planeswalker),
                     (CardType::Battle, SubtypeFamily::Battle),
                 ] {
-                    if !card_types.contains(&card_type) && !changes.removed_subtype_families.contains(&family) {
+                    if !card_types.contains(&card_type)
+                        && !changes.removed_subtype_families.contains(&family)
+                    {
                         changes.removed_subtype_families.push(family);
                     }
                 }
                 changes.set_card_types = Some(card_types.clone());
             }
-            EffectAst::Sequence { effects } | EffectAst::Coordinated { effects, .. } | EffectAst::CommaThen { effects } => {
-                if !collect_descriptions(effects, changes, grants) { return false; }
+            EffectAst::Sequence { effects }
+            | EffectAst::Coordinated { effects, .. }
+            | EffectAst::CommaThen { effects } => {
+                if !collect_descriptions(effects, changes, grants) {
+                    return false;
+                }
             }
-            EffectAst::SubjectVerb(SubjectVerbEffectAst { action: SubjectVerbActionAst::Grants(GrantActionAst::GrantAbilitiesToTarget {
-                target, abilities, duration: ironsmith_core::Until::Forever, condition: None, only_if_absent: false, ..
-            }), .. }) if is_arrival_reference(target) => grants.extend_from_slice(abilities),
-            EffectAst::SubjectVerb(SubjectVerbEffectAst { action: SubjectVerbActionAst::Characteristics(CharacteristicActionAst::BecomeBasePtCreature {
-                target, name_override: None, add_supertypes, remove_all_abilities: false, remove_other_abilities: false,
-                base_power_toughness: None, card_types, subtypes, subtype_families, colors, abilities, granted_abilities,
-                preserve_other_types: true, preserve_other_colors, duration: ironsmith_core::Until::Forever, ..
-            }), .. }) if is_arrival_reference(target) && add_supertypes.is_empty() && subtype_families.is_empty() => {
+            EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                action:
+                    SubjectVerbActionAst::Grants(GrantActionAst::GrantAbilitiesToTarget {
+                        target,
+                        abilities,
+                        duration: ironsmith_core::Until::Forever,
+                        condition: None,
+                        only_if_absent: false,
+                        ..
+                    }),
+                ..
+            }) if is_arrival_reference(target) => grants.extend_from_slice(abilities),
+            EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                action:
+                    SubjectVerbActionAst::Characteristics(
+                        CharacteristicActionAst::BecomeBasePtCreature {
+                            target,
+                            name_override: None,
+                            add_supertypes,
+                            remove_all_abilities: false,
+                            remove_other_abilities: false,
+                            base_power_toughness,
+                            card_types,
+                            subtypes,
+                            subtype_families,
+                            colors,
+                            abilities,
+                            granted_abilities,
+                            preserve_other_types: true,
+                            preserve_other_colors,
+                            duration: ironsmith_core::Until::Forever,
+                            ..
+                        },
+                    ),
+                ..
+            }) if is_arrival_reference(target)
+                && add_supertypes.is_empty()
+                && subtype_families.is_empty() =>
+            {
+                if let Some((p, t)) = base_power_toughness {
+                    let (Value::Fixed(p), Value::Fixed(t)) = (p, t) else {
+                        return false;
+                    };
+                    changes.base_power_toughness = Some((*p, *t));
+                }
                 changes.added_card_types.extend_from_slice(card_types);
                 changes.added_subtypes.extend_from_slice(subtypes);
                 if let Some(colors) = colors {
-                    changes.color_changes.push(if *preserve_other_colors { ironsmith_core::effect::BattlefieldEntryColorChange::Add(*colors) } else { ironsmith_core::effect::BattlefieldEntryColorChange::Set(*colors) });
+                    changes.color_changes.push(if *preserve_other_colors {
+                        ironsmith_core::effect::BattlefieldEntryColorChange::Add(*colors)
+                    } else {
+                        ironsmith_core::effect::BattlefieldEntryColorChange::Set(*colors)
+                    });
                 }
                 grants.extend_from_slice(granted_abilities);
-                grants.extend(abilities.iter().cloned().map(|ability| GrantedAbilityAst::StaticAbility(Box::new(crate::cards::builders::StaticAbilityAst::Static(ability)))));
+                grants.extend(abilities.iter().cloned().map(|ability| {
+                    GrantedAbilityAst::StaticAbility(Box::new(
+                        crate::cards::builders::StaticAbilityAst::Static(ability),
+                    ))
+                }));
             }
             _ => return false,
         }

@@ -1036,12 +1036,18 @@ fn describe_cost_modifier_amount(amount: &Value) -> (String, Option<String>) {
                 filter.description()
             )),
         ),
-        Value::DistinctNames(filter) => (
+        Value::DistinctNames(filter) => {
+            let subject = filter.without_distinct_names().description();
+            let basis = if filter.distinct_names {
+                format!("differently named {subject}")
+            } else {
+                format!("different names among {subject}")
+            };
+            ("{X}".to_owned(), Some(format!("where X is the number of {basis}")))
+        }
+        Value::UnlockedDoorsAmong(filter) if filter.distinct_names => (
             "{X}".to_string(),
-            Some(format!(
-                "where X is the number of differently named {}",
-                filter.description()
-            )),
+            Some(format!("where X is the number of different names among unlocked doors of {}", filter.without_distinct_names().description())),
         ),
         Value::UnlockedDoorsAmong(filter) => (
             "{X}".to_string(),

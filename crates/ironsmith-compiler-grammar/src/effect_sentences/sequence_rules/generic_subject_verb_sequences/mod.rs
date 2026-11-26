@@ -179,7 +179,7 @@ pub fn parse_iterative_library_procedure_sequence(
                         Box::new(PredicateAst::ValueComparison {
                             left: Value::Count(all_exiled_filter.clone()),
                             operator: crate::effect::ValueComparisonOperator::Equal,
-                            right: Value::DistinctNames(all_exiled_filter),
+                            right: Value::differently_named_objects(all_exiled_filter),
                         }),
                     ),
                     if_true: vec![EffectAst::subject_verb_may_move_to_zone(

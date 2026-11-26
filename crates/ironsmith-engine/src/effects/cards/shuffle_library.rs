@@ -35,6 +35,7 @@ impl EffectExecutor for ShuffleLibraryAction {
         if game.player(self.player).is_none() {
             return Err(ExecutionError::PlayerNotFound(self.player));
         }
+        ctx.library_search_groups.shuffled(self.player);
         let outputs = commit_library_shuffle_with_outputs(
             game,
             self.player,

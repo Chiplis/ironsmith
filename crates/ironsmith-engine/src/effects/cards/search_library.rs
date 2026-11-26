@@ -51,33 +51,43 @@ impl EffectExecutor for SearchLibraryEffect {
                         chooser: chooser_id,
                         library_owner: Some(player_id),
                         search_library: true,
-                        require_library_access: true,
-                        restrict_initial_view: true,
+                        require_library_access: ctx.optional_action,
                         library_scope_cards: None,
                         refresh_library_access: false,
                     },
                     |game, ctx, search| {
                         published_cast_outputs.extend(search.completed_outputs);
                         let search_override = search.found_card_policy;
-                        let search_event = search
-                            .event
-                            .expect("admitted library search supplies its observation");
+                        let search_event = search.event;
+                        if !search.library_access {
+                            // Prohibiting the mandatory search leaves its shuffle instruction intact.
+                            let shuffle = super::search_result_program::shuffle_after_search(
+                                game,
+                                ctx,
+                                player_id,
+                                &[],
+                                1,
+                                "library shuffled after search",
+                            )?;
+                            let outcome = EffectOutcome::aggregate_with_primary_result(
+                                EffectOutcome::prevented(),
+                                [shuffle.outcome.clone()],
+                            );
+                            retained_children.push(shuffle);
+                            return Ok(outcome);
+                        }
                         let library_cards = search.library_cards;
                         let filter_ctx = ctx.filter_context(game);
-
-                        // Get all cards in the player's library that match the filter
-                        let mut matching_cards: Vec<ObjectId> = game
-                            .player(player_id)
-                            .map(|p| {
-                                p.library
-                                    .iter()
-                                    .filter_map(|&id| game.object(id).map(|obj| (id, obj)))
-                                    .filter(|(_, obj)| self.filter.matches(obj, &filter_ctx, game))
-                                    .map(|(id, _)| id)
-                                    .collect()
+                        let matching_cards: Vec<_> = library_cards
+                            .iter()
+                            .copied()
+                            .filter(|id| {
+                                game.object(*id).is_some_and(|obj| {
+                                    obj.zone == Zone::Library
+                                        && self.filter.matches(obj, &filter_ctx, game)
+                                })
                             })
-                            .unwrap_or_default();
-                        game.restrict_library_search_candidates(chooser_id, &mut matching_cards);
+                            .collect();
                         let unknown_hidden_cards: Vec<ObjectId> = if matching_cards.is_empty() {
                             library_cards
                                 .iter()
@@ -119,7 +129,7 @@ impl EffectExecutor for SearchLibraryEffect {
                             },
                         );
                         if ctx.decision_maker.awaiting_choice() {
-                            return Ok(EffectOutcome::count(0).with_event(search_event));
+                            return Ok(EffectOutcome::count(0).with_events(search_event));
                         }
                         if chosen_card.is_none() && !may_fail_to_find {
                             chosen_card = matching_cards.first().copied();
@@ -127,6 +137,9 @@ impl EffectExecutor for SearchLibraryEffect {
 
                         // If a card was chosen, move it to the destination
                         if let Some(card_id) = chosen_card {
+                            if !library_cards.contains(&card_id) {
+                                return Err(ExecutionError::InvalidTarget);
+                            }
                             let chosen_matches = game
                                 .object(card_id)
                                 .is_some_and(|obj| self.filter.matches(obj, &filter_ctx, game));
@@ -196,7 +209,7 @@ impl EffectExecutor for SearchLibraryEffect {
                                         }
                                     }
                                     let mut outcome = EffectOutcome::with_objects(vec![card_id])
-                                        .with_event(search_event.clone());
+                                        .with_events(search_event.clone());
                                     if let Some(memory) = chosen_memory {
                                         outcome = outcome
                                             .with_chosen_object_memory(vec![memory.clone()])
@@ -300,7 +313,7 @@ impl EffectExecutor for SearchLibraryEffect {
                                     EffectOutcome::with_objects(ids.clone())
                                         .with_affected_objects(ids)
                                 };
-                                outcome.events.push(search_event);
+                                outcome.events.extend(search_event);
                                 outcome.events.append(&mut movement.events);
                                 outcome
                                     .execution_facts
@@ -339,7 +352,7 @@ impl EffectExecutor for SearchLibraryEffect {
                         let shuffle_outcome = shuffle.outcome.clone();
                         retained_children.push(shuffle);
                         Ok(EffectOutcome::aggregate_with_primary_result(
-                            EffectOutcome::count(0).with_event(search_event),
+                            EffectOutcome::count(0).with_events(search_event),
                             [shuffle_outcome],
                         ))
                     },

@@ -210,7 +210,7 @@ pub(crate) fn resolve_wide(
             Ok(i64::from(context.greatest_per_controller(filter, true)))
         }
         Value::GreatestSharedNameCount(filter) => {
-            Ok(i64::from(context.greatest_shared_name_count(filter)))
+            context.greatest_shared_name_count(filter)
         }
         Value::TotalPower(filter) => Ok(i64::from(context.aggregate(
             filter,
@@ -450,16 +450,24 @@ pub(crate) fn resolve_wide(
         }
         Value::UnlockedDoorsAmong(filter) => {
             let mut doors = 0i64;
+            let mut names = std::collections::HashSet::new();
             context.visit_property_objects(filter, |object| {
                 let context::PropertyObject::Current(object, _) = object
                 else {
                     return;
                 };
-                doors = doors.saturating_add(i64::from(
-                    crate::effects::helpers::room_unlocked_door_count(game, object),
-                ));
+                if filter.distinct_names {
+                    for door in crate::special_actions::unlocked_room_doors(game, object.id) {
+                        if let Some(name) = crate::special_actions::room_door_name(game, object.id, door) {
+                            let half = crate::continuous::room_half_name(&name);
+                            names.insert(crate::filter::interchangeable_name_key(half).to_owned());
+                        }
+                    }
+                } else {
+                    doors += i64::from(crate::effects::helpers::room_unlocked_door_count(game, object));
+                }
             });
-            Ok(i64::from(doors))
+            Ok(if filter.distinct_names { names.len() as i64 } else { doors })
         }
         Value::DistinctPowers(filter) => {
             let mut seen = HashSet::new();

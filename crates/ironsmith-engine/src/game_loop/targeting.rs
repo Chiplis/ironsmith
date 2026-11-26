@@ -3988,12 +3988,12 @@ pub(crate) fn count_target_selection_slots_for_isolated_effect(
     )
 }
 
-pub(crate) fn count_target_selection_slots_for_coordinated_child(
+pub(crate) fn coordinated_child_target_slots(
     effect: &Effect,
     chosen_modes: Option<&[usize]>,
     consumed_modal_selection: &mut bool,
     coordinated: &mut CoordinatedTargetState,
-) -> usize {
+) -> (usize, Vec<usize>) {
     let mut child_declared_targets = coordinated.child_state();
     let count = count_target_selection_slots_from_effect_internal(
         effect,
@@ -4001,8 +4001,16 @@ pub(crate) fn count_target_selection_slots_for_coordinated_child(
         consumed_modal_selection,
         &mut child_declared_targets,
     );
+    // The shared state omits ordinary siblings. Map reused synthetic slots
+    // back into the complete announcement order, including empty choices.
+    let reused = coordinated.shared.iter().zip(&child_declared_targets)
+        .filter(|(previous, _)| previous.synthetic_prelude)
+        .zip(coordinated.additions.iter().enumerate().filter(|(_, slot)| slot.synthetic_prelude))
+        .filter_map(|((old, new), (index, _))| {
+            (!old.synthetic_prelude_consumed && new.synthetic_prelude_consumed).then_some(index)
+        }).collect();
     coordinated.merge_child_state(child_declared_targets);
-    count
+    (count, reused)
 }
 
 pub(crate) fn extract_target_requirements_for_effect_with_state(

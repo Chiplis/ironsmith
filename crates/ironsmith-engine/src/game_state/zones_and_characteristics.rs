@@ -378,6 +378,14 @@ impl GameState {
     /// This is a zone-change rule, not a replacement effect, so callers must
     /// check it before proposing ETB replacements or collecting entry choices.
     pub(crate) fn card_cannot_enter_battlefield(&self, object_id: ObjectId) -> bool {
+        self.source_zone_prohibits_entry(object_id) || self.card_cannot_enter_as_presented(object_id)
+    }
+
+    pub(crate) fn source_zone_prohibits_entry(&self, id: ObjectId) -> bool {
+        self.object(id).is_some_and(|object| self.entry_prohibited_by_cant_effect(object, true))
+    }
+
+    pub(crate) fn card_cannot_enter_as_presented(&self, object_id: ObjectId) -> bool {
         self.token_cannot_change_zones(object_id, Zone::Battlefield)
             || self.object(object_id).is_some_and(|object| {
                 if object.spell_copy_entry_forbidden { return true; }
@@ -389,7 +397,7 @@ impl GameState {
                         types.iter().any(|card_type|
                             matches!(card_type, CardType::Instant | CardType::Sorcery))
                     }))
-                    || self.entry_prohibited_by_cant_effect(object)
+                    || self.entry_prohibited_by_cant_effect(object, false)
             })
     }
 
@@ -418,10 +426,14 @@ impl GameState {
         })
     }
 
-    /// CR 614.17-style prohibitions such as Grafdigger's Cage: the filter is
-    /// matched against the card where it currently is, so zone-bearing
-    /// filters only stop entries from the named zones.
-    fn entry_prohibited_by_cant_effect(&self, object: &crate::object::Object) -> bool {
+    /// A filter naming cards in particular zones (e.g. Grafdigger's Cage)
+    /// checks the source card. A ban on entering permanents checks the entrant.
+    fn entry_filter_names_source_zone(filter: &crate::ObjectFilter) -> bool {
+        filter.zone.is_some_and(|zone| zone != Zone::Battlefield)
+            || (!filter.any_of.is_empty() && filter.any_of.iter().all(Self::entry_filter_names_source_zone))
+    }
+
+    fn entry_prohibited_by_cant_effect(&self, object: &crate::object::Object, source_zone: bool) -> bool {
         if object.zone == Zone::Battlefield {
             return false;
         }
@@ -429,6 +441,7 @@ impl GameState {
             .cant_effects
             .cant_enter_battlefield
             .iter()
+            .filter(|restriction| Self::entry_filter_names_source_zone(&restriction.filter) == source_zone)
             .any(|restriction| {
                 let mut ctx = crate::target::FilterContext::default();
                 if let Some(source) = restriction.source {
@@ -454,6 +467,7 @@ impl GameState {
             .cant_effects
             .cant_enter_battlefield
             .iter()
+            .filter(|restriction| !Self::entry_filter_names_source_zone(&restriction.filter))
             .any(|restriction| {
                 let mut ctx = crate::target::FilterContext::default();
                 if let Some(source) = restriction.source {
@@ -2434,6 +2448,7 @@ impl GameState {
         event.added_supertypes = result.added_supertypes.clone();
         event.removed_supertypes = result.removed_supertypes.clone();
         event.added_subtypes = result.added_subtypes.clone();
+        event.entry_granted_subtypes = result.entry_granted_subtypes.clone();
         event.added_abilities = result.added_abilities.clone();
         event.set_base_power_toughness = result.set_base_power_toughness;
         event.controller_override = result.controller_override.or(controller);
@@ -2813,6 +2828,7 @@ impl GameState {
             entry_event.added_supertypes = result.added_supertypes.clone();
             entry_event.removed_supertypes = result.removed_supertypes.clone();
             entry_event.added_subtypes = result.added_subtypes.clone();
+            entry_event.entry_granted_subtypes = result.entry_granted_subtypes.clone();
             entry_event.added_abilities = result.added_abilities.clone();
             entry_event.set_base_power_toughness = result.set_base_power_toughness;
             entry_event.controller_override = Some(entering_default_controller);
@@ -3604,17 +3620,11 @@ impl GameState {
         choose_aura_attachment: bool,
         decision_maker: &mut dyn crate::decision::DecisionMaker,
     ) -> Result<super::EntryCommitResult, crate::effects::ExecutionError> {
-        self.move_object_with_etb_processing_with_dm_and_cause_internal(
-            old_id,
-            Zone::Battlefield,
-            cause,
-            decision_maker,
-            choose_aura_attachment,
-            Vec::new(),
-            entering_controller,
-            false,
-            Some(prepared_entry),
-            None,
+        // The batch admitted this card using its source characteristics before
+        // installing prospective entry effects or committing any other entrant.
+        self.move_object_with_etb_processing_with_dm_and_cause_body(
+            old_id, Zone::Battlefield, cause, decision_maker, choose_aura_attachment,
+            Vec::new(), entering_controller, false, Some(prepared_entry), true, None,
         )
     }
 
@@ -4128,6 +4138,7 @@ impl GameState {
             old_id,
             new_id,
         );
+        self.install_entry_subtypes(new_id, &result.entry_granted_subtypes);
         // As-enters effect programs execute against the pre-move object id;
         // migrate any choices they recorded to the battlefield id.
         if new_id != old_id {
@@ -6373,6 +6384,7 @@ retain_original_types: false, retain_original_name: false,
         let owner = self.object(object)?.owner;
         Some(crate::continuous::CalculatedCharacteristics {
             copy_values: None,
+            name_set_timestamp: None,
             alternate_name: None,
             name: "".into(),
             mana_cost: None,
@@ -7037,6 +7049,7 @@ retain_original_types: false, retain_original_name: false,
             self.calculated_characteristics(id)
                 .unwrap_or_else(|| CalculatedCharacteristics {
                     copy_values: None,
+                    name_set_timestamp: None,
                     alternate_name: object.split_other_half_name().map(str::to_string),
                     name: object.name.clone(),
                     mana_cost: object.mana_cost.clone(),
@@ -7247,6 +7260,21 @@ retain_original_types: false, retain_original_name: false,
     /// Return the object's current name in its zone.
     pub fn current_name(&self, id: ObjectId) -> Option<String> {
         Some(self.current_characteristics_shared(id)?.name.to_owned_string())
+    }
+
+    pub(crate) fn install_entry_subtypes(&mut self, object: ObjectId, subtypes: &[Subtype]) {
+        if subtypes.is_empty() {
+            return;
+        }
+        if let Some(controller) = self.controller_of_id(object) {
+            let effect = crate::continuous::ContinuousEffect::new(
+                object, controller, crate::continuous::EffectTarget::Specific(object),
+                crate::continuous::Modification::AddSubtypes(subtypes.to_vec()),
+            ).with_source_type(crate::continuous::EffectSourceType::Resolution {
+                locked_targets: vec![object],
+            });
+            self.effect_store.continuous_effects.add_effect(effect);
+        }
     }
 
     /// Return the object's current controller in its zone.

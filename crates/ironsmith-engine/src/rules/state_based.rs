@@ -2035,8 +2035,7 @@ fn check_legend_rule_with_view(
     // other continuous effects can make an object legendary or change its name.
     // Groups preserve battlefield order: violation order feeds the decision-prompt
     // order, which must be identical on every peer for multiplayer replay.
-    let mut legends: Vec<((PlayerId, String), Vec<ObjectId>)> = Vec::new();
-    let mut group_indexes: crate::FxMap<(PlayerId, String), usize> = crate::FxMap::default();
+    let mut by_player = std::collections::BTreeMap::<PlayerId, Vec<_>>::new();
 
     for &obj_id in candidates {
         if game.is_phased_out(obj_id) {
@@ -2069,23 +2068,17 @@ fn check_legend_rule_with_view(
             continue;
         }
 
-        // CR 201.2a: a nameless object doesn't share a name with anything.
         if chars.supertypes.contains(&Supertype::Legendary)
-            && !crate::filter::name_is_nameless(&chars.name)
+            && let Some(object) = game.object(obj_id)
         {
-            // CR 201.3a: interchangeable names form one legend group.
-            let key = (
-                chars.controller,
-                crate::filter::interchangeable_name_key(&chars.name).to_string(),
-            );
-            if let Some(&index) = group_indexes.get(&key) {
-                legends[index].1.push(obj_id);
-            } else {
-                group_indexes.insert(key.clone(), legends.len());
-                legends.push((key, vec![obj_id]));
-            }
+            let names = crate::filter::ObjectNames::layered(object, &chars, game);
+            by_player.entry(chars.controller).or_default().push((obj_id, names.into()));
         }
     }
+    let mut legends: Vec<_> = by_player.into_iter().flat_map(|(player, objects)| {
+        crate::filter::name_groups::shared_groups(&objects, game).into_iter()
+            .map(move |(name, members)| ((player, name), members))
+    }).collect();
 
     // Simultaneous choices by different players happen in APNAP order (rule 101.4).
     let apnap = game.team_apnap_player_order();
@@ -2276,6 +2269,10 @@ fn prepare_and_apply_state_based_actions(
     let mut legend_plans = Vec::new();
     for (keep, group) in legend_keeps {
         legend_plans.extend(legend_zone_plans(game, *keep, group)?);
+    }
+    if legend_keeps.len() > 1 {
+        let mut moving = std::collections::HashSet::new();
+        legend_plans.retain(|(id, _, _)| moving.insert(*id));
     }
     let lookback = game.try_trigger_source_lookback_snapshots()?;
     let mut simultaneous_zone_changes: HashMap<ObjectId, Zone> = HashMap::new();
@@ -2749,35 +2746,9 @@ pub fn apply_legend_rule_choice(
     game: &mut GameState,
     keep: ObjectId,
 ) -> Result<(), crate::effects::ExecutionError> {
-    let view = crate::derived_view::DerivedGameView::new(game);
-
-    // Find the current name and controller of the kept permanent.
-    let (name, controller) = if let Some(chars) = view.calculated_characteristics(keep) {
-        (chars.name, chars.controller)
-    } else {
-        return Ok(());
-    };
-
-    // Preserve the canonical API for callers that only retained the chosen
-    // object. Decision-driven callers should pass the already-computed group
-    // to `apply_legend_rule_choice_from_group` and avoid rescanning the board.
-    let candidates: Vec<ObjectId> = game
-        .battlefield
-        .iter()
-        .filter_map(|&id| {
-            let chars = view.calculated_characteristics(id)?;
-            if chars.controller == controller
-                && crate::filter::interchangeable_name_key(&chars.name)
-                    == crate::filter::interchangeable_name_key(&name)
-                && chars.supertypes.contains(&Supertype::Legendary)
-            {
-                Some(id)
-            } else {
-                None
-            }
-        })
-        .collect();
-    drop(view);
+    let candidates = get_legend_rule_specs(game).into_iter()
+        .flat_map(|(_, spec)| spec.legends.contains(&keep).then_some(spec.legends))
+        .flatten().collect::<Vec<_>>();
 
     apply_legend_rule_choice_from_group(game, keep, &candidates)
 }
@@ -2872,6 +2843,8 @@ fn legend_zone_plans(
     if !chars.supertypes.contains(&Supertype::Legendary) {
         return Ok(Vec::new());
     }
+    let Some(kept_object) = game.object(keep) else { return Ok(Vec::new()); };
+    let kept_names = crate::filter::ObjectNames::layered(kept_object, &chars, game);
     let mut seen = HashSet::new();
     let mut plans = Vec::new();
     for id in candidates
@@ -2885,16 +2858,15 @@ fn legend_zone_plans(
         candidate
             .validate_numeric_range()
             .map_err(crate::effects::ExecutionError::ContinuousDiscovery)?;
-        if candidate.controller != chars.controller
-            || crate::filter::interchangeable_name_key(&candidate.name)
-                != crate::filter::interchangeable_name_key(&chars.name)
-            || !candidate.supertypes.contains(&Supertype::Legendary)
-        {
-            continue;
-        }
         let Some(object) = game.object(id) else {
             continue;
         };
+        if candidate.controller != chars.controller
+            || !candidate.supertypes.contains(&Supertype::Legendary)
+            || !kept_names.shares(crate::filter::ObjectNames::layered(object, &candidate, game), game)
+        {
+            continue;
+        }
         plans.push((
             id,
             crate::events::cause::EventCause::from_legend_rule(chars.controller),

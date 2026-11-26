@@ -421,7 +421,7 @@ fn describe_cross_segment_revealed_random_hand_pick(
         operator: crate::effect::ValueComparisonOperator::GreaterThanOrEqual,
         right: Value::Fixed(3),
     } = &conditional.condition else { return None; };
-    if *name_filter != ObjectFilter::tagged(search.tag.clone()) || !conditional.if_false.is_empty() {
+    if name_filter.without_distinct_names() != ObjectFilter::tagged(search.tag.clone()) || !conditional.if_false.is_empty() {
         return None;
     }
     let [pick_sequence_effect] = conditional.if_true.as_slice() else { return None; };

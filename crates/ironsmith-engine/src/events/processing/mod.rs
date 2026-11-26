@@ -3582,13 +3582,24 @@ pub(crate) fn process_destroy_scoped(
     ctx: &mut crate::effects::ExecutionContext,
     snapshot: Option<crate::snapshot::ObjectSnapshot>,
 ) -> Result<Option<DestroyExecutionReceipt>, crate::effects::ExecutionError> {
+    process_destroy_scoped_with_batch(game, permanent, source, ctx, snapshot, None)
+}
+
+pub(crate) fn process_destroy_scoped_with_batch(
+    game: &mut GameState,
+    permanent: ObjectId,
+    source: Option<ObjectId>,
+    ctx: &mut crate::effects::ExecutionContext,
+    snapshot: Option<crate::snapshot::ObjectSnapshot>,
+    before_batch: Option<&GameState>,
+) -> Result<Option<DestroyExecutionReceipt>, crate::effects::ExecutionError> {
     if ctx.decision_maker.awaiting_choice() {
         return Ok(None);
     }
     game.clear_pending_decision_controllers();
     let checkpoint = game.clone();
     let context_checkpoint = crate::effects::ExecutionContextCheckpoint::capture(ctx);
-    let result = process_destroy_scoped_inner(game, permanent, source, ctx, snapshot);
+    let result = process_destroy_scoped_inner(game, permanent, source, ctx, snapshot, before_batch);
     if result.is_err() || ctx.decision_maker.awaiting_choice() {
         game.restore_execution_checkpoint(
             checkpoint,
@@ -3599,24 +3610,31 @@ pub(crate) fn process_destroy_scoped(
     result
 }
 
+fn resists_destruction(game: &GameState, permanent: ObjectId) -> bool {
+    crate::derived_view::DerivedGameView::new(game).object_resists_destruction(permanent)
+        || !game.can_be_destroyed(permanent)
+}
+
 fn process_destroy_scoped_inner(
     game: &mut GameState,
     permanent: ObjectId,
     source: Option<ObjectId>,
     ctx: &mut crate::effects::ExecutionContext,
     snapshot: Option<crate::snapshot::ObjectSnapshot>,
+    before_batch: Option<&GameState>,
 ) -> Result<Option<DestroyExecutionReceipt>, crate::effects::ExecutionError> {
     use crate::effects::ExecutionError;
     game.update_replacement_effects()
         .map_err(crate::effects::ExecutionError::ContinuousDiscovery)?;
     let observer_lookback = game.try_trigger_source_lookback_snapshots()?;
+    let original = before_batch.unwrap_or(game);
     let snapshot = match snapshot {
         Some(snapshot) => Some(snapshot),
-        None => game
+        None => original
             .object(permanent)
             .map(|object| {
                 crate::snapshot::ObjectSnapshot::try_from_object_with_calculated_characteristics(
-                    object, game,
+                    object, original,
                 )
             })
             .transpose()?,
@@ -3633,7 +3651,7 @@ fn process_destroy_scoped_inner(
     }
     game.refresh_continuous_state()
         .map_err(crate::effects::ExecutionError::ContinuousDiscovery)?;
-    if crate::derived_view::DerivedGameView::new(game).object_resists_destruction(permanent) || !game.can_be_destroyed(permanent)
+    if resists_destruction(before_batch.unwrap_or(game), permanent)
     {
         return Ok(Some(DestroyExecutionReceipt::terminal(
             permanent,
@@ -3698,7 +3716,7 @@ fn process_destroy_scoped_inner(
                 .is_some_and(|object| object.zone == Zone::Battlefield)
             {
                 receipt.result = EventOutcome::NotApplicable;
-            } else if crate::derived_view::DerivedGameView::new(game).object_resists_destruction(destroyed.permanent) || !game.can_be_destroyed(destroyed.permanent)
+            } else if resists_destruction(before_batch.unwrap_or(game), destroyed.permanent)
             {
                 receipt.result = EventOutcome::Prevented;
             } else {
@@ -8402,6 +8420,7 @@ pub struct EtbEventResult {
     pub removed_supertypes: Vec<crate::types::Supertype>,
     /// Additional subtypes granted by an ETB copy choice.
     pub added_subtypes: Vec<crate::types::Subtype>,
+    pub entry_granted_subtypes: Vec<crate::types::Subtype>,
     /// Additional abilities granted by an ETB copy choice.
     pub added_abilities: Vec<crate::ability::Ability>,
     /// Base power/toughness set as the object enters.
@@ -11041,6 +11060,7 @@ fn prepare_etb_replacements_inner(
                 added_supertypes: Vec::new(),
                 removed_supertypes: Vec::new(),
                 added_subtypes: Vec::new(),
+                entry_granted_subtypes: Vec::new(),
                 added_abilities: Vec::new(),
                 set_base_power_toughness: None,
                 controller_override: entering_controller,
@@ -11293,6 +11313,7 @@ fn prepare_etb_replacements_inner(
                             added_supertypes: etb.added_supertypes.clone(),
                             removed_supertypes: etb.removed_supertypes.clone(),
                             added_subtypes: etb.added_subtypes.clone(),
+                            entry_granted_subtypes: etb.entry_granted_subtypes.clone(),
                             added_abilities: etb.added_abilities.clone(),
                             set_base_power_toughness: etb.set_base_power_toughness,
                             controller_override: etb.controller_override,

@@ -7325,7 +7325,8 @@ pub(super) fn describe_move_entering_as_typed_object_with_ability(
     else {
         return None;
     };
-    if !changes.color_changes.is_empty()
+    if changes.minimum_x.is_some() || changes.base_power_toughness.is_some()
+        || !changes.color_changes.is_empty()
         || !changes.added_card_types.is_empty()
         || changes.removed_subtype_families.is_empty()
         || !move_to_zone.enters_with_counters.is_empty()

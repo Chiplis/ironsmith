@@ -592,7 +592,15 @@ fn move_entry_options(
     options.entry_attachment_candidates = attachment_destinations;
     options.entry_attachment_specified |= ctx.pending_entry_attachment.is_some();
     let mut modifications = effect.entry_modifications.clone();
-    if let Some(changes) = &effect.entry_type_changes {
+    if let Some(changes) = &effect.entry_type_changes
+        && changes.minimum_x.is_none_or(|minimum| ctx.x_value.unwrap_or(0) >= minimum)
+    {
+        if let Some((power, toughness)) = changes.base_power_toughness {
+            modifications.push(crate::continuous::Modification::SetPowerToughness {
+                power: crate::effect::Value::Fixed(power), toughness: crate::effect::Value::Fixed(toughness),
+                sublayer: crate::continuous::PtSublayer::Setting,
+            });
+        }
         if let Some(types) = &changes.set_card_types {
             modifications.push(crate::continuous::Modification::SetCardTypes(types.clone()));
         }

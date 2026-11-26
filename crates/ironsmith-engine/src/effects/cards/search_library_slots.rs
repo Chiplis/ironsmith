@@ -53,17 +53,18 @@ impl EffectExecutor for SearchLibrarySlotsEffect {
                         chooser: chooser_id,
                         library_owner: Some(player_id),
                         search_library: true,
-                        require_library_access: true,
-                        restrict_initial_view: true,
+                        require_library_access: ctx.optional_action
+                            && self
+                                .slots
+                                .iter()
+                                .all(|slot| slot.filter.zone == Some(Zone::Library)),
                         library_scope_cards: None,
                         refresh_library_access: false,
                     },
                     |game, ctx, search| {
                         published_cast_outputs.extend(search.completed_outputs);
                         let search_override = search.found_card_policy;
-                        let search_event = search
-                            .event
-                            .expect("admitted library search supplies its observation");
+                        let search_event = search.event;
                         let search_viewer = search.chooser;
                         let progress_key = (
                             ctx.source,
@@ -115,24 +116,17 @@ impl EffectExecutor for SearchLibrarySlotsEffect {
                             let matching_cards: Vec<ObjectId> = game
                                 .player(player_id)
                                 .map(|player| {
-                                    let candidates: Vec<ObjectId> = match slot.filter.zone {
-                                        Some(Zone::Graveyard) => player.graveyard.to_vec(),
-                                        Some(Zone::Library) => player.library.to_vec(),
-                                        None => player
-                                            .library
-                                            .iter()
-                                            .chain(player.graveyard.iter())
-                                            .copied()
-                                            .collect(),
-                                        _ => player.library.to_vec(),
-                                    };
-                                    let mut candidates = candidates;
-                                    game.restrict_library_search_candidates(
-                                        chooser_id,
-                                        &mut candidates,
-                                    );
-                                    candidates
-                                        .into_iter()
+                                    let library =
+                                        search.library_cards.iter().copied().filter(|id| {
+                                            game.object(*id)
+                                                .is_some_and(|obj| obj.zone == Zone::Library)
+                                        });
+                                    let graveyard = player.graveyard.iter().copied();
+                                    library
+                                        .filter(|_| slot.filter.zone != Some(Zone::Graveyard))
+                                        .chain(graveyard.filter(|_| {
+                                            matches!(slot.filter.zone, None | Some(Zone::Graveyard))
+                                        }))
                                         .filter(|id| !already_chosen.contains(id))
                                         .filter(|id| {
                                             game.object(*id).is_some_and(|obj| {
@@ -148,25 +142,38 @@ impl EffectExecutor for SearchLibrarySlotsEffect {
                                 continue;
                             }
 
-                            let chosen_card = if slot.optional {
-                                make_decision_with_fallback(
-                                    game,
-                                    &mut ctx.decision_maker,
-                                    chooser_id,
-                                    Some(ctx.source),
-                                    SearchSpec::new(ctx.source, matching_cards, self.reveal),
+                            // A stated quality permits failing to find in a hidden zone only (CR 701.23b).
+                            let has_public_match = matching_cards.iter().any(|id| {
+                                game.object(*id).is_some_and(|obj| !obj.zone.is_hidden())
+                            });
+                            let may_decline = slot.optional && !has_public_match;
+                            let (spec, fallback) = if may_decline {
+                                (
+                                    SearchSpec::new(
+                                        ctx.source,
+                                        matching_cards.clone(),
+                                        self.reveal,
+                                    ),
                                     FallbackStrategy::Decline,
                                 )
                             } else {
-                                make_decision_with_fallback(
-                                    game,
-                                    &mut ctx.decision_maker,
-                                    chooser_id,
-                                    Some(ctx.source),
-                                    SearchSpec::mandatory(ctx.source, matching_cards, self.reveal),
+                                (
+                                    SearchSpec::mandatory(
+                                        ctx.source,
+                                        matching_cards.clone(),
+                                        self.reveal,
+                                    ),
                                     FallbackStrategy::FirstOption,
                                 )
                             };
+                            let chosen_card = make_decision_with_fallback(
+                                game,
+                                &mut ctx.decision_maker,
+                                chooser_id,
+                                Some(ctx.source),
+                                spec,
+                                fallback,
+                            );
 
                             if ctx.decision_maker.awaiting_choice() {
                                 pending_selection_progress = Some((
@@ -176,12 +183,15 @@ impl EffectExecutor for SearchLibrarySlotsEffect {
                                         chosen: chosen.clone(),
                                     },
                                 ));
-                                return Ok(EffectOutcome::count(0).with_event(search_event));
+                                return Ok(EffectOutcome::count(0).with_events(search_event));
                             }
 
                             next_request = slot_index + 1;
-                            let Some(card_id) = chosen_card else {
-                                continue;
+                            let card_id = match chosen_card {
+                                Some(id) if matching_cards.contains(&id) => id,
+                                Some(_) => return Err(ExecutionError::InvalidTarget),
+                                None if may_decline => continue,
+                                None => matching_cards[0],
                             };
                             let Some(snapshot) = game
                                 .object(card_id)
@@ -266,7 +276,7 @@ impl EffectExecutor for SearchLibrarySlotsEffect {
                         } else {
                             EffectOutcome::with_objects(moved_ids.clone())
                         }
-                        .with_event(search_event);
+                        .with_events(search_event);
                         let original = EffectOutcome::aggregate_replacement_outcomes(
                             original,
                             retained_children.iter().map(|child| child.outcome.clone()),

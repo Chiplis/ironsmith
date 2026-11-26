@@ -17,6 +17,7 @@ pub(crate) struct TaggedRuntimeState {
     pre_snapshots_from_decision_hints: bool,
     preserve_departure_lki: bool,
     retain_selected_destroy_target: bool,
+    collective_destruction: bool,
     stable_id_fallback: Option<StableIdFallback>,
     pub(crate) outcome_only: bool,
     result_object_reference: bool,
@@ -187,6 +188,10 @@ pub(crate) fn capture_tagged_runtime_state(
             || effect
                 .downcast_ref::<crate::effects::DestroyEffect>()
                 .is_some(),
+        collective_destruction: effect.downcast_ref::<crate::effects::DestroyNoRegenerationEffect>()
+            .is_some_and(|destroy| destroy.spec.is_all())
+            || effect.downcast_ref::<crate::effects::DestroyEffect>()
+                .is_some_and(|destroy| destroy.spec.is_all()),
         retain_selected_destroy_target: effect
             .downcast_ref::<crate::effects::DestroyEffect>()
             .is_some_and(|destroy| destroy.spec.is_target()),
@@ -231,6 +236,10 @@ fn tag_instruction_result(
     state: TaggedRuntimeState,
 ) {
     let outcome = outcome.instruction_result();
+    if state.collective_destruction {
+        ctx.set_tagged_objects(tag, outcome.affected_object_memory().unwrap_or_default().to_vec());
+        return;
+    }
     // A move exports the new incarnation for subsequent operations. Historical
     // queries instead read the selected object's pre-move identity. Keep both
     // receipts, scoped to this execution context, without following a later blink.

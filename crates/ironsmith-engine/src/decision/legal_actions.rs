@@ -3100,7 +3100,7 @@ fn player_may_activate_equip_abilities_any_time(
         let Some(object) = game.object(object_id) else {
             return false;
         };
-        if game.controller_of(object) != controller {
+        if game.is_phased_out(object_id) || game.controller_of(object) != controller {
             return false;
         }
         let abilities = view
@@ -3174,7 +3174,7 @@ fn player_may_activate_exhaust_abilities_as_unactivated_this_turn(
         let Some(object) = game.object(object_id) else {
             return false;
         };
-        if game.controller_of(object) != controller {
+        if game.is_phased_out(object_id) || game.controller_of(object) != controller {
             return false;
         }
         let abilities = view

@@ -499,6 +499,7 @@ pub struct ExecutionContext<'a> {
     /// Cast dependencies acquired by this exact ability may not follow a
     /// physical card's stable ID into a different incarnation.
     pub exact_object_reference_tags: HashSet<TagKey>,
+    pub(crate) library_search_groups: crate::effects::cards::search_group::LibrarySearchGroups,
     /// Suspended instruction-local selection cursors. Context checkpoints own
     /// their rollback; payment frames start with their own selection state.
     pub(crate) object_selection_progress:
@@ -741,6 +742,7 @@ execution_context_snapshots! {
         source_snapshot: Option<ObjectSnapshot>,
         tagged_objects: HashMap<TagKey, Vec<ObjectSnapshot>>,
         exact_object_reference_tags: HashSet<TagKey>,
+        library_search_groups: crate::effects::cards::search_group::LibrarySearchGroups,
         object_selection_progress: HashMap<ObjectSelectionProgressKey, ObjectSelectionProgress>,
         optional_identity_guard: Option<OptionalIdentityGuard>,
         do_this_limit: Option<DoThisLimit>,
@@ -888,6 +890,7 @@ impl<'a> ExecutionContext<'a> {
             source_snapshot: None,
             tagged_objects: HashMap::new(),
             exact_object_reference_tags: HashSet::new(),
+            library_search_groups: Default::default(),
             object_selection_progress: HashMap::new(),
             tagged_players: HashMap::new(),
             face_down_exile_viewers: HashMap::new(),

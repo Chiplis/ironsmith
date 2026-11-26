@@ -1688,7 +1688,7 @@ pub fn parse_where_x_is_number_of_differently_named_filter_value(
     let filter_tokens = etb_grammar::parse_where_x_differently_named_filter_tokens(tokens)?;
     let filter =
         crate::grammar::primitives::probe_shape(parse_object_filter_lexed(filter_tokens, false))?;
-    Some(Value::DistinctNames(filter))
+    Some(Value::differently_named_objects(filter))
 }
 
 pub fn parse_where_x_is_number_of_different_powers_filter_value(

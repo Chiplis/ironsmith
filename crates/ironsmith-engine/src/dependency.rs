@@ -560,6 +560,22 @@ fn effect_output_changed(
         return before != after;
     }
 
+    // CR 205.3d/613.8a: adding a subtype can do nothing until another
+    // layer-four effect supplies the corresponding card type.
+    if let Modification::AddSubtypes(subtypes) = &a.modification {
+        let after = applied_baseline(b, baseline, objects, game);
+        return objects.iter().any(|(id, object)| {
+            let (Some(before), Some(after)) = (baseline.get(id), after.get(id)) else {
+                return false;
+            };
+            effect_applies_with_chars(a, object, before, game) && subtypes.iter().any(|subtype| {
+                let subtype = game.admitted_subtype(*subtype);
+                crate::continuous::card_types_support_subtype(&before.card_types, subtype)
+                    != crate::continuous::card_types_support_subtype(&after.card_types, subtype)
+            })
+        });
+    }
+
     let (a_power_value, a_toughness_value) = match &a.modification {
         Modification::SetPower { value, .. } => (Some(value), None),
         Modification::SetToughness { value, .. } => (None, Some(value)),
@@ -2909,6 +2925,8 @@ fn effect_can_affect_dependency_output(a: &ContinuousEffect, b: &ContinuousEffec
 
 fn modification_can_affect_dependency_output(a: &Modification, b: &Modification) -> bool {
     match a {
+        Modification::AddSubtypes(_) => matches!(b, Modification::AddCardTypes(_)
+            | Modification::RemoveCardTypes(_) | Modification::SetCardTypes(_)),
         Modification::CopyActivatedAbilities { .. }
         | Modification::CopyStaticAbilityVariants { .. }
         | Modification::CopyTriggeredAbilities { .. } => {
@@ -3870,6 +3888,7 @@ mod tests {
             CalculatedCharacteristics {
                 copy_values: None,
                 alternate_name: object.split_other_half_name().map(str::to_string),
+                name_set_timestamp: None,
                 name: object.name.clone(),
                 mana_cost: object.mana_cost.clone(),
                 linked_face_mana_value: object.linked_face_mana_value(),
@@ -3938,6 +3957,7 @@ mod tests {
             CalculatedCharacteristics {
                 copy_values: None,
                 alternate_name: land.split_other_half_name().map(str::to_string),
+                name_set_timestamp: None,
                 name: land.name.clone(),
                 mana_cost: land.mana_cost.clone(),
                 linked_face_mana_value: land.linked_face_mana_value(),
@@ -4079,6 +4099,7 @@ mod tests {
             CalculatedCharacteristics {
                 copy_values: None,
                 alternate_name: land.split_other_half_name().map(str::to_string),
+                name_set_timestamp: None,
                 name: land.name.clone(),
                 mana_cost: land.mana_cost.clone(),
                 linked_face_mana_value: land.linked_face_mana_value(),
@@ -4272,6 +4293,7 @@ mod tests {
             CalculatedCharacteristics {
                 copy_values: None,
                 alternate_name: object.split_other_half_name().map(str::to_string),
+                name_set_timestamp: None,
                 name: object.name.clone(),
                 mana_cost: object.mana_cost.clone(),
                 linked_face_mana_value: object.linked_face_mana_value(),
@@ -4512,6 +4534,7 @@ mod tests {
         CalculatedCharacteristics {
             copy_values: None,
             alternate_name: object.split_other_half_name().map(str::to_string),
+            name_set_timestamp: None,
             name: object.name.clone(),
             mana_cost: object.mana_cost.clone(),
             linked_face_mana_value: object.linked_face_mana_value(),

@@ -667,14 +667,15 @@ impl SequenceCursor {
     fn bind_targets(&mut self, effect: &Effect, ctx: &ExecutionContext) {
         if let Some(assignments) = self.child_assignments.as_ref() {
             let selected = if self.coordinated {
-                let count = crate::game_loop::count_target_selection_slots_for_coordinated_child(
+                let (count, reused) = crate::game_loop::coordinated_child_target_slots(
                     effect,
                     self.chosen_modes.as_deref(),
                     &mut self.consumed_modal_selection,
                     &mut self.coordinated_target_state,
                 );
                 let end = self.assignment_cursor.saturating_add(count).min(assignments.len());
-                let selected = assignments[self.assignment_cursor..end].to_vec();
+                let mut selected: Vec<_> = reused.iter().filter_map(|index| assignments.get(*index).cloned()).collect();
+                selected.extend_from_slice(&assignments[self.assignment_cursor..end]);
                 self.assignment_cursor = end;
                 selected
             } else {

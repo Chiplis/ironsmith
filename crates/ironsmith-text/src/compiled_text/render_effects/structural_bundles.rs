@@ -5381,10 +5381,15 @@ pub(super) fn describe_draw_count_for_each_phrase(count: &Value) -> Option<Strin
             "a card for each different color pair among {}",
             describe_count_filter_value_subject(filter)
         )),
-        Value::DistinctNames(filter) => Some(format!(
-            "a card for each differently named {}",
-            describe_count_filter_value_subject(filter)
-        )),
+        Value::DistinctNames(filter) => {
+            let subject = describe_count_filter_value_subject(&filter.without_distinct_names());
+            let phrase = if filter.distinct_names {
+                format!("a card for each differently named {subject}")
+            } else {
+                format!("a card for each different name among {subject}")
+            };
+            Some(phrase)
+        }
         Value::DistinctManaValues(filter) => Some(format!(
             "a card for each different mana value among {}",
             describe_count_filter_value_subject(filter)

@@ -369,7 +369,7 @@ fn read_differently_named(input: &CountedPhrase<'_>) -> Option<Value> {
             distinct_filter_tokens,
             false,
         ))?;
-        return Some(Value::DistinctNames(filter).with_surface_hint(ValueSurfaceHint::EqualTo));
+        return Some(Value::differently_named_objects(filter).with_surface_hint(ValueSurfaceHint::EqualTo));
     }
     None
 }

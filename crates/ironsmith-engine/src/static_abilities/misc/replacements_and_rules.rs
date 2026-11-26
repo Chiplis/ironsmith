@@ -1832,15 +1832,12 @@ fn count_distinct_mana_values_in_graveyard(game: &GameState, player_id: PlayerId
         return 0;
     };
 
-    let mut values: Vec<u32> = Vec::new();
+    let mut values = std::collections::HashSet::new();
     for &card_id in &player.graveyard {
         let Some(obj) = game.object(card_id) else {
             continue;
         };
-        let mana_value = obj.mana_cost.as_ref().map_or(0, |cost| cost.mana_value());
-        if !values.contains(&mana_value) {
-            values.push(mana_value);
-        }
+        values.insert(crate::filter::object_current_mana_value_for_relation(obj, game));
     }
     values.len() as i32
 }

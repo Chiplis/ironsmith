@@ -54,21 +54,20 @@ impl EffectExecutor for NoteObjectNamesEffect {
                 }).collect::<Result<Vec<_>,_>>()?
             },
         };
-        let mut names:Vec<String>=Vec::new();
-        for snapshot in &snapshots{
-            if snapshot.face_down{continue;}
-            if crate::filter::attachments_grant_all_nonlegendary_creature_card_names(&snapshot.attachments,game){
-                return Err(ExecutionError::IncompleteEvidence("noting this object's open card-name set requires retained complete name-set evidence".into()));
-            }
-            for name in [Some(snapshot.name.as_str()),snapshot.split_other_half_name()].into_iter().flatten(){
-                if !name.trim().is_empty() && !names.iter().any(|noted|crate::filter::names_match(noted,name)){names.push(name.to_owned());}
-            }
+        let mut names = std::collections::BTreeSet::new();
+        for snapshot in &snapshots {
+            names.extend(crate::filter::ObjectNames::snapshot(snapshot).literals().map(str::to_owned));
+        }
+        if snapshots.iter().any(|snapshot| snapshot.all_nonlegendary_creature_names) {
+            names.extend(crate::filter::all_nonlegendary_creature_card_names(game).map(str::to_owned));
         }
         let owners=owners.into_iter().map(|source|crate::source_numbers::resolve_owner(game,source,self.pair,
             ctx.source_number_owner.as_ref(),ctx.source_snapshot.as_ref().filter(|snapshot|snapshot.object_id==source)))
             .collect::<Result<Vec<_>,_>>()?;
         let mut count=0;
-        for owner in owners{for name in &names{count+=u32::from(game.note_card_name_for_owner(owner.clone(),name.clone()));}}
-        Ok(EffectOutcome::count(ironsmith_core::quantity::clamp_i32_from_u32(count)))
+        for owner in owners {
+            count += game.note_card_names_for_owner(owner, names.iter().map(String::as_str));
+        }
+        Ok(EffectOutcome::count(i32::try_from(count).unwrap_or(i32::MAX)))
     }
 }

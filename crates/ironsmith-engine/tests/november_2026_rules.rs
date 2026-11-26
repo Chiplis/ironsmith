@@ -518,6 +518,86 @@ fn card(route: &str) -> ironsmith::CardDefinition {
             "Traveling Chocobo",
             "Mana cost: {2}{G}\nType: Creature — Bird\nFirst printed set: Final Fantasy\nPower/Toughness: 3/2\nYou may look at the top card of your library any time.\nYou may play lands and cast Bird spells from the top of your library.\nIf a land or Bird you control entering the battlefield causes a triggered ability of a permanent you control to trigger, that ability triggers an additional time.",
         ),
+        "sephara-sky-s-blade" => (
+            "Sephara, Sky's Blade",
+            "Mana cost: {4}{W}{W}{W}\nType: Legendary Creature — Angel\nPower/Toughness: 7/7\nYou may pay {W} and tap four untapped creatures you control with flying rather than pay this spell's mana cost.\nFlying, lifelink\nOther creatures you control with flying have indestructible. (Damage and effects that say \"destroy\" don't destroy them.)",
+        ),
+        "wrath-of-god" => (
+            "Wrath of God",
+            "Mana cost: {2}{W}{W}\nType: Sorcery\nDestroy all creatures. They can't be regenerated.",
+        ),
+        "darksteel-myr" => (
+            "Darksteel Myr",
+            "Mana cost: {3}\nType: Artifact Creature — Myr\nPower/Toughness: 0/1\nIndestructible (Damage and effects that say \"destroy\" don't destroy this creature. If its toughness is 0 or less, it still dies.)",
+        ),
+        "march-of-souls" => (
+            "March of Souls",
+            "Mana cost: {4}{W}\nType: Sorcery\nDestroy all creatures. They can't be regenerated. For each creature destroyed this way, its controller creates a 1/1 white Spirit creature token with flying.",
+        ),
+        "leyline-of-singularity" => (
+            "Leyline of Singularity",
+            "Mana cost: {2}{U}{U}\nType: Enchantment\nIf this card is in your opening hand, you may begin the game with it on the battlefield.\nAll nonland permanents are legendary.",
+        ),
+        "echoing-truth" => (
+            "Echoing Truth",
+            "Mana cost: {1}{U}\nType: Instant\nReturn target nonland permanent and all other permanents with the same name as that permanent to their owners' hands.",
+        ),
+        "witness-protection" => (
+            "Witness Protection",
+            "Mana cost: {U}\nType: Enchantment — Aura\nEnchant creature\nEnchanted creature loses all abilities and is a green and white Citizen creature with base power and toughness 1/1 named Legitimate Businessperson. (It loses all other colors, card types, creature types, and names.)",
+        ),
+        "sever-the-bloodline" => (
+            "Sever the Bloodline",
+            "Mana cost: {3}{B}\nType: Sorcery\nExile target creature and all other creatures with the same name as that creature.\nFlashback {5}{B}{B} (You may cast this card from your graveyard for its flashback cost. Then exile it.)",
+        ),
+        "winnow" => (
+            "Winnow",
+            "Mana cost: {1}{W}\nType: Instant\nDestroy target nonland permanent if another permanent with the same name is on the battlefield.\nDraw a card.",
+        ),
+        "eradicate" => (
+            "Eradicate",
+            "Mana cost: {2}{B}{B}\nType: Sorcery\nExile target nonblack creature. Search its controller's graveyard, hand, and library for all cards with the same name as that creature and exile them. Then that player shuffles.",
+        ),
+        "hallowed-moonlight" => (
+            "Hallowed Moonlight",
+            "Mana cost: {1}{W}\nType: Instant\nUntil end of turn, if a creature would enter and it wasn't cast, exile it instead.\nDraw a card.",
+        ),
+        "march-of-the-machines" => (
+            "March of the Machines",
+            "Mana cost: {3}{U}\nType: Enchantment\nEach noncreature artifact is an artifact creature with power and toughness each equal to its mana value. (Equipment that's a creature can't equip a creature.)",
+        ),
+        "refurbish" => (
+            "Refurbish",
+            "Mana cost: {3}{W}\nType: Sorcery\nReturn target artifact card from your graveyard to the battlefield.",
+        ),
+        "heliod-god-of-the-sun" => (
+            "Heliod, God of the Sun",
+            "Mana cost: {3}{W}\nType: Legendary Enchantment Creature — God\nPower/Toughness: 5/6\nIndestructible\nAs long as your devotion to white is less than five, Heliod isn't a creature. (Each {W} in the mana costs of permanents you control counts toward your devotion to white.)\nOther creatures you control have vigilance.\n{2}{W}{W}: Create a 2/1 white Cleric enchantment creature token.",
+        ),
+        "zombify" => (
+            "Zombify",
+            "Mana cost: {3}{B}\nType: Sorcery\nReturn target creature card from your graveyard to the battlefield.",
+        ),
+        "dryad-arbor" => (
+            "Dryad Arbor",
+            "Type: Land Creature — Forest Dryad\nPower/Toughness: 1/1\n(This land isn't a spell, it's affected by summoning sickness, and it has \"{T}: Add {G}.\")",
+        ),
+        "awakened-amalgam" => (
+            "Awakened Amalgam",
+            "Mana cost: {4}\nType: Artifact Creature — Golem\nPower/Toughness: */*\nAwakened Amalgam's power and toughness are each equal to the number of differently named lands you control.",
+        ),
+        "graveyard-shift" => (
+            "Graveyard Shift",
+            "Mana cost: {4}{B}\nType: Sorcery\nThis spell has flash as long as there are five or more mana values among cards in your graveyard.\nReturn target creature card from your graveyard to the battlefield.",
+        ),
+        "ornithopter" => (
+            "Ornithopter",
+            "Mana cost: {0}\nType: Artifact Creature — Thopter\nPower/Toughness: 0/2\nFlying",
+        ),
+        "centaur-courser" => (
+            "Centaur Courser",
+            "Mana cost: {2}{G}\nType: Creature — Centaur Warrior\nPower/Toughness: 3/3",
+        ),
         _ => panic!("unknown regression fixture {route}"),
     };
     ironsmith_compiler_runtime::compile_to_runtime_definition(name, block, false).unwrap()
@@ -1369,3 +1449,12 @@ fn sacrificed_land_mana_uses_its_last_abilities_with_current_output_quantities_a
 
 #[path = "november_2026_rules/damage_and_stack.rs"]
 mod damage_and_stack;
+
+#[path = "november_2026_rules/zone_and_name_rules.rs"]
+mod zone_and_name_rules;
+
+#[path = "november_2026_rules/zone_trigger_regressions.rs"]
+mod zone_trigger_regressions;
+
+#[path = "november_2026_rules/library_search.rs"]
+mod library_search;

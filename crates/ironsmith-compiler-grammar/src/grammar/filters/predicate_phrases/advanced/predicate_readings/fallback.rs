@@ -1563,16 +1563,15 @@ fn distinct_names_among_controlled_qualities(words: &[&str]) -> Option<Predicate
     filter.zone = Some(Zone::Battlefield);
     filter.controller = Some(PlayerFilter::You);
     Some(PredicateAst::ValueComparison {
-        left: Value::DistinctNames(filter),
+        left: Value::differently_named_objects(filter),
         operator: crate::effect::ValueComparisonOperator::GreaterThanOrEqual,
         right: Value::Fixed(i32::try_from(count).ok()?),
     })
 }
 
 /// "there are eight or more different names among unlocked doors of Rooms
-/// you control" (Promising Stairs): a Room permanent's names are the names of
-/// its unlocked doors (CR 709.5), so this counts distinct names among those
-/// Rooms, a fully unlocked Room contributing both.
+/// you control" (Promising Stairs) counts the names of the individual halves
+/// with an unlocked designation (CR 709.5c, 709.5j).
 fn distinct_names_among_unlocked_doors(words: &[&str]) -> Option<PredicateAst> {
     let ["there", "are", count, "or", "more", "different", "names", "among", "unlocked", "doors", "of", rest @ ..] =
         words
@@ -1580,11 +1579,12 @@ fn distinct_names_among_unlocked_doors(words: &[&str]) -> Option<PredicateAst> {
         return None;
     };
     let count = number(count)?;
-    let filter = filter_from_words(rest)?;
+    let mut filter = filter_from_words(rest)?;
     if !filter.subtypes.contains(&crate::types::Subtype::Room) {
         return None;
     }
-    Some(at_least(Value::DistinctNames(filter), count))
+    filter.distinct_names = true;
+    Some(at_least(Value::UnlockedDoorsAmong(filter), count))
 }
 
 /// "there are [exactly] N [or more|or fewer] different names among <objects>"

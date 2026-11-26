@@ -708,6 +708,9 @@ pub struct ObjectSnapshot {
     pub attached_to: Option<AttachmentTarget>,
     /// What was attached to the object.
     pub attachments: Vec<ObjectId>,
+    /// The names this object actually had at capture time (CR 608.2h, 612.7).
+    #[cfg_attr(feature = "serialization", serde(default))]
+    pub all_nonlegendary_creature_names: bool,
     /// One level of attachment characteristics captured for last-known counts.
     /// Nested snapshots do not recursively capture their own attachments.
     pub attachment_snapshots: Vec<ObjectSnapshot>,
@@ -972,6 +975,7 @@ impl ObjectSnapshot {
             transform_count: 0,
             attached_to: None,
             attachments: Vec::new(),
+            all_nonlegendary_creature_names: false,
             attachment_snapshots: Vec::new(),
             related_exiled_cards: Default::default(),
             was_enchanted: false,
@@ -1186,6 +1190,7 @@ impl ObjectSnapshot {
             transform_count: game.transform_count(obj.id),
             attached_to: obj.attached_to,
             attachments: obj.attachments.clone(),
+            all_nonlegendary_creature_names: crate::filter::raw_grants_creature_names(obj.id, &obj.attachments, game),
             attachment_snapshots: Vec::new(),
             related_exiled_cards: if obj.zone == Zone::Battlefield {
                 game.related_exile_relationship_names(obj.id).into_iter().map(|name| {
@@ -1339,7 +1344,7 @@ impl ObjectSnapshot {
         if let Some(copiable_values) = copiable_values {
             snapshot.copiable_values = copiable_values;
         }
-        snapshot.apply_calculated_characteristics(obj, calculated);
+        snapshot.apply_calculated_characteristics(obj, calculated, game);
         if !obj.attachments.is_empty() {
             // Phased-out attachments are absent at capture (CR 702.26b).
             snapshot.attachments.retain(|id| !game.is_phased_out(*id));
@@ -1349,7 +1354,7 @@ impl ObjectSnapshot {
                 let calculated = game.calculated_characteristics_with_effects(attachment.id, effects);
                 checked(attachment.id, calculated.as_ref())?;
                 let mut child = Self::from_object(attachment, game);
-                child.apply_calculated_characteristics(attachment, calculated.as_ref());
+                child.apply_calculated_characteristics(attachment, calculated.as_ref(), game);
                 attachments.push(child);
             }
             snapshot.attachment_snapshots = attachments;
@@ -1362,7 +1367,7 @@ impl ObjectSnapshot {
                 if let Some(object)=game.object(card.object_id) {
                     let calculated=game.calculated_characteristics_with_effects(object.id,effects);
                     checked(object.id,calculated.as_ref())?;
-                    card.apply_calculated_characteristics(object,calculated.as_ref());
+                    card.apply_calculated_characteristics(object, calculated.as_ref(), game);
                 }
             }
         }
@@ -1373,9 +1378,13 @@ impl ObjectSnapshot {
         &mut self,
         obj: &Object,
         calculated: Option<&CalculatedCharacteristics>,
+        game: &crate::game_state::GameState,
     ) {
         let snapshot = self;
         if let Some(calculated) = calculated {
+            snapshot.all_nonlegendary_creature_names = crate::filter::grants_creature_names(
+                &obj.attachments, calculated.name_set_timestamp, game,
+            );
             if calculated.name.as_str() != obj.name.as_ref() {
                 snapshot.first_printed_set_name = None;
             }
@@ -1661,6 +1670,7 @@ impl ObjectSnapshot {
             transform_count: 0,
             attached_to: None,
             attachments: vec![],
+            all_nonlegendary_creature_names: false,
             attachment_snapshots: Vec::new(),
             related_exiled_cards: Default::default(),
             was_enchanted: false,

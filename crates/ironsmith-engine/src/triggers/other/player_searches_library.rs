@@ -26,6 +26,10 @@ impl TriggerMatcher for PlayerSearchesLibraryTrigger {
             return false;
         };
 
+        if e.library_owner != Some(e.player) {
+            return false;
+        }
+
         match &self.player {
             PlayerFilter::You => e.player == ctx.controller,
             PlayerFilter::Opponent => ctx.game.are_opponents(ctx.controller, e.player),

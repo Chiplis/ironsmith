@@ -8386,6 +8386,13 @@ fn parse_put_or_remove_then_when_removed_this_way(
 }
 
 pub(crate) fn parse_described_effect_bundle(tokens: &[OwnedLexToken]) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    // Keep a movement and the description of its entrant in one program,
+    // including across the document reader's ordinary sentence boundaries.
+    if tokens.first().is_some_and(|token| ["put", "return", "for", "you"].iter().any(|word| token.matches_word(word)))
+        && let Some(effects) = super::bundle_rules::parse_entry_type_rider(tokens)?
+    {
+        return Ok(Some(effects));
+    }
     if let Some(effects) = described_face_down_entry::parse(tokens)? { return Ok(Some(effects)); }
     if let Some(effects) = activation_alternative::parse(tokens)? { return Ok(Some(effects)); }
     if let Some(effect) = crate::activation_without_costs::parse(tokens)? { return Ok(Some(vec![effect])); }

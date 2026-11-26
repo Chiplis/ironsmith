@@ -5763,7 +5763,8 @@ pub(super) fn describe_for_players_choose_then_move_to_battlefield(
         PlayerFilter::Opponent => "Each opponent",
         _ => return None,
     };
-    if for_players.effects.len() != 1
+    if move_to_zone.entry_type_changes.is_some() || !move_to_zone.entry_modifications.is_empty()
+        || for_players.effects.len() != 1
         || move_to_zone.battlefield_controller != crate::effects::BattlefieldController::You
     {
         return None;

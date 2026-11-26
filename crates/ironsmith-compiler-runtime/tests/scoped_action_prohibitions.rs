@@ -356,6 +356,7 @@ fn entry_type_changes_apply_before_replacements_and_do_not_survive_blink() {
         added_card_types: vec![CardType::Artifact, CardType::Creature],
         removed_subtype_families: vec![SubtypeFamily::Creature],
         added_subtypes: vec![Subtype::Borg],
+        ..Default::default()
     });
     // Runtime modifications contain non-Serde engine types. This fixture has
     // none, so check the wire format using the core model's unit payload.

@@ -375,6 +375,7 @@ pub(super) fn calculate_with_layers(
                     chars.static_abilities = extract_static_abilities(&chars.abilities).into();
                 }
                 Modification::SetName(name) => {
+                    chars.name_set_timestamp = Some(effect.timestamp);
                     chars.name = name.clone().into();
                     chars.alternate_name = None;
                 }

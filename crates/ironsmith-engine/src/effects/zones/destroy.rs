@@ -94,6 +94,7 @@ impl DestroyEffect {
             Some(ctx.source),
             ctx,
             can_be_regenerated,
+            None,
         )?;
         if let Some(snapshot) = pre_snapshot
             && !game
@@ -131,14 +132,15 @@ pub(crate) fn process_destroy_with_regeneration(
     source: Option<crate::ids::ObjectId>,
     ctx: &mut ExecutionContext,
     can_be_regenerated: bool,
+    before_batch: Option<&GameState>,
 ) -> Result<Option<crate::events::processing::DestroyExecutionReceipt>, ExecutionError> {
     if ctx.decision_maker.awaiting_choice() {
         return Ok(None);
     }
     game.clear_pending_decision_controllers();
     if can_be_regenerated {
-        return crate::events::processing::process_destroy_scoped(
-            game, object_id, source, ctx, None,
+        return crate::events::processing::process_destroy_scoped_with_batch(
+            game, object_id, source, ctx, None, before_batch,
         );
     }
     crate::effects::composition::execute_result_transaction(game, ctx, |game, ctx| {
@@ -150,7 +152,7 @@ pub(crate) fn process_destroy_with_regeneration(
         game.clear_regeneration_shields(object_id);
         let result = crate::events::permanents::matchers::with_regeneration_suspended(
             object_id,
-            || crate::events::processing::process_destroy_scoped(game, object_id, source, ctx, None),
+            || crate::events::processing::process_destroy_scoped_with_batch(game, object_id, source, ctx, None, before_batch),
         );
         if result.is_err() || ctx.decision_maker.awaiting_choice() {
             return result;
@@ -321,6 +323,7 @@ pub(crate) fn execute_simultaneous_destroy_with_outputs(
                     Some(ctx.source),
                     ctx,
                     can_be_regenerated,
+                    Some(&decision_view),
                 )?;
                 if ctx.decision_maker.awaiting_choice() {
                     game.retain_pending_decision_controllers_from(&mut staged_game);

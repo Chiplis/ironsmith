@@ -644,6 +644,30 @@ impl ReplacementMatcher for WouldChangeZoneMatcher {
             .tagged_objects
             .extend(self.frozen_tagged_objects.clone());
 
+        if self.to_zone == Some(Zone::Battlefield)
+            && self.from_zone.is_none()
+            && self.filter.zone.is_none()
+            && self.filter.stack_kind.is_none()
+        {
+            let mut filter = self.filter.clone();
+            // Zone alternatives qualify the move's origin. Type, name and
+            // other characteristics qualify the prospective permanent (614.12).
+            if !filter.any_of.is_empty() {
+                filter.any_of.retain(|branch| branch.zone.is_none_or(|zone| zone == zone_change.from));
+                if filter.any_of.is_empty() {
+                    return false;
+                }
+                for branch in &mut filter.any_of {
+                    branch.zone = None;
+                }
+            }
+            return zone_change.objects.iter().any(|&id| {
+                ctx.prospective_entry_world(id).is_some_and(|world| {
+                    world.object(id).is_some_and(|object| filter.matches(object, &filter_ctx, world))
+                })
+            });
+        }
+
         if zone_change.from == Zone::Stack {
             let mut filter = self.filter.clone();
 

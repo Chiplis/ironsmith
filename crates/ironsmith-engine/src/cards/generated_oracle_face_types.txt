@@ -209,6 +209,7 @@ Boosted Sloop
 Bootleggers' Stash
 Boots of Speed
 Borg Cube
+Borg Scout Sphere
 Boros Cluestone
 Boros Keyrune
 Boros Locket
@@ -310,6 +311,8 @@ Citizen's Crowbar
 City in a Bottle
 Civic Saber
 Clamorous Ironclad
+Class-4 Tactical Cube
+Class-F Shuttlecraft
 Claws of Gix
 Clay-Fired Bricks
 Clearwater Goblet
@@ -337,6 +340,7 @@ Collector's Vault
 Colossal Dreadmask
 Colossal Plow
 Colossus Hammer
+Combadge
 Combine Chrysalis
 Command Chair
 Commander's Plate
@@ -931,6 +935,7 @@ Iron Suitcase
 Irontread Crusher
 Isochron Scepter
 Isolation Cell
+Isolinear Processor
 Ivory Crane Netsuke
 Ivory Cup
 Ivory Tower
@@ -953,6 +958,7 @@ Jandor's Saddlebags
 Jar of Eyeballs
 Javelin of Lightning
 Jayemdae Tome
+Jefferies Tube
 Jeskai Banner
 Jeskai Monument
 Jester's Cap
@@ -973,6 +979,8 @@ Juju Bubble
 Junk Jet
 Junkyo Bell
 Juntu Stakes
+K'Vort-Class Raider
+K't'inga-Class Battle Cruiser
 Kaleidostone
 Kaslem's Stonetree
 Keening Stone
@@ -1122,6 +1130,7 @@ Maskwood Nexus
 Master's Guide-Mural
 Master's Manufactory
 Masterwork of Ingenuity
+Maturation Chamber
 Maul of the Skyclaves
 Maze Skullbomb
 Mazemind Tome
@@ -1288,6 +1297,7 @@ Obelisk of Jund
 Obelisk of Naya
 Obelisk of Undoing
 Obelisk of Urd
+Oberth-Class Starship
 Oblivion Stone
 Obsidian Obelisk
 Ogre's Cleaver
@@ -1501,6 +1511,7 @@ Ring of Ma'rûf
 Ring of Renewal
 Ring of Three Wishes
 Ring of Thune
+Ring of Unity
 Ring of Valkas
 Ring of Xathrid
 Rings of Brighthearth
@@ -1625,6 +1636,7 @@ Shrine of Piercing Vision
 Shuko
 Shuri's Fabricator
 Shuriken
+Sickbay
 Sickleslicer
 Sigil of Distinction
 Sigil of Valor
@@ -1950,6 +1962,7 @@ Transmogrant Altar
 Transmogrant's Crown
 Transmogrifying Wand
 Transmutation Font
+Transwarp Hub
 Trash Bin
 Traveler's Amulet
 Treasure Chest
@@ -1980,6 +1993,7 @@ Twin Blades
 Twinning Glass
 Twinning Staff
 Two-Handed Axe
+Type-03 Borg Vessel
 Type-2 Phaser
 Tyrant's Machine
 Uba Mask
@@ -2168,8 +2182,10 @@ Alpha Myr
 Altar Golem
 Amaranthine Wall
 Ambulatory Edifice
+Ambulatory Reactor
 Ancestral Statue
 Ancient Stone Idol
+Andromedan Automatons
 Angel of the Ruins
 Annex Sentry
 Anodet Lurker
@@ -2211,7 +2227,9 @@ Artificer's Dragon
 Ashnod's Harvester
 Assault Drone
 Assaultron Dominator
+Assembly Specialist
 Assembly-Worker
+Assimilation Assessor
 Atraxa's Skitterfang
 Attack-in-the-Box
 Attentive Sunscribe
@@ -2327,6 +2345,7 @@ Cloister Gargoyle
 Clone Shell
 Cloudheath Drake
 Cloudsteel Kirin
+Co-Option Adjutant
 Coal Golem
 Coalstoke Gearhulk
 Coastal Bulwark
@@ -2339,6 +2358,7 @@ Cogwork Spy
 Cogwork Tracker
 Cogwork Wrestler
 Coiled Tinviper
+Collation Trimatrix
 Collective Drone
 Colossus of Akros
 Colossus of Sardia
@@ -2446,6 +2466,7 @@ Electrostatic Pummeler
 Elf Replica
 Embermouth Sentinel
 Emblazoned Golem
+Emergency Holographic Crew
 Emergency Medical Hologram
 Emissary Escort
 Enatu Golem
@@ -2481,6 +2502,7 @@ Ethersworn Sphinx
 Excavated Wall
 Exocomp
 Exterminator Magmarch
+Extraction Integrant
 Extruder
 Faerie Mechanist
 Fallaji Dragon Engine
@@ -2794,6 +2816,7 @@ One-Clown Band
 One-Eyed Scarecrow
 Onulet
 Opaline Unicorn
+Optimization Annex
 Oreplate Pangolin
 Organic Avulsion Unit
 Ornithopter
@@ -2801,6 +2824,7 @@ Ornithopter of Paradise
 Osseous Sticktwister
 Otarian Juggernaut
 Oteclan Levitator
+Overflow Submatrix
 Oxidda Golem
 Pactdoll Terror
 Painter's Servant
@@ -2849,6 +2873,7 @@ Pinnacle Emissary
 Pit Automaton
 Pith Driller
 Plague Myr
+Planet Killer
 Plasmancer
 Platinum Angel
 Platinum Emperion
@@ -2883,6 +2908,8 @@ Razorfield Thresher
 Razorgrass Screen
 Razorlash Transmogrant
 Razormane Masticore
+Reclamation Specialist
+Reconnaissance Partition
 Reconstructed Thopter
 Red Herring
 Red Tiger Mechan
@@ -3074,6 +3101,7 @@ Stonewing Antagonizer
 Stonework Packbeast
 Stonework Puma
 Stratadon
+Stratagem Emulator
 Straw Golem
 Street Sweeper
 Stridehangar Automaton
@@ -3085,6 +3113,7 @@ Sunbird Effigy
 Suncrusher
 Sundering Titan
 Suntouched Myr
+Supplementation Node
 Surge Conductor
 Surge Engine
 Survey Mechan
@@ -3107,6 +3136,7 @@ Teeka's Dragon
 Teferi's Sentinel
 Tek
 Telethopter
+Tenacious Drone
 Terisian Mindbreaker
 Terror Ballista
 Tetravus
@@ -3367,6 +3397,7 @@ Abzan Kin-Guard
 Abzan Skycaptain
 Academy Drake
 Academy Elite
+Academy Instructor
 Academy Journeymage
 Academy Loremaster
 Academy Raider
@@ -3937,6 +3968,7 @@ Assault Zeppelid
 Assembled Alphas
 Astelli Reclaimer
 Astral Dragon
+Astute Terraformer
 Asylum Visitor
 Atalan Jackal
 Atarka Beastbreaker
@@ -4533,6 +4565,7 @@ Blood Vassal
 Blood-Chin Fanatic
 Blood-Chin Rager
 Blood-Cursed Knight
+Blood-Sport Champion
 Blood-Toll Harpy
 Bloodbat Summoner
 Bloodboil Sorcerer
@@ -4996,6 +5029,7 @@ Callous Oppressor
 Callous Sell-Sword
 Callow Jushi
 Calming Licid
+Calmwater Mentor
 Camel
 Campus Composer
 Campus Crier
@@ -5479,6 +5513,7 @@ Colorstorm Stallion
 Colos Yearling
 Colossadactyl
 Colossal Badger
+Colossal Clone Master
 Colossal Dreadmaw
 Colossal Grave-Reaver
 Colossal Rattlewurm
@@ -6278,6 +6313,7 @@ Domesticated Hydra
 Dominating Licid
 Dominating Vampire
 Dominator Drone
+Dominion Assault Force
 Dominion Saboteur
 Dominion Supervisor
 Dominus of Fealty
@@ -7182,6 +7218,7 @@ Feral Ridgewolf
 Feral Shadow
 Feral Thallid
 Feral Throwback
+Ferocious Colonist
 Ferocious Pup
 Ferocious Tigorilla
 Ferocious Werefox
@@ -7557,6 +7594,7 @@ Frostwind Invoker
 Frozen Shade
 Fugitive Codebreaker
 Fugitive Druid
+Fugitive Listener
 Fugitive Wizard
 Fulminator Mage
 Fume Spitter
@@ -7604,6 +7642,7 @@ Gaea's Protector
 Gaea's Revenge
 Gaea's Skyfolk
 Gaelicat
+Gagh Slinger
 Gala Greeters
 Galactic Wayfarer
 Galadhrim Brigade
@@ -7623,6 +7662,7 @@ Galloping Lizrog
 Gallows Warden
 Galvanic Alchemist
 Galvanic Giant
+Galvanizing Tenor
 Galvanoth
 Game-Trail Changeling
 Gamekeeper
@@ -7748,6 +7788,7 @@ Ghost Hounds
 Ghost Ship
 Ghost Tactician
 Ghost Warden
+Ghost of Illyria
 Ghost-Lit Drifter
 Ghost-Lit Nourisher
 Ghost-Lit Raider
@@ -7792,6 +7833,7 @@ Giant Scorpion
 Giant Shark
 Giant Slug
 Giant Solifuge
+Giant Space Amoeba
 Giant Spider
 Giant Tortoise
 Giant Trap Door Spider
@@ -7936,6 +7978,7 @@ Gnarled Professor
 Gnarled Sage
 Gnarlid Colony
 Gnarlid Pack
+Gnarling Targ
 Gnarlroot Pallbearer
 Gnarlroot Trapper
 Gnarlwood Dryad
@@ -8755,6 +8798,7 @@ Hollowhenge Overlord
 Hollowhenge Scavenger
 Hollowhenge Spirit
 Hollowsage
+Holo-Engineer
 Hologram Stalker
 Holy Cow
 Holy Justiciar
@@ -8990,6 +9034,7 @@ Imperial Aerosaur
 Imperial Ceratops
 Imperial Cosmographer
 Imperial Hellkite
+Imperial Hullbreachers
 Imperial Lancer
 Imperial Outrider
 Imperial Recruiter
@@ -9018,6 +9063,7 @@ Incubator Drone
 Incurable Ogre
 Incursion Specialist
 Indebted Samurai
+Indelicate Healer
 Indentured Djinn
 Indentured Oaf
 Independent Troops
@@ -10132,6 +10178,7 @@ Lys Alana Dignitary
 Lys Alana Huntmaster
 Lys Alana Informant
 Lys Alana Scarblade
+MACO Strike Team
 Maalfeld Twins
 Macetail Hystrodon
 Mad Auntie
@@ -10398,6 +10445,7 @@ Melesse Spirit
 Meletis Astronomer
 Meletis Charlatan
 Melira's Keepers
+Melkotian Adjudicator
 Meltstrider Eulogist
 Memorial Team Leader
 Memory Vampire
@@ -11449,6 +11497,7 @@ Pack Leader
 Pack Mastiff
 Pack Rat
 Packsong Pup
+Pah-Wraith
 Pain Distributor
 Pain Kami
 Pain Seer
@@ -11646,6 +11695,7 @@ Pheres-Band Warchief
 Phobian Phantasm
 Phoenix Chick
 Phoenix of Ash
+Photosynthetic Physician
 Phylactery Lich
 Phyrexian Battleflies
 Phyrexian Bloodstock
@@ -12039,6 +12089,7 @@ Qasali Ambusher
 Qasali Pridemage
 Qasali Slingers
 Qiqirn Merchant
+Qo'noS Quartermaster
 Quag Vampires
 Quagmire Druid
 Quagmire Lamprey
@@ -12925,6 +12976,7 @@ Savior of Ollenbock
 Savior of the Sleeping
 Savior of the Small
 Savvy Hunter
+Savvy Profiteer
 Savvy Trader
 Sawback Manticore
 Sawblade Scamp
@@ -13289,6 +13341,7 @@ Shadowstorm Vizier
 Shady Informant
 Shady Traveler
 Shah of Naar Isle
+Shai-Hulud
 Shakedown Heavy
 Shalai's Acolyte
 Shaleskin Bruiser
@@ -14009,6 +14062,7 @@ Speakeasy Server
 Speaker of the Heavens
 Spear Spewer
 Spearbreaker Behemoth
+Species 8472
 Species Gorger
 Species Specialist
 Specimen Collector
@@ -14253,6 +14307,8 @@ Starfield Shepherd
 Starfield Vocalist
 Starfighter Pilot
 Starfleet Crew
+Starfleet Security
+Starfleet Spanner Jockey
 Stark Industries Executive
 Starlight Invoker
 Starlit Angel
@@ -14598,6 +14654,7 @@ Susurian Voidborn
 Suture Priest
 Suture Spirit
 Sutured Ghoul
+Suus Mahna Practitioner
 Svyelunite Priest
 Swab Goblin
 Swaggering Corsair
@@ -14685,6 +14742,8 @@ Tajuru Stalwart
 Tajuru Warcaller
 Takeno's Cavalry
 Takenuma Bleeder
+Tal Shiar Analyst
+Tal Shiar Operative
 Talara's Battalion
 Talarian Hook Spider
 Talas Air Ship
@@ -14721,6 +14780,7 @@ Taoist Mystic
 Tar Fiend
 Tar Pit Warrior
 Tar Pitcher
+Targ Wrangler
 Tarkir Duneshaper
 Tarmogoyf
 Tarpan
@@ -15255,6 +15315,7 @@ Trespasser il-Vec
 Tresserhorn Skyknight
 Trestle Troll
 Tribal Forcemage
+Tribble Cluster
 Tribune of Rot
 Tributary Instructor
 Tributary Vaulter
@@ -16650,7 +16711,6 @@ _____ Goblin
 _____ _____ _____ Trespasser
 _____-o-saurus
 #Enchantment
-"Coastal Ren Faire"
 A Killer Among Us
 A Realm Reborn
 A Tale for the Ages
@@ -16753,6 +16813,7 @@ Answered Prayers
 Antagonism
 Anthem of Champions
 Anthem of Rakdos
+Anthropological Mission
 Anti-Magic Aura
 Apathy
 Aquatic Incursion
@@ -16846,6 +16907,7 @@ Back to Basics
 Backfire
 Bad Moon
 Baffling End
+Balance of Terror
 Ballad of the Black Flag
 Bandit's Talent
 Baneful Omen
@@ -17352,6 +17414,7 @@ Day of the Dragons
 Day of the Moon
 Daybreak Coronet
 Dazzling Theater
+De-evolve
 Dead Man's Chest
 Dead Weight
 Deadapult
@@ -17907,6 +17970,7 @@ Glorious Anthem
 Glorious Purpose
 Glorious Sunrise
 Glory of Warfare
+Glory to the Empire!
 Goblin Assault
 Goblin Bomb
 Goblin Bombardment
@@ -18649,6 +18713,7 @@ Ominous Seas
 Omnipresence
 Omniscience
 On Wings of Gold
+On the Shoulders of Giants
 On the Trail
 One Ring to Rule Them All
 One Thousand Lashes
@@ -19011,6 +19076,7 @@ Rise of the Hobgoblins
 Rising Waters
 Rising of the Day
 Risky Move
+Rite of Ascension
 Rite of Belzenlok
 Rite of Passage
 Rite of the Dragoncaller
@@ -19213,6 +19279,7 @@ Sinister Possession
 Sinister Strength
 Sinking Feeling
 Sinner's Judgment
+Sins of the Father
 Sinstriker's Will
 Sisay's Ingenuity
 Sixth Sense
@@ -19347,6 +19414,7 @@ Squire's Devotion
 Squirrel Nest
 Squirrel Sanctuary
 Stab Wound
+Stable Wormhole
 Staff Room
 Staggering Insight
 Stamina
@@ -19490,6 +19558,7 @@ Teferi's Veil
 Telekinetic Bonds
 Telepathy
 Teleportation Circle
+Tell Me What You See
 Tempered Steel
 Tempered in Solitude
 Tempest Technique
@@ -19514,6 +19583,7 @@ The Apprentice's Folly
 The Argent Etchings
 The Bath Song
 The Bears of Littjara
+The Best of Both Worlds
 The Binding of the Titans
 The Birth of Meletis
 The Bloodsky Massacre
@@ -19558,11 +19628,13 @@ The Legend of Roku
 The Legend of Yangchen
 The Long Reach of Night
 The Lost and the Damned
+The Measure of a Man
 The Mending of Dominaria
 The Mirari Conjecture
 The Misty Mountains Cold
 The Modern Age
 The Mountain-king's Return
+The Naked Time
 The Night of the Doctor
 The Parting of the Ways
 The Phasing of Zhalfir
@@ -19719,6 +19791,7 @@ Unhallowed Pact
 Unholy Annex
 Unholy Indenture
 Unholy Strength
+Unification
 Unifying Theory
 Unlikely Alliance
 Unnatural Growth
@@ -19768,6 +19841,7 @@ Veiled Crocodile
 Veiled Sentry
 Veiled Serpent
 Venarian Gold
+Vengeance Mission
 Venom
 Venomous Fangs
 Verdant Embrace
@@ -19835,6 +19909,7 @@ Warleader's Call
 Warlock Class
 Warmth
 Warp Artifact
+Warp Speed
 Warped Devotion
 Warped Space
 Warrior's Resolve
@@ -20321,6 +20396,7 @@ Assassin's Trophy
 Assemble
 Assert Authority
 Assimilate Essence
+Assimilate the Wounded
 Assure
 Astarion's Thirst
 Astral Confrontation
@@ -20499,6 +20575,7 @@ Boomerang
 Boon of Boseiju
 Boon of Erebos
 Boon of Safety
+Borg Incursion
 Borne Upon a Wind
 Boros Charm
 Boros Fury-Shield
@@ -20523,6 +20600,7 @@ Branching Bolt
 Brand
 Brave the Elements
 Brawl
+Brazen Bluff
 Breach
 Break Down
 Break Down the Door
@@ -20708,6 +20786,7 @@ Collar the Culprit
 Collateral Damage
 Collected Company
 Collective Nightmare
+Collective Override
 Collective Resistance
 Collision
 Colossal Growth
@@ -20947,6 +21026,7 @@ Deliberate
 Delightful Discovery
 Delirium
 Deliver
+Deliver from Chaos
 Deluge
 Demand Answers
 Demon Bolt
@@ -21173,9 +21253,11 @@ Emerald Charm
 Emerge Unscathed
 Emergency Eject
 Emergency Powers
+Emergency Regeneration
 Empty the Pits
 Enchantment Alteration
 Encircling Fissure
+Encounter the Unknown
 End-Blaze Epiphany
 Endless Detour
 Ends
@@ -21546,6 +21628,7 @@ Geistflame
 Geistlight Snare
 Geistwave
 Generous Gift
+Genesis Effect
 Gentleman's Rise
 Germinate Recruits
 Gerrard's Command
@@ -22163,6 +22246,7 @@ Mental Misstep
 Mental Modulation
 Mental Note
 Mercadia's Downfall
+Merciful Mandate
 Merciless Repurposing
 Merciless Resolve
 Mercy Killing
@@ -22673,6 +22757,7 @@ Reclaim
 Recoil
 Recruit the Worthy
 Recuperate
+Red Alert!
 Red Elemental Blast
 Redcap Melee
 Redeem
@@ -22803,6 +22888,7 @@ Ride the Avalanche
 Ride the Rails
 Ride's End
 Rig for War
+Right of Vengeance
 Righteous Blow
 Righteousness
 Rime Chill
@@ -23432,6 +23518,7 @@ Telim'Tor's Edict
 Telling Time
 Temper
 Tempest of Light
+Temporal Tribulation
 Temporary Insanity
 Tempt with Mayhem
 Tempt with Treats
@@ -23450,6 +23537,7 @@ Terrifying Presence
 Terror
 Test of Courage
 Test of Faith
+Test of Identity
 Test of Priorities
 Test of Talents
 Tethermage's Advantage
@@ -23463,6 +23551,7 @@ The Eagles Are Coming!
 The End
 The Last Agni Kai
 The Last Ronin's Technique
+The Needs of the Many
 The Spot's Portal
 Theoretical Duplication
 Theorix Charm
@@ -24051,6 +24140,7 @@ Arena of Glory
 Argoth, Sanctum of Nature
 Arid Archway
 Arid Mesa
+Artificial Anomaly
 Asgardian Citadel
 Ash Barrens
 Auntie's Hovel
@@ -24346,6 +24436,7 @@ Furycalm Snarl
 Game Trail
 Garden of Freyalise
 Gargoyle Castle
+Gaseous Anomaly
 Gates of Istfell
 Gateway Plaza
 Gathering Place
@@ -24616,6 +24707,7 @@ Nephalia Academy
 Nephalia Drownyard
 Nesting Grounds
 New Benalia
+Ni'Var Science Academy
 Night Market
 Nimbus Maze
 Nivix, Aerie of the Firemind
@@ -24678,6 +24770,7 @@ Prismatic Vista
 Promising Vein
 Public Thoroughfare
 Pym Technologies
+Q Continuum
 Qo'noS
 Quandrix Campus
 Quark's Bar
@@ -24824,6 +24917,7 @@ Shipwreck Marsh
 Shire Terrace
 Shivan Oasis
 Shivan Reef
+Shore Leave Planet
 Shrine of the Forsaken Gods
 Silent Clearing
 Silundi Isle
@@ -24855,6 +24949,7 @@ Sorrow's Path
 Soulstone Sanctuary
 Soured Springs
 Spara's Headquarters
+Spatial Anomaly
 Spawning Bed
 Spawning Pool
 Spectacle Summit
@@ -24884,6 +24979,7 @@ Strip Mine
 Study
 Study Hall
 Submerged Boneyard
+Subspace Anomaly
 Subterranean Cavern
 Subterranean Hangar
 Suburban Sanctuary
@@ -24945,6 +25041,7 @@ Temple of Triumph
 Temple of the Dead
 Temple of the Dragon Queen
 Temple of the False God
+Temporal Anomaly
 Tendo Ice Bridge
 Terminal Moraine
 Terrain Generator
@@ -25162,10 +25259,12 @@ Deep Space 9
 Doors of Durin
 Drach'Nyen
 Dragon Throne of Tarkir
+Dragon's Smile
 Eater of Virtue
 Edgar Markov's Coffin
 Elbrus, the Binding Blade
 Embercleave
+Enterprise NX-01
 Eriette's Tempting Apple
 Esika's Chariot
 Excalibur II
@@ -25174,6 +25273,7 @@ Eye of Vecna
 Five Hundred Year Diary
 Flamewar, Streetwise Operative
 Forsaken Monument
+Genesis Device
 Gerrard's Hourglass Pendant
 Gideon's Memorial
 Gisa's Favorite Shovel
@@ -25187,6 +25287,7 @@ Gonti's Aether Heart
 Grim Reaper's Scythe
 Grimoire of the Dead
 Grond, the Gatebreaker
+H.M.S. Bounty, Unlikely Timeship
 Hall of Triumph
 Hammer of Nazahn
 Hand of Vecna
@@ -25202,6 +25303,7 @@ Horn of Gondor
 Horn of the Mark
 Hulkbuster Armor
 Hylda's Crown of Winter
+I.K.S. Negh'Var, Imperial Flagship
 Infinite Guideline Station
 Inspirit, Flagship Vessel
 Instrument of the Bards
@@ -25251,17 +25353,21 @@ Planetarium of Wan Shi Tong
 Predator, Flagship
 Prowl, Pursuit Vehicle
 Pyromancer's Goggles
+Queen's Diamond
 RMS Titanic
 Rammas Echor, Ancient Shield
 Ratchet, Rescue Racer
 Realmbreaker, the Invasion Tree
 Rhonas's Monument
 Ring of the Lucii
+S.S. Botany Bay
+Sarcophagus, Ship of the Dead
 Sceptre of Eternal Glory
 Shadowspear
 Shell of the Last Kappa
 Shield of Kaldra
 Shorikai, Genesis Engine
+Shuttlecraft Galileo
 Skyship Weatherlight
 Skysovereign, Consul Flagship
 Slicer, High-Speed Antagonist
@@ -25285,6 +25391,7 @@ Tergrid's Lantern
 That Which Was Taken
 The Animus
 The Arkenstone
+The Beacon of Kahless
 The Belligerent
 The Black Arrow
 The Blackstaff of Waterdeep
@@ -25359,10 +25466,20 @@ Thrumming Stone
 Thrór's Map
 Timeless Lotus
 Toralf's Hammer
+U.S.S. Cerritos, Following Up
+U.S.S. Defiant, Mirror Migrant
+U.S.S. Defiant, Tough Little Ship
 U.S.S. Discovery, at Black Alert
 U.S.S. Enterprise-A, Free Spirit
+U.S.S. Enterprise-C, Time-Tossed
 U.S.S. Enterprise-D, Galaxy-Class
+U.S.S. Enterprise-E, Sovereign
+U.S.S. Excelsior, Cutting Edge
+U.S.S. Farragut, Bold Explorer
+U.S.S. Prometheus, Prototype
 U.S.S. Reliant, From Hell's Heart
+U.S.S. Stargazer, Here and There
+U.S.S. Voyager, Lone Wanderer
 Ugin's Nexus
 Ultima Weapon
 Ultra Magnus, Armored Carrier
@@ -25401,7 +25518,9 @@ Codsworth, Handy Helper
 Cult of Skaro
 Curie, Emergent Intelligence
 Cyclonus, the Saboteur
+Data, Exploring Humanity
 Data, New Life
+Data, Professor of Humanities
 Davros, Dalek Creator
 Diamond Weapon
 Dragon Man, Reformed Robot
@@ -25414,7 +25533,9 @@ Goldbug, Humanity's Ally
 Golos, Tireless Pilgrim
 Graaz, Unstoppable Juggernaut
 H.E.R.B.I.E., Lovable Robot
+Hologram Janeway
 Hope of Ghirapur
+Hugh, First of Many
 Illuminor Szeras
 Imotekh the Stormlord
 Iron Lad, Diverging Destiny
@@ -25431,12 +25552,14 @@ Iron Spider, Stark Upgrade
 Ironheart, Clever Champion
 Jetfire, Ingenious Scientist
 Jocasta, Automaton Avenger
+Jurati, Cordial Queen
 K-9, Mark I
 Karn, Argent Defender
 Karn, Gilded Guardian
 Karn, Legacy Reforged
 Karn, Silver Golem
 Kilo, Apogee Mind
+Korok, Liberated Rage
 Krang, Master Mind
 Krang, Utrom Warlord
 Krang, the All-Powerful
@@ -25464,6 +25587,7 @@ Mr. House, President and CEO
 Nardole, Resourceful Cyborg
 Nick Valentine, Private Eye
 Omega, Heartless Evolution
+One, Borg Evolved
 Optimus Prime, Hero
 Page, Loose Leaf
 Paladin Danse, Steel Maverick
@@ -25479,6 +25603,7 @@ Rose, Cutthroat Raider
 SP//dr, Piloted by Peni
 Sen Triplets
 Seven of Nine
+Seven of Nine, Tertiary Adjunct
 Seven of Nine, Unassimilated
 Sharuum the Hegemon
 Silas Renn, Seeker Adept
@@ -25496,7 +25621,9 @@ The Borg Queen
 The Cyber-Controller
 The Dalek Emperor
 The Doctor, EMH
+The Everforger
 The Golden-Gear Colossus
+The Guardian of Forever
 The Invincible Iron Man
 The Master, Transcendent
 The Motherlode, Excavator
@@ -25523,10 +25650,12 @@ Ultron, Unlimited
 Unctus, Grand Metatect
 Urtet, Remnant of Memnarch
 V'Ger, the Intruder
+Vic Fontaine, One Night Only
 Victor Mancha, Runaway
 Vision, Spectral Synthezoid
 Vision, Synthezoid Avenger
 Viv Vision, Teen Synthezoid
+Võx, Child of the Collective
 War Machine, Avenging Arsenal
 War Machine, James Rhodes
 War Machine, Legacy of Iron
@@ -25539,7 +25668,8 @@ The Myriad Pools
 #Legendary Artifact Planeswalker
 The Aetherspark
 #Legendary Creature
-"Tinkerer (Not the Urza's Saga-er one)"
+"The Ignoble Serpent"
+"Zekes, Acid Rock Fan"
 Aang and Katara
 Aang and La, Ocean's Fury
 Aang, A Lot to Learn
@@ -25617,6 +25747,7 @@ Alena, Kessig Trapper
 Alesha, Who Laughs at Fate
 Alesha, Who Smiles at Death
 Alex Wilder, Runaway
+Alexander, Ship's Fool
 Alexi, Zephyr Mage
 Alexios, Deimos of Kosmos
 Alhammarret, High Arbiter
@@ -25635,11 +25766,13 @@ Alrund, God of the Cosmos
 Altanak, the Thrice-Called
 Altaïr Ibn-La'Ahad
 Amalia Benavides Aguirre
+Amanda Grayson, Logic's Link
 Amarant Coral
 Amareth, the Lustrous
 Amazing Spider-Girl
 Amazing Spider-Man
 Ambassador Blorpityblorpboop
+Ambassador K'Ehleyr
 Ambassador Laquatus
 Amber Gristle O'Maul
 Ambrosia Whiteheart
@@ -25710,6 +25843,7 @@ Ares, God of War
 Arixmethes, Slumbering Isle
 Arjun, the Shifting Flame
 Armaggon, Future Shark
+Armus, Skin of Evil
 Arna Kennerüd, Skycaptain
 Arni Brokenbrow
 Arni Metalbrow
@@ -25766,6 +25900,7 @@ Aurelia, the Law Above
 Aurelia, the Warleader
 Auron, Venerated Guardian
 Autumn Willow
+Autumn Willow, Harmony
 Autumn-Tail, Kitsune Sage
 Avacyn, Angel of Hope
 Avacyn, Angel of Horror
@@ -25801,12 +25936,14 @@ Azula, Cunning Usurper
 Azula, On the Hunt
 Azula, Ruthless Firebender
 Azusa, Lost but Seeking
+B'Elanna Torres, Scrapper
 Baba Lysaga, Night Witch
 Baeloth Barrityl, Entertainer
 Baird, Argivian Recruiter
 Baird, Steward of Argive
 Balan, Wandering Knight
 Baldin, Century Herdmaster
+Balefang the Unslayable
 Balin, Loremaster
 Balmor, Battlemage Captain
 Balthier and Fran
@@ -25825,6 +25962,7 @@ Baron Bertram Graywater
 Baron Helmut Zemo
 Baron Sengir
 Baron Strucker, HYDRA Overlord
+Baron Vladimir Harkonnen
 Barret Wallace
 Barret, Avalanche Leader
 Barrin, Master Wizard
@@ -25866,9 +26004,9 @@ Beorn, Reluctant Host
 Beregond of the Guard
 Berta, Wise Extrapolator
 Bess, Soul Nourisher
-Beta Ray Bill
 Betor, Ancestor's Voice
 Betor, Kin to All
+Beverly Crusher, Ship's Doctor
 Beza, the Bounding Spring
 Bhaal, Lord of Murder
 Bifur, Melodic Rider
@@ -25907,6 +26045,7 @@ Blech, Loafing Pest
 Blex, Vexing Pest
 Blim, Comedic Genius
 Blind Seer
+Blor the Impervious
 Blue Marvel, Adam Brashear
 Blue, Loyal Raptor
 Bob, Reluctant HYDRA Agent
@@ -25926,6 +26065,7 @@ Boromir, Gondor's Hope
 Boromir, Warden of the Tower
 Bortuk Bonerattle
 Bosco, Just a Bear
+Boss Uramon, Shadow's Reach
 Bounteous Kirin
 Brad Boimler, Eager Ensign
 Brago, King Eternal
@@ -25997,6 +26137,7 @@ Captain America, Wings of Freedom
 Captain Benjamin Sisko
 Captain Howler, Sea Scourge
 Captain James T. Kirk
+Captain Janeway, Endgame
 Captain Jean-Luc Picard
 Captain Jonathan Archer
 Captain Kathryn Janeway
@@ -26039,15 +26180,23 @@ Celestine, the Living Saint
 Chainer, Dementia Master
 Chainer, Nightmare Adept
 Chameleon, Master of Disguise
+Chancellor Gorkon
 Chandler
 Chandra, Fire of Kaladesh
+Chani, Blade of Sietch Tabr
 Chaos, the Endless
 Charix, the Raging Isle
 Chase Stein, Runaway
 Chatterfang, Squirrel General
+Chekov and McCoy
 Chevill, Bane of Monsters
+Chief Kyle, Transporter Tech
+Chief Magistrate of Mercadia
+Chief Miles O'Brien
+Chief Montgomery Scott
 Chief of the Wilds
 Child of Alara
+Chira, All In
 Chisei, Heart of Oceans
 Chishiro, the Shattered Blade
 Chiss-Goria, Forge Tyrant
@@ -26076,6 +26225,7 @@ Cloud, Ex-SOLDIER
 Cloud, Midgar Mercenary
 Cloud, Planet's Champion
 Cloudhoof Kirin
+Cmdr. Troi, Outgoing Empath
 Colfenor, the Last Yew
 Colleen Wing, Street Samurai
 Colonel Autumn
@@ -26085,8 +26235,10 @@ Commander Eesha
 Commander Greven il-Vec
 Commander Liara Portyr
 Commander Mustard
+Commander Raffi Musiker
 Commander Sofia Daguerre
 Commander Spock
+Commander William Riker
 Commissar Severina Raine
 Constable Odo
 Coram, the Undertaker
@@ -26103,6 +26255,8 @@ Crossbones, Malicious Mercenary
 Crovax the Cursed
 Crovax, Ascendant Hero
 Crystal, Inhuman Princess
+Culber and Stamets, Star-Crossed
+Curzon Dax, Bound by Blood
 Cyan, Vengeful Samurai
 Cynette, Jelly Drover
 Círdan the Shipwright
@@ -26131,10 +26285,14 @@ Darigaaz, the Igniter
 Dark Leo & Shredder
 Darkchild, Demon Uncaged
 Darwin, Adaptive Mutant
+Dathon, His Heart Open
 Daughter of Autumn
+David and Carol Marcus, Creators
+Davvol, Evincar of Rath
 Daxos of Meletis
 Daxos the Returned
 Deadpool, Trading Card
+Deanna Troi, Psychic Counsel
 Deathleaper, Terror Weapon
 Dee Kay, Finder of the Lost
 Deekah, Fractal Theorist
@@ -26171,7 +26329,6 @@ Doctor Doom, Unrivaled
 Doctor Jane Foster
 Doctor Octopus, Master Planner
 Doctor Spectrum
-Doctor Strange, Master of Magic
 Doctor Strange, Surgeon
 Dogmeat, Ever Loyal
 Dokai, Weaver of Life
@@ -26198,8 +26355,10 @@ Dosan the Falling Leaf
 Dr. Beverly Crusher
 Dr. Eggman
 Dr. Joseph M'Benga
+Dr. Leonard "Bones" McCoy
 Dr. Madison Li
 Dr. McCoy, Surly Surgeon
+Dr. Pulaski, Cynical Clinician
 Drafna, Founder of Lat-Nam
 Dragonhawk, Fate's Tempest
 Dragonlord Atarka
@@ -26245,10 +26404,12 @@ Eight-and-a-Half-Tails
 Eirdu, Carrier of Dawn
 Eivor, Battle-Ready
 Eivor, Wolf-Kissed
+Ekthi, Contaminator Priest
 Eladamri, Korvecdal
 Eladamri, Lord of Leaves
 Elanor Gardner
 Elas il-Kor, Sadistic Pilgrim
+Elda, Conjurer of Spectacle
 Elder Arthur Maxson
 Elder Owyn Lyons
 Electro, Assaulting Battery
@@ -26295,6 +26456,7 @@ Emry, Lurker of the Loch
 Endrek Sahr, Master Breeder
 Enkira, Hostile Scavenger
 Ennis, Debate Moderator
+Ensign Harry Kim, Operations
 Ensign Pavel Chekov
 Erayo, Soratami Ascendant
 Erestor of the Council
@@ -26339,6 +26501,7 @@ Ezekiel Sims, Spider-Totem
 Ezio Auditore da Firenze
 Ezio, Blade of Vengeance
 Ezio, Brash Novice
+Ezri Dax, Newly Joined
 Ezrim, Agency Chief
 Ezuri, Claw of Progress
 Ezuri, Renegade Leader
@@ -26388,6 +26551,8 @@ Firkraag, Cunning Instigator
 Fixer, Techno Terror
 Flash Thompson, Spider-Fan
 Flatman
+Fleet Captain Christopher Pike
+Flitwing, Lyev Detective
 Flopsie, Bumi's Buddy
 Florian, Voldaren Scion
 Flubs, the Fool
@@ -26408,6 +26573,7 @@ Fíli the Pathfinder
 G'raha Tia
 G'raha Tia, Scion Reborn
 Gabriel Angelfire
+Gabriel Lorca, Mirror Menace
 Gaddock Teeg
 Gadrak, the Crown-Scourge
 Gadwick, the Wizened
@@ -26464,6 +26630,7 @@ General Tazri
 General Thunderbolt Ross
 Genghis Frog
 Genku, Future Shaper
+Geordi La Forge, Innovator
 Georgiou, Terran Emperor
 Geralf, Visionary Stitcher
 Geralf, the Fleshwright
@@ -26510,6 +26677,7 @@ Gix, Yawgmoth Praetor
 Glacian, Powerstone Engineer
 Gladiolus Amicitia
 Glarb, Calamity's Augur
+Glava, Five-Advents Mage
 Glissa Sunseeker
 Glissa Sunslayer
 Glissa, Herald of Predation
@@ -26554,10 +26722,13 @@ Gosta Dirk
 Gothmog, Morgul Lieutenant
 Gowron, Eager for Battle
 Graham O'Brien
+Grakk the Pacifist
 Grakmaw, Skyclave Ravager
 Gran-Gran
 Grand Arbiter Augustin IV
+Grand Nagus Zek
 Grand Warlord Radha
+Grandmother Goby
 Grandmother Ravi Sengir
 Grandmother Sengir
 Graviton, Fundamental Force
@@ -26579,12 +26750,14 @@ Greta, Sweettooth Scourge
 Gretchen Titchwillow
 Greven, Predator Captain
 Greymond, Avacyn's Stalwart
+Grilka, Widowed Warrior
 Grim Reaper, Lethal Legionnaire
 Grimgrin, Corpse-Born
 Griselbrand
 Grishnákh, Brash Instigator
 Grismold, the Dreadsower
 Grist, Voracious Larva
+Grizzlegom, Hurloon Hero
 Grolnok, the Omnivore
 Grothama, All-Devouring
 Groundchuck & Dirtbag
@@ -26596,7 +26769,9 @@ Gríma Wormtongue
 Gríma, Saruman's Footman
 Guan Yu, Sainted Warrior
 Guinan, Ancient Advisor
+Gul Dukat, Colonial Prefect
 Guru Pathik
+Gustha Ebbasdotter
 Gut, True Soul Zealot
 Gwafa Hazid, Profiteer
 Gwaihir the Windlord
@@ -26605,6 +26780,7 @@ Gwen Stacy
 Gwendlyn Di Corci
 Gwenna, Eyes of Gaea
 Gwenom, Remorseless
+Gwyndala, the Progeny
 Gylwain, Casting Director
 Gyome, Master Chef
 Gyruda, Doom of Depths
@@ -26698,6 +26874,7 @@ Hobgoblin, Mantled Marauder
 Hofri Ghostforge
 Hogaak, Arisen Necropolis
 Hokori, Dust Drinker
+Homer, the Hermit
 Homura, Human Ascendant
 Honest Rutstein
 Hope Estheim
@@ -26791,6 +26968,8 @@ Isilu, Carrier of Twilight
 Isperia the Inscrutable
 Isperia, Supreme Judge
 Isshin, Two Heavens as One
+Istvan, Butcher of Eln
+Itazura, Lingering Wick
 Ith, High Arcanist
 Itzquinth, Firstborn of Gishath
 Ivora, Insatiable Heir
@@ -26802,6 +26981,7 @@ Iymrith, Desert Doom
 Izoni, Center of the Web
 Izoni, Thousand-Eyed
 J. Jonah Jameson
+Jabs, Mistress of Mockery
 Jace, Vryn's Prodigy
 Jack of Hearts, Volatile Hero
 Jackal, Genius Geneticist
@@ -26818,6 +26998,8 @@ Jalira, Master Polymorphist
 James, Wandering Dad
 Jamie McCrimmon
 Jan Jansen, Chaos Crafter
+Jandor, Fortuned Traveler
+Janice Rand, Essential Aide
 Jarad, Golgari Lich Lord
 Jaraku the Interloper
 Jared Carthalion, True Heir
@@ -26831,6 +27013,7 @@ Jaxis, the Troublemaker
 Jaya Ballard, Task Mage
 Jazal Goldmane
 Jean-Luc Picard, Luminary
+Jean-Luc, Mon Capitaine
 Jecht, Reluctant Guardian
 Jedit Ojanen
 Jedit Ojanen of Efrava
@@ -26853,6 +27036,7 @@ Jessica Jones, Private Eye
 Jet, Freedom Fighter
 Jet, Rebel Leader
 Jetmir, Nexus of Revels
+Jett Reno, Problem Solver
 Jhoira of the Ghitu
 Jhoira, Ageless Innovator
 Jhoira, Weatherlight Captain
@@ -26886,10 +27070,12 @@ Jori En, Ruin Diver
 Joshua, Phoenix's Dominant
 Josu Vess, Lich Knight
 Joven
+Joven and Chandler
 Judge Magister Gabranth
 Judith, Carnage Connoisseur
 Judith, the Scourge Diva
 Jugan, the Rising Star
+Julian Bashir, Frontier Doctor
 June, Bounty Hunter
 Junji, the Midnight Sky
 Juri, Master of the Revue
@@ -26908,6 +27094,7 @@ Kagemaro, First to Suffer
 Kagha, Shadow Archdruid
 Kaheera, the Orphanguard
 Kaho, Minamo Historian
+Kai Winn, Faithless Leader
 Kaima, the Fractured Calm
 Kain, Traitorous Dragoon
 Kairi, the Swirling Sky
@@ -26928,6 +27115,7 @@ Kami of the Crescent Moon
 Kamiz, Obscura Oculus
 Kang Prime
 Kang the Conqueror
+Kang, Suspicious Captain
 Kang, Temporal Tyrant
 Kangee, Aerie Keeper
 Kangee, Sky Warden
@@ -26989,11 +27177,13 @@ Kenrith, the Returned King
 Kentaro, the Smiling Cat
 Kenzo the Hardhearted
 Keruga, the Macrosage
+Kes, Evolving Telepath
 Keskit, the Flesh Sculptor
 Kess, Dissident Mage
 Kethek, Crucible Goliath
 Kethis, the Hidden Hand
 Ketramose, the New Dawn
+Khan, Despot by Design
 Khan, Vengeful Heart
 Khorvath Brightflame
 Khârn the Betrayer
@@ -27023,6 +27213,7 @@ Kira Nerys, Firebrand
 Kira, Great Glass-Spinner
 Kirk, Commanding Officer
 Kirk, Enterprising Captain
+Kirk, Man of Action
 Kirol, Attentive First-Year
 Kirol, History Buff
 Kirri, Talented Sprout
@@ -27054,6 +27245,7 @@ Kona, Rescue Beastie
 Konda, Lord of Eiganjo
 Kongming, "Sleeping Dragon"
 Kopala, Warden of Waves
+Kor, Cause of Vengeance
 Korlash, Heir to Blackblade
 Korlessa, Scale Singer
 Korvold, Fae-Cursed King
@@ -27100,7 +27292,9 @@ Kuon, Ogre Ascendant
 Kura, the Boundless Sky
 Kurbis, Harvest Celebrant
 Kurkesh, Onakke Ancient
+Kurn, Son of Mogh
 Kuro, Pitlord
+Kuroki, Thief of Talents
 Kutzil, Malamet Exemplar
 Kwain, Itinerant Meddler
 Kwende, Pride of Femeref
@@ -27117,6 +27311,7 @@ Kytheon, Hero of Akros
 Kíli the Resourceful
 L'Rell, Fierce Visionary
 La Forge, Perceptive Engineer
+La Forge, Thoughtful as Ever
 La'An Noonien-Singh, Security
 Lady Caleria
 Lady Evangela
@@ -27170,7 +27365,9 @@ Licia, Sanguine Tribune
 Lier, Disciple of the Drowned
 Liesa, Forgotten Archangel
 Liesa, Shroud of Dusk
+Lieutenant Hikaru Sulu
 Lieutenant Kirtar
+Lieutenant Nyota Uhura
 Light-Paws, Emperor's Voice
 Lightning, Army of One
 Lightning, Security Sergeant
@@ -27235,6 +27432,7 @@ Losheel, Clockwork Scholar
 Lotho, Corrupt Shirriff
 Lovisa Coldeyes
 Lozhan, Dragons' Legacy
+Lt. Arex, Ever-Adapting
 Lt. Cmdr. Geordi La Forge
 Lu Bu, Master-at-Arms
 Lu Meng, Wu General
@@ -27254,6 +27452,7 @@ Lurrus of the Dream-Den
 Lutri, the Spellchaser
 Lwaxana Troi, Charming Guest
 Lydia Frye
+Lyna, Veil of Vengeance
 Lynde, Cheerful Tormentor
 Lyra Dawnbringer
 Lyra, Archangel of Dawn
@@ -27261,6 +27460,7 @@ Lyra, Tolarian Archangel
 Lyse Hext
 Lyzolda, the Blood Witch
 M'Baku, Jabari Chieftain
+M'Ress, Crew Coordinator
 MJ, Rising Star
 Ma Chao, Western Warrior
 Maarika, Brutal Gladiator
@@ -27317,6 +27517,7 @@ Marisi, Breaker of the Coil
 Marneus Calgar
 Marrow-Gnawer
 Martha Jones
+Martok, Hero of the Empire
 Marvel Boy, Noh-Varr
 Marvo, Deep Operative
 Marwyn, the Clearcutter
@@ -27329,22 +27530,27 @@ Mass of Mysteries
 Massacre Girl
 Massacre Girl, Known Killer
 Massacre Girl, Most Wanted
+Massimo, the Magician
 Master Pakku
 Master Piandao
 Mastermind Plum
 Masumaro, First to Live
 Mathas, Fiend Seeker
 Mathise, Surge Channeler
+Matoc, Lavamancer
 Matoya, Archon Elder
 Matt Murdock, Justice Seeker
 Mauhúr, Uruk-hai Captain
+Maular, the Next Evolution
 Mavinda, Students' Advocate
 Mavren Fein, Dusk Apostle
 Maximus, Knight Apparent
 Mayael the Anima
 Mazirek, Kraul Death Priest
 Mazzy, Truesword Paladin
+McCoy, Not a Bricklayer
 Me, the Immortal
+Meatsqueak, Hoard Lord
 Medomai the Ageless
 Medusa, Inhuman Queen
 Melek, Izzet Paragon
@@ -27399,6 +27605,7 @@ Mishra, Claimed by Gix
 Mishra, Eminent One
 Mishra, Excavation Prodigy
 Mishra, Tamer of Mak Fawa
+Miss Highwater
 Missy
 Mister Fantastic
 Mister Fantastic, Reed Richards
@@ -27414,6 +27621,7 @@ Mm'menon, the Right Hand
 Mockingbird, Ace Agent
 Mockingbird, Bobbi Morse
 Mog, Moogle Warrior
+Mohiam, Imperial Truthsayer
 Moira Brown, Guide Author
 Moira and Teshar
 Moira, Urborg Haunt
@@ -27454,6 +27662,7 @@ Ms. Bumbleflower
 Ms. Marvel, Elastic Ally
 Ms. Marvel, Kamala Khan
 Mu Yanling, Wind Rider
+Muad'Dib, Prophet Foretold
 Muddle, the Ever-Changing
 Muerra, Trash Tactician
 Muldrotha, the Gravetide
@@ -27508,6 +27717,7 @@ Nathan Drake, Treasure Hunter
 Nazahn, Revered Bladesmith
 Nazar, the Velvet Fang
 Nebuchadnezzar
+Neelix, Moral Support
 Neera, Wild Mage
 Neerdiv, Devious Diver
 Nefarox, Overlord of Grixis
@@ -27519,6 +27729,7 @@ Nelly Borca, Impulsive Accuser
 Nemata, Grove Guardian
 Nemata, Primeval Warden
 Neo Exdeath, Dimension's End
+Nephilim Epochal
 Neriv, Crackling Vanguard
 Neriv, Heart of the Storm
 Nethroi, Apex of Death
@@ -27560,8 +27771,10 @@ Niv-Mizzet, Parun
 Niv-Mizzet, Supreme
 Niv-Mizzet, Visionary
 Niv-Mizzet, the Firemind
+Nivea, Beloved Battlemage
 Noctis, Heir Apparent
 Noctis, Prince of Lucis
+Nog, Ambitious Cadet
 Nogi, Draco-Zealot
 Nori, Teller of Tales
 Norika Yamazaki, the Poet
@@ -27603,6 +27816,7 @@ Okaun, Eye of Chaos
 Oketra the True
 Okoye, Dora Milaje Leader
 Okoye, Mighty and Adored
+Olag and Miau, New Friends
 Olag, Ludevic's Hubris
 Old Flitterfang
 Old Gnawbone
@@ -27611,6 +27825,7 @@ Old Man Willow
 Old One Eye
 Old Rutstein
 Old Stickfingers
+Olinda the Oblivious
 Olivia Voldaren
 Olivia, Crimson Bride
 Olivia, Mobilized for War
@@ -27657,6 +27872,7 @@ Oyobi, Who Split the Heavens
 Ozai, the Phoenix King
 Ozox, the Clattering King
 Padeem, Consul of Innovation
+Padishah Emperor Shaddam IV
 Pako, Arcane Retriever
 Paladin Elizabeth Taggerdy
 Palladia-Mors
@@ -27673,6 +27889,8 @@ Patron of the Kitsune
 Patron of the Moon
 Patron of the Nezumi
 Patron of the Orochi
+Paul Atreides, Ducal Heir
+Pavel Chekov, First Posting
 Pavel Maliki
 Pearl-Ear, Imperial Advisor
 Peggy Carter, Secret Agent
@@ -27724,6 +27942,7 @@ Prime Speaker Vannifar
 Prime Speaker Zegana
 Primo, the Unbounded
 Prince Imrahil the Fair
+Princess Irulan Corrino
 Princess Lucrezia
 Princess Yue
 Prismari, the Inspiration
@@ -27742,6 +27961,7 @@ Psemilla, Meletian Poet
 Puppet Master, String Puller
 Purraj of Urborg
 Q, Stacking the Deck
+Q, Your Illustrious Host
 Qala, Ajani's Pridemate
 Quake, Agent of S.H.I.E.L.D.
 Quandrix, the Proof
@@ -27835,6 +28055,7 @@ Red Hulk
 Red XIII, Proud Warrior
 Redshift, Rocketeer Chief
 Reed Richards, Smartest Man
+Reg Barclay, Fidgety Fantasist
 Regna, the Redeemer
 Reidane, God of the Worthy
 Reki, the History of Kamigawa
@@ -27846,6 +28067,7 @@ Reptil, Dinomorpher
 Rescue Girl, First Responder
 Rev, Tithe Extractor
 Reveka, Wizard Savant
+Reverend Mother Jessica
 Reya Dawnbringer
 Reyav, Master Smith
 Reyhan, Last of the Abzan
@@ -27862,6 +28084,7 @@ Rick Jones, Destined Sidekick
 Rielle, the Everwise
 Rienne, Angel of Rebirth
 Rigo, Streetwise Mentor
+Rikala, Homarid King
 Rikku, Resourceful Guardian
 Riku of Many Paths
 Riku of Two Reflections
@@ -27878,6 +28101,7 @@ Rith, the Awakener
 Rivaz of the Claw
 Riven Turnbull
 River Song
+Ro Laren, Double Agent
 Roalesk, Apex Hybrid
 Rocco, Cabaretti Caterer
 Rocco, Street Chef
@@ -27888,6 +28112,8 @@ Rofellos, Llanowar Emissary
 Rograkh, Son of Rohgahh
 Rohgahh of Kher Keep
 Rohgahh, Kher Keep Overlord
+Rok-Tahk, Budding Scientist
+Rom and Leeta, Unlikely Pair
 Romana II
 Rona, Disciple of Gix
 Rona, Herald of Invasion
@@ -27937,13 +28163,16 @@ Saheeli, Consul of Oversight
 Saheeli, Jewel of Avishkar
 Saheeli, Radiant Creator
 Saheeli, the Sun's Brilliance
+Sahir, Visitor in Darkness
 Sai, Master Thopterist
 Saint Traft and Rem Karolus
 Sakashima of a Thousand Faces
 Sakashima the Impostor
 Sakiko, Mother of Summer
+Salinae, the Ocean Mother
 Sally Pride, Lioness Leader
 Sally Sparrow
+Sam Kirk, Xenoanthropologist
 Sam, Loyal Attendant
 Sami, Ship's Engineer
 Sami, Wildcat Captain
@@ -27961,15 +28190,18 @@ Sanwell, Avenger Ace
 Sapling of Colfenor
 Saradoc, Master of Buckland
 Sarah Jane Smith
+Sarek, Federation Ambassador
 Sarevok, Deathbringer
 Sarkhan, Dragon Ascendant
 Sarkhan, Soul Aflame
+Saru, Unthreatened
 Sarulf, Realm Eater
 Saruman of Many Colors
 Saruman the White
 Saruman, the White Hand
 Saryth, the Viper's Fang
 Sasaya, Orochi Ascendant
+Sash and Waistcoat, Unmen
 Saskia the Unyielding
 Satoru Umezawa
 Satoru, the Infiltrator
@@ -27991,6 +28223,7 @@ Scarmaker
 Scientist Supreme of A.I.M.
 Scion of the Ur-Dragon
 Scorpion, Seething Striker
+Scotty, Chief Engineer
 Scotty, Miracle Worker
 Scriv, the Obligator
 Sedris, the Traitor King
@@ -28000,7 +28233,10 @@ Seifer, Balamb Rival
 Seizan, Perverter of Truth
 Sek'Kuar, Deathkeeper
 Sekki, Seasons' Guide
+Sela, Tal Shiar Paradox
 Selenia, Dark Angel
+Selenia, the Cursed Heart
+Seluma, Light of Aysen
 Selvala, Eager Trailblazer
 Selvala, Explorer Returned
 Selvala, Heart of the Wilds
@@ -28195,6 +28431,7 @@ Splinter, Radical Rat
 Splinter, the Mentor
 Spock, Always Your Friend
 Spock, Logical Choice
+Spock, Voice of Reason
 Spot, Felis catus
 Squall, Gunblade Duelist
 Squall, SeeD Mercenary
@@ -28234,6 +28471,8 @@ Subira, Tulzidi Caravanner
 Suki, Courageous Rescuer
 Suki, Kyoshi Captain
 Suki, Kyoshi Warrior
+Sulu, Heroic Helmsman
+Sulu, Space Swashbuckler
 Sun Ce, Young Conquerer
 Sun Quan, Lord of Wu
 Sun-Spider, Nimble Webber
@@ -28257,6 +28496,7 @@ Sygg, River Guide
 Sygg, Wanderbrine Shield
 Sygg, Wanderwine Wisdom
 Sylvia Brightspear
+Sylvia Tilly, Joy of Discovery
 Symbiote Spider-Man
 Syr Alin, the Lion's Claw
 Syr Armont, the Redeemer
@@ -28273,6 +28513,7 @@ Szarel, Genesis Shepherd
 T'Chaka, Venerable King
 T'Challa, the Black Panther
 T'Pol, Vulcan Representative
+T'Pring, Never Parted
 Taborax, Hope's Demise
 Tadeas, Juniper Ascendant
 Taeko, the Patient Avalanche
@@ -28302,6 +28543,7 @@ Taranika, Akroan Veteran
 Targ Nar, Demon-Fang Gnoll
 Tariel, Reckoner of Souls
 Tarox Bladewing
+Tasha Yar, Out of Time
 Tasigur, the Golden Fang
 Taskmaster, Mercenary Mimic
 Tataru Taru
@@ -28314,6 +28556,7 @@ Tawnos, the Toymaker
 Tayam, Luminous Enigma
 Tazri, Beacon of Unity
 Tazri, Stalwart Survivor
+Tecton, Malignant Ruin
 Teferi, Mage of Zhalfir
 Tegan Jovanka
 Tegwyll, Duke of Splendor
@@ -28367,6 +28610,7 @@ The Blue Spirit
 The Boulder, Ready to Rumble
 The Cabbage Merchant
 The Capitoline Triad
+The Caretaker
 The Celestial Toymaker
 The Chief Warg
 The Council of Four
@@ -28416,6 +28660,7 @@ The Locust God
 The Lord Master of Hell
 The Lord of Pain
 The Lord of the Eagles
+The Madcap Jester
 The Mary Janes
 The Master of Lake-town
 The Master, Formed Anew
@@ -28429,6 +28674,7 @@ The Mighty Thor, Jane Foster
 The Mimeoplasm
 The Most Dangerous Gamer
 The Mouth of Sauron
+The Muckslinger Gang
 The Mycotyrant
 The Necrobloom
 The Neutrinos
@@ -28478,6 +28724,7 @@ The War Doctor
 The Wasp, Janet Van Dyne
 The Wasp, Winsome Avenger
 The Watcher in the Water
+The Weaver King
 The Whizzer, Classic Speedster
 The Wise Mothman
 The Wondrous Wasp
@@ -28542,11 +28789,13 @@ Toggo, Goblin Weaponsmith
 Tok-Tok, Volcano Born
 Tokka & Rahzar, Terrible Twos
 Tokka & Rahzar, Unsupervised
+Tolabow, Loch Rascal
 Tolsimir Wolfblood
 Tolsimir, Friend to Wolves
 Tolsimir, Midnight's Light
 Toluz, Clever Conductor
 Tom Bombadil
+Tom Paris, Risk-Taker
 Tom, Bert, and William
 Tombstone, Career Criminal
 Tomik, Distinguished Advokist
@@ -28584,8 +28833,10 @@ Trance Kuja, Fate Defied
 Treebeard, Gracious Host
 Trelane, Squire of Gothos
 Trelasarra, Moon Dancer
+Tresserhorn's Lord, Returned
 Treva, the Renewer
 Triad of Fates
+Troi, Winging It
 Tromell, Seymour's Butler
 Tromokratis
 Trostani Discordant
@@ -28596,12 +28847,14 @@ Trynn, Champion of Freedom
 Trystan, Callous Cultivator
 Trystan, Penitent Culler
 Tsabo Tavoc
+Tsagan, Raider Warlord
 Tui and La, Moon and Ocean
 Tuknir Deathlock
 Tuktuk the Explorer
 Tura Kennerüd, Skyknight
 Tusk and Whiskers
 Tuvasa the Sunlit
+Tuvok, Chief Tactical Officer
 Tuya Bearclaw
 Ty Lee, Artful Acrobat
 Ty Lee, Chi Blocker
@@ -28614,6 +28867,7 @@ Tyvar, the Pummeler
 U.S.Agent, John Walker
 Uchbenbak, the Great Mistake
 Uglúk of the White Hand
+Uhura, Xenolinguist
 Ukkima, Stalking Shadow
 Ulalek, Fused Atrocity
 Ulamog, the Ceaseless Hunger
@@ -28652,6 +28906,7 @@ Urza, Lord High Artificer
 Urza, Lord Protector
 Urza, Powerstone Prodigy
 Urza, Prince of Kroog
+Uugguu, the Omniplasm
 Uurg, Spawn of Turg
 Uvilda, Dean of Perfection
 Uyo, Silent Prophet
@@ -28668,6 +28923,7 @@ Valeria Richards, Precocious
 Valgavoth, Harrower of Souls
 Valgavoth, Terror Eater
 Valki, God of Lies
+Valko Indorian
 Vanille, Cheerful l'Cie
 Vannifar, Evolved Enigma
 Varchild, Betrayer of Kjeldor
@@ -28727,6 +28983,7 @@ Volo, Itinerant Scholar
 Volrath the Fallen
 Volrath, the Shapestealer
 Vona, Butcher of Magan
+Voq, Torchbearer
 Vorel of the Hull Clade
 Vorinclex
 Vorinclex, Monstrous Raider
@@ -28749,6 +29006,7 @@ Wasitora, Nekoru Queen
 Wasp, Shrinking Savior
 Wayta, Trainer Prodigy
 Wernog, Rider's Chaplain
+Wesley Crusher, Starfleet Cadet
 Whiplash, Vengeful Engineer
 Whirlwind, Killer Cyclone
 Whisper, Blood Liturgist
@@ -28756,6 +29014,7 @@ White Tiger, Amulet Keeper
 White Tiger, Ava Ayala
 White Widow, Free Agent
 White Widow, Yelena Belova
+Whtz, the Bibliophile
 Wiccan, Rising Magician
 Wiccan, Young Avenger
 Wick, the Whorled Mind
@@ -28763,6 +29022,7 @@ Wildsear, Scouring Maw
 Wilfred Mott
 Wilhelt, the Rotcleaver
 Will Riker, Assuming Command
+Will Riker, First in the Field
 Will, Scion of Peace
 Willie Lumpkin, Postman
 Willowdusk, Essence Seer
@@ -28791,6 +29051,8 @@ Worf, Chief Tactical Officer
 Worf, Defiant Commander
 Worf, Honor-Bound Warrior
 Worf, Intelligence Contractor
+Worf, Son of Mogh
+Worf, Still Not Merry
 Wort, Boggart Auntie
 Wort, the Raidmother
 Wraith, Vicious Vigilante
@@ -28847,6 +29109,7 @@ Yue, the Moon Spirit
 Yuffie, Materia Hunter
 Yukora, the Prisoner
 Yuma, Proud Protector
+Yume, Chronicler of Valor
 Yuna, Grand Summoner
 Yuna, Hope of Spira
 Yuriko, Blade of the Mighty
@@ -28859,6 +29122,7 @@ Zack Fair
 Zada, Hedron Grinder
 Zaffai and the Tempests
 Zaffai, Thunder Conductor
+Zagorka, Mother of Sanctum
 Zagras, Thief of Heartbeats
 Zahid, Djinn of the Lamp
 Zahur, Glory's Past
@@ -28871,6 +29135,7 @@ Zareth San, the Trickster
 Zask, Skittering Swarmlord
 Zaxara, the Exemplary
 Zedruu the Greathearted
+Zefram Cochrane, Warp Pioneer
 Zegana, Utopian Speaker
 Zell Dincht
 Zellix, Sanity Flayer
@@ -29213,6 +29478,7 @@ Arlinn, Embraced by the Moon
 Arlinn, Voice of the Pack
 Arlinn, the Moon's Fury
 Arlinn, the Pack's Hope
+Arzakon
 Ashiok, Dream Render
 Ashiok, Nightmare Muse
 Ashiok, Nightmare Weaver
@@ -29259,6 +29525,7 @@ Dovin Baan
 Dovin, Architect of Law
 Dovin, Grand Arbiter
 Dovin, Hand of Control
+Dyfed, the Guiding Hand
 Ellywick Tumblestrum
 Elminster
 Elspeth Resplendent
@@ -29269,6 +29536,7 @@ Elspeth, Sun's Champion
 Elspeth, Sun's Nemesis
 Elspeth, Undaunted Hero
 Estrid, the Masked
+Feroz, Ulgrotha's Warden
 Freyalise, Llanowar's Fury
 Garruk Relentless
 Garruk Wildspeaker
@@ -29291,6 +29559,7 @@ Gideon, Champion of Justice
 Gideon, Martial Paragon
 Gideon, the Oathsworn
 Grand Master of Flowers
+Greensleeves
 Grist, the Hunger Tide
 Grist, the Plague Swarm
 Huatli, Dinosaur Knight
@@ -29426,6 +29695,7 @@ Sarkhan, Dragonsoul
 Sarkhan, Fireblood
 Sarkhan, the Dragonspeaker
 Serra the Benevolent
+Sifa Grent
 Sivitri, Dragon Master
 Sorin Markov
 Sorin the Mirthless
@@ -29467,8 +29737,10 @@ Tezzeret, Master of the Bridge
 The Eternal Wanderer
 The Royal Scions
 The Theorist, Jace Beleren
+The Unluckiest Planeswalker
 The Wanderer
 The Wandering Emperor
+Thomil, the Destroyer
 Tibalt, Cosmic Impostor
 Tibalt, Rakish Instigator
 Tibalt, the Fiend-Blooded
@@ -29478,6 +29750,7 @@ Ugin, Eye of the Storms
 Ugin, the Ineffable
 Ugin, the Spirit Dragon
 Urza, Planeswalker
+Venser, Visionary Traveler
 Venser, the Sojourner
 Vivien Reid
 Vivien of the Arkbow
@@ -29496,6 +29769,7 @@ Vraska, Swarm's Eminence
 Vronos, Masked Inquisitor
 Will Kenrith
 Will, Scholar of Frost
+Worzel, the Protector
 Wrenn and Realmbreaker
 Wrenn and Seven
 Wrenn and Six
@@ -29514,6 +29788,7 @@ Marit Lage's Slumber
 #Legendary Snow Land
 Dark Depths
 #Legendary Sorcery
+Ashaya's Enduring Bond
 Jaya's Immolating Inferno
 Kamahl's Druidic Vow
 Karn's Temporal Sundering
@@ -29813,6 +30088,7 @@ Battery
 Battle Display
 Battle Screech
 Battle at the Bridge
+Battle of Wolf 359
 Beacon Bolt
 Beacon of Creation
 Beacon of Tomorrows
@@ -29890,6 +30166,7 @@ Blot Out the Sky
 Blow Your House Down
 Blue Sun's Twilight
 Board the Weatherlight
+Boarding Action
 Body of Research
 Bog Down
 Bogslither's Embrace
@@ -30120,6 +30397,7 @@ Clear the Land
 Clear the Mind
 Cleave Shadows
 Cleaver Riot
+Cloak and Phaser
 Cloak of Feathers
 Clone Legion
 Cloudkill
@@ -30458,6 +30736,7 @@ Divine Gambit
 Divine Light
 Divine Reckoning
 Do or Die
+Dominion Infiltration
 Domri's Ambush
 Don't Move
 Donate
@@ -30732,6 +31011,7 @@ Feast of Blood
 Feast of Flesh
 Feast of Succession
 Feast of Worms
+Federation Resupply
 Feed
 Feed the Infection
 Feed the Swarm
@@ -30764,6 +31044,7 @@ Fight
 Fight with Fire
 Fill with Fright
 Final Act
+Final Frontier
 Final Judgment
 Final Parting
 Final Punishment
@@ -30927,6 +31208,7 @@ Giant Opportunity
 Giantbaiting
 Gideon's Battle Cry
 Gift of Estates
+Gift of Perfection
 Gift of the Fae
 Gift of the Gargantuan
 Gild
@@ -31419,6 +31701,7 @@ Magma Rift
 Magmatic Chasm
 Magmatic Insight
 Majestic Genesis
+Make It So
 Make Mischief
 Make Your Own Luck
 Make a Wish
@@ -31728,6 +32011,7 @@ Overwhelming Encounter
 Overwhelming Forces
 Overwhelming Stampede
 Overwrite the Multiverse
+Own the Day
 Ozai's Cruelty
 Pack Hunt
 Pack a Punch
@@ -31757,6 +32041,7 @@ Path of the Pyromancer
 Path of the Schemer
 Path to the Festival
 Patriarch's Bidding
+Pattern Buffer Preservation
 Peace Talks
 Peach Garden Oath
 Peak Eruption
@@ -31819,6 +32104,7 @@ Planar Engineering
 Planar Outburst
 Planar Overlay
 Planetary Annihilation
+Planetary Bombardment
 Planewide Celebration
 Plant Beans
 Plant Tadpoles
@@ -32215,6 +32501,7 @@ Ruinous Path
 Ruinous Rampage
 Ruinous Ultimatum
 Ruinous Waterbending
+Rules of Acquisition
 Rumbling Rockslide
 Run the Play
 Runic Repetition
@@ -32594,6 +32881,7 @@ Strafe
 Strangle
 Strategic Betrayal
 Strategic Planning
+Stray from History
 Stream of Acid
 Stream of Life
 Stream of Thought
@@ -32754,12 +33042,14 @@ The Battle of Bywater
 The Black Breath
 The Crowd Goes Wild
 The Crystal's Chosen
+The Destruction of Praxis
 The Elderspell
 The Fall of Kroog
 The Final Days
 The Five Doctors
 The Great Aurora
 The Nipton Lottery
+The Promise of Kahless
 The Ring Goes South
 The Torment of Gollum
 The Wedding of River Song
@@ -32865,6 +33155,7 @@ Tranquilize
 Transgress the Mind
 Transmogrify
 Transmute Artifact
+Transporter Malfunction
 Trapfinder's Trick
 Trash for Treasure
 Traumatic Revelation
@@ -33051,6 +33342,7 @@ Voyage Home
 Vraska's Final Mercy
 Vraska's Scorn
 Vraska's Stoneglare
+Vulcan Mind-Meld
 Wail of the Forgotten
 Waiting in the Weeds
 Wakanda Forever!

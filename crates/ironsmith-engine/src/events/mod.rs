@@ -352,6 +352,7 @@ impl Event {
                 added_supertypes: Vec::new(),
                 removed_supertypes: Vec::new(),
                 added_subtypes: Vec::new(),
+                entry_granted_subtypes: Vec::new(),
                 added_abilities: Vec::new(),
                 set_base_power_toughness: None,
                 controller_override: None,
