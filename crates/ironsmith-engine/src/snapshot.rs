@@ -756,6 +756,9 @@ pub struct ObjectSnapshot {
     /// evidence is unknown, never an unsaddled receipt.
     #[cfg_attr(feature = "serialization", serde(default))]
     pub saddled: Option<bool>,
+    /// CR 701.9c applies only to observations of this discard.
+    #[cfg_attr(feature = "serialization", serde(default, skip_serializing_if = "std::ops::Not::not"))]
+    pub discard_characteristics_undefined: bool,
 }
 
 /// Counters encoded as `(kind, count)` pairs: a named counter kind is not a
@@ -845,6 +848,9 @@ impl ObjectSnapshot {
         &self,
         characteristic: ironsmith_core::DistinctCharacteristic,
     ) -> Vec<DistinctCharacteristicKey> {
+        if self.discard_characteristics_undefined {
+            return Vec::new();
+        }
         distinct_characteristic_keys(
             characteristic,
             &self.card_types,
@@ -895,6 +901,22 @@ impl ObjectSnapshot {
         self.clone()
     }
 
+    /// Retain the identity of a completed discard even when CR 701.9c makes its characteristics undefined.
+    pub(crate) fn for_discard(self, verifiable: bool) -> Self {
+        if verifiable {
+            return self;
+        }
+        let mut snapshot = Self::public_placeholder(
+            self.object_id,
+            self.stable_id,
+            self.owner,
+            self.controller,
+            self.zone,
+        );
+        snapshot.discard_characteristics_undefined = true;
+        snapshot
+    }
+
     /// A snapshot carrying only what every peer knows about an object whose
     /// identity is hidden from some player: its identity, ownership, zone
     /// and public status. Every characteristic is left empty, exactly as a
@@ -907,6 +929,7 @@ impl ObjectSnapshot {
         zone: Zone,
     ) -> Self {
         Self {
+            discard_characteristics_undefined: false,
             stack_kind: None,
             chosen_subtype: None,
             chosen_card_type: None,
@@ -1071,6 +1094,7 @@ impl ObjectSnapshot {
         });
         let combat_role_lookback = game.simultaneous_combat_role_lookback(obj.id);
         Self {
+            discard_characteristics_undefined: false,
             stack_kind: if obj.zone == Zone::Stack {
                 Some(crate::filter::StackObjectKind::Spell)
             } else {
@@ -1599,6 +1623,7 @@ impl ObjectSnapshot {
     #[cfg(test)]
     pub fn for_testing(object_id: ObjectId, controller: PlayerId, name: &str) -> Self {
         Self {
+            discard_characteristics_undefined: false,
             stack_kind: None,
             object_id,
             stable_id: object_id.into(),

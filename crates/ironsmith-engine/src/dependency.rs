@@ -560,6 +560,28 @@ fn effect_output_changed(
         return before != after;
     }
 
+    if let Modification::SetCreatureTypesFrom { donor, .. } = &a.modification {
+        let after = applied_baseline(b, baseline, objects, game);
+        let creature_types = |board: &HashMap<ObjectId, CalculatedCharacteristics>| {
+            board.get(donor).map(|chars| {
+                chars.subtypes.iter().copied().filter(crate::types::Subtype::is_creature_type)
+                    .collect::<Vec<_>>()
+            })
+        };
+        return creature_types(baseline) != creature_types(&after)
+            || objects.iter().any(|(id, object)| {
+                let (Some(before), Some(after)) = (baseline.get(id), after.get(id)) else {
+                    return false;
+                };
+                let supports_creature_types = |chars: &CalculatedCharacteristics| {
+                    chars.card_types.contains(&crate::types::CardType::Creature)
+                        || chars.card_types.contains(&crate::types::CardType::Kindred)
+                };
+                effect_applies_with_chars(a, object, before, game)
+                    && supports_creature_types(before) != supports_creature_types(after)
+            });
+    }
+
     // CR 205.3d/613.8a: adding a subtype can do nothing until another
     // layer-four effect supplies the corresponding card type.
     if let Modification::AddSubtypes(subtypes) = &a.modification {
@@ -1589,6 +1611,13 @@ pub(crate) fn apply_continuous_effect_to_chars_for_dependency(
                 &mut chars.subtypes,
                 types,
              game);
+        }
+        Modification::SetCreatureTypesFrom { donor, retained } => {
+            if let Some(donor) = crate::continuous::in_progress_characteristics(game, *donor) {
+                crate::continuous::set_creature_types_from(chars, &donor.subtypes, retained, game);
+            } else if let Some(donor) = game.object(*donor) {
+                crate::continuous::set_creature_types_from(chars, &donor.subtypes, retained, game);
+            }
         }
         Modification::AddSubtypes(types) => {
             for subtype in types {let subtype=game.admitted_subtype(*subtype);
@@ -2925,6 +2954,7 @@ fn effect_can_affect_dependency_output(a: &ContinuousEffect, b: &ContinuousEffec
 
 fn modification_can_affect_dependency_output(a: &Modification, b: &Modification) -> bool {
     match a {
+        Modification::SetCreatureTypesFrom { .. } => b.layer() == crate::continuous::Layer::Type,
         Modification::AddSubtypes(_) => matches!(b, Modification::AddCardTypes(_)
             | Modification::RemoveCardTypes(_) | Modification::SetCardTypes(_)),
         Modification::CopyActivatedAbilities { .. }
@@ -2961,6 +2991,7 @@ fn modification_can_change_abilities_or_matching_characteristics(
             | Modification::AddCardTypes(_)
             | Modification::RemoveCardTypes(_)
             | Modification::SetCardTypes(_)
+            | Modification::SetCreatureTypesFrom { .. }
             | Modification::AddSubtypes(_)
             | Modification::AddAllSubtypesOfFamily(_)
             | Modification::RemoveSubtypes(_)
@@ -3215,6 +3246,7 @@ fn modification_can_change_type_characteristics(modification: &Modification) -> 
             | Modification::AddCardTypes(_)
             | Modification::RemoveCardTypes(_)
             | Modification::SetCardTypes(_)
+            | Modification::SetCreatureTypesFrom { .. }
             | Modification::AddSubtypes(_)
             | Modification::AddAllSubtypesOfFamily(_)
             | Modification::RemoveSubtypes(_)

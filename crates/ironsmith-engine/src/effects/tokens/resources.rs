@@ -8,9 +8,7 @@ pub struct TokenCreationLimits {
     pub max_live_objects: usize,
     pub max_instructions: u32,
     pub max_nesting: u32,
-    /// By default, one creation event produces at most 512 tokens of each name after replacements.
-    /// This intentionally departs from Magic's rules for performance. Multiple token doublers
-    /// can otherwise generate exponentially many objects and overwhelm trigger processing.
+    /// Optional simulation cap. Normal games use the full rule-derived batch quantity.
     pub max_tokens_per_name_per_batch: u32,
 }
 impl Default for TokenCreationLimits {
@@ -20,7 +18,7 @@ impl Default for TokenCreationLimits {
             max_live_objects: 65_536,
             max_instructions: 4_096,
             max_nesting: 64,
-            max_tokens_per_name_per_batch: 512,
+            max_tokens_per_name_per_batch: u32::MAX,
         }
     }
 }

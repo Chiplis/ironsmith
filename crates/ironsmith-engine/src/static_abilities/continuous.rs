@@ -1235,6 +1235,12 @@ impl AnthemValueRuntimeExt for AnthemValue {
 fn anthem_value_as_layer_value(value: &AnthemValue) -> Option<Value> {
     match value {
         AnthemValue::Fixed(value) => Some(Value::Fixed(*value)),
+        // Linked cards supply their current characteristics in exile (CR
+        // 607.2a). Static discovery has no layer frame for the donor yet.
+        AnthemValue::Dynamic(value) if matches!(value.unhinted(),
+            Value::PowerOf(spec) | Value::ToughnessOf(spec)
+            if matches!(spec.unhinted(), crate::target::ChooseSpec::Tagged(tag)
+                if tag.as_str() == crate::tag::SOURCE_EXILED_TAG)) => Some(value.clone()),
         AnthemValue::Dynamic(value)
             if ironsmith_core::anthem_model::supports_controller_state_anthem_value(value)
                 || ironsmith_core::anthem_model::supports_scoped_reference_anthem_value(value)
@@ -7743,34 +7749,22 @@ impl SourceCharacteristicsOfLastExiledCreatureCard {
         }
     }
 
-    fn linked_card_characteristics(
+    fn linked_card(
         &self,
         source: ObjectId,
         controller: PlayerId,
         game: &GameState,
-    ) -> Option<(i32, i32, Vec<Subtype>)> {
+    ) -> Option<ObjectId> {
         let filter_ctx = game.filter_context_for_combat(controller, Some(source), None, None);
         game.get_exiled_with_source_links(source)
             .iter()
             .rev()
             .filter_map(|id| game.object(*id))
-            .find(|object| self.filter.matches_non_recursive(object, &filter_ctx, game))
-            .and_then(|object| {
-                let power = object.power()?;
-                let toughness = object.toughness()?;
-                let mut subtypes = object
-                    .subtypes
-                    .iter()
-                    .copied()
-                    .filter(Subtype::is_creature_type)
-                    .collect::<Vec<_>>();
-                for retained in &self.retained_subtypes {
-                    if !subtypes.contains(retained) {
-                        subtypes.push(*retained);
-                    }
-                }
-                Some((power, toughness, subtypes))
+            .find(|object| {
+                object.zone == crate::zone::Zone::Exile
+                    && self.filter.matches_non_recursive(object, &filter_ctx, game)
             })
+            .map(|object| object.id)
     }
 }
 
@@ -7801,25 +7795,20 @@ impl StaticAbilityKind for SourceCharacteristicsOfLastExiledCreatureCard {
         controller: PlayerId,
         game: &GameState,
     ) -> Vec<ContinuousEffect> {
-        let Some((power, toughness, subtypes)) =
-            self.linked_card_characteristics(source, controller, game)
-        else {
+        let Some(donor) = self.linked_card(source, controller, game) else {
             return Vec::new();
         };
 
+        let donor_filter = ObjectFilter::specific(donor).in_zone(crate::zone::Zone::Exile);
         vec![
             ContinuousEffect::new(
                 source,
                 controller,
                 EffectTarget::Source,
-                Modification::RemoveAllSubtypesOfFamily(SubtypeFamily::Creature),
-            )
-            .with_source_type(EffectSourceType::StaticAbility),
-            ContinuousEffect::new(
-                source,
-                controller,
-                EffectTarget::Source,
-                Modification::AddSubtypes(subtypes),
+                Modification::SetCreatureTypesFrom {
+                    donor,
+                    retained: self.retained_subtypes.clone(),
+                },
             )
             .with_source_type(EffectSourceType::StaticAbility),
             ContinuousEffect::new(
@@ -7827,8 +7816,8 @@ impl StaticAbilityKind for SourceCharacteristicsOfLastExiledCreatureCard {
                 controller,
                 EffectTarget::Source,
                 Modification::SetPowerToughness {
-                    power: Value::Fixed(power),
-                    toughness: Value::Fixed(toughness),
+                    power: Value::TotalPower(donor_filter.clone()),
+                    toughness: Value::TotalToughness(donor_filter),
                     sublayer: PtSublayer::Setting,
                 },
             )

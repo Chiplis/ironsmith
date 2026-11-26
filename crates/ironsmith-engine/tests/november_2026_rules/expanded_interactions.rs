@@ -64,6 +64,24 @@ fn spend(g: &mut GameState, card: ObjectId, method: CastingMethod) -> u32 {
 }
 
 #[test]
+fn spirit_guides_pay_during_casting() {
+    for (guide, spell) in [
+        ("elvish-spirit-guide", "llanowar-elves"),
+        ("simian-spirit-guide", "lightning-bolt"),
+    ] {
+        let mut g = game();
+        let spell = put(&mut g, spell, A, Zone::Hand);
+        assert!(cast_action(&g, spell, &CastingMethod::Normal).is_none());
+        let source = put(&mut g, guide, A, Zone::Hand);
+        let guide_stable = g.object(source).unwrap().stable_id;
+        assert_eq!(spend(&mut g, spell, CastingMethod::Normal), 0);
+        let paid = g.find_object_by_stable_id(guide_stable).unwrap();
+        assert_eq!(g.object(paid).unwrap().zone, Zone::Exile);
+        assert_eq!(g.player(A).unwrap().mana_pool.total(), 0);
+    }
+}
+
+#[test]
 fn stack_colors_and_types_determine_affordability_and_actual_payment() {
     for (route, change, modifier, method, expected) in [
         (

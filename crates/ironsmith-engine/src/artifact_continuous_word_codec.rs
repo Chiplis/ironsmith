@@ -150,6 +150,7 @@ pub(super) fn encode_modification(modification: Modification) -> Result<wire::Wi
         | Modification::ModifyToughness(_) | Modification::ModifyPowerToughness { .. }
         | Modification::ModifyPowerToughnessValue { .. }
         | Modification::ModifyPowerToughnessByCreatureTypes { .. }
+        | Modification::SetCreatureTypesFrom { .. }
         | Modification::ModifyPowerToughnessByColorCount { .. }
         | Modification::RemoveLandRulesTextAbilities => {
             // Moving one of these into runtime_modifications would change

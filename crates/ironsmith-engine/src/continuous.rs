@@ -801,6 +801,8 @@ pub enum ContinuousModification<S, A, C, T, R, H> {
     MergeComponent { component: crate::ids::StableId, on_top: bool },
     /// Count the affected object's creature types after layer 4 (CR 613.1d).
     ModifyPowerToughnessByCreatureTypes { power: TypeCountScale, toughness: TypeCountScale },
+    /// Set the creature subtypes from another object, retaining any specified types (CR 613.1d).
+    SetCreatureTypesFrom { donor: ObjectId, retained: Vec<Subtype> },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -876,6 +878,7 @@ retain_original_types,
             Self::AddCardTypes(value) => ContinuousModification::AddCardTypes(value),
             Self::RemoveCardTypes(value) => ContinuousModification::RemoveCardTypes(value),
             Self::SetCardTypes(value) => ContinuousModification::SetCardTypes(value),
+            Self::SetCreatureTypesFrom { donor, retained } => ContinuousModification::SetCreatureTypesFrom { donor, retained },
             Self::AddSubtypes(value) => ContinuousModification::AddSubtypes(value),
             Self::AddAllSubtypesOfFamily(value) => {
                 ContinuousModification::AddAllSubtypesOfFamily(value)
@@ -1127,6 +1130,7 @@ impl Modification {
             Modification::AddCardTypes(_)
             | Modification::RemoveCardTypes(_)
             | Modification::SetCardTypes(_)
+            | Modification::SetCreatureTypesFrom { .. }
             | Modification::AddSubtypes(_)
             | Modification::AddAllSubtypesOfFamily(_)
             | Modification::RemoveSubtypes(_)
@@ -2577,6 +2581,20 @@ pub(crate) fn merge_characteristic_subtype(subtypes:&mut SharedVec<Subtype>,inco
             if !a.families().eq(merged.families()) {subtypes[index]=Subtype::Custom(merged);}
         }
     }else{subtypes.push(incoming);}
+}
+
+pub(crate) fn set_creature_types_from(
+    chars: &mut CalculatedCharacteristics,
+    donor_types: &[Subtype],
+    retained: &[Subtype],
+    game: &crate::game_state::GameState,
+) {
+    chars.subtypes.retain(|ty| !game.admitted_subtype(*ty).is_creature_type());
+    for subtype in donor_types.iter().chain(retained).map(|ty| game.admitted_subtype(*ty)) {
+        if subtype.is_creature_type() && card_types_support_subtype(&chars.card_types, subtype) {
+            merge_characteristic_subtype(&mut chars.subtypes, subtype);
+        }
+    }
 }
 
 pub(crate) fn card_types_support_subtype(card_types: &[CardType], subtype: Subtype) -> bool {
@@ -4720,7 +4738,7 @@ fn calculate_characteristics_layer_batch_internal(
                 {
                     apply_counter_modifications(
                         object,
-                        objects,
+                        game,
                         &mut chars.power,
                         &mut chars.toughness,
                         &mut chars.numeric_range_error,
@@ -4776,7 +4794,7 @@ fn calculate_characteristics_layer_batch_internal(
         if !counters_applied_before_switch.contains(&id) {
             apply_counter_modifications(
                 object,
-                objects,
+                game,
                 &mut chars.power,
                 &mut chars.toughness,
                 &mut chars.numeric_range_error,
@@ -5870,7 +5888,7 @@ fn calculate_with_layers_direct_internal(
             {
                 apply_counter_modifications(
                     object,
-                    objects,
+                    game,
                     &mut chars.power,
                     &mut chars.toughness,
                     &mut chars.numeric_range_error,
@@ -5907,7 +5925,7 @@ fn calculate_with_layers_direct_internal(
     if !counters_applied {
         apply_counter_modifications(
             object,
-            objects,
+            game,
             &mut chars.power,
             &mut chars.toughness,
             &mut chars.numeric_range_error,
@@ -7815,6 +7833,13 @@ fn apply_modification_to_chars(
                 &mut chars.subtypes,
                 types,
             );
+        }
+        Modification::SetCreatureTypesFrom { donor, retained } => {
+            if let Some(donor) = calculate_characteristics_with_effects(
+                *donor, objects, effects, battlefield, commanders, game,
+            ) {
+                set_creature_types_from(chars, &donor.subtypes, retained, game);
+            }
         }
         Modification::AddSubtypes(subtypes) => {
             for subtype in subtypes {

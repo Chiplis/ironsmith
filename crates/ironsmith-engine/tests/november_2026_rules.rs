@@ -334,6 +334,30 @@ fn card(route: &str) -> ironsmith::CardDefinition {
             "Reanimate",
             "Mana cost: {B}\nType: Sorcery\nFirst printed set: Tempest\nPut target creature card from a graveyard onto the battlefield under your control. You lose life equal to that card's mana value.",
         ),
+        "elvish-spirit-guide" => (
+            "Elvish Spirit Guide",
+            "Mana cost: {2}{G}\nType: Creature — Elf Spirit\nPower/Toughness: 2/2\nExile this card from your hand: Add {G}.",
+        ),
+        "llanowar-elves" => (
+            "Llanowar Elves",
+            "Mana cost: {G}\nType: Creature — Elf Druid\nPower/Toughness: 1/1\n{T}: Add {G}.",
+        ),
+        "maskwood-nexus" => (
+            "Maskwood Nexus",
+            "Mana cost: {4}\nType: Artifact\nCreatures you control are every creature type. The same is true for creature spells you control and creature cards you own that aren't on the battlefield.\n{3}, {T}: Create a 2/2 blue Shapeshifter creature token with changeling.",
+        ),
+        "phyrexian-ingester" => (
+            "Phyrexian Ingester",
+            "Mana cost: {6}{U}\nType: Creature — Phyrexian Beast\nPower/Toughness: 3/3\nImprint — When this creature enters, you may exile target nontoken creature.\nThis creature gets +X/+Y, where X is the exiled creature card's power, and Y is the exiled creature card's toughness.",
+        ),
+        "duplicant" => (
+            "Duplicant",
+            "Mana cost: {6}\nType: Artifact Creature — Shapeshifter\nPower/Toughness: 2/4\nImprint — When this creature enters, you may exile target nontoken creature.\nAs long as a card exiled with this creature is a creature card, this creature has the power, toughness, and creature types of the last creature card exiled with it. It's still a Shapeshifter.",
+        ),
+        "battle-squadron" => (
+            "Battle Squadron",
+            "Mana cost: {3}{R}{R}\nType: Creature — Goblin\nPower/Toughness: */*\nFlying\nBattle Squadron's power and toughness are each equal to the number of creatures you control.",
+        ),
         "simian-spirit-guide" => (
             "Simian Spirit Guide",
             "Mana cost: {2}{R}\nType: Creature — Ape Spirit\nFirst printed set: Planar Chaos\nPower/Toughness: 2/2\nExile this card from your hand: Add {R}.",
@@ -702,23 +726,28 @@ fn all_requested_coin_flips_take_place() {
 }
 
 #[test]
-fn same_name_token_cap_resets_for_each_creation_event() {
-    let mut game = game();
-    let source = game.new_object_id();
+fn token_creation_uses_the_full_count_unless_a_simulation_cap_is_configured() {
     let cat = CardDefinitionBuilder::new(CardId::new(), "Cat")
         .token()
         .card_types(vec![CardType::Creature])
         .power_toughness(PowerToughness::fixed(2, 2))
         .build();
-    let outcome = ironsmith::effects::CreateTokenEffect::you(cat.clone(), 513)
-        .execute(&mut game, &mut EffectContext::new_default(source, A))
-        .unwrap();
-    assert_eq!(outcome.result_objects().unwrap().len(), 512);
-    assert_eq!(game.battlefield.len(), 512);
-    ironsmith::effects::CreateTokenEffect::you(cat, 1)
-        .execute(&mut game, &mut EffectContext::new_default(source, A))
-        .unwrap();
-    assert_eq!(game.battlefield.len(), 513);
+    for (cap, expected) in [(None, 513), (Some(512), 512)] {
+        let mut g = game();
+        if let Some(cap) = cap {
+            g.set_token_creation_limits(ironsmith::effects::tokens::TokenCreationLimits {
+                max_tokens_per_name_per_batch: cap,
+                ..Default::default()
+            });
+        }
+        let source = g.new_object_id();
+        let mut ctx = EffectContext::new_default(source, A);
+        let outcome = ironsmith::effects::CreateTokenEffect::you(cat.clone(), 513)
+            .execute(&mut g, &mut ctx).unwrap();
+        assert_eq!(outcome.result_objects().unwrap().len(), expected);
+        ironsmith::effects::CreateTokenEffect::you(cat.clone(), 1).execute(&mut g, &mut ctx).unwrap();
+        assert_eq!(g.battlefield.len(), expected + 1);
+    }
 }
 
 #[test]

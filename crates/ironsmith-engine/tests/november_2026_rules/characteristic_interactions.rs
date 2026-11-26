@@ -24,6 +24,27 @@ fn resolve_last_activated(game: &mut GameState, source: ObjectId) {
 }
 
 #[test]
+fn imprint_reads_exiled_cards_as_the_board_changes() {
+    for (route, bonus) in [("duplicant", 0), ("phyrexian-ingester", 3)] {
+        let mut g = game();
+        let source = put(&mut g, route, A, Zone::Battlefield);
+        let donor = put(&mut g, "battle-squadron", B, Zone::Exile);
+        g.add_exiled_with_source_link(source, donor);
+        put(&mut g, "grizzly-bears", B, Zone::Battlefield);
+        assert_eq!(g.current_power(source), Some(bonus + 1));
+        put(&mut g, "grizzly-bears", B, Zone::Battlefield);
+        assert_eq!(g.current_toughness(source), Some(bonus + 2));
+        if route == "duplicant" {
+            let nexus = put(&mut g, "maskwood-nexus", B, Zone::Battlefield);
+            assert!(g.current_has_subtype(source, ironsmith::Subtype::Dragon));
+            g.phase_out(nexus);
+            assert!(!g.current_has_subtype(source, ironsmith::Subtype::Dragon));
+            assert!(g.current_has_subtype(source, ironsmith::Subtype::Shapeshifter));
+        }
+    }
+}
+
+#[test]
 fn linked_exile_mana_reads_current_colors_and_ignores_absent_color_effects() {
     for route in ["chrome-mox", "pit-of-offerings"] {
         let mut g = game();

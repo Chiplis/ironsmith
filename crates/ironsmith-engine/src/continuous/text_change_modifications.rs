@@ -99,7 +99,8 @@ pub(crate) fn rewrite_modification_words(modification: &Modification, change: Te
     let mut rewritten = modification.clone();
     match &mut rewritten {
         Modification::AddSubtypes(words) | Modification::RemoveSubtypes(words)
-        | Modification::SetSubtypes(words) => change.replace_subtype_words(words),
+        | Modification::SetSubtypes(words)
+        | Modification::SetCreatureTypesFrom { retained: words, .. } => change.replace_subtype_words(words),
         Modification::AddColors(words) | Modification::RemoveColors(words)
         | Modification::SetColors(words) => {
             // The historical all-colors bitset also represents "all colors",

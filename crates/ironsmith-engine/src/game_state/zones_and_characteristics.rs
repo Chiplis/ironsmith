@@ -8546,6 +8546,7 @@ retain_original_types: false, retain_original_name: false,
             | Modification::AddCardTypes(_)
             | Modification::RemoveCardTypes(_)
             | Modification::SetCardTypes(_)
+            | Modification::SetCreatureTypesFrom { .. }
             | Modification::AddSubtypes(_)
             | Modification::AddAllSubtypesOfFamily(_)
             | Modification::RemoveSubtypes(_)

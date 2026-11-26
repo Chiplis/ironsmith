@@ -731,7 +731,7 @@ impl NumericProperty {
             Self::ColorCount => Some(snapshot.colors.count() as i32),
         }
     }
-    fn is_power_or_toughness(self) -> bool {
+    pub(crate) fn is_power_or_toughness(self) -> bool {
         matches!(self, Self::Power | Self::BasePower | Self::Toughness)
     }
     fn source_snapshot(self, snapshot: &ObjectSnapshot) -> Option<i32> {
@@ -1021,6 +1021,11 @@ impl EvaluationContext<'_, '_> {
         let Some(ctx) = self.execution() else {
             return Ok(self.layer().object_number(spec, property));
         };
+        if let ChooseSpec::Tagged(tag) = spec.base()
+            && ctx.get_tagged(tag).is_some_and(|card| card.discard_characteristics_undefined)
+        {
+            return Ok(0); // CR 107.2, 701.9c
+        }
         // "the exiled creature's power": the departure history of the
         // instruction's result. When the object never left its zone there is
         // no history; the result itself is then the creature (CR 608.2h).

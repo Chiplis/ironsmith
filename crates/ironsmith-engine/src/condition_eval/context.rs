@@ -113,7 +113,7 @@ impl<'a, 'event> ConditionContext<'a, 'event> {
     ) -> Result<Vec<PlayerId>, ExecutionError> {
         match player {
             PlayerFilter::Opponent | PlayerFilter::NotYou | PlayerFilter::Any => Ok(
-                matching_condition_players_simple(game, self.controller, player),
+                matching_condition_players_simple(game, self.controller, self.source, player),
             ),
             _ => Ok(self.resolve_player(game, player)?.into_iter().collect()),
         }

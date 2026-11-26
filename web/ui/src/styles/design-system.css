@@ -3381,7 +3381,8 @@ button:disabled,
   transition:
     transform 300ms cubic-bezier(0.34, 1.42, 0.64, 1),
     opacity 220ms ease,
-    box-shadow 350ms ease;
+    box-shadow 350ms ease,
+    var(--field-hover-transition, scale 0s);
 }
 
 .game-card.card-action-available::before,
@@ -3500,7 +3501,7 @@ button:disabled,
   outline-offset: 0;
   box-shadow: 0 0 9px 2px var(--target-highlight) !important;
   translate: 0 0;
-  transition: translate 160ms ease, transform 300ms ease, opacity 220ms ease;
+  transition: translate 160ms ease, transform 300ms ease, opacity 220ms ease, var(--field-hover-transition, scale 0s);
 }
 
 .game-card.card-targeting-mode.target-legal:is(:hover, .hovered) {

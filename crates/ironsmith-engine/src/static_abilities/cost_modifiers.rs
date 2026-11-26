@@ -3496,14 +3496,10 @@ pub fn this_spell_cost_condition_is_active_for_player_with_optional_costs_paid(
             .player(controller)
             .is_some_and(|player| player.life <= *n),
         ThisSpellCostCondition::OpponentHasNoCardsInHand => game
-            .players
-            .iter()
-            .filter(|player| player.is_in_game() && player.id != controller)
+            .opponents_in_source_range(controller, Some(source))
             .any(|player| player.hand.is_empty()),
         ThisSpellCostCondition::OpponentControlsLandsOrMore(n) => game
-            .players
-            .iter()
-            .filter(|player| player.is_in_game() && player.id != controller)
+            .opponents_in_source_range(controller, Some(source))
             .any(|player| {
                 let lands = game
                     .battlefield
@@ -3526,9 +3522,7 @@ pub fn this_spell_cost_condition_is_active_for_player_with_optional_costs_paid(
                         && game.object_has_card_type(object.id, CardType::Creature)
                 })
                 .count();
-            game.players
-                .iter()
-                .filter(|player| player.is_in_game() && player.id != controller)
+            game.opponents_in_source_range(controller, Some(source))
                 .any(|player| {
                     let opponent_creatures = game
                         .battlefield
@@ -3546,16 +3540,14 @@ pub fn this_spell_cost_condition_is_active_for_player_with_optional_costs_paid(
             let total_creatures = game
                 .players
                 .iter()
-                .filter(|player| player.is_in_game())
+                .filter(|player| player.is_in_game() && game.player_is_within_source_range(controller, player.id, Some(source)))
                 .flat_map(|player| player.graveyard.iter().copied())
                 .filter(|card_id| game.object_has_card_type(*card_id, CardType::Creature))
                 .count();
             total_creatures >= *n as usize
         }
         ThisSpellCostCondition::OpponentCastSpellsThisTurnOrMore(n) => game
-            .players
-            .iter()
-            .filter(|player| player.is_in_game() && player.id != controller)
+            .opponents_in_source_range(controller, Some(source))
             .any(|player| {
                 game.turn_store
                     .turn_history
@@ -3563,9 +3555,7 @@ pub fn this_spell_cost_condition_is_active_for_player_with_optional_costs_paid(
                     >= *n
             }),
         ThisSpellCostCondition::OpponentDrewCardsThisTurnOrMore(n) => game
-            .players
-            .iter()
-            .filter(|player| player.is_in_game() && player.id != controller)
+            .opponents_in_source_range(controller, Some(source))
             .any(|player| {
                 game.turn_store
                     .turn_history
@@ -3573,9 +3563,7 @@ pub fn this_spell_cost_condition_is_active_for_player_with_optional_costs_paid(
                     >= *n
             }),
         ThisSpellCostCondition::OpponentHadCardsPutIntoGraveyardThisTurnOrMore(n) => game
-            .players
-            .iter()
-            .filter(|player| player.is_in_game() && game.are_opponents(player.id, controller))
+            .opponents_in_source_range(controller, Some(source))
             .any(|player| {
                 game.turn_store
                     .turn_history
@@ -3663,14 +3651,10 @@ pub fn this_spell_cost_condition_is_active_for_player_with_optional_costs_paid(
                 >= *n
         }
         ThisSpellCostCondition::OpponentHasPoisonCountersOrMore(n) => game
-            .players
-            .iter()
-            .filter(|player| player.is_in_game() && player.id != controller)
+            .opponents_in_source_range(controller, Some(source))
             .any(|player| player.poison_counters >= *n),
         ThisSpellCostCondition::OpponentHasCardsInGraveyardOrMore(n) => game
-            .players
-            .iter()
-            .filter(|player| player.is_in_game() && player.id != controller)
+            .opponents_in_source_range(controller, Some(source))
             .any(|player| player.graveyard.len() >= *n as usize),
         ThisSpellCostCondition::LifeTotalLessThanStarting => game
             .player(controller)

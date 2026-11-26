@@ -2231,7 +2231,7 @@ impl ReplacementMatcher for ThisWouldEnterTappedUnlessControlTwoOrMoreOtherLands
             .battlefield
             .iter()
             .filter_map(|&id| ctx.game.object(id))
-            .filter(|obj| ctx.game.controller_of(obj) == ctx.controller && obj.is_land())
+            .filter(|obj| !ctx.game.is_phased_out(obj.id) && ctx.game.controller_of(obj) == ctx.controller && ctx.game.object_has_card_type(obj.id, crate::types::CardType::Land))
             .count();
         land_count < 2
     }
@@ -2272,7 +2272,7 @@ impl ReplacementMatcher for ThisWouldEnterTappedUnlessControlTwoOrFewerOtherLand
             .battlefield
             .iter()
             .filter_map(|&id| ctx.game.object(id))
-            .filter(|obj| ctx.game.controller_of(obj) == ctx.controller && obj.is_land())
+            .filter(|obj| !ctx.game.is_phased_out(obj.id) && ctx.game.controller_of(obj) == ctx.controller && ctx.game.object_has_card_type(obj.id, crate::types::CardType::Land))
             .count();
         land_count > 2
     }
@@ -2315,8 +2315,9 @@ impl ReplacementMatcher for ThisWouldEnterTappedUnlessControlTwoOrMoreBasicLands
             .filter_map(|&id| ctx.game.object(id))
             .filter(|obj| {
                 ctx.game.controller_of(obj) == ctx.controller
-                    && obj.is_land()
-                    && obj.supertypes.contains(&crate::types::Supertype::Basic)
+                    && ctx.game.object_has_card_type(obj.id, crate::types::CardType::Land)
+                    && !ctx.game.is_phased_out(obj.id)
+                    && ctx.game.current_has_supertype(obj.id, crate::types::Supertype::Basic)
             })
             .count();
         basic_land_count < 2
@@ -2356,7 +2357,7 @@ impl ReplacementMatcher for ThisWouldEnterTappedUnlessAPlayerHas13OrLessLifeMatc
         !ctx.game
             .players
             .iter()
-            .any(|player| player.is_in_game() && player.life <= 13)
+            .any(|player| player.is_in_game() && ctx.game.player_is_within_source_range(ctx.controller, player.id, ctx.source) && player.life <= 13)
     }
 
     fn priority(&self) -> ReplacementPriority {
@@ -2392,9 +2393,7 @@ impl ReplacementMatcher for ThisWouldEnterTappedUnlessTwoOrMoreOpponentsMatcher 
 
         let opponents = ctx
             .game
-            .players
-            .iter()
-            .filter(|player| player.is_in_game() && player.id != ctx.controller)
+            .opponents_in_source_range(ctx.controller, ctx.source)
             .count();
         opponents < 2
     }
@@ -2679,10 +2678,8 @@ impl ReplacementMatcher for ThisWouldEnterWithBloodthirstMatcher {
             return false;
         }
 
-        ctx.game.players.iter().any(|player| {
-            player.is_in_game()
-                && player.id != ctx.controller
-                && ctx
+        ctx.game.opponents_in_source_range(ctx.controller, ctx.source).any(|player| {
+            ctx
                     .game
                     .turn_store
                     .turn_history

@@ -430,6 +430,7 @@ fn public_claim_outcome(
                 snapshot.controller,
                 snapshot.zone,
             );
+            public.discard_characteristics_undefined = snapshot.discard_characteristics_undefined;
             public.kind = snapshot.kind;
             public.is_token = snapshot.is_token;
             public.face_down = snapshot.face_down;
@@ -711,7 +712,7 @@ impl GameState {
     ) -> crate::snapshot::ObjectSnapshot {
         use crate::snapshot::ObjectSnapshot;
         let private = hidden_match && (snapshot.zone.is_hidden() || snapshot.face_down);
-        let mut public = if !private {
+        let mut public = if snapshot.discard_characteristics_undefined || !private {
             snapshot.clone()
         } else if let Some(live) = self.object(snapshot.object_id).filter(|live| {
             live.stable_id == snapshot.stable_id

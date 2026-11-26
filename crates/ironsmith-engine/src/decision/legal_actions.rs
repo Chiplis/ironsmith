@@ -2007,7 +2007,7 @@ fn add_battlefield_actions(
     Ok(())
 }
 
-fn collect_non_battlefield_source_ids(
+pub(crate) fn collect_non_battlefield_source_ids(
     game: &GameState,
     player: PlayerId,
     hand: &[ObjectId],

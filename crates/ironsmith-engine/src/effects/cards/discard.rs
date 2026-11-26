@@ -1121,11 +1121,11 @@ impl DiscardBatchProjection {
             self.discarded = self.discarded.saturating_add(1);
             self.discarded_cards.push(card_id);
             if let Some(memory) = pre_memory {
-                self.affected_memory.push(memory);
+                self.affected_memory.push(memory.for_discard(result.type_verifiable));
             }
             self.successful_discards.push((
                 card_id,
-                pre_discard_snapshot,
+                pre_discard_snapshot.map(|snapshot| snapshot.for_discard(result.type_verifiable)),
                 result.final_zone,
                 result.new_id,
             ));
@@ -1134,7 +1134,7 @@ impl DiscardBatchProjection {
                     .map(|object| ObjectSnapshot::from_object(object, game))
             });
             if let Some(snapshot) = snapshot {
-                self.discarded_snapshots.push(snapshot);
+                self.discarded_snapshots.push(snapshot.for_discard(result.type_verifiable));
             }
         }
         if let Some(id) = receipt.result.new_id

@@ -2332,6 +2332,7 @@ impl CantAttackUnlessCondition {
         game: &GameState,
         filter: &ObjectFilter,
         controller: Option<PlayerId>,
+        observer: PlayerId,
     ) -> usize {
         let mut battlefield_filter = filter.clone();
         battlefield_filter.zone = Some(Zone::Battlefield);
@@ -2341,7 +2342,8 @@ impl CantAttackUnlessCondition {
             .iter()
             .filter_map(|&id| game.object(id))
             .filter(|obj| {
-                controller.is_none_or(|player| game.controller_of(obj) == player)
+                game.object_is_within_range(observer, obj.id, None)
+                    && controller.is_none_or(|player| game.controller_of(obj) == player)
                     && battlefield_filter.matches(obj, &filter_ctx, game)
             })
             .count()
@@ -2353,8 +2355,8 @@ impl CantAttackUnlessCondition {
         other: PlayerId,
         filter: &ObjectFilter,
     ) -> bool {
-        Self::battlefield_count_matching(game, filter, Some(player))
-            > Self::battlefield_count_matching(game, filter, Some(other))
+        Self::battlefield_count_matching(game, filter, Some(player), player)
+            > Self::battlefield_count_matching(game, filter, Some(other), player)
     }
 
     fn source_can_attack_without_defender(
@@ -2371,17 +2373,15 @@ impl CantAttackUnlessCondition {
 
         match &self.condition {
             CantAttackUnlessConditionSpec::BattlefieldCountAtLeast { filter, count } => {
-                Some(Self::battlefield_count_matching(game, filter, None) >= *count as usize)
+                Some(Self::battlefield_count_matching(game, filter, None, controller) >= *count as usize)
             }
             CantAttackUnlessConditionSpec::ControllerGraveyardHasCardsAtLeast(count) => Some(
                 game.player(controller)
                     .is_some_and(|player| player.graveyard.len() >= *count as usize),
             ),
             CantAttackUnlessConditionSpec::OpponentWasDealtDamageThisTurn => {
-                Some(game.players.iter().any(|player| {
-                    player.is_in_game()
-                        && player.id != controller
-                        && game
+                Some(game.opponents_in_source_range(controller, Some(source)).any(|player| {
+                    game
                             .turn_store
                             .turn_history
                             .player_was_dealt_damage_this_turn(player.id)

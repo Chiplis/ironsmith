@@ -5458,6 +5458,32 @@ impl ObjectFilterExt for ObjectFilter {
         ctx: &FilterContext,
         game: &crate::game_state::GameState,
     ) -> bool {
+        if snapshot.discard_characteristics_undefined {
+            // Checking an absent characteristic (e.g. "nonland" or mana value
+            // zero) is still a characteristic check. Only known facts can match.
+            let mut known = ObjectFilter::default();
+            known.zone = self.zone;
+            known.owner = self.owner.clone();
+            known.controller = self.controller.clone();
+            known.source = self.source;
+            known.source_surface = self.source_surface.clone();
+            known.specific = self.specific;
+            known.excluded_specific = self.excluded_specific;
+            known.other = self.other;
+            known.physical_card = self.physical_card;
+            known.nontoken = self.nontoken;
+            known.token = self.token;
+            use ironsmith_core::filter_model::TaggedOpbjectRelation as Relation;
+            known.tagged_constraints = self.tagged_constraints.iter().filter(|constraint| matches!(
+                constraint.relation, Relation::IsTaggedObject | Relation::SameObjectId | Relation::SameStableId
+                | Relation::IsNotTaggedObject | Relation::IsTaggedObjectSacrificedAsSourceEntered
+            )).cloned().collect();
+            known.any_of = self.any_of.clone();
+            if known != *self || (!self.any_of.is_empty()
+                && !self.any_of.iter().any(|branch| branch.matches_snapshot(snapshot, ctx, game))) {
+                return false;
+            }
+        }
         if self.zone.is_some() && game.is_originless_card_entry_pending(snapshot.object_id) { return false; }
         if self.match_current_state {
             let Some(current) = game.object(snapshot.object_id) else {

@@ -11,7 +11,8 @@
 }
 .battlefield-row[data-scene-layout="true"]::-webkit-scrollbar { display: none; width: 0; height: 0; }
 .battlefield-scene { position: absolute; top: 0; left: 0; pointer-events: none; }
-.battlefield-scene-object { pointer-events: none; z-index: var(--scene-layer, 20); }
+/* A card that was just hovered stays on top until it has shrunk back. */
+.battlefield-scene-object { pointer-events: none; z-index: var(--scene-layer, 20); transition: z-index 0s 400ms; }
 .battlefield-scene-object > .game-card {
   pointer-events: auto;
   position: absolute !important;
@@ -23,5 +24,8 @@
   --battlefield-settle-x: 0px !important;
   --battlefield-settle-y: 0px !important;
 }
-.battlefield-scene-object:has(:focus-visible, .hovered, .inspected, [data-open="true"]) { z-index: 40; }
+.battlefield-scene-object:has(:focus-visible, .hovered, .inspected, [data-open="true"]) { z-index: 40; transition: none; }
+@media (hover: hover) and (pointer: fine) {
+  .battlefield-scene-object:has(> .game-card:hover) { z-index: 40; transition: none; }
+}
 .battlefield-row[data-scene-layout="true"] .battlefield-grid-drop-slot { pointer-events: none; }

@@ -3163,7 +3163,7 @@ fn evaluate_turn_history_condition(
     use ironsmith_core::TurnHistoryCondition;
 
     let matching_players =
-        |filter: &PlayerFilter| matching_condition_players_simple(game, ctx.controller, filter);
+        |filter: &PlayerFilter| matching_condition_players_simple(game, ctx.controller, ctx.source, filter);
     let triggering_snapshot = || {
         ctx.triggering_event
             .and_then(TriggerEvent::snapshot)
@@ -4345,25 +4345,30 @@ fn combat_defending_player(game: &GameState) -> Option<PlayerId> {
 fn matching_condition_players_simple(
     game: &GameState,
     controller: PlayerId,
+    source: ObjectId,
     player: &PlayerFilter,
 ) -> Vec<PlayerId> {
     match player {
         PlayerFilter::Opponent => game
-            .players
-            .iter()
-            .filter(|p| p.is_in_game() && game.are_opponents(controller, p.id))
+            .opponents_in_source_range(controller, Some(source))
             .map(|p| p.id)
             .collect(),
         PlayerFilter::NotYou => game
             .players
             .iter()
-            .filter(|p| p.id != controller && p.is_in_game())
+            .filter(|p| {
+                p.id != controller
+                    && p.is_in_game()
+                    && game.player_is_within_source_range(controller, p.id, Some(source))
+            })
             .map(|p| p.id)
             .collect(),
         PlayerFilter::Any => game
             .players
             .iter()
-            .filter(|p| p.is_in_game())
+            .filter(|p| {
+                p.is_in_game() && game.player_is_within_source_range(controller, p.id, Some(source))
+            })
             .map(|p| p.id)
             .collect(),
         _ => resolve_condition_player_simple(game, controller, player)
@@ -4490,7 +4495,7 @@ fn evaluate_condition_in_context(
         } // These history predicates retain the shared core's pre-resolution
           // player bindings, even when an execution context is available.
         Condition::PlayerWasDealtCombatDamageByCreatureSubtypeThisTurn { player, subtype } => {
-            let players = matching_condition_players_simple(game, shared.controller, player);
+            let players = matching_condition_players_simple(game, shared.controller, shared.source, player);
             Ok(game
                 .turn_store
                 .turn_history
@@ -4609,7 +4614,7 @@ fn evaluate_condition_in_context(
                         .battlefield
                         .iter()
                         .filter_map(|&id| game.object(id))
-                        .filter(|obj| game.controller_of(obj) == player_id && obj.is_land())
+                        .filter(|obj| game.controller_of(obj) == player_id && game.object_has_card_type(obj.id, crate::types::CardType::Land))
                     {
                         for subtype in game.calculated_subtypes(obj.id) {
                             if matches!(
@@ -7119,18 +7124,18 @@ Condition::TriggeringSpellSnowManaOfAnySpellColorSpentToCast => {
             // as nonexistent for this current-state predicate (CR 702.26b).
             if game.is_phased_out(shared.source) { return Ok(false); }
             Ok(
-                matching_condition_players_simple(game, shared.controller, player)
+                matching_condition_players_simple(game, shared.controller, shared.source, player)
                     .into_iter()
                     .any(|player_id| game.current_ring_bearer(player_id) == Some(shared.source)),
             )
         }
         Condition::PlayerSpentManaToCastSpellsThisTurnAtLeast { player, amount } => {
             let amount=amount.fixed().ok_or_else(||ExecutionError::IncompleteEvidence("copy-creation numeric parameter was not captured by its creation recipe".into()))?;
-            Ok(matching_condition_players_simple(game, shared.controller, player).into_iter().any(|payer|
+            Ok(matching_condition_players_simple(game, shared.controller, shared.source, player).into_iter().any(|payer|
                 game.turn_store.turn_history.mana_spent_to_cast_spells_this_turn.get(&payer).copied().unwrap_or(0) >= amount))
         },
         Condition::PlayerRingTemptedThisGameOrMore { player, count } => Ok(
-            matching_condition_players_simple(game, shared.controller, player)
+            matching_condition_players_simple(game, shared.controller, shared.source, player)
                 .into_iter()
                 .any(|player_id| game.ring_temptations(player_id) >= *count),
         ),
@@ -7139,7 +7144,7 @@ Condition::TriggeringSpellSnowManaOfAnySpellColorSpentToCast => {
             filter,
             with_cards_named,
         } => Ok(
-            matching_condition_players_simple(game, shared.controller, player)
+            matching_condition_players_simple(game, shared.controller, shared.source, player)
                 .into_iter()
                 .any(|player_id| {
                     game.removed_from_draft_card_matches(

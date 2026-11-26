@@ -16,6 +16,7 @@ pub(crate) fn synthetic_chosen_name_snapshot(
     name: String,
 ) -> ObjectSnapshot {
     ObjectSnapshot {
+        discard_characteristics_undefined: false,
         custom_statuses: Vec::new(), named_action_history:None,
         text_addition_sources: Vec::new(),
         entry_action_objects: Default::default(),

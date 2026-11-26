@@ -49,6 +49,8 @@ import { samePlayerId } from "@/lib/player-display";
 const BOTTOM_BATTLEFIELD_SAFE_INSET = 60;
 const LIVE_DAMAGE_ANIMATION_MS = 300;
 const BATTLEFIELD_LAYOUT_SETTLE_MIN_DELTA_PX = 1.25;
+// Four 60 fps frames: by then the hover grow has covered most of its distance.
+const BATTLEFIELD_POINTER_HOVER_REPORT_DELAY_MS = 64;
 const BATTLEFIELD_LAYOUT_SETTLE_MIN_MS = 180;
 const BATTLEFIELD_LAYOUT_SETTLE_MAX_MS = 380;
 const GHOST_BASE_ANIMATION_MS = 520;
@@ -945,7 +947,52 @@ export default function BattlefieldRow({
   const pendingPlacement = usePendingPlacement();
   const placementSlots = usePlacementSlots();
   const { commitPlacementSlot } = usePlacementActions();
-  const { hoverCard, clearHover, clearAnchoredCardPreview, hoveredObjectId, hoveredLinkedObjectIds, activeHoveredLinkedObjectIds } = useHover();
+  const {
+    hoverCard: setHoveredCard,
+    clearHover: clearHoveredCard,
+    clearAnchoredCardPreview,
+    hoveredObjectId,
+    hoveredLinkedObjectIds,
+    activeHoveredLinkedObjectIds,
+  } = useHover();
+  // Hovering a card re-renders the inspector and every hover consumer, which
+  // can hold the main thread for many frames. A pointer hover therefore lets
+  // the card's CSS grow start on screen and reports the hover a few frames
+  // later, so the render cannot swallow the animation. Sweeping the pointer
+  // across cards also skips the renders for cards it only passed over.
+  const pendingPointerHoverRef = useRef(null);
+  const cancelPointerHover = useCallback(() => {
+    const pending = pendingPointerHoverRef.current;
+    if (!pending) return;
+    pendingPointerHoverRef.current = null;
+    cancelAnimationFrame(pending.frame);
+    clearTimeout(pending.timer);
+  }, []);
+  const hoverCard = useCallback((objectId) => {
+    cancelPointerHover();
+    setHoveredCard(objectId);
+  }, [cancelPointerHover, setHoveredCard]);
+  const clearHover = useCallback(() => {
+    cancelPointerHover();
+    clearHoveredCard();
+  }, [cancelPointerHover, clearHoveredCard]);
+  const hoverCardAfterPaint = useCallback((objectId) => {
+    cancelPointerHover();
+    if (document.visibilityState !== "visible") {
+      setHoveredCard(objectId);
+      return;
+    }
+    const pending = { frame: 0, timer: 0 };
+    pendingPointerHoverRef.current = pending;
+    pending.frame = requestAnimationFrame(() => {
+      pending.timer = setTimeout(() => {
+        if (pendingPointerHoverRef.current !== pending) return;
+        pendingPointerHoverRef.current = null;
+        setHoveredCard(objectId);
+      }, BATTLEFIELD_POINTER_HOVER_REPORT_DELAY_MS);
+    });
+  }, [cancelPointerHover, setHoveredCard]);
+  useEffect(() => cancelPointerHover, [cancelPointerHover]);
 
   useEffect(() => {
     const handleHandInspectionState = (event) => {
@@ -2922,7 +2969,7 @@ export default function BattlefieldRow({
                 clearAnchoredCardPreview();
                 return;
               }
-              closeManaPopover(); hoverCard(card.id); event.currentTarget.focus({ preventScroll: true });
+              closeManaPopover(); hoverCardAfterPaint(card.id); event.currentTarget.focus({ preventScroll: true });
             })}
             onMouseLeave={isLayoutHold ? undefined : (() => { clearHover(); leaveManaPopover(); })}
             onFocus={isLayoutHold ? undefined : (() => {
@@ -2932,10 +2979,14 @@ export default function BattlefieldRow({
               if (mobileObjectGesturesEnabled) return;
               if ((paymentActionMap.get(Number(card.id)) || []).length) return;
               if (handInspectionLockedRef.current && !keyboardNavigationRef.current) return;
-              hoverCard(card.id);
               // Mouse focus is only hover. Keyboard focus is the user's
               // explicit navigation request, so it also advances the detail.
-              if (keyboardNavigationRef.current) onInspect?.(card.id);
+              if (keyboardNavigationRef.current) {
+                hoverCard(card.id);
+                onInspect?.(card.id);
+              } else {
+                hoverCardAfterPaint(card.id);
+              }
             })}
             centerOverlay={showsUndoOverlay ? (
               <Button

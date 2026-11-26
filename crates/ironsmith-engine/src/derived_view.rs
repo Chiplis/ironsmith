@@ -1369,37 +1369,31 @@ impl<'a> DerivedGameView<'a> {
             }
         }
 
-        // A mana ability a player has until end of turn ("any time you could
-        // activate a mana ability, you may pay 1 life. If you do, add {C}",
-        // CR 605.1a) is carried by a command-zone object it owns. It is a
-        // mana source for payment (CR 605.3a); its priority activation is
-        // already offered with the player's other non-battlefield abilities.
-        for granted in &self.game.effect_store.granted_mana_abilities {
-            let Some(carrier) = granted.carrier else {
-                continue;
-            };
-            if granted.controller != player || analysis.mana_source_ids.contains(&carrier) {
-                continue;
+        // CR 605.3a includes mana abilities that function in other zones.
+        // Use the same source list, ownership and functional-zone checks as
+        // priority activation. The planner still pays each activation cost.
+        if let Some(payer) = self.game.player(player) {
+            for id in crate::decision::collect_non_battlefield_source_ids(
+                self.game, player, &payer.hand, &payer.graveyard,
+            ) {
+                if !self.game.can_activate_abilities_of(id) {
+                    continue;
+                }
+                let Some(summary) = self.ability_index_summary(id) else { continue };
+                if summary.mana_ability_indices().is_empty() {
+                    continue;
+                }
+                let controlled = self.game.controller_of_id(id) == Some(player);
+                let indices = summary.mana_ability_indices().iter().copied().filter(|index| {
+                    controlled || self.abilities_rc(id).and_then(|abilities| abilities.get(*index).cloned())
+                        .is_some_and(|ability| matches!(ability.kind, AbilityKind::Activated(activated)
+                            if activated.allows_any_player_to_activate()))
+                }).collect::<Vec<_>>();
+                if !indices.is_empty() {
+                    analysis.mana_source_ids.push(id);
+                    analysis.mana_ability_indices.insert(id, indices);
+                }
             }
-            if self
-                .game
-                .object(carrier)
-                .is_none_or(|object| object.zone != Zone::Command)
-                || !self.game.can_activate_abilities_of(carrier)
-            {
-                continue;
-            }
-            let Some(ability_summary) = self.ability_index_summary(carrier) else {
-                continue;
-            };
-            let mana_ability_indices = ability_summary.mana_ability_indices().to_vec();
-            if mana_ability_indices.is_empty() {
-                continue;
-            }
-            analysis.mana_source_ids.push(carrier);
-            analysis
-                .mana_ability_indices
-                .insert(carrier, mana_ability_indices);
         }
 
         analysis

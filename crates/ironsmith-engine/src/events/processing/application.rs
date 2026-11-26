@@ -695,7 +695,7 @@ pub(super) fn apply_trait_replacement(
         }
 
         ReplacementAction::Tribute { count, .. } => {
-            let opponents = super::tribute_opponents(game, effect.controller);
+            let opponents = super::tribute_opponents(game, effect.controller, effect.source);
             if opponents.is_empty() {
                 return Ok(TraitApplyResult::Unchanged(event));
             };

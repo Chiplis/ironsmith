@@ -36,6 +36,7 @@ use attack_block::*;
 #[allow(unused_imports)]
 use io::*;
 pub(crate) use legal_actions::{
+    collect_non_battlefield_source_ids,
     activation_step_window_allows, activation_timing_allows, exhaust_activation_allows,
     can_invoke_designated_ability_without_costs,
 };

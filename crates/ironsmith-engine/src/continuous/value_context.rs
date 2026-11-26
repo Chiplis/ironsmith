@@ -479,7 +479,15 @@ impl LayerValueContext<'_, '_> {
                     game.object(**id)
                         .is_some_and(|object| object.zone == crate::zone::Zone::Exile)
                 })
-                .fold(0i32, |total, id| total.saturating_add(self.number_at(*id, property)));
+                .fold(0i32, |total, id| {
+                    if !property.is_power_or_toughness() {
+                        return total.saturating_add(self.number_at(*id, property));
+                    }
+                    let filter = ObjectFilter::specific(*id).in_zone(crate::zone::Zone::Exile);
+                    let mut number = 0;
+                    self.visit_layered(&filter, |_, chars| number = property.characteristics(chars).unwrap_or(0));
+                    total.saturating_add(number)
+                });
         }
         object_for_value_spec(spec, self.calculation, self.source)
             .map(|object| self.number_at(object.id, property))

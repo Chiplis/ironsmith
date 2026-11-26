@@ -409,6 +409,13 @@ pub(super) fn calculate_with_layers(
                         types,
                      ctx.game);
                 }
+                Modification::SetCreatureTypesFrom { donor, retained } => {
+                    if let Some(donor) = ctx.effects.calculate_characteristics(
+                        *donor, ctx.objects, ctx.battlefield, ctx.game,
+                    ) {
+                        set_creature_types_from(&mut chars, &donor.subtypes, retained, ctx.game);
+                    }
+                }
                 Modification::AddSubtypes(types) => {
                     for subtype in types {
                         let subtype=ctx.game.admitted_subtype(*subtype);
@@ -1001,7 +1008,7 @@ pub(super) fn apply_layer_7_effects(
             if counter_timestamp.is_none_or(|ct| ct <= effect.timestamp) {
                 apply_counter_modifications(
                     object,
-                    ctx.objects,
+                    ctx.game,
                     &mut power,
                     &mut toughness,
                     &mut chars.numeric_range_error,
@@ -1018,7 +1025,7 @@ pub(super) fn apply_layer_7_effects(
         if effect_sublayer == Some(PtSublayer::Switching) && !counters_applied {
             apply_counter_modifications(
                 object,
-                ctx.objects,
+                ctx.game,
                 &mut power,
                 &mut toughness,
                 &mut chars.numeric_range_error,
@@ -1165,6 +1172,7 @@ pub(super) fn apply_layer_7_effects(
             | Modification::AddCardTypes(_)
             | Modification::RemoveCardTypes(_)
             | Modification::SetCardTypes(_)
+            | Modification::SetCreatureTypesFrom { .. }
             | Modification::AddSubtypes(_)
             | Modification::AddAllSubtypesOfFamily(_)
             | Modification::RemoveSubtypes(_)
@@ -1214,7 +1222,7 @@ pub(super) fn apply_layer_7_effects(
     if !counters_applied {
         apply_counter_modifications(
             object,
-            ctx.objects,
+            ctx.game,
             &mut power,
             &mut toughness,
             &mut chars.numeric_range_error,
@@ -1230,7 +1238,7 @@ pub(super) fn apply_layer_7_effects(
 /// Per Rule 613.4c, these are part of sublayer 7c.
 pub(super) fn apply_counter_modifications(
     object: &Object,
-    objects: &ObjectMap,
+    game: &crate::GameState,
     power: &mut Option<i32>,
     toughness: &mut Option<i32>,
     error: &mut Option<(&'static str, i128)>,
@@ -1249,10 +1257,11 @@ pub(super) fn apply_counter_modifications(
     if object.zone == crate::zone::Zone::Battlefield && !object.attachments.is_empty() {
         let hone = crate::object::CounterType::Named("hone".into());
         for attachment in &object.attachments {
-            if let Some(equipment) = objects.get(attachment)
-                && equipment.zone == crate::zone::Zone::Battlefield
-                && equipment.subtypes.contains(&crate::types::Subtype::Equipment)
+            if let Some(equipment) = game.object(*attachment)
                 && let Some(count) = equipment.counters.get(&hone)
+                && equipment.zone == crate::zone::Zone::Battlefield
+                && !game.is_phased_out(*attachment)
+                && game.current_has_subtype(*attachment, crate::types::Subtype::Equipment)
             {
                 power_delta = power_delta.saturating_add(i128::from(*count));
             }

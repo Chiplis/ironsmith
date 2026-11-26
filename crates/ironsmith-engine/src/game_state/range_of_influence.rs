@@ -378,6 +378,19 @@ impl GameState {
         self.player_is_within_range(observer, player) || self.source_is_exempt_from_range(source)
     }
 
+    /// Living opponents whose information this source may use (CR 102.3, 801.11).
+    pub(crate) fn opponents_in_source_range(
+        &self,
+        controller: PlayerId,
+        source: Option<ObjectId>,
+    ) -> impl Iterator<Item = &crate::player::Player> {
+        self.players.iter().filter(move |p| {
+            p.is_in_game()
+                && self.are_opponents(controller, p.id)
+                && self.player_is_within_source_range(controller, p.id, source)
+        })
+    }
+
     pub(crate) fn range_players_for_source(
         &self,
         observer: PlayerId,

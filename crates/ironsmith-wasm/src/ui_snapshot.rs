@@ -6969,6 +6969,121 @@ retain_original_types: false, retain_original_name: false,
     }
 
     #[test]
+    fn connive_keeps_zone_visibility_independent_of_the_discard() {
+        use ironsmith::{DecisionMaker, EffectContext, EffectExecutor};
+        let _id_counter_guard = crate::test_id_counter_guard();
+        let actor = PlayerId(0);
+        let opponent = PlayerId(1);
+        struct Discard(ObjectId);
+        impl DecisionMaker for Discard {
+            fn decide_objects(&mut self, _: &GameState, _: &SelectObjectsContext) -> Vec<ObjectId> {
+                vec![self.0]
+            }
+            fn decide_boolean(
+                &mut self,
+                _: &GameState,
+                _: &ironsmith::decisions::context::BooleanContext,
+            ) -> bool {
+                true
+            }
+            fn decide_options(
+                &mut self,
+                _: &GameState,
+                ctx: &ironsmith::decisions::context::SelectOptionsContext,
+            ) -> Vec<usize> {
+                ctx.options
+                    .iter()
+                    .filter(|option| option.legal)
+                    .find(|option| option.description.to_lowercase().contains("library"))
+                    .or_else(|| ctx.options.iter().find(|option| option.legal))
+                    .map(|option| vec![option.index])
+                    .unwrap_or_default()
+            }
+        }
+        let put = |g: &mut GameState, name: &str, player, zone| {
+            let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join("../../web/ui/public/cards")
+                .join(format!("{name}.json"));
+            let package: serde_json::Value =
+                serde_json::from_slice(&std::fs::read(path).unwrap()).unwrap();
+            let mut card = ironsmith_runtime_catalog::artifact_materializer::materialize_artifact(
+                &serde_json::from_value(package["artifacts"][0].clone()).unwrap(),
+            )
+            .unwrap();
+            card.card.id = CardId::new();
+            g.create_object_from_definition(&card, player, zone)
+        };
+        for (hand, top, wheel) in [
+            (None, None, false),
+            (Some("telepathy"), None, false),
+            (None, Some("melek-izzet-paragon"), false),
+            (Some("telepathy"), Some("lantern-of-insight"), false),
+            (Some("revelation"), Some("future-sight"), false),
+            (None, None, true),
+        ] {
+            let mut g = GameState::new(vec!["Alice".into(), "Bob".into(), "Carol".into()], 20);
+            if let Some(hand) = hand {
+                put(&mut g, hand, opponent, Zone::Battlefield);
+            }
+            if let Some(top) = top {
+                put(&mut g, top, actor, Zone::Battlefield);
+            }
+            if wheel {
+                let aura = put(&mut g, "wheel-of-sun-and-moon", actor, Zone::Battlefield);
+                assert!(g.attach_object_to_target(aura, AttachmentTarget::Player(actor)));
+            } else {
+                put(&mut g, "library-of-leng", actor, Zone::Battlefield);
+            }
+            let source = put(&mut g, "ledger-shredder", actor, Zone::Battlefield);
+            let discarded = put(&mut g, "grizzly-bears", actor, Zone::Hand);
+            put(&mut g, "mountain", actor, Zone::Hand);
+            put(&mut g, "plains", actor, Zone::Library);
+            put(&mut g, "island", actor, Zone::Library);
+            let views = SnapshotObjectViewCache::default();
+            let mut groups = IncrementalBattlefieldGroups::default();
+            groups.update(&g, &HashSet::new(), &views);
+            // Prime the same cached card lists the client uses before the discard.
+            for viewer in [actor, opponent, PlayerId(2)] {
+                let (t, h) = groups.visibility_for_player(&g, viewer, actor);
+                views.persistent_look_cards(&g, actor, viewer, t, h);
+            }
+            let mut dm = Discard(discarded);
+            ironsmith::effects::ConniveEffect::new(ChooseSpec::Source)
+                .execute(&mut g, &mut EffectContext::new(source, actor, &mut dm))
+                .unwrap();
+            let counters = g
+                .object(source)
+                .unwrap()
+                .counters
+                .get(&CounterType::PlusOnePlusOne)
+                .copied()
+                .unwrap_or(0);
+            assert_eq!(
+                counters,
+                u32::from(wheel),
+                "hand={hand:?}, top={top:?}, wheel={wheel}"
+            );
+            let player = g.player(actor).unwrap();
+            assert_eq!(player.hand.len(), 2);
+            let library_top = g.object(*player.library.last().unwrap()).unwrap();
+            assert_eq!(
+                library_top.name.as_str(),
+                if wheel { "Plains" } else { "Grizzly Bears" }
+            );
+            groups.update(&g, &HashSet::new(), &views);
+            for viewer in [actor, opponent, PlayerId(2)] {
+                let (t, h) = groups.visibility_for_player(&g, viewer, actor);
+                assert_eq!((t, h), (top.is_some(), hand.is_some()));
+                let cards = views.persistent_look_cards(&g, actor, viewer, t, h);
+                let names: Vec<_> = cards.iter().map(|card| card.name.as_str()).collect();
+                assert_eq!(names.contains(&"Mountain"), h);
+                assert_eq!(names.contains(&"Island"), h);
+                assert_eq!(names.contains(&"Grizzly Bears"), t);
+            }
+        }
+    }
+
+    #[test]
     fn incremental_visibility_matches_full_rules_through_control_and_removal() {
         let _id_counter_guard = crate::test_id_counter_guard();
         let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);

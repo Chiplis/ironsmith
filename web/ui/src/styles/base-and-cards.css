@@ -351,7 +351,8 @@
   /* Slight overshoot so tap/untap rotation lands with a snap. */
   transition:
     transform 300ms cubic-bezier(0.34, 1.42, 0.64, 1),
-    opacity 220ms ease;
+    opacity 220ms ease,
+    var(--field-hover-transition, scale 0s);
   overflow: visible;
 }
 
@@ -1273,12 +1274,43 @@
     inset 0 0 14px rgba(0, 0, 0, 0.26);
 }
 
-/* Battlefield cards keep their grid footprint when hovered. A small lift is
-   enough to establish focus without making the first hover jump into the
-   neighbouring card or obscure its counters. */
-.game-card.field-card:not(.battlefield-token-card):is(:hover, .hovered) {
+/* Linked hovers (an action or payment option pointing at this card) keep a
+   small lift so the card is found without jumping into its neighbours. */
+.game-card.field-card:not(.battlefield-token-card).hovered {
   --card-scale: 1.02;
   --card-translate-y: -1px;
+}
+
+/* Pointer hover on a battlefield object matches Manabrew's board: the object
+   grows to 1.08x about its centre with no lift, closing 20% of the remaining
+   distance per 60 fps frame (the sampled curve below), and holds for 60 ms
+   after the pointer leaves before shrinking back the same way. The growth is
+   on the `scale` property so tap rotation and layout settling keep their own
+   `transform` timing. */
+.game-card.field-card {
+  --field-hover-scale: 1.08;
+  --field-hover-ease: linear(
+    0, 0.2, 0.36, 0.488, 0.5904, 0.6723, 0.7379, 0.7903, 0.8322, 0.8658,
+    0.8926, 0.9141, 0.9313, 0.945, 0.956, 0.9648, 0.9719, 0.9775, 0.982,
+    0.9856, 1
+  );
+  --field-hover-transition: scale 333ms var(--field-hover-ease) 60ms;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .game-card.field-card:hover {
+    --card-scale: 1 !important;
+    --card-translate-y: 0px !important;
+    --field-hover-transition: scale 333ms var(--field-hover-ease);
+    scale: var(--field-hover-scale);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .game-card.field-card,
+  .game-card.field-card:hover {
+    --field-hover-transition: scale 0s;
+  }
 }
 
 @media (min-width: 900px) {

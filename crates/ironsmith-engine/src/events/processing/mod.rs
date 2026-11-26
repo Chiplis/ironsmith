@@ -187,11 +187,9 @@ fn apply_enter_counter_choice_response(
     current
 }
 
-pub(super) fn tribute_opponents(game: &GameState, controller: PlayerId) -> Vec<PlayerId> {
+pub(super) fn tribute_opponents(game: &GameState, controller: PlayerId, source: ObjectId) -> Vec<PlayerId> {
     let mut opponents = game
-        .players
-        .iter()
-        .filter(|player| player.is_in_game() && game.are_opponents(controller, player.id))
+        .opponents_in_source_range(controller, Some(source))
         .map(|player| player.id)
         .collect::<Vec<_>>();
     opponents.sort_by_key(|player| player.0);
@@ -297,7 +295,7 @@ fn resolve_tribute_response(
     let InteractiveReplacementResponse::Options(selected) = response else {
         return response.clone();
     };
-    let opponents = tribute_opponents(game, controller);
+    let opponents = tribute_opponents(game, controller, source);
     let Some(opponent) = selected
         .first()
         .and_then(|index| opponents.get(*index))
@@ -1707,10 +1705,8 @@ pub struct DiscardResult {
     pub new_id: Option<crate::ids::ObjectId>,
     /// The zone the card ended up in.
     pub final_zone: Zone,
-    /// Whether the card's type can be verified in its final zone.
-    /// - Graveyard: true (public zone, card is revealed)
-    /// - Library: false (hidden zone, type undefined per rule 701.8c)
-    /// - Exile: depends on whether card is face-up
+    /// A public arrival or an explicit reveal by the move supplying this
+    /// discard makes its characteristics available (CR 701.9c).
     pub type_verifiable: bool,
     /// Whether the discard was prevented entirely.
     pub prevented: bool,
@@ -1753,11 +1749,22 @@ impl DiscardResult {
     }
 }
 
-fn discard_result_from_arrival(arrival: Option<&crate::snapshot::ObjectSnapshot>) -> DiscardResult {
+fn discard_result_from_arrival(
+    arrival: Option<&crate::snapshot::ObjectSnapshot>,
+    replacement: Option<&crate::effects::CompletedEffectOutputs>,
+) -> DiscardResult {
     arrival.map_or_else(DiscardResult::prevented, |snapshot| DiscardResult {
         new_id: Some(snapshot.object_id),
         final_zone: snapshot.zone,
-        type_verifiable: zone_allows_type_verification(snapshot.zone),
+        type_verifiable: (zone_allows_type_verification(snapshot.zone) && !snapshot.face_down)
+            || replacement.is_some_and(|outputs| {
+                outputs.outcome.events.iter().any(|event| {
+                    event
+                        .downcast::<crate::events::CardRevealedEvent>()
+                        .and_then(|reveal| reveal.snapshot.as_ref())
+                        .is_some_and(|revealed| revealed.stable_id == snapshot.stable_id)
+                })
+            }),
         prevented: false,
     })
 }
@@ -1797,12 +1804,33 @@ impl CommittedDiscardOriginal {
         }
         Ok(self)
     }
+    /// Replacing the zone move inside a discard preserves that discard if
+    /// the original card actually moved. Replacing the discard itself does not.
+    fn finish_replacement_program(
+        self,
+        payload: crate::effects::CompletedEffectOutputs,
+    ) -> Result<Self, crate::effects::ExecutionError> {
+        if let Some(event) = &self.receipt.resolved_event {
+            let arrival = payload.outcome.execution_facts.iter().find_map(|fact| {
+                let crate::effect::ExecutionFact::OriginalZoneMoveObjects(moves) = fact else {
+                    return None;
+                };
+                moves
+                    .iter()
+                    .find(|(before, _, _)| before.object_id == event.card && before.zone == Zone::Hand)
+                    .map(|(_, _, after)| after.clone())
+            });
+            return self.finish_typed_original(arrival, payload);
+        }
+        self.retain_original_payload(payload)
+    }
+
     fn finish_typed_original(
         mut self,
         arrival: Option<crate::snapshot::ObjectSnapshot>,
         payload: crate::effects::CompletedEffectOutputs,
     ) -> Result<Self, crate::effects::ExecutionError> {
-        self.receipt.result = discard_result_from_arrival(arrival.as_ref());
+        self.receipt.result = discard_result_from_arrival(arrival.as_ref(), Some(&payload));
         if self.receipt.result.prevented {
             self.receipt.resolved_event = None;
         } else if let Some(event) = &mut self.receipt.resolved_event {
@@ -1831,23 +1859,17 @@ impl DiscardExecutionReceipt {
     }
 }
 
-/// Check if a zone allows card type verification after a discard.
-///
-/// Per MTG rule 701.8c: "If a card is discarded, but an effect causes it to be
-/// put into a hidden zone instead of into its owner's graveyard without being
-/// revealed, all values of that card's characteristics are considered to be
-/// undefined."
+/// Whether a face-up arrival supplies public characteristics (CR 400.2).
 pub fn zone_allows_type_verification(zone: Zone) -> bool {
-    match zone {
-        // Public zones - cards are visible, characteristics can be verified
-        Zone::Graveyard | Zone::Battlefield | Zone::Stack | Zone::Command | Zone::Ante => true,
-        // Hidden zones - characteristics become undefined per rule 701.8c
-        Zone::Library | Zone::Hand | Zone::OutsideGame => false,
-        // Exile is special - face-up cards can be verified, face-down cannot
-        // For simplicity, we treat exile as verifiable since face-down exile
-        // typically happens through specific effects, not discard replacement
-        Zone::Exile => true,
-    }
+    matches!(
+        zone,
+        Zone::Graveyard
+            | Zone::Battlefield
+            | Zone::Stack
+            | Zone::Command
+            | Zone::Ante
+            | Zone::Exile
+    )
 }
 
 /// Execute a discard using the generic trait-based replacement effect system.
@@ -1868,7 +1890,7 @@ pub fn zone_allows_type_verification(zone: Zone) -> bool {
 /// * `card_id` - The card being discarded
 /// * `player` - The player discarding
 /// * `cause` - What caused this discard (effect, cost, game rule)
-/// * `_requires_type_verification` - Unused, type_verifiable is always computed from zone
+/// * `_requires_type_verification` - Compatibility parameter. The discard receipt records its own verification.
 /// * `decision_maker` - Optional decision maker for player choices
 ///
 /// # Returns
@@ -2115,8 +2137,13 @@ fn prepare_discard_scoped_inner(
         TraitEventResult::Replaced {
             context,
             replacement,
+            effect_id,
             ..
-        } if replacement_moves_object(replacement) => {
+        } if replacement_moves_object(replacement) || game.effect_store.replacement_effects.get_effect(*effect_id)
+            .or_else(|| additional_effects.iter().find(|effect| effect.id == *effect_id))
+            .and_then(|effect| effect.matcher.as_ref()).is_some_and(|matcher|
+                matcher.may_match_event_kind(crate::events::EventKind::ZoneChange)
+                    && !matcher.may_match_event_kind(crate::events::EventKind::Discard)) => {
             downcast_event::<DiscardEvent>(context.event.inner()).cloned()
         }
         _ => None,
@@ -2310,7 +2337,7 @@ impl RetainedDiscardOriginal {
         let original = if typed {
             original.finish_typed_original(arrival, payload)?
         } else {
-            original.retain_original_payload(payload)?
+            original.finish_replacement_program(payload)?
         };
         Ok(Some(original))
     }
@@ -2463,7 +2490,7 @@ fn commit_discard_original(
                     DiscardResult {
                         new_id,
                         final_zone: destination,
-                        type_verifiable: zone_allows_type_verification(destination),
+                        type_verifiable: zone_allows_type_verification(destination) && !new_id.is_some_and(|id| game.is_face_down(id)),
                         prevented: false,
                     }
                 } else {
@@ -2516,7 +2543,11 @@ fn commit_discard_original(
                         original,
                         bindings: crate::effects::replacement::ReplacementProgramBindings {
                             targets: None,
-                            object_tags: Vec::new(),
+                            object_tags: if resolved_event.is_some() {
+                                vec![("__it__".into(), discarded_snapshot.clone().into_iter().collect())]
+                            } else {
+                                Vec::new()
+                            },
                         },
                     };
                     let outcome = if retain_original {
@@ -2537,15 +2568,17 @@ fn commit_discard_original(
                             DiscardExecutionReceipt::pending(),
                         ));
                     }
-                    return Ok(CommittedDiscardOriginal::without_arrival(
-                        DiscardExecutionReceipt {
-                            result: DiscardResult::prevented(),
-                            resolved_event: None,
-                            discarded_snapshot,
-                            programs,
-                            payload_outcome: outcome,
-                        },
-                    ));
+                    let original = CommittedDiscardOriginal::without_arrival(DiscardExecutionReceipt {
+                        result: DiscardResult::prevented(),
+                        resolved_event,
+                        discarded_snapshot,
+                        programs,
+                        payload_outcome: None,
+                    });
+                    return match outcome {
+                        Some(payload) => original.finish_replacement_program(payload),
+                        None => Ok(original),
+                    };
                 }
 
                 if let Some(prepared) = typed_move {
@@ -2623,7 +2656,7 @@ fn commit_discard_original(
                         DiscardExecutionReceipt::pending(),
                     ));
                 }
-                discard_result_from_arrival(arrival_snapshot.as_ref())
+                discard_result_from_arrival(arrival_snapshot.as_ref(), payload_outcome.as_ref())
             }
 
             TraitEventResult::NeedsChoice { .. } => {
