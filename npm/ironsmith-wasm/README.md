@@ -7,7 +7,7 @@ This is the lean Ironsmith build: engine code is included, but the global card r
 ## Install
 
 ```sh
-npm install ironsmith-wasm@1.0.0
+npm install ironsmith-wasm@1.0.1
 ```
 
 ## Initialize
