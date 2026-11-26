@@ -289,6 +289,19 @@ struct ManabrewOpenPrompt {
     binding: ManabrewPromptBinding,
 }
 
+/// A Manabrew seat's standing "pass until this player's step" answer. The
+/// adapter keeps passing priority for the seat until the step arrives, across
+/// turn boundaries, the way Manabrew's hosted Forge engine holds it.
+#[derive(Debug, Clone)]
+struct ManabrewHold {
+    player: PlayerId,
+    step: u8,
+    through_combat: bool,
+    declared_turn: u32,
+    observed_turn: u32,
+    max_step: u8,
+}
+
 fn hash_debug_value(value: &impl std::fmt::Debug) -> u64 {
     let mut hasher = DefaultHasher::new();
     format!("{value:?}").hash(&mut hasher);
@@ -5074,6 +5087,7 @@ pub struct WasmGame {
     /// not dispatched.
     manabrew_verified: bool,
     manabrew_forced_command: Option<UiCommand>,
+    manabrew_holds: std::collections::BTreeMap<u8, ManabrewHold>,
     cached_snapshot: Option<CachedSnapshot>,
     defer_mana_options: bool,
     /// Set only while `dispatchForAutomation` builds its result: the caller

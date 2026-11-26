@@ -398,6 +398,7 @@ impl WasmGame {
         self.manabrew_human_players = vec![true; player_count];
         self.manabrew_next_prompt_id = 1;
         self.manabrew_open_prompt = None;
+        self.manabrew_holds.clear();
         self.match_format = MatchFormatInput::Normal;
         self.revealed_sticker_sheets.clear();
         self.pregame = None;

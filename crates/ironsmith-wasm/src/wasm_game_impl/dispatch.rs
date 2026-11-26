@@ -1647,6 +1647,7 @@ impl WasmGame {
             manabrew_open_prompt: None,
             manabrew_verified: false,
             manabrew_forced_command: None,
+            manabrew_holds: Default::default(),
             cached_snapshot: None,
             defer_mana_options: false,
             automation_snapshot: false,

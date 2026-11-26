@@ -3691,6 +3691,161 @@ impl WasmGame {
         }
     }
 
+    /// Record what a seat's priority answer means for its held pass. Any
+    /// priority answer replaces the hold: a pass with a target sets it, a plain
+    /// pass or an action ends it.
+    fn manabrew_set_hold(
+        &mut self,
+        seat: u8,
+        until: Option<&manabrew_protocol::prompts::choose_action::PassUntil>,
+    ) {
+        self.manabrew_holds.remove(&seat);
+        let Some(until) = until else {
+            return;
+        };
+        let game = self.manabrew_game();
+        let Some(player) = game
+            .players
+            .iter()
+            .map(|player| player.id)
+            .find(|id| player_id(*id) == until.player_id)
+        else {
+            return;
+        };
+        let turn = game.turn.turn_number;
+        let step = protocol_step(game) as u8;
+        self.manabrew_holds.insert(
+            seat,
+            ManabrewHold {
+                player,
+                step: until.phase as u8,
+                through_combat: until.through_combat,
+                declared_turn: turn,
+                observed_turn: turn,
+                max_step: step,
+            },
+        );
+    }
+
+    /// Whether the seat's hold answers the priority it now has. A hold that
+    /// has reached its step, or that the turn structure has invalidated, ends
+    /// here. A hold that is only interrupted (something is on the stack, or
+    /// creatures are attacking) stays and the seat is asked.
+    fn manabrew_hold_passes(&mut self, seat: u8) -> bool {
+        use ironsmith::game_state::Step;
+        let game = &self.game;
+        let turn = game.turn.turn_number;
+        let step = protocol_step(game) as u8;
+        let active = game.turn.active_player;
+        let seats = game.players.len() as u32;
+        let stack_empty = game.stack.is_empty();
+        let extra_turn = game.turn_store.current_turn_is_extra;
+        let attacking = matches!(
+            game.turn.step,
+            Some(
+                Step::DeclareAttackers
+                    | Step::DeclareBlockers
+                    | Step::CombatDamage
+                    | Step::EndCombat
+            )
+        ) && game
+            .turn_store
+            .attackers_existed_in_combat
+            .is_some_and(|(combat_turn, _)| combat_turn == turn);
+        let Some(hold) = self.manabrew_holds.get_mut(&seat) else {
+            return false;
+        };
+        if turn != hold.observed_turn {
+            hold.observed_turn = turn;
+            hold.max_step = step;
+        }
+        let target_gone = self
+            .game
+            .player(hold.player)
+            .is_none_or(|player| !player.is_in_game());
+        let reached = active == hold.player && step >= hold.step;
+        // The client picks a target from a model where each step happens once
+        // a turn and turns follow seat order. An inserted phase steps backward
+        // within a turn; an extra turn of the holder's own was never offered
+        // as a place to stop; a target a full round late was skipped.
+        let extra_phase = step < hold.max_step;
+        let own_extra_turn = extra_turn
+            && active.0 == seat
+            && turn != hold.declared_turn
+            && hold.player.0 != seat;
+        let overdue = turn > hold.declared_turn.saturating_add(seats + 1);
+        if target_gone || reached || extra_phase || own_extra_turn || overdue {
+            self.manabrew_holds.remove(&seat);
+            return false;
+        }
+        hold.max_step = hold.max_step.max(step);
+        stack_empty && (hold.through_combat || !attacking)
+    }
+
+    /// Pass priority for every seat whose hold covers the window it was just
+    /// given. Each pass is the same engine command the seat would have sent.
+    fn manabrew_drain_holds(&mut self) {
+        for _ in 0..4096 {
+            if self.manabrew_holds.is_empty() {
+                return;
+            }
+            if self.game_over.is_some() {
+                self.manabrew_holds.clear();
+                return;
+            }
+            let (seat, command) = match self.pending_decision.as_ref() {
+                Some(DecisionContext::Priority(priority)) => {
+                    let seat = priority.player.0;
+                    if !priority
+                        .actions
+                        .iter()
+                        .any(|action| matches!(action, LegalAction::PassPriority))
+                    {
+                        return;
+                    }
+                    if !self.manabrew_hold_passes(seat) {
+                        return;
+                    }
+                    (
+                        seat,
+                        UiCommand::PriorityAction {
+                            action_index: None,
+                            action_ref: Some(PriorityActionRef::PassPriority),
+                        },
+                    )
+                }
+                // "End turn" also declines the seat's own attack, unless a
+                // creature has to attack.
+                Some(DecisionContext::Attackers(attackers)) => {
+                    let seat = attackers.player.0;
+                    let forced = attackers
+                        .attacker_options
+                        .iter()
+                        .any(|option| option.must_attack);
+                    let declines = self
+                        .manabrew_holds
+                        .get(&seat)
+                        .is_some_and(|hold| hold.through_combat);
+                    if forced || !declines || !self.manabrew_hold_passes(seat) {
+                        return;
+                    }
+                    (
+                        seat,
+                        UiCommand::DeclareAttackers {
+                            declarations: vec![],
+                            bands: vec![],
+                        },
+                    )
+                }
+                _ => return,
+            };
+            if self.dispatch_typed_command(command, 0.0).is_err() {
+                self.manabrew_holds.remove(&seat);
+                return;
+            }
+        }
+    }
+
     fn manabrew_response_action(
         &self,
         open: &ManabrewOpenPrompt,
@@ -4369,6 +4524,21 @@ impl WasmGame {
                 return manabrew_to_js(&result, "Manabrew response");
             }
         };
+        // A priority answer replaces the seat's held pass. A Verified match
+        // keeps the engine's own signed yield instead: nothing there may be
+        // applied that a seat did not sign.
+        let priority_answer = match (&open.binding, &output) {
+            (
+                ManabrewPromptBinding::Priority { .. },
+                PromptOutput::ChooseAction(ChooseActionOutput::Pass { until, .. }),
+            ) if !self.manabrew_verified => Some(until.clone()),
+            (ManabrewPromptBinding::Priority { .. }, PromptOutput::ChooseAction(_))
+                if !self.manabrew_verified =>
+            {
+                Some(None)
+            }
+            _ => None,
+        };
         let action = match self.manabrew_response_action(&open, output) {
             Ok(action) => action,
             Err(error) => {
@@ -4376,10 +4546,32 @@ impl WasmGame {
                 return manabrew_to_js(&result, "Manabrew response");
             }
         };
+        let action = match action {
+            // The hold below covers the target, across turns. The engine's
+            // phase yield would end at this turn's end and at any other
+            // seat's earlier stop.
+            ManabrewResponseAction::Dispatch(UiCommand::PriorityYield {
+                mode: PassMode::Phases,
+                ..
+            }) if priority_answer.is_some() => {
+                ManabrewResponseAction::Dispatch(UiCommand::PriorityAction {
+                    action_index: None,
+                    action_ref: Some(PriorityActionRef::PassPriority),
+                })
+            }
+            action => action,
+        };
         let engine_result = match action {
             ManabrewResponseAction::Dispatch(command) => {
                 let command = manabrew_to_js(&command, "Ironsmith command")?;
-                self.dispatch(command)
+                let result = self.dispatch(command);
+                if result.is_ok() {
+                    if let Some(until) = &priority_answer {
+                        self.manabrew_set_hold(player.0, until.as_ref());
+                    }
+                    self.manabrew_drain_holds();
+                }
+                result
             }
             ManabrewResponseAction::Cancel => self.cancel_decision(),
             ManabrewResponseAction::Continue { input, binding } => {
@@ -4445,6 +4637,7 @@ impl WasmGame {
         self.manabrew_open_prompt = None;
         self.manabrew_forced_command = None;
         self.manabrew_verified = verified;
+        self.manabrew_holds.clear();
     }
 
     /// Verified matches replicate every engine change through a signed
@@ -4453,6 +4646,7 @@ impl WasmGame {
     #[wasm_bindgen(js_name = manabrewSetVerified)]
     pub fn manabrew_set_verified(&mut self, enabled: bool) {
         self.manabrew_verified = enabled;
+        self.manabrew_holds.clear();
         if !enabled {
             self.manabrew_forced_command = None;
         }

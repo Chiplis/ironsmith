@@ -123,6 +123,7 @@ runtime_savepoint! {
     manabrew_human_players: Vec<bool>,
     manabrew_next_prompt_id: u32,
     manabrew_open_prompt: Option<ManabrewOpenPrompt>,
+    manabrew_holds: std::collections::BTreeMap<u8, ManabrewHold>,
     cached_snapshot: Option<CachedSnapshot>,
 }
 
