@@ -1509,7 +1509,7 @@ dependencies = [
 
 [[package]]
 name = "ironsmith-engine-wasm"
-version = "1.0.1"
+version = "1.0.2"
 dependencies = [
  "ironsmith-web-session",
 ]
