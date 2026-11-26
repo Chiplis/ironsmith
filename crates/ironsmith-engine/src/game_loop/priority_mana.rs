@@ -1612,6 +1612,11 @@ fn apply_mana_payment_plan_response_inner(
         // A completed deferred root must not lend its old pre-payment
         // checkpoint to the next, unrelated mana announcement.
         if !state.has_pending_action() {
+            // CR 117.4: the deferred root is now a completed player action.
+            // Its payment continuation must break the preceding pass sequence,
+            // just like an immediately completed mana activation. Nested mana
+            // payments leave their enclosing action to own this reset.
+            state.tracker.reset();
             state.clear_checkpoint();
         }
         return resume_enclosing_mana_payment(game, trigger_queue, state, decision_maker);
