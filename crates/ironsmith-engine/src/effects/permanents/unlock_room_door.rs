@@ -53,8 +53,8 @@ impl EffectExecutor for UnlockRoomDoorEffect {
             SingleChoicePolicy::First,
             |index, object_id| {
                 let name = game
-                    .object(*object_id)
-                    .map(|object| object.name.to_string())
+                    .current_name(*object_id)
+                    .filter(|name| !name.is_empty())
                     .unwrap_or_else(|| "Room".to_string());
                 SelectableOption::new(index, name).with_object(*object_id)
             },

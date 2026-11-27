@@ -193,6 +193,16 @@ pub fn room_unlock_cost_display(
         .map(|cost| cost.display())
 }
 
+/// Whether this legal door choice refers to the printed right half (CR 709.5c).
+pub fn room_door_is_right(game: &GameState, room_id: ObjectId, door: RoomDoor) -> bool {
+    let linked = door == RoomDoor::Linked;
+    if game.copied_room_halves(room_id).is_some() {
+        linked
+    } else {
+        linked ^ game.object(room_id).is_some_and(|object| object.room_current_half_is_right())
+    }
+}
+
 /// Name of the half a door unlock applies to, for action labels.
 pub fn room_door_name(game: &GameState, room_id: ObjectId, door: RoomDoor) -> Option<String> {
     if let Some(values) = game.copied_room_halves(room_id) {
@@ -200,7 +210,7 @@ pub fn room_door_name(game: &GameState, room_id: ObjectId, door: RoomDoor) -> Op
         return Some(crate::continuous::room_half_name(&half.name).to_string());
     }
     match door {
-        RoomDoor::Current => game.object(room_id).map(|room| room.name.to_string()),
+        RoomDoor::Current => game.object(room_id).map(|room| crate::continuous::room_half_name(&room.name).to_owned()),
         RoomDoor::Linked => room_locked_door_definition(game, room_id).map(|def| def.card.name),
     }
 }
@@ -252,9 +262,10 @@ fn copied_room_door_half(
     values: &crate::snapshot::CopiableValues,
     door: RoomDoor,
 ) -> &crate::snapshot::CopiableValues {
-    match door {
-        RoomDoor::Current => values,
-        RoomDoor::Linked => values.other_copy_face.as_deref().unwrap_or(values),
+    if (door == RoomDoor::Linked) == values.room_half_is_right {
+        values
+    } else {
+        values.other_copy_face.as_deref().unwrap_or(values)
     }
 }
 
@@ -272,6 +283,11 @@ fn room_locked_door_definition(
     room_id: ObjectId,
 ) -> Option<crate::cards::CardDefinition> {
     let room = game.object(room_id)?;
+    if let Some(values) = room.opposite_copied_room_half() {
+        let mut half = room.clone();
+        half.copy_copiable_values_from_values(&values);
+        return Some(half.to_card_definition());
+    }
     game.linked_face_definition_by_name_or_id(room.other_face_name.as_deref(), room.other_face)
 }
 
@@ -674,15 +690,15 @@ fn has_sorcery_speed_special_action_timing(
     Ok(())
 }
 
-/// Which door of a Room an unlock applies to. A Room is represented as its
-/// current half plus a linked other half.
+/// Which half of a Room a door action applies to. Printed Rooms use the
+/// displayed and linked half. Under a continuous copy effect these slots
+/// identify the copied left and right halves respectively.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 pub enum RoomDoor {
-    /// The linked other half (the only locked door once one is unlocked).
+    /// Linked printed half, or right half of a temporary copy.
     #[default]
     Linked,
-    /// The permanent's current half; locked only when the Room entered with
-    /// neither door unlocked (CR 709.5d).
+    /// Currently displayed printed half, or left half of a temporary copy.
     Current,
 }
 
@@ -2518,6 +2534,23 @@ fn can_unlock_room_door(
     Ok(())
 }
 
+/// A printed Room keeps its own designations when it copies another Room.
+/// Convert the copy's left/right choice into the underlying current/linked
+/// representation so the designation survives the end of the copy effect.
+fn printed_door_for_copied_half(game: &GameState, room_id: ObjectId, door: RoomDoor) -> Option<RoomDoor> {
+    let object = game.object(room_id)?;
+    if object.linked_face_layout != crate::card::LinkedFaceLayout::Split
+        || !object.subtypes.contains(&crate::types::Subtype::Room)
+    {
+        return None;
+    }
+    Some(if (door == RoomDoor::Linked) == object.room_current_half_is_right() {
+        RoomDoor::Current
+    } else {
+        RoomDoor::Linked
+    })
+}
+
 /// Apply the Room state transition shared by the paid special action and
 /// resolution-time effects that instruct a player to unlock a door.
 pub(crate) fn apply_room_door_unlock(
@@ -2528,9 +2561,12 @@ pub(crate) fn apply_room_door_unlock(
     if !locked_room_doors(game, room_id).contains(&door) {
         return false;
     }
-    if game.copied_room_halves(room_id).is_some() {
-        return game.set_copied_room_half_unlocked(room_id, door == RoomDoor::Linked, true);
-    }
+    let door = if game.copied_room_halves(room_id).is_some() {
+        let Some(printed) = printed_door_for_copied_half(game, room_id, door) else {
+            return game.set_copied_room_half_unlocked(room_id, door == RoomDoor::Linked, true);
+        };
+        printed
+    } else { door };
     // CR 709.5d-e: with neither door unlocked, unlocking one gives only that
     // half its designation. The Room's current half becomes the unlocked one
     // (switching to the linked half first if that door was chosen).
@@ -2582,9 +2618,12 @@ pub(crate) fn apply_room_door_lock(game: &mut GameState, room_id: ObjectId, door
     if !unlocked_room_doors(game, room_id).contains(&door) {
         return false;
     }
-    if game.copied_room_halves(room_id).is_some() {
-        return game.set_copied_room_half_unlocked(room_id, door == RoomDoor::Linked, false);
-    }
+    let door = if game.copied_room_halves(room_id).is_some() {
+        let Some(printed) = printed_door_for_copied_half(game, room_id, door) else {
+            return game.set_copied_room_half_unlocked(room_id, door == RoomDoor::Linked, false);
+        };
+        printed
+    } else { door };
     if game.is_room_fully_unlocked(room_id) {
         return game.lock_door_of_fully_unlocked_room(room_id, door == RoomDoor::Current);
     }

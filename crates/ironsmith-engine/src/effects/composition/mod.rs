@@ -77,6 +77,7 @@ mod repeat_process_prompt;
 pub(crate) mod player_order;
 mod player_option_choice;
 mod secret_choice;
+pub(crate) mod owner_library_moves;
 mod sequence;
 mod coordinated_damage;
 mod simultaneous;
@@ -228,7 +229,7 @@ mod keyword_action;
 mod keyword_recipient_batch;
 pub(crate) use keyword_recipient_batch::execute_keyword_recipient_batch;
 pub(crate) use keyword_action::{
-    KeywordActionAmount, KeywordActionOutput, execute_keyword_action_with_outputs,
+    KeywordActionAmount, KeywordActionOutput, execute_keyword_action_with_outputs, keyword_action_object_bindings,
     execute_ordered_permanent_actions,
 };
 

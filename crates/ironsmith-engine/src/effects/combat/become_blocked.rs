@@ -21,19 +21,19 @@ impl EffectExecutor for BecomeBlockedEffect {
                 }
                 selected.sort_unstable();
                 selected.dedup();
-                selected.retain(|id| {
-                    game.combat
-                        .as_ref()
-                        .is_some_and(|combat| crate::combat_state::is_attacking(combat, *id))
-                });
+                selected.retain(|id| game.current_attack_target_across_lanes(*id).is_some());
                 if selected.is_empty() && self.target.is_target() && self.target.is_single() {
                     return Err(ExecutionError::InvalidTarget);
                 }
                 let mut changed = Vec::new();
-                if let Some(combat) = game.combat.as_mut() {
+                for combat in game.combat_lanes_mut() {
                     // CR 702.22i: if a member of an attacking band becomes
                     // blocked due to an effect, the entire band becomes blocked.
-                    let mut affected = selected.clone();
+                    let mut affected: Vec<_> = selected
+                        .iter()
+                        .copied()
+                        .filter(|id| crate::combat_state::is_attacking(combat, *id))
+                        .collect();
                     for id in &selected {
                         for band in &combat.attacking_bands {
                             if band.contains(id) {
@@ -65,9 +65,7 @@ impl EffectExecutor for BecomeBlockedEffect {
                     .iter()
                     .map(|(id, _)| {
                         let reference = game
-                            .combat
-                            .as_ref()
-                            .and_then(|combat| crate::combat_state::get_attack_target(combat, *id))
+                            .current_attack_target_across_lanes(*id)
                             .cloned()
                             .map(|target| game.retain_attacking_role(*id, &target))
                             .unwrap_or(crate::combat_state::DefendingPlayerReference::Missing);

@@ -193,25 +193,6 @@ fn pop_sneak_attack_target(game: &mut GameState, source: ObjectId) -> Option<Att
     game.pop_sneak_attack_target(source)
 }
 
-fn attack_target_still_valid(game: &GameState, target: &AttackTarget) -> bool {
-    match target {
-        AttackTarget::Player(player) => game.player(*player).is_some(),
-        AttackTarget::Planeswalker(planeswalker) => game.object(*planeswalker).is_some_and(|obj| {
-            obj.zone == Zone::Battlefield
-                && game.current_has_card_type(*planeswalker, CardType::Planeswalker)
-        }),
-        AttackTarget::Battle(battle) => game.object(*battle).is_some_and(|obj| {
-            obj.zone == Zone::Battlefield
-                && game.current_has_card_type(*battle, CardType::Battle)
-                && game.battle_protector(*battle).is_some_and(|protector| {
-                    game.player(protector)
-                        .is_some_and(|player| player.is_in_game())
-                })
-        }),
-        AttackTarget::Nothing { .. } => false,
-    }
-}
-
 fn stack_entry_cast_alternative_matches(
     game: &GameState,
     entry: &StackEntry,
@@ -1050,6 +1031,13 @@ fn execute_resolution_program_inner(
             )?);
         }
 
+        let selected_effects = if program.segments.len() == 1 {
+            crate::effects::composition::owner_library_moves::group_source_and_target_shuffles(
+                &selected_effects, game, ctx,
+            ).unwrap_or(selected_effects)
+        } else {
+            selected_effects
+        };
         let mut active_scope: Option<(
             Vec<crate::effects::ResolvedTarget>,
             Vec<crate::game_state::TargetAssignment>,
@@ -2353,14 +2341,8 @@ fn resolve_stack_entry_full_inner(
                 // Redemptor Dreadnought) follows the spell to the permanent;
                 // a no-op when the entry move already transferred it.
                 game.transfer_cast_linked_exile_pairs(entry.object_id, new_id);
-                if let Some(attack_target) = sneak_attack_target.take()
-                    && attack_target_still_valid(game, &attack_target)
-                    && let Some(combat) = game.combat.as_mut()
-                {
-                    combat.attackers.push(crate::combat_state::AttackerInfo {
-                        creature: new_id,
-                        target: attack_target,
-                    });
+                if let Some(target) = sneak_attack_target.take() {
+                    crate::effects::combat::enter_attacking_recorded_target(game, new_id, target);
                 }
 
                 let cast_with_dash = match &entry.casting_method {

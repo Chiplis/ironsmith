@@ -2232,11 +2232,8 @@ impl RestrictionExt for Restriction {
                 } else {
                     return;
                 };
-                let seats = game
-                    .players
-                    .iter()
-                    .filter(|player| player.is_in_game())
-                    .map(|player| player.id)
+                let seats = game.physical_seats().iter().copied()
+                    .filter(|id| game.player(*id).is_some_and(|player| player.is_in_game()))
                     .collect::<Vec<_>>();
                 let len = seats.len();
                 for &obj_id in &game.battlefield {
@@ -2250,6 +2247,7 @@ impl RestrictionExt for Restriction {
                     let Some(start) = seats.iter().position(|player| *player == attacker) else {
                         continue;
                     };
+                    tracker.cant_attack_battles.insert(obj_id);
                     let nearest = (1..len)
                         .map(|offset| {
                             if leftward {

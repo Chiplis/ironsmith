@@ -437,7 +437,7 @@ impl CompilerReferenceTag {
     pub const fn as_str(self) -> &'static str {
         match self {
             Self::AdditionalCostObject => "__additional_cost_object__",
-            Self::ThisWaySacrificed => "__this_way_sacrificed__",
+            Self::ThisWaySacrificed => ironsmith_core::tag::SACRIFICED_THIS_WAY_TAG,
             Self::PriorExiledCard => "__prior_exiled_card__",
             Self::ExiledThisWay => "__exiled_this_way__",
             Self::MilledThisWay => "__milled_this_way__",

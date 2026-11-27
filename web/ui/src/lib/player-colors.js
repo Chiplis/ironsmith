@@ -1,4 +1,4 @@
-export const DEFAULT_PLAYER_ACCENT = { hex: "#b79cff", rgb: "183, 156, 255" };
+export const DEFAULT_PLAYER_ACCENT = { hex: "#4da3ff", rgb: "77, 163, 255" };
 
 const PLAYER_ACCENT_PALETTE = [
   DEFAULT_PLAYER_ACCENT,

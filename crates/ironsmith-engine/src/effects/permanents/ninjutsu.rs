@@ -6,7 +6,7 @@
 //! - a resolution effect (`NinjutsuEffect`) that puts the source card from hand onto the
 //!   battlefield tapped and attacking the recorded target.
 
-use crate::combat_state::{AttackTarget, AttackerInfo, get_attack_target, is_unblocked};
+use crate::combat_state::{AttackTarget, is_unblocked};
 use crate::decisions::make_decision;
 use crate::decisions::specs::ChooseObjectsSpec;
 use crate::effect::EffectOutcome;
@@ -15,44 +15,40 @@ use crate::effects::zones::{
 };
 use crate::effects::{CostExecutableEffect, CostValidationError, EffectExecutor};
 use crate::effects::{ExecutionContext, ExecutionError};
-use crate::game_state::{GameState, Phase, Step};
+use crate::game_state::{GameState, Step};
+#[cfg(test)]
+use crate::{combat_state::AttackerInfo, game_state::Phase};
 use crate::ids::{ObjectId, PlayerId};
+#[cfg(test)]
 use crate::types::CardType;
 use crate::zone::Zone;
 pub use ironsmith_core::{NinjutsuCostEffect, NinjutsuEffect, SneakCostEffect};
 
-fn in_ninjutsu_window(game: &GameState) -> bool {
-    if game.turn.phase != Phase::Combat {
-        return false;
-    }
-    matches!(
-        game.turn.step,
-        Some(Step::DeclareBlockers | Step::CombatDamage | Step::EndCombat)
-    )
+fn in_ninjutsu_window(game: &GameState, controller: PlayerId) -> bool {
+    game.combat_turn_for_attacking_player(controller)
+        .is_some_and(|turn| {
+            matches!(
+                turn.step,
+                Some(Step::DeclareBlockers | Step::CombatDamage | Step::EndCombat)
+            )
+        })
 }
 
-fn in_sneak_window(game: &GameState) -> bool {
-    game.turn.phase == Phase::Combat && game.turn.step == Some(Step::DeclareBlockers)
+fn in_sneak_window(game: &GameState, controller: PlayerId) -> bool {
+    game.combat_turn_for_attacking_player(controller)
+        .is_some_and(|turn| turn.step == Some(Step::DeclareBlockers))
 }
 
 fn unblocked_attackers(game: &GameState, controller: PlayerId) -> Vec<ObjectId> {
-    let Some(combat) = game.combat.as_ref() else {
-        return Vec::new();
-    };
-
-    combat
-        .attackers
-        .iter()
-        .filter_map(|info| {
-            let creature = info.creature;
-            let obj = game.object(creature)?;
-            if obj.zone != Zone::Battlefield || game.controller_of(obj) != controller {
-                return None;
-            }
-            if !is_unblocked(combat, creature) {
-                return None;
-            }
-            Some(creature)
+    game.combat_lanes()
+        .flat_map(|combat| {
+            combat.attackers.iter().filter_map(move |info| {
+                let id = info.creature;
+                (game.object(id).is_some_and(|obj| {
+                    obj.zone == Zone::Battlefield && game.controller_of(obj) == controller
+                }) && is_unblocked(combat, id))
+                .then_some(id)
+            })
         })
         .collect()
 }
@@ -95,10 +91,7 @@ fn return_unblocked_attacker_for_cost_with_outputs(
     }
     let chosen_attacker = chosen[0];
 
-    let attack_target = game
-        .combat
-        .as_ref()
-        .and_then(|combat| get_attack_target(combat, chosen_attacker))
+    let attack_target = game.current_attack_target_across_lanes(chosen_attacker)
         .cloned()
         .ok_or_else(|| {
             ExecutionError::Impossible("Chosen attacker has no combat attack target".to_string())
@@ -164,7 +157,7 @@ impl EffectExecutor for NinjutsuCostEffect {
             ctx,
             || crate::effects::CompletedEffectOutputs::aggregate_only(EffectOutcome::count(0)),
             |game, ctx| {
-                if !in_ninjutsu_window(game) {
+                if !in_ninjutsu_window(game, ctx.controller) {
                     return Err(ExecutionError::Impossible(
                         "Ninjutsu can only be activated during combat after blockers are declared"
                             .to_string(),
@@ -212,7 +205,7 @@ impl CostExecutableEffect for NinjutsuCostEffect {
         source: ObjectId,
         controller: PlayerId,
     ) -> Result<(), CostValidationError> {
-        if !in_ninjutsu_window(game) {
+        if !in_ninjutsu_window(game, controller) {
             return Err(CostValidationError::Other(
                 "Ninjutsu can only be activated during combat after blockers are declared"
                     .to_string(),
@@ -263,7 +256,7 @@ impl EffectExecutor for SneakCostEffect {
             ctx,
             || crate::effects::CompletedEffectOutputs::aggregate_only(EffectOutcome::count(0)),
             |game, ctx| {
-                if !in_sneak_window(game) || !game.active_players().contains(&ctx.controller) {
+                if !in_sneak_window(game, ctx.controller) {
                     return Err(ExecutionError::Impossible(
                         "Sneak can only be paid during the declare blockers step".to_string(),
                     ));
@@ -311,7 +304,7 @@ impl CostExecutableEffect for SneakCostEffect {
         source: ObjectId,
         controller: PlayerId,
     ) -> Result<(), CostValidationError> {
-        if !in_sneak_window(game) || !game.active_players().contains(&controller) {
+        if !in_sneak_window(game, controller) {
             return Err(CostValidationError::Other(
                 "Sneak can only be paid during the declare blockers step".to_string(),
             ));
@@ -340,41 +333,6 @@ impl CostExecutableEffect for SneakCostEffect {
 
 fn pop_ninjutsu_attack_target(game: &mut GameState, source: ObjectId) -> Option<AttackTarget> {
     game.pop_ninjutsu_attack_target(source)
-}
-
-/// CR 508.4a: the creature enters attacking only if the player it would attack
-/// is still in the game, or the planeswalker is still controlled by a
-/// defending player (an opponent of the attacking player who's still in it).
-fn attack_target_still_valid(
-    game: &GameState,
-    attacker_controller: crate::ids::PlayerId,
-    target: &AttackTarget,
-) -> bool {
-    match target {
-        AttackTarget::Player(player) => game
-            .player(*player)
-            .is_some_and(|player| player.is_in_game()),
-        AttackTarget::Planeswalker(planeswalker) => game.object(*planeswalker).is_some_and(|obj| {
-            let controller = game.controller_of(obj);
-            obj.zone == Zone::Battlefield
-                && game.current_has_card_type(*planeswalker, CardType::Planeswalker)
-                && controller != attacker_controller
-                && game.are_opponents(attacker_controller, controller)
-                && game
-                    .player(controller)
-                    .is_some_and(|player| player.is_in_game())
-        }),
-        AttackTarget::Battle(battle) => game.object(*battle).is_some_and(|obj| {
-            obj.zone == Zone::Battlefield
-                && game.current_has_card_type(*battle, CardType::Battle)
-                && game.battle_protector(*battle).is_some_and(|protector| {
-                    game.player(protector)
-                        .is_some_and(|player| player.is_in_game())
-                })
-        }),
-        // CR 506.4c / 508.4a: the returned creature wasn't attacking anything.
-        AttackTarget::Nothing { .. } => false,
-    }
 }
 
 impl EffectExecutor for NinjutsuEffect {
@@ -435,16 +393,7 @@ impl EffectExecutor for NinjutsuEffect {
                 let original = match &receipt.outcome {
                     BattlefieldEntryOutcome::Moved(new_id) => {
                         let new_id = *new_id;
-                        let valid_target =
-                            attack_target_still_valid(game, ctx.controller, &attack_target);
-                        if let Some(combat) = game.combat.as_mut()
-                            && valid_target
-                        {
-                            combat.attackers.push(AttackerInfo {
-                                creature: new_id,
-                                target: attack_target,
-                            });
-                        }
+                        crate::effects::combat::enter_attacking_recorded_target(game, new_id, attack_target);
                         EffectOutcome::with_objects(vec![new_id])
                     }
                     BattlefieldEntryOutcome::Redirected(change) => {

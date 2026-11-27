@@ -1717,19 +1717,7 @@ fn greatest_shared_creature_type_count_for_filter(
 /// Unlocked doors on a Room (CR 709.5): none until a door unlocks, two once
 /// fully unlocked, otherwise one. Non-Rooms have no doors.
 pub(crate) fn room_unlocked_door_count(game: &GameState, object: &crate::object::Object) -> i32 {
-    if game.copied_room_halves(object.id).is_some() {
-        let (first, second) = game.copied_room_unlocked_halves(object.id);
-        return i32::from(first) + i32::from(second);
-    }
-    if !object.subtypes.contains(&crate::types::Subtype::Room)
-        || game.room_has_no_unlocked_door(object.id)
-    {
-        0
-    } else if game.is_room_fully_unlocked(object.id) {
-        2
-    } else {
-        1
-    }
+    crate::special_actions::unlocked_room_doors(game, object.id).len() as i32
 }
 
 /// Resolve a Value to a concrete i32.
@@ -1768,6 +1756,8 @@ pub fn resolve_bounded_nonnegative_u32(
         .min(i64::from(available));
     Ok(ironsmith_core::quantity::clamp_u32(quantity))
 }
+
+pub(crate) use value_eval::resolve_payment_amount;
 
 pub fn resolve_value(
     game: &GameState,

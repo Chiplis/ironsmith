@@ -42,7 +42,7 @@ function Preview() {
       <div className="eyebrow">IRONSMITH / DECISION MENU</div>
       <h1>Every card has a place.</h1>
       <p className="intro">Zone icons identify the owner. A different controller colors the card’s name.</p>
-      <div className="legend">{players.map((p,i)=><span key={p.id} style={{color:['#b79cff','#ff3b30','#22c55e','#f28c28'][i]}}><i />{p.name}</span>)}</div>
+      <div className="legend">{players.map((p,i)=><span key={p.id} style={{color:['#4da3ff','#ff3b30','#22c55e','#f28c28'][i]}}><i />{p.name}</span>)}</div>
       <div className="preview-grid">
         <section data-decision-menu className="menu"><div className="menu-title">Choose a card <span>1 selection</span></div>
           <Component key={kind} decision={decision} canAct layout="strip" hideDescription inlineSubmit />

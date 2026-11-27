@@ -1482,8 +1482,9 @@ fn check_permanent_sbas_for_ids(
             let protector_in_game = game
                 .battle_protector(obj_id)
                 .filter(|protector| game.player(*protector).is_some_and(|p| p.is_in_game()));
-            let protector_is_legal = protector_in_game
-                .is_some_and(|protector| game.legal_battle_protectors(obj_id).contains(&protector));
+            let protector_is_legal = protector_in_game.is_some_and(|protector| {
+                game.battle_type_allows_protector(game.controller_of(obj), is_siege, protector)
+            });
             // CR 704.5x: a missing protector is replaced only while no
             // creature attacks the battle; CR 704.5y: an existing protector
             // who can't be its protector is replaced regardless.
@@ -2505,6 +2506,7 @@ fn prepare_and_apply_state_based_actions(
     let pinned_replacements = game
         .begin_simultaneous_replacement_pins()
         .map_err(crate::effects::ExecutionError::ContinuousDiscovery)?;
+    let order = crate::effects::zones::GraveyardOrderBatch::begin(game, simultaneous_zone_changes.len() > 1);
     let committed = (|| -> Result<bool, crate::effects::ExecutionError> {
         for (id, _, _) in &legend_plans {
             commit_sba_zone(
@@ -2551,7 +2553,8 @@ fn prepare_and_apply_state_based_actions(
     })();
     game.end_simultaneous_replacement_pins(pinned_replacements)
         .map_err(crate::effects::ExecutionError::ContinuousDiscovery)?;
-    if !committed? {
+    order.finish(game, decision_maker, None, matches!(committed, Ok(true)));
+    if !committed? || decision_maker.awaiting_choice() {
         return Ok(false);
     }
     crate::events::processing::commit_player_loss_receipts(game, &mut loss_receipts)?;

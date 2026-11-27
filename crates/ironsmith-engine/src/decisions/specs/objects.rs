@@ -494,6 +494,7 @@ pub struct SearchSpec {
     pub source: ObjectId,
     /// Cards matching the search criteria.
     pub matching_cards: Vec<ObjectId>,
+    pub prompt: Option<String>,
     /// Cards actually inspected during this search, including nonmatches.
     pub viewed_cards: Option<Vec<ObjectId>>,
     /// Whether the search is revealed to all players.
@@ -515,6 +516,7 @@ impl SearchSpec {
         Self {
             source,
             matching_cards,
+            prompt: None,
             viewed_cards: None,
             reveal,
             may_fail_to_find: true, // Most searches can fail to find
@@ -527,6 +529,7 @@ impl SearchSpec {
         Self {
             source,
             matching_cards,
+            prompt: None,
             viewed_cards: None,
             reveal,
             may_fail_to_find: false,
@@ -544,6 +547,9 @@ impl DecisionSpec for SearchSpec {
     type Response = Option<ObjectId>;
 
     fn description(&self) -> String {
+        if let Some(prompt) = &self.prompt {
+            return prompt.clone();
+        }
         if self.reveal {
             "Search library (revealed)".to_string()
         } else {
@@ -583,11 +589,7 @@ impl DecisionSpec for SearchSpec {
             })
             .collect();
 
-        let description = if self.reveal {
-            "Search library (revealed)".to_string()
-        } else {
-            "Search library".to_string()
-        };
+        let description = self.description();
 
         let ctx = SelectObjectsContext::new(
             player,

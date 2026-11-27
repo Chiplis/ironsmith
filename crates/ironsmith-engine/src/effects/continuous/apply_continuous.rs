@@ -253,6 +253,65 @@ pub(crate) fn sacrificed_cost_land_types(ctx: &ExecutionContext) -> Vec<crate::t
     land_types
 }
 
+/// A resolving "gains [keyword] if ... has [keyword]" instruction takes
+/// the qualifying variants from the donors present at resolution (CR 608.2h).
+/// The compiler represents this with a recipient-independent variant selector
+/// that permits the source itself to supply a keyword.
+fn freeze_borrowed_keyword_grants(
+    mods: Vec<Modification>,
+    game: &GameState,
+    ctx: &ExecutionContext,
+) -> Vec<Modification> {
+    use ironsmith_core::StaticAbilityPayload;
+    let mut result = Vec::with_capacity(mods.len());
+    for modification in mods {
+        let Modification::AddAbility(ability) = &modification else {
+            result.push(modification);
+            continue;
+        };
+        let Some(StaticAbilityPayload::CopyStaticAbilityVariants(copy)) =
+            ability.compiled_model().map(|model| &model.payload)
+        else {
+            result.push(modification);
+            continue;
+        };
+        if copy.exclude_source_id || copy.copy_all || copy.recipient.is_some() {
+            result.push(modification);
+            continue;
+        }
+        let filter_ctx = ctx.filter_context(game);
+        let mut variants = Vec::new();
+        let mut donors: Vec<_> = game
+            .objects_map()
+            .values()
+            .filter(|donor| copy.filter.zone.is_none_or(|zone| zone == donor.zone))
+            .collect();
+        donors.sort_unstable_by_key(|donor| donor.id);
+        for donor in donors {
+            if game.is_phased_out(donor.id)
+                || !game.object_is_within_range(ctx.controller, donor.id, Some(ctx.source))
+                || !copy.filter.matches(donor, &filter_ctx, game)
+            {
+                continue;
+            }
+            let Some(chars) = game.current_characteristics(donor.id) else {
+                continue;
+            };
+            for keyword in &chars.static_abilities {
+                keyword.visit_borrowed_variants(game, donor.id, |variant| {
+                    crate::continuous::select_distinct_static_variant(
+                        variant,
+                        &copy.selectors,
+                        &mut variants,
+                    );
+                });
+            }
+        }
+        result.extend(variants.into_iter().map(Modification::AddAbility));
+    }
+    result
+}
+
 /// "Target creature gains all creature types until end of turn" (Amoeboid
 /// Changeling, Mirror Entity) lowers to a granted changeling. Changeling means
 /// "this object is every creature type" (CR 702.73a): a type-changing effect
@@ -1600,6 +1659,7 @@ fn acquire_continuous_action(
         for modification in &mut mods { if let Modification::CopyOf { retain_original_name, .. } = modification { *retain_original_name = true; } }
     }
     let mods = expand_sacrificed_land_type_landwalk_modifications(mods, ctx);
+    let mods = freeze_borrowed_keyword_grants(mods, game, ctx);
     let mods = expand_granted_changeling_creature_types(mods);
     let mods=mods.into_iter().map(|modification|ctx.bind_definition_scope_modification(modification)).collect::<Result<Vec<_>,_>>()?;
     // CR 101.2, 611.2c: a control change fixes its objects as it resolves.

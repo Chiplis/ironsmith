@@ -30,6 +30,476 @@ fn creature(g: &mut GameState, name: &str, p: i32, t: i32) -> ObjectId {
 
 fn card(route: &str) -> ironsmith::CardDefinition {
     let (name, block) = match route {
+        "mountain" => ("Mountain", "Type: Basic Land — Mountain"),
+        "bringer-of-the-last-gift" => (
+            "Bringer of the Last Gift",
+            "Mana cost: {6}{B}{B}\nType: Creature — Vampire Demon\nPower/Toughness: 6/6\nFlying\nWhen this creature enters, if you cast it, each player sacrifices all other creatures they control. Then each player returns all creature cards from their graveyard that weren't put there this way to the battlefield.",
+        ),
+        "dryad-militant" => (
+            "Dryad Militant",
+            "Mana cost: {G/W}\nType: Creature — Dryad Soldier\nPower/Toughness: 2/1\nIf an instant or sorcery card would be put into a graveyard from anywhere, exile it instead.",
+        ),
+        "buried-alive" => (
+            "Buried Alive",
+            "Mana cost: {2}{B}\nType: Sorcery\nSearch your library for up to three creature cards, put them into your graveyard, then shuffle.",
+        ),
+        "intuition" => (
+            "Intuition",
+            "Mana cost: {2}{U}\nType: Instant\nSearch your library for three cards and reveal them. Target opponent chooses one. Put that card into your hand and the rest into your graveyard. Then shuffle.",
+        ),
+        "gifts-ungiven" => (
+            "Gifts Ungiven",
+            "Mana cost: {3}{U}\nType: Instant\nSearch your library for up to four cards with different names and reveal them. Target opponent chooses two of those cards. Put the chosen cards into your graveyard and the rest into your hand. Then shuffle.",
+        ),
+        "realms-uncharted" => (
+            "Realms Uncharted",
+            "Mana cost: {2}{G}\nType: Instant\nSearch your library for up to four land cards with different names and reveal them. An opponent chooses two of those cards. Put the chosen cards into your graveyard and the rest into your hand. Then shuffle.",
+        ),
+        "capital-punishment" => (
+            "Capital Punishment",
+            "Mana cost: {4}{B}{B}\nType: Sorcery\nCouncil's dilemma — Starting with you, each player votes for death or taxes. Each opponent sacrifices a creature of their choice for each death vote and discards a card for each taxes vote.",
+        ),
+        "horrifying-revelation" => (
+            "Horrifying Revelation",
+            "Mana cost: {B}\nType: Sorcery\nTarget player discards a card, then mills a card.",
+        ),
+        "tome-scour" => (
+            "Tome Scour",
+            "Mana cost: {U}\nType: Sorcery\nTarget player mills five cards.",
+        ),
+        "thought-scour" => (
+            "Thought Scour",
+            "Mana cost: {U}\nType: Instant\nTarget player mills two cards.\nDraw a card.",
+        ),
+        "notion-rain" => (
+            "Notion Rain",
+            "Mana cost: {1}{U}{B}\nType: Sorcery\nSurveil 2, then draw two cards. Notion Rain deals 2 damage to you. (To surveil 2, look at the top two cards of your library, then put any number of them into your graveyard and the rest on top of your library in any order.)",
+        ),
+        "mind-rot" => (
+            "Mind Rot",
+            "Mana cost: {2}{B}\nType: Sorcery\nTarget player discards two cards.",
+        ),
+        "barter-in-blood" => (
+            "Barter in Blood",
+            "Mana cost: {2}{B}{B}\nType: Sorcery\nEach player sacrifices two creatures of their choice.",
+        ),
+        "wheel-of-fortune" => (
+            "Wheel of Fortune",
+            "Mana cost: {2}{R}\nType: Sorcery\nEach player discards their hand, then draws seven cards.",
+        ),
+        "shallow-grave" => (
+            "Shallow Grave",
+            "Mana cost: {1}{B}\nType: Instant\nReturn the top creature card of your graveyard to the battlefield. That creature gains haste until end of turn. Exile it at the beginning of the next end step.",
+        ),
+        "walking-corpse" => (
+            "Walking Corpse",
+            "Mana cost: {1}{B}\nType: Creature — Zombie\nPower/Toughness: 2/2",
+        ),
+        "capricopian" => (
+            "Capricopian",
+            "Mana cost: {X}{G}\nType: Creature — Goat Hydra\nPower/Toughness: 0/0\nThis creature enters with X +1/+1 counters on it.\n{2}: Put a +1/+1 counter on this creature, then you may reselect which player this creature is attacking. Only the player this creature is attacking may activate this ability and only during the declare attackers step. (It can't attack its controller.)",
+        ),
+        "adanto-vanguard" => (
+            "Adanto Vanguard",
+            "Mana cost: {1}{W}\nType: Creature — Vampire Soldier\nPower/Toughness: 1/1\nAs long as this creature is attacking, it gets +2/+0.\nPay 4 life: This creature gains indestructible until end of turn. (Damage and effects that say \"destroy\" don't destroy it.)",
+        ),
+        "alarum" => (
+            "Alarum",
+            "Mana cost: {1}{W}\nType: Instant\nUntap target nonattacking creature. It gets +1/+3 until end of turn.",
+        ),
+        "leonardo-s-technique" => (
+            "Leonardo's Technique",
+            "Mana cost: {3}{W}\nType: Sorcery\nSneak {1}{W} (You may cast this spell for {1}{W} if you also return an unblocked attacker you control to hand during the declare blockers step.)\nReturn one or two target creature cards each with mana value 3 or less from your graveyard to the battlefield.",
+        ),
+        "portal-mage" => (
+            "Portal Mage",
+            "Mana cost: {2}{U}\nType: Creature — Human Wizard\nPower/Toughness: 2/2\nFlash\nWhen this creature enters during the declare attackers step, you may reselect which player or permanent target attacking creature is attacking. (It can't attack its controller or their permanents.)",
+        ),
+        "donatello-gadget-master" => (
+            "Donatello, Gadget Master",
+            "Mana cost: {2}{U}\nType: Legendary Creature — Mutant Ninja Turtle\nPower/Toughness: 3/2\nSneak {1}{U} (You may cast this spell for {1}{U} if you also return an unblocked attacker you control to hand during the declare blockers step. He enters tapped and attacking.)\nWhenever Donatello deals combat damage to a player, create a token that's a copy of target artifact you control.",
+        ),
+        "heroic-return" => (
+            "Heroic Return",
+            "Mana cost: {5}{W}\nType: Instant\nThis spell costs {2} less to cast if a creature is attacking you.\nReturn target creature card from your graveyard to the battlefield. If a Hero enters this way, it enters with two additional +1/+1 counters on it.",
+        ),
+        "swat-away" => (
+            "Swat Away",
+            "Mana cost: {2}{U}{U}\nType: Instant\nThis spell costs {2} less to cast if a creature is attacking you.\nThe owner of target spell or creature puts it on their choice of the top or bottom of their library.",
+        ),
+        "red-alert" => (
+            "Red Alert!",
+            "Mana cost: {2}{R}\nType: Instant\nThis spell costs {2} less to cast if a creature is attacking you.\nCreatures you control get +2/+0 until end of turn.",
+        ),
+        "qasali-ambusher" => (
+            "Qasali Ambusher",
+            "Mana cost: {1}{G}{W}\nType: Creature — Cat Warrior\nPower/Toughness: 2/3\nReach\nIf a creature is attacking you and you control a Forest and a Plains, you may cast this creature without paying its mana cost and as though it had flash.",
+        ),
+        "plains" => (
+            "Plains",
+            "Type: Basic Land — Plains",
+        ),
+        "veteran-bodyguard" => (
+            "Veteran Bodyguard",
+            "Mana cost: {3}{W}{W}\nType: Creature — Human\nPower/Toughness: 2/5\nAs long as this creature is untapped, all damage that would be dealt to you by unblocked creatures is dealt to this creature instead.",
+        ),
+        "mogg-fanatic" => (
+            "Mogg Fanatic",
+            "Mana cost: {R}\nType: Creature — Goblin\nPower/Toughness: 1/1\nSacrifice this creature: It deals 1 damage to any target.",
+        ),
+        "elturel-survivors" => (
+            "Elturel Survivors",
+            "Mana cost: {3}{R}\nType: Creature — Tiefling Peasant\nPower/Toughness: 0/4\nTrample, myriad (Whenever this creature attacks, for each opponent other than defending player, you may create a token copy that's tapped and attacking that player or a planeswalker they control. Exile the tokens at end of combat.)\nAs long as this creature is attacking, it gets +X/+0, where X is the number of lands defending player controls.",
+        ),
+        "kill-shot" => (
+            "Kill Shot",
+            "Mana cost: {2}{W}\nType: Instant\nDestroy target attacking creature.",
+        ),
+        "righteousness" => (
+            "Righteousness",
+            "Mana cost: {W}\nType: Instant\nTarget blocking creature gets +7/+7 until end of turn.",
+        ),
+        "balduvian-warlord" => (
+            "Balduvian Warlord",
+            "Mana cost: {3}{R}\nType: Creature — Human Barbarian\nPower/Toughness: 3/2\n{T}: Remove target blocking creature from combat. Creatures it was blocking that hadn't become blocked by another creature this combat become unblocked, then it blocks an attacking creature of your choice. Activate only during the declare blockers step.",
+        ),
+        "curtain-of-light" => (
+            "Curtain of Light",
+            "Mana cost: {1}{W}\nType: Instant\nCast this spell only during combat after blockers are declared.\nTarget unblocked attacking creature becomes blocked. (This spell works on creatures that can't be blocked.)\nDraw a card.",
+        ),
+        "dazzling-beauty" => (
+            "Dazzling Beauty",
+            "Mana cost: {2}{W}\nType: Instant\nCast this spell only during the declare blockers step.\nTarget unblocked attacking creature becomes blocked. (This spell works on creatures that can't be blocked.)\nDraw a card at the beginning of the next turn's upkeep.",
+        ),
+        "false-orders" => (
+            "False Orders",
+            "Mana cost: {R}\nType: Instant\nCast this spell only during the declare blockers step.\nRemove target creature defending player controls from combat. Creatures it was blocking that had become blocked by only that creature this combat become unblocked. You may have it block an attacking creature of your choice.",
+        ),
+        "general-jarkeld" => (
+            "General Jarkeld",
+            "Mana cost: {3}{W}\nType: Legendary Creature — Human Soldier\nPower/Toughness: 1/2\n{T}: Choose two target blocked attacking creatures. If each of those creatures could be blocked by all creatures that the other is blocked by, each creature that's blocking exactly one of those attacking creatures stops blocking it and is blocking the other attacking creature. Activate only during the declare blockers step.",
+        ),
+        "ninja-of-the-deep-hours" => (
+            "Ninja of the Deep Hours",
+            "Mana cost: {3}{U}\nType: Creature — Human Ninja\nPower/Toughness: 2/2\nNinjutsu {1}{U} ({1}{U}, Return an unblocked attacker you control to hand: Put this card onto the battlefield from your hand tapped and attacking.)\nWhenever this creature deals combat damage to a player, you may draw a card.",
+        ),
+        "sorrow-s-path" => (
+            "Sorrow's Path",
+            "Type: Land\n{T}: Choose two target blocking creatures controlled by the same opponent. If each of those creatures could block all creatures that the other is blocking, remove both of them from combat. Each one then blocks all creatures the other was blocking.\nWhenever this land becomes tapped, it deals 2 damage to you and each creature you control.",
+        ),
+        "timetwister" => (
+            "Timetwister",
+            "Mana cost: {2}{U}\nType: Sorcery\nEach player shuffles their hand and graveyard into their library, then draws seven cards. (Then put Timetwister into its owner's graveyard.)",
+        ),
+        "step-between-worlds" => (
+            "Step Between Worlds",
+            "Mana cost: {3}{U}{U}\nType: Sorcery\nEach player may shuffle their hand and graveyard into their library. Each player who does draws seven cards. Exile Step Between Worlds.\nPlot {4}{U}{U} (You may pay {4}{U}{U} and exile this card from your hand. Cast it as a sorcery on a later turn without paying its mana cost. Plot only as a sorcery.)",
+        ),
+        "sway-of-the-stars" => (
+            "Sway of the Stars",
+            "Mana cost: {8}{U}{U}\nType: Sorcery\nEach player shuffles their hand, graveyard, and all permanents they own into their library, then draws seven cards. Each player's life total becomes 7.",
+        ),
+        "turtles-in-time" => (
+            "Turtles in Time",
+            "Mana cost: {5}{U}{U}\nType: Sorcery\nReturn all creatures to their owners' hands. Each player may shuffle their hand and graveyard into their library, then each player who does draws seven cards.\nExile Turtles in Time.",
+        ),
+        "isamaru-hound-of-konda" => (
+            "Isamaru, Hound of Konda",
+            "Mana cost: {W}\nType: Legendary Creature — Dog\nPower/Toughness: 2/2",
+        ),
+        "void-stalker" => (
+            "Void Stalker",
+            "Mana cost: {1}{U}\nType: Creature — Elemental\nPower/Toughness: 2/1\n{2}{U}, {T}: Put this creature and target creature on top of their owners' libraries, then those players shuffle their libraries.",
+        ),
+        "vortex-elemental" => (
+            "Vortex Elemental",
+            "Mana cost: {U}\nType: Creature — Elemental\nPower/Toughness: 0/1\n{U}: Put this creature and each creature blocking or blocked by it on top of their owners' libraries, then those players shuffle.\n{3}{U}{U}: Target creature blocks this creature this turn if able.",
+        ),
+        "gomazoa" => (
+            "Gomazoa",
+            "Mana cost: {2}{U}\nType: Creature — Jellyfish\nPower/Toughness: 0/3\nDefender, flying\n{T}: Put this creature and each creature it's blocking on top of their owners' libraries, then those players shuffle.",
+        ),
+        "turn-the-earth" => (
+            "Turn the Earth",
+            "Mana cost: {G}\nType: Instant\nChoose up to three target cards in graveyards. The owners of those cards shuffle them into their libraries. You gain 2 life.\nFlashback {1}{G} (You may cast this card from your graveyard for its flashback cost. Then exile it.)",
+        ),
+        "those-old-scientists" => (
+            "Those Old Scientists",
+            "Mana cost: {2}{U}\nType: Enchantment — Saga\n(As this Saga enters and after your draw\nstep, add a lore counter. Sacrifice after III.)\nI — Draw two cards, then discard two cards.\nII — Return up to one target artifact, instant, or sorcery card from your graveyard to your hand.\nIII — Choose up to two target cards in graveyards. The owners of those cards shuffle them into their libraries.",
+        ),
+        "guff-rewrites-history" => (
+            "Guff Rewrites History",
+            "Mana cost: {2}{R}\nType: Instant\nFor each player, choose target nonenchantment, nonland permanent that player controls. Those permanents' owners shuffle them into their libraries. Each player who controlled one of those permanents exiles cards from the top of their library until they exile a nonland card, then puts the rest on the bottom of their library in a random order. Each player may cast the nonland card they exiled without paying its mana cost.",
+        ),
+        "loaming-shaman" => (
+            "Loaming Shaman",
+            "Mana cost: {2}{G}\nType: Creature — Centaur Shaman\nPower/Toughness: 3/2\nWhen this creature enters, target player shuffles any number of target cards from their graveyard into their library.",
+        ),
+        "guile" => (
+            "Guile",
+            "Mana cost: {3}{U}{U}{U}\nType: Creature — Elemental Incarnation\nPower/Toughness: 6/6\nThis creature can't be blocked except by three or more creatures.\nIf a spell or ability you control would counter a spell, instead exile that spell and you may play that card without paying its mana cost.\nWhen Guile is put into a graveyard from anywhere, shuffle it into its owner's library.",
+        ),
+        "dread" => (
+            "Dread",
+            "Mana cost: {3}{B}{B}{B}\nType: Creature — Elemental Incarnation\nPower/Toughness: 6/6\nFear (This creature can't be blocked except by artifact creatures and/or black creatures.)\nWhenever a creature deals damage to you, destroy it.\nWhen Dread is put into a graveyard from anywhere, shuffle it into its owner's library.",
+        ),
+        "hostility" => (
+            "Hostility",
+            "Mana cost: {3}{R}{R}{R}\nType: Creature — Elemental Incarnation\nPower/Toughness: 6/6\nHaste\nIf a spell you control would deal damage to an opponent, prevent that damage. Create a 3/1 red Elemental Shaman creature token with haste for each 1 damage prevented this way.\nWhen Hostility is put into a graveyard from anywhere, shuffle it into its owner's library.",
+        ),
+        "purity" => (
+            "Purity",
+            "Mana cost: {3}{W}{W}{W}\nType: Creature — Elemental Incarnation\nPower/Toughness: 6/6\nFlying\nIf noncombat damage would be dealt to you, prevent that damage. You gain life equal to the damage prevented this way.\nWhen Purity is put into a graveyard from anywhere, shuffle it into its owner's library.",
+        ),
+        "vigor" => (
+            "Vigor",
+            "Mana cost: {3}{G}{G}{G}\nType: Creature — Elemental Incarnation\nPower/Toughness: 6/6\nTrample\nIf damage would be dealt to another creature you control, prevent that damage. Put a +1/+1 counter on that creature for each 1 damage prevented this way.\nWhen Vigor is put into a graveyard from anywhere, shuffle it into its owner's library.",
+        ),
+        "black-sun-s-zenith" => (
+            "Black Sun's Zenith",
+            "Mana cost: {X}{B}{B}\nType: Sorcery\nPut X -1/-1 counters on each creature. Shuffle Black Sun's Zenith into its owner's library.",
+        ),
+        "elixir-of-immortality" => (
+            "Elixir of Immortality",
+            "Mana cost: {1}\nType: Artifact\n{2}, {T}: You gain 5 life. Shuffle this artifact and your graveyard into their owner's library.",
+        ),
+        "cosi-s-trickster" => (
+            "Cosi's Trickster",
+            "Mana cost: {U}\nType: Creature — Merfolk Wizard\nPower/Toughness: 1/1\nWhenever an opponent shuffles their library, you may put a +1/+1 counter on this creature.",
+        ),
+        "floodpits-drowner" => (
+            "Floodpits Drowner",
+            "Mana cost: {1}{U}\nType: Creature — Merfolk\nPower/Toughness: 2/1\nFlash\nVigilance\nWhen this creature enters, tap target creature an opponent controls and put a stun counter on it.\n{1}{U}, {T}: Shuffle this creature and target creature with a stun counter on it into their owners' libraries.",
+        ),
+        "serene-remembrance" => (
+            "Serene Remembrance",
+            "Mana cost: {G}\nType: Sorcery\nShuffle Serene Remembrance and up to three target cards from a single graveyard into their owners' libraries.",
+        ),
+        "rishadan-pawnshop" => (
+            "Rishadan Pawnshop",
+            "Mana cost: {2}\nType: Artifact\n{2}, {T}: Shuffle target nontoken permanent you control into its owner's library.",
+        ),
+        "chaos-warp" => (
+            "Chaos Warp",
+            "Mana cost: {2}{R}\nType: Instant\nThe owner of target permanent shuffles it into their library, then reveals the top card of their library. If it's a permanent card, they put it onto the battlefield.",
+        ),
+        "sin-unending-cataclysm" => (
+            "Sin, Unending Cataclysm",
+            "Mana cost: {5}{G}{U}\nType: Legendary Creature — Leviathan Avatar\nPower/Toughness: 5/5\nFlying, trample\nAs Sin enters, remove all counters from any number of artifacts, creatures, and enchantments. Sin enters with X +1/+1 counters on it, where X is twice the number of counters removed this way.\nWhen Sin dies, put its counters on target creature you control, then shuffle this card into its owner's library.",
+        ),
+        "teferi-temporal-pilgrim" => (
+            "Teferi, Temporal Pilgrim",
+            "Mana cost: {3}{U}{U}\nType: Legendary Planeswalker — Teferi\nLoyalty: 4\nWhenever you draw a card, put a loyalty counter on Teferi.\n0: Draw a card.\n−2: Create a 2/2 blue Spirit creature token with vigilance and \"Whenever you draw a card, put a +1/+1 counter on this token.\"\n−12: Target opponent chooses a permanent they control and returns it to its owner's hand. Then they shuffle each nonland permanent they control into its owner's library.",
+        ),
+        "cavalier-of-gales" => (
+            "Cavalier of Gales",
+            "Mana cost: {2}{U}{U}{U}\nType: Creature — Elemental Knight\nPower/Toughness: 5/5\nFlying\nWhen this creature enters, draw three cards, then put two cards from your hand on top of your library in any order.\nWhen this creature dies, shuffle it into its owner's library, then scry 2. (Look at the top two cards of your library, then put any number of them on the bottom and the rest on top in any order.)",
+        ),
+        "angel-of-fury" => (
+            "Angel of Fury",
+            "Mana cost: {4}{W}{W}\nType: Creature — Angel\nPower/Toughness: 3/5\nFlying\nWhen this creature dies, you may shuffle it into its owner's library.",
+        ),
+        "alabaster-dragon" => (
+            "Alabaster Dragon",
+            "Mana cost: {4}{W}{W}\nType: Creature — Dragon\nPower/Toughness: 4/4\nFlying\nWhen this creature dies, shuffle it into its owner's library.",
+        ),
+        "serra-avatar" => (
+            "Serra Avatar",
+            "Mana cost: {4}{W}{W}{W}\nType: Creature — Avatar\nPower/Toughness: */*\nSerra Avatar's power and toughness are each equal to your life total.\nWhen Serra Avatar is put into a graveyard from anywhere, shuffle it into its owner's library.",
+        ),
+        "worldspine-wurm" => (
+            "Worldspine Wurm",
+            "Mana cost: {8}{G}{G}{G}\nType: Creature — Wurm\nPower/Toughness: 15/15\nTrample\nWhen this creature dies, create three 5/5 green Wurm creature tokens with trample.\nWhen Worldspine Wurm is put into a graveyard from anywhere, shuffle it into its owner's library.",
+        ),
+        "archivist-of-oghma" => ("Archivist of Oghma", "Mana cost: {1}{W}\nType: Creature — Halfling Cleric\nPower/Toughness: 2/2\nFlash\nWhenever an opponent searches their library, you gain 1 life and draw a card."),
+        "tempt-with-discovery" => (
+            "Tempt with Discovery",
+            "Mana cost: {3}{G}\nType: Sorcery\nTempting offer — Search your library for a land card and put it onto the battlefield. Each opponent may search their library for a land card and put it onto the battlefield. For each opponent who searches a library this way, search your library for a land card and put it onto the battlefield. Then each player who searched a library this way shuffles.",
+        ),
+        "collective-voyage" => (
+            "Collective Voyage",
+            "Mana cost: {G}\nType: Sorcery\nJoin forces — Starting with you, each player may pay any amount of mana. Each player searches their library for up to X basic land cards, where X is the total amount of mana paid this way, puts them onto the battlefield tapped, then shuffles.",
+        ),
+        "pir-s-whim" => (
+            "Pir's Whim",
+            "Mana cost: {3}{G}\nType: Sorcery\nFor each player, choose friend or foe. Each friend searches their library for a land card, puts it onto the battlefield tapped, then shuffles. Each foe sacrifices an artifact or enchantment of their choice.",
+        ),
+        "veteran-explorer" => (
+            "Veteran Explorer",
+            "Mana cost: {G}\nType: Creature — Human Soldier Scout\nPower/Toughness: 1/1\nWhen this creature dies, each player may search their library for up to two basic land cards, put them onto the battlefield, then shuffle.",
+        ),
+        "avatar-of-growth" => (
+            "Avatar of Growth",
+            "Mana cost: {4}{G}{G}\nType: Creature — Elemental Avatar\nPower/Toughness: 4/4\nThis spell costs {1} less to cast for each opponent you have.\nTrample\nWhen this creature enters, each player searches their library for up to two basic land cards, puts them onto the battlefield, then shuffles.",
+        ),
+        "jungle-wayfinder" => (
+            "Jungle Wayfinder",
+            "Mana cost: {2}{G}\nType: Creature — Elf Warrior\nPower/Toughness: 3/3\nWhen this creature enters, each player may search their library for a basic land card, reveal it, put it into their hand, then shuffle.",
+        ),
+        "hired-giant" => (
+            "Hired Giant",
+            "Mana cost: {3}{R}\nType: Creature — Giant\nPower/Toughness: 4/4\nWhen this creature enters, each other player may search their library for a land card and put that card onto the battlefield. Then each player who searched their library this way shuffles.",
+        ),
+        "old-growth-dryads" => (
+            "Old-Growth Dryads",
+            "Mana cost: {G}\nType: Creature — Dryad\nPower/Toughness: 3/3\nWhen this creature enters, each opponent may search their library for a basic land card, put it onto the battlefield tapped, then shuffle.",
+        ),
+        "boldwyr-heavyweights" => (
+            "Boldwyr Heavyweights",
+            "Mana cost: {2}{R}{R}\nType: Creature — Giant Warrior\nPower/Toughness: 8/8\nTrample\nWhen this creature enters, each opponent may search their library for a creature card and put it onto the battlefield. Then each player who searched their library this way shuffles.",
+        ),
+        "noble-benefactor" => (
+            "Noble Benefactor",
+            "Mana cost: {2}{U}\nType: Creature — Human Cleric\nPower/Toughness: 2/2\nWhen this creature dies, each player may search their library for a card and put that card into their hand. Then each player who searched their library this way shuffles.",
+        ),
+        "rootweaver-druid" => (
+            "Rootweaver Druid",
+            "Mana cost: {2}{G}\nType: Creature — Elf Druid\nPower/Toughness: 2/1\nWhen this creature enters, each opponent may search their library for up to three basic land cards. They each put one of those cards onto the battlefield tapped under your control and the rest onto the battlefield tapped under their control. Then each player who searched their library this way shuffles.",
+        ),
+        "scheming-symmetry" => (
+            "Scheming Symmetry",
+            "Mana cost: {B}\nType: Sorcery\nChoose two target players. Each of them searches their library for a card, then shuffles and puts that card on top.",
+        ),
+        "field-of-ruin" => (
+            "Field of Ruin",
+            "Type: Land\n{T}: Add {C}.\n{2}, {T}, Sacrifice this land: Destroy target nonbasic land an opponent controls. Each player searches their library for a basic land card, puts it onto the battlefield, then shuffles.",
+        ),
+        "weird-harvest" => (
+            "Weird Harvest",
+            "Mana cost: {X}{G}{G}\nType: Sorcery\nEach player may search their library for up to X creature cards, reveal those cards, put them into their hand, then shuffle.",
+        ),
+        "etali-primal-storm" => (
+            "Etali, Primal Storm",
+            "Mana cost: {4}{R}{R}\nType: Legendary Creature — Elder Dinosaur\nPower/Toughness: 6/6\nWhenever Etali attacks, exile the top card of each player's library, then you may cast any number of spells from among those cards without paying their mana costs.",
+        ),
+        "etali-primal-conqueror" => (
+            "Etali, Primal Conqueror",
+            "Mana cost: {5}{R}{R}\nType: Legendary Creature — Elder Dinosaur\nPower/Toughness: 7/7\nTrample\nWhen Etali enters, each player exiles cards from the top of their library until they exile a nonland card. You may cast any number of spells from among the nonland cards exiled this way without paying their mana costs.\n{9}{G/P}: Transform Etali. Activate only as a sorcery.",
+        ),
+        "primeval-spawn" => (
+            "Primeval Spawn",
+            "Mana cost: {5}{W}{U}{B}{R}{G}\nType: Creature — Avatar\nPower/Toughness: 10/10\nIf this creature would enter and it wasn't cast or no mana was spent to cast it, exile it instead.\nVigilance, trample, lifelink\nWhen this creature leaves the battlefield, exile the top ten cards of your library. You may cast any number of spells with total mana value 10 or less from among them without paying their mana costs.",
+        ),
+        "fevered-suspicion" => (
+            "Fevered Suspicion",
+            "Mana cost: {6}{B}{R}\nType: Sorcery\nEach opponent exiles cards from the top of their library until they exile a nonland card. You may cast any number of spells from among those nonland cards without paying their mana costs.\nRebound (If you cast this spell from your hand, exile it as it resolves. At the beginning of your next upkeep, you may cast this card from exile without paying its mana cost.)",
+        ),
+        "villainous-wealth" => (
+            "Villainous Wealth",
+            "Mana cost: {X}{B}{G}{U}\nType: Sorcery\nTarget opponent exiles the top X cards of their library. You may cast any number of spells with mana value X or less from among them without paying their mana costs.",
+        ),
+        "command-tower" => (
+            "Command Tower",
+            "Type: Land\n{T}: Add one mana of any color in your commander's color identity.",
+        ),
+        "darksteel-citadel" => (
+            "Darksteel Citadel",
+            "Type: Artifact Land\nIndestructible\n{T}: Add {C}.",
+        ),
+        "from-the-ashes" => (
+            "From the Ashes",
+            "Mana cost: {3}{R}\nType: Sorcery\nDestroy all nonbasic lands. For each land destroyed this way, its controller may search their library for a basic land card and put it onto the battlefield. Then each player who searched their library this way shuffles.",
+        ),
+        "haunting-echoes" => (
+            "Haunting Echoes",
+            "Mana cost: {3}{B}{B}\nType: Sorcery\nExile all cards from target player's graveyard other than basic land cards. For each card exiled this way, search that player's library for all cards with the same name as that card and exile them. Then that player shuffles.",
+        ),
+        "clarion-ultimatum" => (
+            "Clarion Ultimatum",
+            "Mana cost: {G}{G}{W}{W}{W}{U}{U}\nType: Sorcery\nChoose five permanents you control. For each of those permanents, you may search your library for a card with the same name as that permanent. Put those cards onto the battlefield tapped, then shuffle.",
+        ),
+        "dichotomancy" => (
+            "Dichotomancy",
+            "Mana cost: {7}{U}{U}\nType: Sorcery\nFor each tapped nonland permanent target opponent controls, search that player's library for a card with the same name as that permanent. Put those cards onto the battlefield under your control, then that player shuffles.\nSuspend 3—{1}{U}{U} (Rather than cast this card from your hand, you may pay {1}{U}{U} and exile it with three time counters on it. At the beginning of your upkeep, remove a time counter. When the last is removed, you may cast it without paying its mana cost.)",
+        ),
+        "reap-intellect" => (
+            "Reap Intellect",
+            "Mana cost: {X}{2}{U}{B}\nType: Sorcery\nTarget opponent reveals their hand. You choose up to X nonland cards from it and exile them. For each card exiled this way, search that player's graveyard, hand, and library for any number of cards with the same name as that card and exile them. Then that player shuffles.",
+        ),
+        "doubling-chant" => (
+            "Doubling Chant",
+            "Mana cost: {5}{G}\nType: Sorcery\nFor each creature you control, you may search your library for a creature card with the same name as that creature. Put those cards onto the battlefield, then shuffle.",
+        ),
+        "krenko-s-buzzcrusher" => (
+            "Krenko's Buzzcrusher",
+            "Mana cost: {2}{R}{R}\nType: Artifact Creature — Insect Thopter\nPower/Toughness: 4/4\nFlying, trample\nWhen this creature enters, for each player, destroy up to one nonbasic land that player controls. For each land destroyed this way, its controller may search their library for a basic land card, put it onto the battlefield tapped, then shuffle.",
+        ),
+        "wave-of-vitriol" => (
+            "Wave of Vitriol",
+            "Mana cost: {5}{G}{G}\nType: Sorcery\nEach player sacrifices all artifacts, enchantments, and nonbasic lands they control. For each land sacrificed this way, its controller may search their library for a basic land card and put it onto the battlefield tapped. Then each player who searched their library this way shuffles.",
+        ),
+        "winds-of-abandon" => (
+            "Winds of Abandon",
+            "Mana cost: {1}{W}\nType: Sorcery\nExile target creature you don't control. For each creature exiled this way, its controller searches their library for a basic land card. Those players put those cards onto the battlefield tapped, then shuffle.\nOverload {4}{W}{W} (You may cast this spell for its overload cost. If you do, change \"target\" in its text to \"each.\")",
+        ),
+        "jace-architect-of-thought" => (
+            "Jace, Architect of Thought",
+            "Mana cost: {2}{U}{U}\nType: Legendary Planeswalker — Jace\nLoyalty: 4\n+1: Until your next turn, whenever a creature an opponent controls attacks, it gets -1/-0 until end of turn.\n−2: Reveal the top three cards of your library. An opponent separates those cards into two piles. Put one pile into your hand and the other on the bottom of your library in any order.\n−8: For each player, search that player's library for a nonland card and exile it, then that player shuffles. You may cast those cards without paying their mana costs.",
+        ),
+        "natural-balance" => (
+            "Natural Balance",
+            "Mana cost: {2}{G}{G}\nType: Sorcery\nEach player who controls six or more lands chooses five lands they control and sacrifices the rest. Each player who controls four or fewer lands may search their library for up to X basic land cards and put them onto the battlefield, where X is five minus the number of lands they control. Then each player who searched their library this way shuffles.",
+        ),
+        "new-frontiers" => (
+            "New Frontiers",
+            "Mana cost: {X}{G}\nType: Sorcery\nEach player may search their library for up to X basic land cards and put them onto the battlefield tapped. Then each player who searched their library this way shuffles.",
+        ),
+        "scholarship-sponsor" => (
+            "Scholarship Sponsor",
+            "Mana cost: {3}{W}\nType: Creature — Human Advisor\nPower/Toughness: 3/3\nWhen this creature enters, each player who controls fewer lands than the player who controls the most lands searches their library for a number of basic land cards less than or equal to the difference, puts those cards onto the battlefield tapped, then shuffles.",
+        ),
+        "borderland-explorer" => (
+            "Borderland Explorer",
+            "Mana cost: {1}{G}\nType: Creature — Elf Scout\nPower/Toughness: 3/1\nWhen this creature enters, each player may discard a card. Each player who discarded a card this way may search their library for a basic land card, reveal it, put it into their hand, then shuffle.",
+        ),
+        "turtle-tracks" => (
+            "Turtle Tracks",
+            "Mana cost: {2}{G}\nType: Sorcery\nAny number of target players may each search their library for a basic land card, put it onto the battlefield under their control, then shuffle.",
+        ),
+        "aven-mindcensor" => (
+            "Aven Mindcensor",
+            "Mana cost: {2}{W}\nType: Creature — Bird Wizard\nPower/Toughness: 2/1\nFlash\nFlying\nIf an opponent would search a library, that player searches the top four cards of that library instead.",
+        ),
+        "stranglehold" => (
+            "Stranglehold",
+            "Mana cost: {3}{R}\nType: Enchantment\nYour opponents can't search libraries.\nIf an opponent would begin an extra turn, that player skips that turn instead.",
+        ),
+        "opposition-agent" => (
+            "Opposition Agent",
+            "Mana cost: {2}{B}\nType: Creature — Human Rogue\nPower/Toughness: 3/2\nFlash\nYou control your opponents while they're searching their libraries.\nWhile an opponent is searching their library, they exile each card they find. You may play those cards for as long as they remain exiled, and you may spend mana as though it were mana of any color to cast them.",
+        ),
+        "panglacial-wurm" => (
+            "Panglacial Wurm",
+            "Mana cost: {5}{G}{G}\nType: Creature — Wurm\nPower/Toughness: 9/5\nTrample\nWhile you're searching your library, you may cast this card from your library.",
+        ),
+        "kaya-intangible-slayer" => (
+            "Kaya, Intangible Slayer",
+            "Mana cost: {3}{W}{W}{B}{B}\nType: Legendary Planeswalker — Kaya\nLoyalty: 6\nHexproof\n+2: Each opponent loses 3 life and you gain 3 life.\n0: You draw two cards. Then each opponent may scry 1.\n−3: Exile target creature or enchantment. If it wasn't an Aura, create a token that's a copy of it, except it's a 1/1 white Spirit creature with flying in addition to its other types.",
+        ),
+        "eager-construct" => (
+            "Eager Construct",
+            "Mana cost: {2}\nType: Artifact Creature — Construct\nPower/Toughness: 2/2\nWhen this creature enters, each player may scry 1. (To scry 1, look at the top card of your library, then you may put that card on the bottom.)",
+        ),
+        "kenessos-priest-of-thassa" => (
+            "Kenessos, Priest of Thassa",
+            "Mana cost: {1}{U}\nType: Legendary Creature — Merfolk Cleric\nPower/Toughness: 1/3\nIf you would scry a number of cards, scry that many cards plus one instead.\n{3}{G/U}: Look at the top card of your library. If it's a Kraken, Leviathan, Octopus, or Serpent creature card, you may put it onto the battlefield. If you don't put the card onto the battlefield, you may put it on the bottom of your library.",
+        ),
+        "eligeth-crossroads-augur" => (
+            "Eligeth, Crossroads Augur",
+            "Mana cost: {4}{U}{U}\nType: Legendary Creature — Sphinx\nPower/Toughness: 5/6\nFlying\nIf you would scry a number of cards, draw that many cards instead.\nPartner (You can have two commanders if both have partner.)",
+        ),
+        "the-temporal-anchor" => (
+            "The Temporal Anchor",
+            "Mana cost: {3}{U}{U}{U}\nType: Legendary Artifact\nAt the beginning of your upkeep, scry 2.\nWhenever you choose to put one or more cards on the bottom of your library while scrying, exile that many cards from the bottom of your library.\nDuring your turn, you may play cards exiled with The Temporal Anchor.",
+        ),
+        "model-of-unity" => (
+            "Model of Unity",
+            "Mana cost: {3}\nType: Artifact\nWhenever players finish voting, you and each opponent who voted for a choice you voted for may scry 2.\n{T}: Add one mana of any color.",
+        ),
+        "myr-custodian" => (
+            "Myr Custodian",
+            "Mana cost: {3}\nType: Artifact Creature — Myr\nPower/Toughness: 2/3\nWhen this creature enters, scry 2. Then each opponent may scry 1. (To scry X, a player looks at the top X cards of their library, then puts any number of them on the bottom and the rest on top in any order.)",
+        ),
         "spire-of-industry" => (
             "Spire of Industry",
             "Type: Land\nFirst printed set: Aether Revolt\n{T}: Add {C}.\n{T}, Pay 1 life: Add one mana of any color. Activate only if you control an artifact.",
@@ -621,6 +1091,253 @@ fn card(route: &str) -> ironsmith::CardDefinition {
         "centaur-courser" => (
             "Centaur Courser",
             "Mana cost: {2}{G}\nType: Creature — Centaur Warrior\nPower/Toughness: 3/3",
+        ),
+        "shapeshifter" => (
+            "Shapeshifter",
+            "Mana cost: {6}\nType: Artifact Creature — Shapeshifter\nFirst printed set: Antiquities\nPower/Toughness: */7-*\nAs this creature enters, choose a number between 0 and 7.\nAt the beginning of your upkeep, you may choose a number between 0 and 7.\nShapeshifter's power is equal to the last chosen number and its toughness is equal to 7 minus that number.",
+        ),
+        "planar-nexus" => (
+            "Planar Nexus",
+            "Type: Land\nFirst printed set: Modern Horizons 3 Commander\nThis land is every nonbasic land type. (Nonbasic land types include Cave, Desert, Gate, Lair, Locus, Mine, Power-Plant, Sphere, Tower, and Urza's.)\n{T}: Add {C}.\n{1}, {T}: Add one mana of any color.",
+        ),
+        "dress-down" => (
+            "Dress Down",
+            "Mana cost: {1}{U}\nType: Enchantment\nFirst printed set: Modern Horizons 2 Promos\nFlash\nWhen this enchantment enters, draw a card.\nCreatures lose all abilities.\nAt the beginning of the end step, sacrifice this enchantment.",
+        ),
+        "invasion-of-zendikar" => (
+            "Invasion of Zendikar",
+            "Mana cost: {3}{G}\nType: Battle — Siege\nDefense: 3\n(As a Siege enters, choose an opponent to protect it. You and others can attack it. When it's defeated, exile it, then cast it transformed.)\nWhen this Siege enters, search your library for up to two basic land cards, put them onto the battlefield tapped, then shuffle.",
+        ),
+        "gavony-dawnguard" => (
+            "Gavony Dawnguard",
+            "Mana cost: {1}{W}{W}\nType: Creature — Human Soldier\nFirst printed set: Innistrad: Midnight Hunt\nPower/Toughness: 3/3\nWard {1}\nIf it's neither day nor night, it becomes day as this creature enters.\nWhenever day becomes night or night becomes day, look at the top four cards of your library. You may reveal a creature card with mana value 3 or less from among them and put it into your hand. Put the rest on the bottom of your library in any order.",
+        ),
+        "worldfire" => (
+            "Worldfire",
+            "Mana cost: {6}{R}{R}{R}\nType: Sorcery\nFirst printed set: Magic 2013\nExile all permanents. Exile all cards from all hands and graveyards. Each player's life total becomes 1.",
+        ),
+        "knight-of-grace" => (
+            "Knight of Grace",
+            "Mana cost: {1}{W}\nType: Creature — Human Knight\nFirst printed set: Dominaria\nPower/Toughness: 2/2\nFirst strike (This creature deals combat damage before creatures without first strike.)\nHexproof from black (This creature can't be the target of black spells or abilities your opponents control.)\nThis creature gets +1/+0 as long as any player controls a black permanent.",
+        ),
+        "knight-of-malice" => (
+            "Knight of Malice",
+            "Mana cost: {1}{B}\nType: Creature — Human Knight\nFirst printed set: Dominaria\nPower/Toughness: 2/2\nFirst strike (This creature deals combat damage before creatures without first strike.)\nHexproof from white (This creature can't be the target of white spells or abilities your opponents control.)\nThis creature gets +1/+0 as long as any player controls a white permanent.",
+        ),
+        "majestic-myriarch" => (
+            "Majestic Myriarch",
+            "Mana cost: {4}{G}\nType: Creature — Chimera\nFirst printed set: Hour of Devastation\nPower/Toughness: */*\nMajestic Myriarch's power and toughness are each equal to twice the number of creatures you control.\nAt the beginning of each combat, this creature gains flying until end of turn if you control a creature with flying. The same is true for first strike, double strike, deathtouch, haste, hexproof, indestructible, lifelink, menace, reach, trample, and vigilance.",
+        ),
+        "urborg-scavengers" => (
+            "Urborg Scavengers",
+            "Mana cost: {2}{B}\nType: Creature — Spirit\nFirst printed set: March of the Machine: The Aftermath\nPower/Toughness: 2/2\nWhenever this creature enters or attacks, exile target card from a graveyard. Put a +1/+1 counter on this creature.\nThis creature has flying as long as a card exiled with it has flying. The same is true for first strike, double strike, deathtouch, haste, hexproof, indestructible, lifelink, menace, reach, trample, and vigilance.",
+        ),
+        "kathril-aspect-warper" => (
+            "Kathril, Aspect Warper",
+            "Mana cost: {2}{W}{B}{G}\nType: Legendary Creature — Nightmare Insect\nFirst printed set: Commander 2020\nPower/Toughness: 3/3\nWhen Kathril enters, put a flying counter on any creature you control if a creature card in your graveyard has flying. Repeat this process for first strike, double strike, deathtouch, hexproof, indestructible, lifelink, menace, reach, trample, and vigilance. Then put a +1/+1 counter on Kathril for each counter put on a creature this way.",
+        ),
+        "agatha-s-soul-cauldron" => (
+            "Agatha's Soul Cauldron",
+            "Mana cost: {2}\nType: Legendary Artifact\nFirst printed set: Wilds of Eldraine Promos\nYou may spend mana as though it were mana of any color to activate abilities of creatures you control.\nCreatures you control with +1/+1 counters on them have all activated abilities of all creature cards exiled with Agatha's Soul Cauldron.\n{T}: Exile target card from a graveyard. When a creature card is exiled this way, put a +1/+1 counter on target creature you control.",
+        ),
+        "leaden-myr" => (
+            "Leaden Myr",
+            "Mana cost: {2}\nType: Artifact Creature — Myr\nFirst printed set: Mirrodin\nPower/Toughness: 1/1\n{T}: Add {B}.",
+        ),
+        "confiscate" => (
+            "Confiscate",
+            "Mana cost: {4}{U}{U}\nType: Enchantment — Aura\nFirst printed set: Urza's Saga\nEnchant permanent\nYou control enchanted permanent.",
+        ),
+        "marvin-murderous-mimic" => (
+            "Marvin, Murderous Mimic",
+            "Mana cost: {2}\nType: Legendary Artifact Creature — Toy\nFirst printed set: Duskmourn: House of Horror\nPower/Toughness: 2/2\nMarvin has all activated abilities of creatures you control that don't have the same name as this creature.",
+        ),
+        "psychic-paper" => (
+            "Psychic Paper",
+            "Mana cost: {2}\nType: Artifact — Equipment\nFirst printed set: Doctor Who\nAs this Equipment becomes attached to a creature, choose a creature card name and a creature type.\nEquipped creature has ward {1}, it can't be blocked, and its name and creature type are the last chosen name and creature type.\nEquip {2}",
+        ),
+        "magnetic-theft" => (
+            "Magnetic Theft",
+            "Mana cost: {R}\nType: Instant\nFirst printed set: Fifth Dawn\nAttach target Equipment to target creature. (Control of the Equipment doesn't change.)",
+        ),
+        "storm-of-souls" => (
+            "Storm of Souls",
+            "Mana cost: {4}{W}{W}\nType: Sorcery\nFirst printed set: Crimson Vow Commander\nReturn all creature cards from your graveyard to the battlefield. Each of them is a 1/1 Spirit with flying in addition to its other types. Exile Storm of Souls.",
+        ),
+        "containment-priest" => (
+            "Containment Priest",
+            "Mana cost: {1}{W}\nType: Creature — Human Cleric\nFirst printed set: Commander 2014\nPower/Toughness: 2/2\nFlash\nIf a nontoken creature would enter and it wasn't cast, exile it instead.",
+        ),
+        "garruk-s-harbinger" => (
+            "Garruk's Harbinger",
+            "Mana cost: {1}{G}{G}\nType: Creature — Beast\nFirst printed set: Core Set 2021\nPower/Toughness: 4/3\nHexproof from black\nWhenever this creature deals combat damage to a player or planeswalker, look at that many cards from the top of your library. You may reveal a creature card or Garruk planeswalker card from among them and put it into your hand. Put the rest on the bottom of your library in a random order.",
+        ),
+        "black-knight" => (
+            "Black Knight",
+            "Mana cost: {B}{B}\nType: Creature — Human Knight\nFirst printed set: Limited Edition Alpha\nPower/Toughness: 2/2\nFirst strike (This creature deals combat damage before creatures without first strike.)\nProtection from white (This creature can't be blocked, targeted, dealt damage, or enchanted by anything white.)",
+        ),
+        "escaped-shapeshifter" => (
+            "Escaped Shapeshifter",
+            "Mana cost: {3}{U}{U}\nType: Creature — Shapeshifter\nFirst printed set: Tempest\nPower/Toughness: 3/4\nAs long as an opponent controls a creature with flying not named Escaped Shapeshifter, this creature has flying. The same is true for first strike, trample, and protection from any color.",
+        ),
+        "mind-bend" => (
+            "Mind Bend",
+            "Mana cost: {U}\nType: Instant\nFirst printed set: Mirage\nChange the text of target permanent by replacing all instances of one color word with another or one basic land type with another. (For example, you may change \"nonblack creature\" to \"nongreen creature\" or \"forestwalk\" to \"islandwalk.\" This effect lasts indefinitely.)",
+        ),
+        "swords-to-plowshares" => (
+            "Swords to Plowshares",
+            "Mana cost: {W}\nType: Instant\nFirst printed set: Limited Edition Alpha\nExile target creature. Its controller gains life equal to its power.",
+        ),
+        "murder" => (
+            "Murder",
+            "Mana cost: {1}{B}{B}\nType: Instant\nFirst printed set: Magic 2013\nDestroy target creature.",
+        ),
+        "indominus-rex-alpha" => (
+            "Indominus Rex, Alpha",
+            "Mana cost: {1}{U/B}{U/B}{G}{G}\nType: Legendary Creature — Dinosaur Mutant\nPower/Toughness: 6/6\nAs Indominus Rex enters, discard any number of creature cards. It enters with a flying counter on it if a card discarded this way has flying. The same is true for first strike, double strike, deathtouch, hexproof, haste, indestructible, lifelink, menace, reach, trample, and vigilance.\nWhen Indominus Rex enters, draw a card for each counter on it.",
+        ),
+        "breaker-of-creation" => (
+            "Breaker of Creation",
+            "Mana cost: {6}{C}{C}\nType: Creature — Eldrazi\nFirst printed set: Modern Horizons 3\nPower/Toughness: 8/4\nWhen you cast this spell, you gain 1 life for each colorless permanent you control.\nHexproof from each color\nAnnihilator 2 (Whenever this creature attacks, defending player sacrifices two permanents of their choice.)",
+        ),
+        "tam-mindful-first-year" => (
+            "Tam, Mindful First-Year",
+            "Mana cost: {1}{G/U}\nType: Legendary Creature — Gorgon Wizard\nFirst printed set: Lorwyn Eclipsed\nPower/Toughness: 2/2\nEach other creature you control has hexproof from each of its colors.\n{T}: Target creature you control becomes all colors until end of turn.",
+        ),
+        "baleful-strix" => (
+            "Baleful Strix",
+            "Mana cost: {U}{B}\nType: Artifact Creature — Bird\nFirst printed set: Planechase 2012\nPower/Toughness: 1/1\nFlying, deathtouch\nWhen this creature enters, draw a card.",
+        ),
+        "pongify" => (
+            "Pongify",
+            "Mana cost: {U}\nType: Instant\nFirst printed set: Planar Chaos\nDestroy target creature. It can't be regenerated. Its controller creates a 3/3 green Ape creature token.",
+        ),
+        "iridescent-angel" => (
+            "Iridescent Angel",
+            "Mana cost: {5}{W}{U}\nType: Creature — Angel\nFirst printed set: Odyssey\nPower/Toughness: 4/4\nFlying, protection from each color",
+        ),
+        "pledge-of-loyalty" => (
+            "Pledge of Loyalty",
+            "Mana cost: {1}{W}\nType: Enchantment — Aura\nEnchant creature\nEnchanted creature has protection from each color among permanents you control. This effect doesn't remove this Aura.",
+        ),
+        "concerted-effort" => (
+            "Concerted Effort",
+            "Mana cost: {2}{W}{W}\nType: Enchantment\nFirst printed set: Ravnica: City of Guilds\nAt the beginning of each upkeep, creatures you control gain flying until end of turn if a creature you control has flying. The same is true for fear, first strike, double strike, landwalk, protection, trample, and vigilance.",
+        ),
+        "war-room" => (
+            "War Room",
+            "Type: Land\n{T}: Add {C}.\n{3}, {T}, Pay life equal to the number of colors in your commanders' color identity: Draw a card.",
+        ),
+        "commander-s-plate" => (
+            "Commander's Plate",
+            "Mana cost: {1}\nType: Artifact — Equipment\nEquipped creature gets +3/+3 and has protection from each color that's not in your commander's color identity.\nEquip commander {3}\nEquip {5}",
+        ),
+        "path-of-ancestry" => (
+            "Path of Ancestry",
+            "Type: Land\nThis land enters tapped.\n{T}: Add one mana of any color in your commander's color identity. When that mana is spent to cast a creature spell that shares a creature type with your commander, scry 1. (Look at the top card of your library. You may put that card on the bottom.)",
+        ),
+        "alpine-watchdog" => (
+            "Alpine Watchdog",
+            "Mana cost: {1}{W}\nType: Creature — Dog\nPower/Toughness: 2/2\nVigilance (Attacking doesn't cause this creature to tap.)",
+        ),
+        "go-shintai-of-life-s-origin" => (
+            "Go-Shintai of Life's Origin",
+            "Mana cost: {3}{G}\nType: Legendary Enchantment Creature — Shrine\nPower/Toughness: 3/4\n{W}{U}{B}{R}{G}, {T}: Return target enchantment card from your graveyard to the battlefield.\nWhenever Go-Shintai of Life's Origin or another nontoken Shrine you control enters, create a 1/1 colorless Shrine enchantment creature token.",
+        ),
+        "go-shintai-of-ancient-wars" => (
+            "Go-Shintai of Ancient Wars",
+            "Mana cost: {2}{R}\nType: Legendary Enchantment Creature — Shrine\nPower/Toughness: 2/2\nFirst strike\nAt the beginning of your end step, you may pay {1}. When you do, Go-Shintai of Ancient Wars deals X damage to target player or planeswalker, where X is the number of Shrines you control.",
+        ),
+        "traxos-scourge-of-kroog" => (
+            "Traxos, Scourge of Kroog",
+            "Mana cost: {4}\nType: Legendary Artifact Creature — Dragon Construct\nPower/Toughness: 7/7\nTrample\nTraxos enters tapped and doesn't untap during your untap step.\nWhenever you cast a historic spell, untap Traxos. (Artifacts, legendaries, and Sagas are historic.)",
+        ),
+        "bruna-the-fading-light" => (
+            "Bruna, the Fading Light",
+            "Mana cost: {5}{W}{W}\nType: Legendary Creature — Angel Horror\nPower/Toughness: 5/7\nWhen you cast this spell, you may return target Angel or Human creature card from your graveyard to the battlefield.\nFlying, vigilance\n(Melds with Gisela, the Broken Blade.)",
+        ),
+        "gisela-the-broken-blade" => (
+            "Gisela, the Broken Blade",
+            "Mana cost: {2}{W}{W}\nType: Legendary Creature — Angel Horror\nPower/Toughness: 4/3\nFlying, first strike, lifelink\nAt the beginning of your end step, if you both own and control Gisela and a creature named Bruna, the Fading Light, exile them, then meld them into Brisela, Voice of Nightmares.",
+        ),
+        "brisela-voice-of-nightmares" => (
+            "Brisela, Voice of Nightmares",
+            "Type: Legendary Creature — Eldrazi Angel\nPower/Toughness: 9/10\nFlying, first strike, vigilance, lifelink\nYour opponents can't cast spells with mana value 3 or less.",
+        ),
+        "brokkos-apex-of-forever" => (
+            "Brokkos, Apex of Forever",
+            "Mana cost: {2}{B}{G}{U}\nType: Legendary Creature — Nightmare Beast Elemental\nPower/Toughness: 6/6\nMutate {2}{U/B}{G}{G} (If you cast this spell for its mutate cost, put it over or under target non-Human creature you own. They mutate into the creature on top plus all abilities from under it.)\nTrample\nYou may cast this card from your graveyard using its mutate ability.",
+        ),
+        "tymna-the-weaver" => (
+            "Tymna the Weaver",
+            "Mana cost: {1}{W}{B}\nType: Legendary Creature — Human Cleric\nPower/Toughness: 2/2\nLifelink\nAt the beginning of each of your postcombat main phases, you may pay X life, where X is the number of opponents that were dealt combat damage this turn. If you do, draw X cards.\nPartner (You can have two commanders if both have partner.)",
+        ),
+        "thrasios-triton-hero" => (
+            "Thrasios, Triton Hero",
+            "Mana cost: {G}{U}\nType: Legendary Creature — Merfolk Wizard\nPower/Toughness: 1/3\n{4}: Scry 1, then reveal the top card of your library. If it's a land card, put it onto the battlefield tapped. Otherwise, draw a card.\nPartner (You can have two commanders if both have partner.)",
+        ),
+        "cactus-preserve" => (
+            "Cactus Preserve",
+            "Type: Land — Desert\nThis land enters tapped.\n{T}: Add one mana of any type that a land you control could produce.\n{3}: Until end of turn, this land becomes an X/X green Plant creature with reach, where X is the greatest mana value among your commanders. It's still a land.",
+        ),
+        "tangleweave-armor" => (
+            "Tangleweave Armor",
+            "Mana cost: {2}{G}{G}\nType: Artifact — Equipment\nLiving weapon (When this Equipment enters, create a 0/0 black Phyrexian Germ creature token, then attach this to it.)\nEquipped creature gets +X/+X, where X is the greatest mana value among your commanders.\nEquip {4}",
+        ),
+        "cloudkill" => (
+            "Cloudkill",
+            "Mana cost: {4}{B}{B}\nType: Sorcery\nAll creatures get -X/-X until end of turn, where X is the greatest mana value of a commander you own on the battlefield or in the command zone.",
+        ),
+        "colossal-dreadmaw" => (
+            "Colossal Dreadmaw",
+            "Mana cost: {4}{G}{G}\nType: Creature — Dinosaur\nPower/Toughness: 6/6\nTrample (This creature can deal excess combat damage to the player or planeswalker it's attacking.)",
+        ),
+        "endless-one" => ("Endless One", "Mana cost: {X}\nType: Creature — Eldrazi\nPower/Toughness: 0/0\nThis creature enters with X +1/+1 counters on it."),
+        "phyrexian-metamorph" => ("Phyrexian Metamorph", "Mana cost: {3}{U/P}\nType: Artifact Creature — Phyrexian Shapeshifter\nPower/Toughness: 0/0\nYou may have this creature enter as a copy of any artifact or creature on the battlefield, except it's an artifact in addition to its other types."),
+        "opalescence" => ("Opalescence", "Mana cost: {2}{W}{W}\nType: Enchantment\nEach other non-Aura enchantment is a creature in addition to its other types and has base power and base toughness each equal to its mana value."),
+        "light-from-within" => (
+            "Light from Within",
+            "Mana cost: {2}{W}{W}\nType: Enchantment\nChroma — Each creature you control gets +1/+1 for each white mana symbol in its mana cost.",
+        ),
+        "divinity-of-pride" => (
+            "Divinity of Pride",
+            "Mana cost: {W/B}{W/B}{W/B}{W/B}{W/B}\nType: Creature — Spirit Avatar\nPower/Toughness: 4/4\nFlying, lifelink\nThis creature gets +4/+4 as long as you have 25 or more life.",
+        ),
+        "sleight-of-mind" => (
+            "Sleight of Mind",
+            "Mana cost: {U}\nType: Instant\nChange the text of target spell or permanent by replacing all instances of one color word with another.",
+        ),
+        "abrupt-decay" => (
+            "Abrupt Decay",
+            "Mana cost: {B}{G}\nType: Instant\nThis spell can't be countered.\nDestroy target nonland permanent with mana value 3 or less.",
+        ),
+        "ritual-of-soot" => (
+            "Ritual of Soot",
+            "Mana cost: {2}{B}{B}\nType: Sorcery\nDestroy all creatures with mana value 3 or less.",
+        ),
+        "favor-of-the-mighty" => (
+            "Favor of the Mighty",
+            "Mana cost: {1}{W}\nType: Kindred Enchantment — Giant\nEach creature with the greatest mana value has protection from each color.",
+        ),
+        "soul-shatter" => (
+            "Soul Shatter",
+            "Mana cost: {2}{B}\nType: Instant\nEach opponent sacrifices a creature or planeswalker with the greatest mana value among creatures and planeswalkers they control.",
+        ),
+        "visions-of-glory" => (
+            "Visions of Glory",
+            "Mana cost: {4}{W}\nType: Sorcery\nCreate a 1/1 white Human creature token for each creature you control.\nFlashback {8}{W}{W}. This spell costs {X} less to cast this way, where X is the greatest mana value of a commander you own on the battlefield or in the command zone. (You may cast this card from your graveyard for its flashback cost. Then exile it.)",
+        ),
+        "rush-of-knowledge" => (
+            "Rush of Knowledge",
+            "Mana cost: {4}{U}\nType: Sorcery\nDraw cards equal to the greatest mana value among permanents you control.",
+        ),
+        "glint-raker" => (
+            "Glint Raker",
+            "Mana cost: {3}{U}\nType: Creature — Drake\nPower/Toughness: 1/3\nFlying\nThis creature gets +X/+0, where X is the greatest mana value among artifacts you control.\nWhenever this creature deals combat damage to a player, you may reveal that many cards from the top of your library. Put an artifact card revealed this way into your hand and the rest into your graveyard.",
+        ),
+        "myr-battlesphere" => (
+            "Myr Battlesphere",
+            "Mana cost: {7}\nType: Artifact Creature — Myr Construct\nPower/Toughness: 4/7\nWhen this creature enters, create four 1/1 colorless Myr artifact creature tokens.\nWhenever this creature attacks, you may tap X untapped Myr you control. If you do, this creature gets +X/+0 until end of turn and deals X damage to the player or planeswalker it's attacking.",
         ),
         _ => panic!("unknown regression fixture {route}"),
     };
@@ -1487,3 +2204,33 @@ mod zone_trigger_regressions;
 
 #[path = "november_2026_rules/library_search.rs"]
 mod library_search;
+
+#[path = "november_2026_rules/copy_and_multiplayer.rs"]
+mod copy_and_multiplayer;
+
+#[path = "november_2026_rules/simultaneous_scry.rs"]
+mod simultaneous_scry;
+
+#[path = "november_2026_rules/additional_name_searches.rs"]
+mod additional_name_searches;
+#[path = "november_2026_rules/repeated_name_search.rs"]
+mod repeated_name_search;
+#[path = "november_2026_rules/searches_for_lost_permanents.rs"]
+mod searches_for_lost_permanents;
+#[path = "november_2026_rules/simultaneous_search.rs"]
+mod simultaneous_search;
+
+#[path = "november_2026_rules/owner_library_shuffles.rs"]
+mod owner_library_shuffles;
+
+#[path = "november_2026_rules/combat_roles.rs"]
+mod combat_roles;
+
+#[path = "november_2026_rules/graveyard_order.rs"]
+mod graveyard_order;
+
+#[path = "november_2026_rules/commander_designation.rs"]
+mod commander_designation;
+
+#[path = "november_2026_rules/mana_symbols.rs"]
+mod mana_symbols;

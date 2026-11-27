@@ -1,7 +1,7 @@
 //! Fixed life-payment effect implementation.
 
 use crate::effect::{EffectOutcome, Value};
-use crate::effects::helpers::{resolve_player_from_spec, resolve_value};
+use crate::effects::helpers::{resolve_payment_amount, resolve_player_from_spec};
 use crate::effects::{
     CostExecutableEffect, CostValidationError, EffectExecutor, ExecutionContext, ExecutionError,
 };
@@ -39,9 +39,9 @@ pub(crate) fn check_life_payment_cost_with_context(
 ) -> Result<(), CostValidationError> {
     let player = resolve_player_from_spec(game, &effect.player, ctx)
         .map_err(CostValidationError::ExecutionFailed)?;
-    let amount = resolve_value(game, &effect.amount, ctx)
+    let amount = resolve_payment_amount(game, &effect.amount, ctx)
         .map_err(CostValidationError::ExecutionFailed)?
-        .max(0) as u32;
+        .ok_or_else(|| CostValidationError::Other("Undefined commander color identity".into()))?;
     if game.can_pay_life_with_reason(player, amount, reason) {
         Ok(())
     } else {
@@ -67,7 +67,9 @@ impl EffectExecutor for PayLifeEffect {
         game.refresh_continuous_state()
             .map_err(ExecutionError::ContinuousDiscovery)?;
         let player = resolve_player_from_spec(game, &self.player, ctx)?;
-        let amount = resolve_value(game, &self.amount, ctx)?.max(0) as u32;
+        let Some(amount) = resolve_payment_amount(game, &self.amount, ctx)? else {
+            return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(EffectOutcome::impossible()));
+        };
 
         Ok(game
             .pay_life_with_context_and_outputs(player, amount, ctx)?
@@ -89,11 +91,11 @@ impl EffectExecutor for PayLifeEffect {
             .continuous_query_snapshot()
             .map_err(ExecutionError::ContinuousDiscovery)?;
         let player = resolve_player_from_spec(&checked, &self.player, ctx)?;
-        let amount = resolve_value(&checked, &self.amount, ctx)?.max(0) as u32;
+        let amount = resolve_payment_amount(&checked, &self.amount, ctx)?;
         Ok(Box::new(FixedLifePaymentProposal {
             player,
-            amount,
-            payable: checked.can_pay_life(player, amount),
+            amount: amount.unwrap_or_default(),
+            payable: amount.is_some_and(|amount| checked.can_pay_life(player, amount)),
             prepared: None,
         }))
     }

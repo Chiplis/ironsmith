@@ -45,7 +45,10 @@ export default function CardGlintFrame({snapshot,imageUrl,faceIndex=0,fallback,r
     if (!interactive) return;
     const host=canvas.current?.parentElement?.parentElement;
     if (!host) return;
-    const measure=()=>setDisplayWidth(host.getBoundingClientRect().width);
+    // Layout width, not the on-screen box: a preview that is still growing out
+    // of its card is transformed small, and ResizeObserver never reports a
+    // transform, so a width read mid-animation would stick.
+    const measure=()=>setDisplayWidth(host.offsetWidth||host.getBoundingClientRect().width);
     const observer=new ResizeObserver(measure);observer.observe(host);measure();
     return ()=>observer.disconnect();
   }, [interactive]);

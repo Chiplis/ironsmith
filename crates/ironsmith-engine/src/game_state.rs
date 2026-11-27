@@ -813,6 +813,8 @@ struct ExileTracking {
 /// Combat and per-turn transient tracking grouped behind copy-on-write storage.
 #[derive(Debug, Clone, Default)]
 struct CombatTransientState {
+    /// Exact attacker/blocker pairs still engaged when either permanent left play.
+    departed_block_relations: HashSet<(ObjectId, ObjectId)>,
     attacking_roles: Vec<crate::combat_state::RetainedAttackingRole>,
     current_attacking_roles: HashMap<ObjectId, crate::combat_state::AttackingRoleId>,
     combat_defending_players: Vec<(PlayerId, Vec<PlayerId>)>,
@@ -844,7 +846,7 @@ pub(crate) struct UncontrolledLandManaPermission {
 /// Combat roles of every combatant at the moment a simultaneous move began.
 #[derive(Debug, Clone, Default)]
 pub(crate) struct SimultaneousCombatLookback {
-    combatants: Vec<(ObjectId, CombatRoleLookback)>,
+    combatants: std::collections::BTreeMap<ObjectId, CombatRoleLookback>,
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -853,6 +855,7 @@ pub(crate) struct CombatRoleLookback {
     pub(crate) blocking: bool,
     pub(crate) attacking_alone: bool,
     pub(crate) blocking_alone: bool,
+    pub(crate) blocked_status: Option<bool>,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -1009,6 +1012,8 @@ struct AuxiliaryTrackingState {
     /// additional <kind> are created instead" sources already applied inside
     /// the open simultaneous action (CR 616.1, 111.1). Cleared when it closes.
     simultaneous_added_tokens: Vec<(ObjectId, ironsmith_core::AdditionalTokenKind)>,
+    /// An enclosing original is collecting all owners’ graveyard placements (CR 404.3).
+    collecting_graveyard_order: bool,
     /// Original admission rules shared by every member of this physical action.
     zone_movement_admission: Option<ZoneMovementAdmission>,
     /// Exact library placements owned by one simultaneous physical action.
@@ -1219,6 +1224,8 @@ pub struct TurnStore {
     /// spells without paradigm. Not cleared between turns.
     pub resolved_spell_names: im::HashSet<(PlayerId, String)>,
     pub turn_order: Vec<PlayerId>,
+    /// Clockwise seats for games without a variant-specific seating profile.
+    pub(crate) initial_seats: Vec<PlayerId>,
     /// Whether the active turn was created as an extra turn.
     ///
     /// This is authoritative turn provenance, not a prediction based on the
@@ -2750,6 +2757,9 @@ pub struct CantEffectTracker {
     /// Example: "Creatures can't attack you." (Chronomantic Escape)
     pub cant_attack_players: HashMap<ObjectId, HashSet<PlayerId>>,
 
+    /// An attack restricted to players and their planeswalkers excludes battles.
+    pub cant_attack_battles: HashSet<ObjectId>,
+
     /// Creatures that can't attack alone.
     /// Example: "This creature can't attack alone."
     pub cant_attack_alone: HashSet<ObjectId>,
@@ -3808,6 +3818,7 @@ impl CantEffectTracker {
                 .or_default()
                 .extend(players);
         }
+        self.cant_attack_battles.extend(other.cant_attack_battles);
         self.cant_attack_alone.extend(other.cant_attack_alone);
         self.attack_only_alone.extend(other.attack_only_alone);
         self.cant_block.extend(other.cant_block);
@@ -4031,6 +4042,7 @@ impl CantEffectTracker {
         self.cant_attack.clear();
         self.cant_attack_defenders.clear();
         self.cant_attack_players.clear();
+        self.cant_attack_battles.clear();
         self.cant_attack_alone.clear();
         self.attack_only_alone.clear();
         self.cant_block.clear();
@@ -5827,6 +5839,8 @@ pub struct GameState {
     /// CR 732.3: (turn, game-state fingerprint, activating player, source,
     /// ability index) for each non-mana activation this turn.
     fragmented_loop_history: Vec<(u32, (u64, u64), PlayerId, StableId, usize)>,
+    /// CR 732.2: recorded player actions and the loop shortcut on offer.
+    pub(crate) loop_shortcut: crate::game_loop::LoopShortcutTracker,
     /// Explicit multiplayer team identity shared by team-format options.
     teams: Option<TeamState>,
     /// Whether CR 804 deploy creatures is active.
@@ -6239,6 +6253,14 @@ impl GameState {
         true
     }
 
+    pub(crate) fn collecting_graveyard_order(&self) -> bool {
+        self.auxiliary_tracking.collecting_graveyard_order
+    }
+
+    pub(crate) fn set_collecting_graveyard_order(&mut self, collecting: bool) {
+        self.auxiliary_tracking_mut().collecting_graveyard_order = collecting;
+    }
+
     pub(crate) fn has_open_simultaneous_action(&self) -> bool {
         self.auxiliary_tracking.simultaneous_action_scope.is_some()
     }
@@ -6362,33 +6384,29 @@ impl GameState {
     fn capture_simultaneous_combat_lookback(
         &self,
     ) -> Option<std::sync::Arc<SimultaneousCombatLookback>> {
-        let combat = self.combat.as_ref()?;
-        let mut ids: Vec<ObjectId> = combat
-            .attackers
-            .iter()
-            .map(|attacker| attacker.creature)
-            .chain(combat.blockers.values().flatten().copied())
-            .collect();
-        if ids.is_empty() {
+        let mut combatants = std::collections::BTreeMap::new();
+        for combat in self.combat_lanes() {
+            for id in combat
+                .attackers
+                .iter()
+                .map(|attacker| attacker.creature)
+                .chain(combat.blocking_creatures())
+            {
+                combatants.entry(id).or_insert_with(|| CombatRoleLookback {
+                    attacking: crate::combat_state::is_attacking(combat, id),
+                    blocking: crate::combat_state::is_blocking(combat, id),
+                    blocked_status: crate::combat_state::blocked_status(combat, id),
+                    attacking_alone: crate::combat_state::is_attacking_alone(self, id),
+                    blocking_alone: crate::combat_state::is_blocking_alone(self, id),
+                });
+            }
+        }
+        if combatants.is_empty() {
             return None;
         }
-        ids.sort_unstable();
-        ids.dedup();
-        let combatants = ids
-            .into_iter()
-            .map(|id| {
-                (
-                    id,
-                    CombatRoleLookback {
-                        attacking: crate::combat_state::is_attacking(combat, id),
-                        blocking: crate::combat_state::is_blocking(combat, id),
-                        attacking_alone: crate::combat_state::is_attacking_alone(self, id),
-                        blocking_alone: crate::combat_state::is_blocking_alone(self, id),
-                    },
-                )
-            })
-            .collect();
-        Some(std::sync::Arc::new(SimultaneousCombatLookback { combatants }))
+        Some(std::sync::Arc::new(SimultaneousCombatLookback {
+            combatants,
+        }))
     }
 
     /// The pre-move combat role of `id` while a simultaneous move is pinned,
@@ -6402,8 +6420,8 @@ impl GameState {
             .simultaneous_combat_lookback
             .as_ref()?
             .combatants
-            .iter()
-            .find_map(|(combatant, role)| (*combatant == id).then_some(*role))
+            .get(&id)
+            .copied()
     }
 
     pub(crate) fn simultaneous_event_lookback(&self) -> Option<&[ObjectSnapshot]> {
@@ -6514,6 +6532,7 @@ impl GameState {
             stack: Vec::new().into(),
             turn: TurnState::new(active_player),
             turn_store: crate::cow::CowArc::new(TurnStore {
+                initial_seats: turn_order.clone(),
                 turn_order,
                 turn_history: {
                     let mut history = TurnHistory::default();
@@ -6541,6 +6560,7 @@ impl GameState {
             chosen_defending_player: None,
             departed_battle_protectors: HashMap::new(),
             fragmented_loop_history: Vec::new(),
+            loop_shortcut: Default::default(),
             teams: None,
             deploy_creatures: false,
             shared_team_turns: None,
@@ -11874,12 +11894,8 @@ impl GameState {
         if !self.can_be_blocked(attacker) {
             return false;
         }
-        let defender = self
-            .combat
-            .as_ref()
-            .and_then(|combat| {
-                crate::combat_state::defending_player_for_attacker(self, combat, attacker)
-            })
+        let defender = self.current_attack_target_across_lanes(attacker)
+            .and_then(|target| crate::combat_state::defending_player_for_attack_target(self, target))
             .unwrap_or(fallback_defender);
         !self
             .effect_store

@@ -27,6 +27,54 @@ fn uses_affected_object_owner(player: &PlayerFilter) -> bool {
     )
 }
 
+/// An explicit owner destination can occur with either grammatical subject.
+/// Older programs also encode the destination as an owner filter. When the
+/// subject is omitted, the resolving spell or ability's controller acts.
+fn shuffler(
+    effect: &ShuffleObjectsIntoLibraryEffect,
+    game: &GameState,
+    ctx: &ExecutionContext,
+) -> Result<Option<crate::ids::PlayerId>, ExecutionError> {
+    if !effect.owner_library_destination {
+        return Ok(None);
+    }
+    if !uses_affected_object_owner(&effect.player) {
+        return resolve_player_filter(game, &effect.player, ctx).map(Some);
+    }
+    if let PlayerFilter::OwnerOf(crate::target::ObjectRef::Tagged(tag)) = &effect.player
+        && (tag.as_str() == "__prevented_damage_recipient__"
+            || tag.as_str() == "__it__"
+            || crate::cards::is_sentence_helper_tag(tag.as_str(), "participant_permanent_targets"))
+    {
+        // Those objects' owners were explicitly instructed to shuffle.
+        return Ok(None);
+    }
+    Ok(Some(ctx.controller))
+}
+
+/// A named card that triggered upon entering the graveyard retains its
+/// destination identity and its owner if it leaves again (CR 400.7, 701.24c).
+pub(crate) fn graveyard_shuffle_reference(ctx: &ExecutionContext) -> Option<ObjectSnapshot> {
+    let event = ctx
+        .triggering_event
+        .as_ref()?
+        .downcast::<crate::events::ZoneChangeEvent>()?;
+    if event.to != Zone::Graveyard {
+        return None;
+    }
+    let source = ctx.source_snapshot.as_ref()?;
+    event
+        .destination_snapshots
+        .iter()
+        .find(|card| card.stable_id == source.stable_id)
+        .cloned()
+        .or_else(|| {
+            (source.zone == Zone::Graveyard
+                && event.destination_objects().contains(&source.object_id))
+            .then(|| source.clone())
+        })
+}
+
 fn push_unique_player(players: &mut Vec<crate::ids::PlayerId>, player: crate::ids::PlayerId) {
     if !players.contains(&player) {
         players.push(player);
@@ -54,6 +102,7 @@ fn expected_zone_for_object(
 struct PreparedShuffleObjectsAction {
     objects: Vec<ObjectSnapshot>,
     players_to_shuffle: Vec<crate::ids::PlayerId>,
+    shuffler: Option<crate::ids::PlayerId>,
 }
 
 fn prepare_shuffle_objects_action_from_ids(
@@ -62,11 +111,22 @@ fn prepare_shuffle_objects_action_from_ids(
     ctx: &ExecutionContext,
     object_ids: Vec<crate::ids::ObjectId>,
 ) -> Result<PreparedShuffleObjectsAction, ExecutionError> {
-    let objects = object_ids
+    let named_graveyard_card = match effect.target.base() {
+        ChooseSpec::Source => graveyard_shuffle_reference(ctx),
+        ChooseSpec::Tagged(tag) if tag.as_str() == "triggering" => graveyard_shuffle_reference(ctx),
+        _ => None,
+    };
+    let object_ids = named_graveyard_card
+        .as_ref()
+        .map_or(object_ids, |card| vec![card.object_id]);
+    let mut objects = object_ids
         .iter()
         .filter_map(|&object_id| {
             let object = game.object(object_id)?;
-            if expected_zone_for_object(&effect.target, game, ctx, object_id)
+            if named_graveyard_card
+                .as_ref()
+                .map(|card| card.zone)
+                .or_else(|| expected_zone_for_object(&effect.target, game, ctx, object_id))
                 .is_some_and(|zone| object.zone != zone)
             {
                 return None;
@@ -83,6 +143,26 @@ fn prepare_shuffle_objects_action_from_ids(
             if let Some(owner) = game.object(*object_id).map(|object| object.owner) {
                 push_unique_player(&mut players_to_shuffle, owner);
             }
+        }
+        if let ChooseSpec::Tagged(tag) = effect.target.base()
+            && ctx.exact_object_reference_tags.contains(tag)
+            && let Some(cards) = ctx.get_tagged_all(tag)
+        {
+            for card in cards {
+                push_unique_player(&mut players_to_shuffle, card.owner);
+            }
+        }
+        if let Some(card) = &named_graveyard_card {
+            push_unique_player(&mut players_to_shuffle, card.owner);
+        }
+        // A named source remains a specific object under CR 701.24c even
+        // when the rest of the instruction is a set such as "your graveyard".
+        if let ChooseSpec::All(filter) = effect.target.base()
+            && filter.any_of.iter().any(|member| member.is_source_only())
+            && let Some(source) = ctx.source_snapshot.as_ref()
+                .or_else(|| game.source_last_known_snapshot(ctx.source))
+        {
+            push_unique_player(&mut players_to_shuffle, source.owner);
         }
         if players_to_shuffle.is_empty()
             && let Ok(player) = resolve_player_filter(game, &effect.player, ctx)
@@ -103,7 +183,25 @@ fn prepare_shuffle_objects_action_from_ids(
         );
     }
 
+    let apnap = game.team_apnap_player_order();
+    let seat = |player| {
+        apnap
+            .iter()
+            .position(|p| *p == player)
+            .unwrap_or(usize::MAX)
+    };
+    if objects.len() > 1 {
+        objects.sort_by_key(|card| {
+            seat(if game.is_commander(card.object_id) {
+                card.owner
+            } else {
+                card.controller
+            })
+        });
+    }
+    players_to_shuffle.sort_by_key(|p| seat(*p));
     Ok(PreparedShuffleObjectsAction {
+        shuffler: shuffler(effect, game, ctx)?,
         objects,
         players_to_shuffle,
     })
@@ -299,6 +397,7 @@ impl ShuffleObjectsIntoLibraryProposal {
             let shuffle = crate::effects::cards::commit_library_shuffle_with_outputs(
                 game,
                 player,
+                self.prepared.shuffler.unwrap_or(player),
                 &[],
                 1,
                 "library shuffled",

@@ -22,27 +22,21 @@ fn candidate_attackers(
     blocker: ObjectId,
     filter: &crate::target::ObjectFilter,
 ) -> Vec<ObjectId> {
-    let Some(combat) = game.combat.as_ref() else {
-        return Vec::new();
-    };
     let Some(controller) = game.object(blocker).map(|object| game.controller_of(object)) else {
         return Vec::new();
     };
     let filter_ctx = game.filter_context_for(ctx.controller, Some(ctx.source));
-    combat
-        .attackers
-        .iter()
+    game.combat_lanes()
+        .flat_map(|combat| {
+            combat.attackers.iter().filter(move |info| {
+                !crate::combat_state::get_blockers(combat, info.creature).contains(&blocker)
+            })
+        })
         .filter(|info| {
             crate::combat_state::defending_player_for_attack_target(game, &info.target)
                 == Some(controller)
         })
         .map(|info| info.creature)
-        .filter(|attacker| {
-            !combat
-                .blockers
-                .get(attacker)
-                .is_some_and(|blockers| blockers.contains(&blocker))
-        })
         .filter(|attacker| {
             game.object(*attacker)
                 .is_some_and(|object| filter.matches(object, &filter_ctx, game))

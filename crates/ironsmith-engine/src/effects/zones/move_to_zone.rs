@@ -865,6 +865,12 @@ impl SharedLookbackExecute for MoveToZoneEffect {
                 .unwrap_or_default();
             let mut receipts = Vec::new();
             let mut counter_completion = None;
+            let multiple = prepared.as_ref().map_or_else(
+                || !self.target.is_single() || matches!(self.target.base(), ChooseSpec::Tagged(_))
+                    || crate::effects::target_packets::multiple(ctx, &self.target),
+                |selection| selection.objects.len() > 1,
+            );
+            let order = super::GraveyardOrderBatch::begin(game, multiple);
             let outcome = self.execute_with_shared_lookback(
                 game,
                 ctx,
@@ -874,6 +880,7 @@ impl SharedLookbackExecute for MoveToZoneEffect {
                 prepared,
                 None,
             );
+            order.finish(game, ctx.decision_maker, Some(ctx.source), outcome.is_ok());
             crate::effects::helpers::end_simultaneous_zone_change_lookback(game, pinned_lookback);
             let pending = ctx.decision_maker.awaiting_choice();
             // A captured decision cannot turn a genuine typed failure into success.

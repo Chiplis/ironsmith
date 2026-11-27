@@ -53,6 +53,11 @@ impl EffectExecutor for RedistributeLifeTotalsEffect {
             .collect();
         let mut chosen = Vec::new();
         for player in candidates {
+            if game.shared_life_team_members(player)
+                .is_some_and(|team| chosen.iter().any(|member| team.contains(member)))
+            {
+                continue;
+            }
             let name = game
                 .player(player)
                 .map(|state| state.name.clone())

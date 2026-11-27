@@ -140,10 +140,16 @@ fn shared_creature_type_target_sets(
     by_type.into_iter().map(|(_, group)| group).collect()
 }
 
-fn target_count_for_spec(spec: &ChooseSpec) -> Option<usize> {
+fn target_count_for_spec(game: &GameState, spec: &ChooseSpec) -> Option<usize> {
     match spec {
         ChooseSpec::SurfaceHinted { spec, .. } | ChooseSpec::Target(spec) => {
-            target_count_for_spec(spec)
+            target_count_for_spec(game, spec)
+        }
+        ChooseSpec::WithCountValue(_, count, value)
+            if count.is_dynamic_x() && !count.is_up_to_dynamic_x()
+                && matches!(value.unhinted(), crate::effect::Value::CountPlayers(PlayerFilter::Any)) =>
+        {
+            Some(game.players_in_game())
         }
         ChooseSpec::WithCount(_, count) | ChooseSpec::WithCountValue(_, count, _) => {
             if count.min == count.max.unwrap_or(count.min) && !count.dynamic_x && !count.random {
@@ -297,7 +303,7 @@ pub fn legal_target_sets_for_spec(
         return equal_metric_target_sets(game, legal_targets, metric);
     }
     if spec_requires_distinct_creature_types(spec) {
-        let Some(count) = target_count_for_spec(spec) else {
+        let Some(count) = target_count_for_spec(game, spec) else {
             return Vec::new();
         };
         return distinct_creature_type_target_sets(
@@ -335,7 +341,7 @@ pub fn legal_target_sets_for_spec(
     match constraint {
         TargetSetControllerConstraint::Same | TargetSetControllerConstraint::SameOwner => grouped,
         TargetSetControllerConstraint::Different => {
-            let Some(count) = target_count_for_spec(spec) else {
+            let Some(count) = target_count_for_spec(game, spec) else {
                 return Vec::new();
             };
             different_controller_target_sets(&grouped, count)
@@ -1173,13 +1179,15 @@ fn subject_matches_protection(
     }
 }
 
-/// The colors outside `player`'s commander color identity (CR 903.4). A
-/// player with no commander has an empty identity, so every color is outside.
+/// Protection from each color outside a commander's identity grants no abilities
+/// when that identity is undefined (CR 903.4f).
 pub(crate) fn colors_outside_commander_identity(
     game: &GameState,
     player: crate::ids::PlayerId,
 ) -> crate::color::ColorSet {
-    let identity = game.get_commander_color_identity(player);
+    let Some(identity) = game.defined_commander_color_identity(player) else {
+        return crate::color::ColorSet::COLORLESS;
+    };
     let mut outside = crate::color::ColorSet::new();
     for color in [
         crate::color::ColorSet::WHITE,
@@ -2104,8 +2112,7 @@ fn combat_players_for_attacking_source(
     game: &GameState,
     source_id: ObjectId,
 ) -> Option<(PlayerId, PlayerId)> {
-    let combat = game.combat.as_ref()?;
-    let attack_target = crate::combat_state::get_attack_target(combat, source_id)?;
+    let attack_target = game.current_attack_target_across_lanes(source_id)?;
     let defending_player =
         crate::combat_state::defending_player_for_attack_target(game, attack_target)?;
     let source = game.object(source_id)?;

@@ -315,6 +315,7 @@ pub(super) fn read_repeat_with_new_values(
     // counter put on a creature this way" (Kathril, Aspect Warper) reads
     // every repetition's result, not only the last one's.
     if matches!(values, RepeatValues::Keywords(_)) && effects.len() > 1 {
+        for effect in &mut effects { effect.borrow_keyword_counter_variants(); }
         return Ok(Some(vec![EffectAst::CommaThen { effects }]));
     }
     Ok(Some(effects))

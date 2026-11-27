@@ -84,6 +84,22 @@ pub fn advance_priority_with_dm(
     trigger_queue: &mut TriggerQueue,
     decision_maker: &mut dyn DecisionMaker,
 ) -> Result<GameProgress, GameLoopError> {
+    use super::loop_shortcut::{CallSpec, RecordingDm, begin, finish};
+    let scope = begin(game, false, CallSpec::Advance);
+    if !scope.recording() {
+        return advance_priority_unrecorded(game, trigger_queue, decision_maker);
+    }
+    let mut recorder = RecordingDm::new(decision_maker, &scope);
+    let result = advance_priority_unrecorded(game, trigger_queue, &mut recorder);
+    let awaiting = recorder.awaiting_choice();
+    finish(game, trigger_queue, None, scope, result, awaiting)
+}
+
+fn advance_priority_unrecorded(
+    game: &mut GameState,
+    trigger_queue: &mut TriggerQueue,
+    decision_maker: &mut dyn DecisionMaker,
+) -> Result<GameProgress, GameLoopError> {
     let total_started_at = PerfTimer::start();
     let mut perf = PriorityAdvancePerfMetrics::default();
     if game.subgame_starting_procedure_pending() {
@@ -521,6 +537,10 @@ pub fn analyze_priority_context(
         }
     }
     actions.extend(commander_actions);
+    // CR 732.2: the loop this player just completed may be repeated.
+    if game.loop_shortcut_offered_to(priority_player) {
+        actions.push(LegalAction::ShortcutLoop);
+    }
 
     let mut ctx = crate::decisions::context::PriorityContext::new(game, priority_player, actions)
         .map_err(crate::effects::ExecutionError::ContinuousDiscovery)?;

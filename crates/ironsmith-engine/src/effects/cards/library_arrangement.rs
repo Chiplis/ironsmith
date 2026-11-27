@@ -206,10 +206,5 @@ pub(crate) fn choose_library_bottom_partition(
     if ctx.decision_maker.awaiting_choice() {
         return None;
     }
-    Some(
-        selected
-            .into_iter()
-            .filter(|card| cards.contains(card))
-            .collect(),
-    )
+    Some(selected)
 }

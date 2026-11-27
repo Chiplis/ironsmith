@@ -1118,7 +1118,7 @@ impl GameState {
                 .attackers
                 .iter()
                 .map(|attacker| attacker.creature)
-                .chain(combat.blockers.values().flatten().copied())
+                .chain(combat.blocking_creatures())
             {
                 if !combatants.contains(&id) {
                     combatants.push(id);
@@ -2214,9 +2214,8 @@ impl GameState {
         let Some(object) = self.object(object_id) else {
             return false;
         };
-        if object.zone == Zone::Battlefield && object.linked_face_layout != LinkedFaceLayout::Split {
-            return self.copied_room_halves(object_id).is_some()
-                && self.copied_room_unlocked_halves(object_id) != (true, true);
+        if self.copied_room_halves(object_id).is_some() {
+            return self.copied_room_unlocked_halves(object_id) != (true, true);
         }
         // Ordered cheapest-first. `current_has_subtype` reads calculated
         // characteristics, which is the expensive layered path whenever any
@@ -2229,26 +2228,20 @@ impl GameState {
                 .battlefield_flags
                 .fully_unlocked_rooms
                 .contains(&object_id)
-            && self
-                .linked_face_definition_by_name_or_id(
-                    object.other_face_name.as_deref(),
-                    object.other_face,
-                )
-                .is_some_and(|def| def.card.subtypes.contains(&crate::types::Subtype::Room))
+            && (object.copied_face_values.as_deref().is_some_and(crate::continuous::copied_values_are_room)
+                || self.linked_face_definition_by_name_or_id(object.other_face_name.as_deref(), object.other_face)
+                    .is_some_and(|def| def.card.subtypes.contains(&crate::types::Subtype::Room)))
             && self.current_has_subtype(object_id, crate::types::Subtype::Room)
     }
 
-    /// CR 707.2, 709.5: the copied halves of a permanent that is a Room only
-    /// through a layer-1 copy effect (Mirage Mirror copying a Room). The
-    /// envelope's own face is the first half (`RoomDoor::Current`), its
-    /// linked face the second (`RoomDoor::Linked`). Rooms whose own object
-    /// carries the split link use the designation sets below instead.
+    /// The current pair of doors supplied by a continuous copy effect.
+    /// A printed Room can itself copy a different Room (CR 709.5).
     pub(crate) fn copied_room_halves(
         &self,
         object_id: ObjectId,
     ) -> Option<std::sync::Arc<crate::snapshot::CopiableValues>> {
         let object = self.object(object_id)?;
-        if object.zone != Zone::Battlefield || object.linked_face_layout == LinkedFaceLayout::Split {
+        if object.zone != Zone::Battlefield {
             return None;
         }
         // Cheap gate before the layered read: only a layer-1 copy effect
@@ -2267,13 +2260,25 @@ impl GameState {
         if !may_copy_room {
             return None;
         }
-        let values = self.calculated_characteristics_arc(object_id)?.copy_values.clone()?;
+        let chars = self.calculated_characteristics_arc(object_id)?;
+        if !chars.has_copy_overlay {
+            return None;
+        }
+        let values = chars.copy_values.clone()?;
         crate::continuous::copied_values_are_room(&values).then_some(values)
     }
 
-    /// CR 709.5c: (first half, second half) unlocked designations of a
-    /// permanent that is a Room only through a copy effect.
+    /// The recipient's left and right designations, independent of the donor.
     pub(crate) fn copied_room_unlocked_halves(&self, object_id: ObjectId) -> (bool, bool) {
+        if let Some(object) = self.object(object_id)
+            && object.linked_face_layout == LinkedFaceLayout::Split
+            && object.subtypes.contains(&crate::types::Subtype::Room)
+        {
+            if self.room_has_no_unlocked_door(object_id) { return (false, false); }
+            if self.is_room_fully_unlocked(object_id) { return (true, true); }
+            let right = object.room_current_half_is_right();
+            return (!right, right);
+        }
         let bits = self
             .battlefield_flags
             .copied_room_unlocked_halves
@@ -2334,6 +2339,13 @@ impl GameState {
     /// Make the Room's linked other half its current half (used when the
     /// linked door is the first one unlocked, CR 709.5d-e).
     pub(crate) fn switch_room_to_linked_half(&mut self, object_id: ObjectId) -> bool {
+        if let Some(next) = self.object(object_id).and_then(|room| room.opposite_copied_room_half()) {
+            let room = self.object_mut(object_id).expect("Room was just found");
+            room.copy_copiable_values_from_values(&next);
+            room.split_combined = None;
+            self.mark_continuous_state_dirty();
+            return true;
+        }
         let Some(linked) = self.object(object_id).and_then(|object| {
             self.linked_face_definition_by_name_or_id(
                 object.other_face_name.as_deref(),
@@ -2406,25 +2418,34 @@ impl GameState {
         if !self.is_room_fully_unlocked(object_id) {
             return false;
         }
-        let Some(linked) = self.object(object_id).and_then(|object| {
-            self.linked_face_definition_by_name_or_id(
-                object.other_face_name.as_deref(),
-                object.other_face,
-            )
-        }) else {
-            return false;
-        };
-        let Some(current) = self.linked_face_definition_by_name_or_id(
-            linked.card.other_face_name.as_deref(),
-            linked.card.other_face,
-        ) else {
-            return false;
-        };
-        let handles = self.object_store.shared_handles_for_definition(&current);
-        let Some(object) = self.object_mut(object_id) else {
-            return false;
-        };
-        object.apply_definition_face_with_shared(&current, &handles);
+        if let Some(values) = self.object(object_id)
+            .and_then(|room| room.copied_face_values.clone())
+            .filter(|values| crate::continuous::copied_values_are_room(values))
+        {
+            let room = self.object_mut(object_id).expect("Room was just found");
+            room.copy_copiable_values_from_values(&values);
+            room.split_combined = None;
+        } else {
+            let Some(linked) = self.object(object_id).and_then(|object| {
+                self.linked_face_definition_by_name_or_id(
+                    object.other_face_name.as_deref(),
+                    object.other_face,
+                )
+            }) else {
+                return false;
+            };
+            let Some(current) = self.linked_face_definition_by_name_or_id(
+                linked.card.other_face_name.as_deref(),
+                linked.card.other_face,
+            ) else {
+                return false;
+            };
+            let handles = self.object_store.shared_handles_for_definition(&current);
+            let Some(object) = self.object_mut(object_id) else {
+                return false;
+            };
+            object.apply_definition_face_with_shared(&current, &handles);
+        }
         self.battlefield_flags_mut()
             .fully_unlocked_rooms
             .remove(&object_id);
@@ -2769,9 +2790,10 @@ impl GameState {
                             .is_some_and(|commander| {
                                 self.current_subtypes(commander)
                                     .is_some_and(|commander_subtypes| {
-                                        commander_subtypes
-                                            .iter()
-                                            .any(|subtype| source_subtypes.contains(subtype))
+                                        commander_subtypes.iter().any(|subtype| {
+                                            self.admitted_subtype(*subtype).is_creature_type()
+                                                && source_subtypes.contains(subtype)
+                                        })
                                     })
                             })
                     })
@@ -4868,13 +4890,12 @@ impl GameState {
     ///
     /// This sets the commander status on the game state and adds it to the player's commander list.
     pub fn set_as_commander(&mut self, object_id: ObjectId, owner: PlayerId) {
-        // Set the commander flag in the extension map
+        let identity = self.object(object_id).map_or(object_id, |object| object.stable_id.object_id());
         self.set_commander(object_id);
-        // Add to the player's commander list
         if let Some(player) = self.player_mut(owner) {
-            player.add_commander(object_id);
+            player.add_commander(identity);
         }
-        self.record_commander_color_identity(owner, object_id, object_id);
+        self.record_commander_color_identity(owner, identity, object_id);
     }
 
     /// Fix a commander's color identity as it is designated (CR 903.4a):

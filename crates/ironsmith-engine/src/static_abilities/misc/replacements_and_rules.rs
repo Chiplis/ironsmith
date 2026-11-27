@@ -319,10 +319,6 @@ impl DamageAmountReplacementMatcher {
         // A resolved source target retains its exact identity rather than
         // requiring that object to remain in its old zone or combat role.
         if self.source_filter == ObjectFilter::specific(damage.source) { return true; }
-        // Unblocked is current combat status, not a characteristic whose
-        // absent snapshot predicate may be silently ignored.
-        if self.source_filter.unblocked && !ctx.game.combat.as_ref().is_some_and(|combat|
-            crate::combat_state::is_unblocked(combat, damage.source)) { return false; }
         // An unconstrained source predicate requires no characteristics or LKI.
         // The source of damage may already have left its former zone.
         if self.source_filter == ObjectFilter::default() {

@@ -207,6 +207,7 @@ pub(crate) fn rewrite_static_model_words(
             *subjects = rewrite_filter_words(subjects, change)?;
         }
         P::Enchant(filter) => *filter = rewrite_attachment_words(filter, change)?,
+        P::HexproofFrom(filter) if crate::static_abilities::is_exactly_all_magic_colors_filter(filter) => {}
         P::HexproofFrom(filter) | P::BandsWithOther(filter)
         | P::AdditionalSpellTargets { filter, .. }
         | P::CanBeBlockedAsThoughBlockersWereUntapped(filter)

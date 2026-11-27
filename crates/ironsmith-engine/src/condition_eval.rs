@@ -3092,9 +3092,7 @@ fn triggering_object_had_to_attack_this_combat(
     triggering_event
         .and_then(|event| event.object_id())
         .is_some_and(|object_id| {
-            game.combat
-                .as_ref()
-                .is_some_and(|combat| combat.creature_had_to_attack_this_combat(object_id))
+            game.combat_lanes().any(|combat| combat.creature_had_to_attack_this_combat(object_id))
         })
 }
 
@@ -3696,7 +3694,7 @@ fn evaluate_turn_history_condition(
             }) else {
                 return Ok(false);
             };
-            let Some(combat) = game.combat.as_ref() else {
+            let Some(combat) = game.combat_for_attacker(attacker) else {
                 return Ok(false);
             };
             let filter_ctx = game.filter_context_for(ctx.controller, Some(ctx.source));
@@ -4309,7 +4307,7 @@ fn resolve_condition_player_external(
         PlayerFilter::IteratedPlayer => ctx.iterated_player,
         PlayerFilter::Defending => ctx
             .defending_player
-            .or_else(|| game.combat.as_ref().and_then(|combat|
+            .or_else(|| game.combat_for_attacker(ctx.source).and_then(|combat|
                 crate::combat_state::defending_player_for_attacker(game, combat, ctx.source)))
             .or_else(|| combat_defending_player(game)),
         PlayerFilter::Attacking => Some(ctx.attacking_player.unwrap_or(ctx.controller)),
@@ -5610,10 +5608,7 @@ fn evaluate_condition_in_context(
             let Some(crate::effects::ResolvedTarget::Object(id)) = ctx.targets.first() else {
                 return Ok(false);
             };
-            Ok(game
-                .combat
-                .as_ref()
-                .is_some_and(|combat| crate::combat_state::is_attacking(combat, *id)))
+            Ok(game.combat_lanes().any(|combat| crate::combat_state::is_attacking(combat, *id)))
         }
         Condition::TargetIsBlocked => {
             let Some(ctx) = ctx.execution() else {
@@ -5621,9 +5616,8 @@ fn evaluate_condition_in_context(
             };
 
             if let Some(crate::effects::ResolvedTarget::Object(id)) = ctx.targets.first()
-                && let Some(combat) = &game.combat
             {
-                return Ok(crate::combat_state::is_blocked(combat, *id));
+                return Ok(game.combat_lanes().any(|combat| crate::combat_state::is_blocked(combat, *id)));
             }
             Ok(false)
         }
@@ -6308,18 +6302,7 @@ fn evaluate_condition_in_context(
                             && game.stack_is_empty()
                     }
                     crate::ability::ActivationTiming::DeclareAttackersStepByAttackedPlayer => {
-                        game.turn.phase == crate::game_state::Phase::Combat
-                            && game.turn.step
-                                == Some(crate::game_state::Step::DeclareAttackers)
-                            && game.combat.as_ref().is_some_and(|combat| {
-                                combat.attackers.iter().any(|info| {
-                                    info.creature == ctx.source
-                                        && info.target
-                                            == crate::combat_state::AttackTarget::Player(
-                                                ctx.controller,
-                                            )
-                                })
-                            })
+                        game.is_being_attacked_by_during_declare_attackers(ctx.controller, ctx.source)
                     }
                     crate::ability::ActivationTiming::DuringSourceOwnersUpkeep => {
                         game.object(ctx.source)
@@ -6538,9 +6521,7 @@ fn evaluate_condition_in_context(
                 .object(ctx.source)
                 .and_then(|source_obj| source_obj.attached_to.and_then(|target| target.object_id()))
                 .is_some_and(|attached| {
-                    game.combat
-                        .as_ref()
-                        .is_some_and(|combat| crate::combat_state::is_attacking(combat, attached))
+                    game.combat_lanes().any(|combat| crate::combat_state::is_attacking(combat, attached))
                 }))
         }
         Condition::SourceChosenOption(expected) => {
@@ -6758,19 +6739,13 @@ fn evaluate_condition_in_context(
             if ctx.is_cast_time() {
                 return Ok(false);
             }
-            Ok(game
-                .combat
-                .as_ref()
-                .is_some_and(|combat| crate::combat_state::is_attacking(combat, ctx.source)))
+            Ok(game.combat_lanes().any(|combat| crate::combat_state::is_attacking(combat, ctx.source)))
         }
         Condition::SourceIsBlocking => {
             if ctx.is_cast_time() {
                 return Ok(false);
             }
-            Ok(game
-                .combat
-                .as_ref()
-                .is_some_and(|combat| crate::combat_state::is_blocking(combat, ctx.source)))
+            Ok(game.combat_lanes().any(|combat| crate::combat_state::is_blocking(combat, ctx.source)))
         }
         Condition::SourceIsSoulbondPaired => {
             if ctx.is_cast_time() {
@@ -7155,28 +7130,7 @@ Condition::TriggeringSpellSnowManaOfAnySpellColorSpentToCast => {
                     )
                 }),
         ),
-        Condition::YouControlCommander => {
-            if let Some(player) = game.player(shared.controller) {
-                let commanders = player.get_commanders();
-                for &commander_id in commanders {
-                    if game.battlefield.contains(&commander_id)
-                        && let Some(obj) = game.object(commander_id)
-                        && game.controller_of(obj) == shared.controller
-                    {
-                        return Ok(true);
-                    }
-                    for &bf_id in &game.battlefield {
-                        if let Some(obj) = game.object(bf_id)
-                            && game.controller_of(obj) == shared.controller
-                            && obj.stable_id == StableId::from(commander_id)
-                        {
-                            return Ok(true);
-                        }
-                    }
-                }
-            }
-            Ok(false)
-        }
+        Condition::YouControlCommander => Ok(game.player_controls_a_commander(shared.controller)),
         Condition::ThisAbilityActivatedThisTurnAtLeast(count) => {
             let execution = ctx.execution().ok_or_else(|| ExecutionError::IncompleteEvidence(
                 "activation-count predicate requires the resolving ability acquisition".into()))?;

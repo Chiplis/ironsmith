@@ -28,10 +28,10 @@
 }
 .phase-track-player-stop::before {
   content: ""; box-sizing: border-box; width: 8px; height: 8px; border-radius: 50%;
-  border: 1.5px solid var(--stop-accent, #b79cff); background: transparent;
+  border: 1.5px solid var(--stop-accent, #4da3ff); background: transparent;
 }
 .phase-track-player-stop[data-stop="can_act"]::before { background: #ffffff; box-shadow: 0 0 3px #ffffffaa; }
-.phase-track-player-stop[data-stop="always"]::before { background: var(--stop-accent, #b79cff); box-shadow: 0 0 3px var(--stop-accent, #b79cff); }
+.phase-track-player-stop[data-stop="always"]::before { background: var(--stop-accent, #4da3ff); box-shadow: 0 0 3px var(--stop-accent, #4da3ff); }
 .phase-track-player-stop:hover:not(:disabled)::before { transform: scale(1.2); }
 .phase-track-player-stop:disabled { cursor: default; opacity: .35; }
 .phase-track-player-stop:focus-visible { outline: 1px solid #f6d64a; outline-offset: 0; }
@@ -82,7 +82,7 @@
 .phase-track-tracks { display: flex; flex-direction: column; gap: 3px; flex: 1 1 auto; min-width: 0; }
 .phase-track-legend { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; flex: 0 0 auto; max-width: 140px; min-width: 0; margin: 0; padding: 0 0 0 8px; list-style: none; font-size: 11px; line-height: 1.25; color: #c9b4e6; }
 .phase-track-legend-player { display: inline-flex; align-items: center; gap: 5px; min-width: 0; }
-.phase-track-legend-dot { flex: 0 0 auto; width: 7px; height: 7px; border-radius: 50%; background: var(--stop-accent, #b79cff); }
+.phase-track-legend-dot { flex: 0 0 auto; width: 7px; height: 7px; border-radius: 50%; background: var(--stop-accent, #4da3ff); }
 .phase-track-player-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 450; }
 .phase-track-legend-player[data-active-turn="true"] .phase-track-player-name { font-weight: 850; }
 .phase-track-legend-player[data-has-priority="true"] .phase-track-player-name { color: #8ae4ac; }
@@ -189,3 +189,24 @@
 .phase-track-group--players .phase-track-combat-toggle[aria-pressed="true"] .phase-track-stop-icon {
   stroke: #ffffff; filter: drop-shadow(0 0 3px #ffffffcc);
 }
+
+/* Legend for the stop dots, right of the phase strip. Each row is a sample
+   cell -- the dot above a placeholder "Phase" label, as it sits in the strip --
+   followed by what that dot state means. */
+.phase-track-stop-legend {
+  display: flex; flex-direction: column; justify-content: center; gap: 3px; flex: 0 0 auto;
+  align-self: flex-start; margin: 0 0 0 14px; padding: 2px 0 2px 12px; list-style: none;
+  border-left: 1px solid #ffffff1f; color: #c9b4e6; font-size: 10px; line-height: 1.15; white-space: nowrap;
+  pointer-events: auto; cursor: help;
+}
+.phase-track-stop-legend-row { display: flex; align-items: center; gap: 7px; }
+.phase-track-stop-legend-sample { display: flex; flex-direction: column; align-items: center; gap: 1px; width: 30px; }
+.phase-track-stop-legend-dot {
+  box-sizing: border-box; width: 8px; height: 8px; border-radius: 50%;
+  border: 1.5px solid var(--stop-accent, #4da3ff); background: transparent;
+}
+.phase-track-stop-legend-dot[data-stop="can_act"] { background: #ffffff; box-shadow: 0 0 3px #ffffffaa; }
+.phase-track-stop-legend-dot[data-stop="always"] { background: var(--stop-accent, #4da3ff); box-shadow: 0 0 3px var(--stop-accent, #4da3ff); }
+.phase-track-stop-legend-phase { font-size: 8px; letter-spacing: .04em; opacity: .7; }
+.phase-track-stop-legend-meaning { color: #e6dcf5; }
+@media (max-width: 1100px) { .phase-track-stop-legend { display: none; } }

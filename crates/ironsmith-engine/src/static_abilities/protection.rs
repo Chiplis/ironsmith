@@ -197,16 +197,7 @@ impl StaticAbilityKind for Protection {
         }
         if let ProtectionFrom::ColorsAmongAtResolution(filter) = &self.from {
             let context = ctx.filter_context(game);
-            let mut colors = crate::color::ColorSet::new();
-            for id in crate::object_query::candidate_ids_for_filter(game, filter) {
-                if game.is_phased_out(id) { continue; }
-                let Some(chars) = game.try_current_characteristics(id)
-                    .map_err(crate::effects::ExecutionError::ContinuousDiscovery)? else { continue; };
-                if game.object(id).is_some_and(|object| {
-                    use crate::filter::ObjectFilterExt as _;
-                    filter.matches(object, &context, game)
-                }) { colors = colors.union(chars.colors); }
-            }
+            let colors = colors_among_matching_objects(game, filter, &context)?;
             return Ok(Some(super::StaticAbility::new(Self { from: ProtectionFrom::Color(colors), descriptive: self.descriptive.clone() })));
         }
         let ProtectionFrom::ColorsOf(spec) = &self.from else {
@@ -506,12 +497,130 @@ impl HexproofFrom {
     }
 }
 
+fn uses_protected_objects_colors(filter: &ObjectFilter) -> bool {
+    matches!(filter.tagged_constraints.as_slice(), [constraint]
+        if constraint.tag.as_str() == crate::tag::HEXPROOF_PROTECTED_OBJECT_TAG
+            && constraint.relation == crate::filter::TaggedOpbjectRelation::SharesColorWithTagged)
+}
+
+fn colors_among_matching_objects(
+    game: &crate::game_state::GameState,
+    filter: &ObjectFilter,
+    context: &crate::filter::FilterContext,
+) -> Result<crate::color::ColorSet, crate::effects::ExecutionError> {
+    use crate::filter::ObjectFilterExt as _;
+    let mut colors = crate::color::ColorSet::new();
+    for id in crate::object_query::candidate_ids_for_filter(game, filter) {
+        if game.is_phased_out(id) {
+            continue;
+        }
+        let Some(chars) = game
+            .try_current_characteristics(id)
+            .map_err(crate::effects::ExecutionError::ContinuousDiscovery)?
+        else {
+            continue;
+        };
+        if game
+            .object(id)
+            .is_some_and(|object| filter.matches(object, context, game))
+        {
+            colors = colors.union(chars.colors);
+        }
+    }
+    Ok(colors)
+}
+
+fn protections_by_color() -> &'static [super::StaticAbility; 5] {
+    static PROTECTION: std::sync::OnceLock<[super::StaticAbility; 5]> = std::sync::OnceLock::new();
+    PROTECTION.get_or_init(|| {
+        Color::ALL
+            .map(|color| super::StaticAbility::protection(ProtectionFrom::Color(color.into())))
+    })
+}
+
+impl super::StaticAbility {
+    /// CR 702.11g and 702.16g–i. The printed shorthand remains copiable text.
+    /// Its individual abilities use the protected object's layer-five colors.
+    pub(crate) fn individual_color_variants(
+        &self,
+        object_colors: crate::color::ColorSet,
+    ) -> Option<impl Iterator<Item = &'static Self> + use<>> {
+        use std::sync::OnceLock;
+        static HEXPROOF: OnceLock<[super::StaticAbility; 5]> = OnceLock::new();
+        let (colors, variants) = match self.id() {
+            StaticAbilityId::HexproofFrom => {
+                let filter = self.hexproof_from_filter()?;
+                let colors = if uses_protected_objects_colors(filter) {
+                    object_colors
+                } else if is_exactly_all_magic_colors_filter(filter) {
+                    all_magic_colors()
+                } else {
+                    return None;
+                };
+                (
+                    colors,
+                    HEXPROOF.get_or_init(|| {
+                        Color::ALL.map(|color| {
+                            Self::hexproof_from(ObjectFilter::default().with_colors(color.into()))
+                        })
+                    }),
+                )
+            }
+            StaticAbilityId::Protection => {
+                let colors = match self.protection_from()? {
+                    ProtectionFrom::AllColors => all_magic_colors(),
+                    ProtectionFrom::OwnColors => object_colors,
+                    ProtectionFrom::Color(colors) if colors.count() != 1 => *colors,
+                    _ => return None,
+                };
+                (colors, protections_by_color())
+            }
+            _ => return None,
+        };
+        Some(
+            Color::ALL
+                .into_iter()
+                .zip(variants)
+                .filter_map(move |(color, variant)| colors.contains(color).then_some(variant)),
+        )
+    }
+
+    /// A borrower gains Pledge of Loyalty's currently applicable protections.
+    /// A resolving grant keeps those colors when Pledge or a colored permanent leaves.
+    pub(crate) fn visit_borrowed_variants(
+        &self,
+        game: &crate::game_state::GameState,
+        donor: crate::ids::ObjectId,
+        mut visit: impl FnMut(&Self),
+    ) {
+        let Some(ProtectionFrom::ColorsAmong {
+            filter,
+            reference_source,
+        }) = self.protection_from()
+        else {
+            visit(self);
+            return;
+        };
+        let reference = reference_source.unwrap_or(donor);
+        let Some(object) = game.object(reference) else {
+            return;
+        };
+        let context = game.filter_context_for(game.controller_of(object), Some(reference));
+        match colors_among_matching_objects(game, filter, &context) {
+            Ok(colors) => {
+                for (color, variant) in Color::ALL.into_iter().zip(protections_by_color()) {
+                    if colors.contains(color) {
+                        visit(variant);
+                    }
+                }
+            }
+            Err(error) => game.record_token_resource_failure(&error),
+        }
+    }
+}
+
 fn describe_hexproof_from_filter(filter: &ObjectFilter) -> String {
-    if filter.tagged_constraints.len() == 1
-        && filter.tagged_constraints[0].tag.as_str() == crate::tag::HEXPROOF_PROTECTED_OBJECT_TAG
-        && filter.tagged_constraints[0].relation
-            == crate::filter::TaggedOpbjectRelation::SharesColorWithTagged
-    {
+    if uses_protected_objects_colors(filter) {
         return "each of its colors".to_string();
     }
     if hexproof_from_activated_and_triggered_abilities(filter) {
@@ -584,7 +693,10 @@ fn hexproof_from_activated_and_triggered_abilities(filter: &ObjectFilter) -> boo
         }
 }
 
-fn is_exactly_all_magic_colors_filter(filter: &ObjectFilter) -> bool {
+pub(crate) fn is_exactly_all_magic_colors_filter(filter: &ObjectFilter) -> bool {
+    if filter.colors != Some(all_magic_colors()) {
+        return false;
+    }
     let mut expected = ObjectFilter::default();
     expected.colors = Some(all_magic_colors());
     filter == &expected
@@ -605,6 +717,11 @@ impl StaticAbilityKind for HexproofFrom {
     fn rewrite_text_words(&self, change: ironsmith_core::TextChange)
         -> Result<Option<super::StaticAbility>, crate::continuous::text_changes::TextChangeDomainError>
     {
+        // “Each color” contains no individual color word for a text change to replace.
+        if is_exactly_all_magic_colors_filter(&self.filter)
+        {
+            return Ok(None);
+        }
         let filter = crate::continuous::text_change_predicates::rewrite_filter_words(&self.filter, change)?;
         Ok((filter != self.filter).then(|| super::StaticAbility::new(Self { filter })))
     }

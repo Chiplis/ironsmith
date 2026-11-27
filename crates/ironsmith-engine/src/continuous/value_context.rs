@@ -334,6 +334,11 @@ impl<'a, 'game> LayerValueContext<'a, 'game> {
             let count_symbols = |chars: &CalculatedCharacteristics| {
                 chars.mana_cost.as_deref().map_or(0, |cost| crate::targeting::mana_symbols_of_color(cost, *color))
             };
+            if matches!(spec.unhinted(), ChooseSpec::Iterated)
+                && let Some(chars) = in_progress_characteristics(ctx.game, ctx.current_object)
+            {
+                return count_symbols(&chars);
+            }
             if let ChooseSpec::All(filter) = spec.unhinted() {
                 let mut total = 0i32;
                 for_each_matching_continuous_object(

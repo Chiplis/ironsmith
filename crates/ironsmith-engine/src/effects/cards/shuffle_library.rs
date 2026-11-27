@@ -39,6 +39,7 @@ impl EffectExecutor for ShuffleLibraryAction {
         let outputs = commit_library_shuffle_with_outputs(
             game,
             self.player,
+            self.player,
             &self.retained,
             self.position_from_top,
             &self.reason,
@@ -85,6 +86,7 @@ pub(crate) fn commit_library_shuffle(
     commit_library_shuffle_with_outputs(
         game,
         player,
+        player,
         retained,
         position_from_top,
         reason,
@@ -100,6 +102,7 @@ pub(crate) fn commit_library_shuffle(
 pub(crate) fn commit_library_shuffle_with_outputs(
     game: &mut GameState,
     player: crate::ids::PlayerId,
+    shuffler: crate::ids::PlayerId,
     retained: &[crate::ids::ObjectId],
     position_from_top: usize,
     reason: &str,
@@ -118,7 +121,7 @@ pub(crate) fn commit_library_shuffle_with_outputs(
     }
     let provenance = provenance(game);
     crate::effects::CompletedEffectOutputs::aggregate_only(EffectOutcome::resolved().with_event(
-        TriggerEvent::new_with_provenance(ShuffleLibraryEvent::new(player, cause), provenance),
+        TriggerEvent::new_with_provenance(ShuffleLibraryEvent::by(shuffler, player, cause), provenance),
     ))
 }
 
@@ -177,7 +180,7 @@ impl EffectExecutor for ShuffleLibraryEffect {
         ctx: &mut ExecutionContext,
     ) -> Result<Box<dyn crate::effects::SimultaneousEffectProposal>, ExecutionError> {
         Ok(Box::new(ShuffleProposal {
-            player: resolve_player_filter(game, &self.player, ctx)?,
+            players: shuffle_players(self, game, ctx)?,
         }))
     }
 
@@ -187,19 +190,7 @@ impl EffectExecutor for ShuffleLibraryEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<crate::effects::CompletedEffectOutputs, ExecutionError> {
-        // Multiple moved objects may share an owner: shuffle each owner once.
-        if let crate::target::PlayerFilter::OwnerOf(crate::target::ObjectRef::Tagged(tag)) = &self.player
-            && let Some(owners) = distinct_tagged_owners(game, ctx, tag)
-        {
-            let mut children = Vec::with_capacity(owners.len());
-            for owner in owners {
-                children.push(shuffle_library_with_outputs(game, ctx, owner, &[], 1, "library shuffled")?);
-            }
-            return Ok(crate::effects::CompletedEffectOutputs::from_children(children, EffectOutcome::aggregate));
-        }
-        let player_id = resolve_player_filter(game, &self.player, ctx)?;
-
-        shuffle_library_with_outputs(game, ctx, player_id, &[], 1, "library shuffled")
+        shuffle_players_with_outputs(game, ctx, shuffle_players(self, game, ctx)?)
     }
 
     fn get_target_spec(&self) -> Option<&ChooseSpec> {
@@ -211,18 +202,47 @@ impl EffectExecutor for ShuffleLibraryEffect {
     }
 }
 
-/// The distinct owners of a tag holding more than one object, in APNAP order
-/// (CR 101.4). `None` for an empty or single-object tag, which keeps the
-/// ordinary single-player resolution.
-fn distinct_tagged_owners(
+fn shuffle_players_with_outputs(
+    game: &mut GameState,
+    ctx: &mut ExecutionContext,
+    players: Vec<crate::ids::PlayerId>,
+) -> Result<crate::effects::CompletedEffectOutputs, ExecutionError> {
+    if let [player] = players.as_slice() {
+        return shuffle_library_with_outputs(game, ctx, *player, &[], 1, "library shuffled");
+    }
+    let mut children = Vec::with_capacity(players.len());
+    for player in players {
+        children.push(shuffle_library_with_outputs(
+            game,
+            ctx,
+            player,
+            &[],
+            1,
+            "library shuffled",
+        )?);
+    }
+    Ok(crate::effects::CompletedEffectOutputs::from_children(
+        children,
+        EffectOutcome::aggregate,
+    ))
+}
+
+fn shuffle_players(
+    effect: &ShuffleLibraryEffect,
     game: &GameState,
     ctx: &ExecutionContext,
-    tag: &crate::tag::TagKey,
-) -> Option<Vec<crate::ids::PlayerId>> {
-    let snapshots = ctx.get_tagged_all(tag)?;
-    if snapshots.len() < 2 {
-        return None;
-    }
+) -> Result<Vec<crate::ids::PlayerId>, ExecutionError> {
+    let crate::target::PlayerFilter::OwnerOf(crate::target::ObjectRef::Tagged(tag)) =
+        &effect.player
+    else {
+        return Ok(vec![resolve_player_filter(game, &effect.player, ctx)?]);
+    };
+    let Some(snapshots) = ctx.get_tagged_all(tag).filter(|cards| {
+        !cards.is_empty()
+            || crate::cards::is_sentence_helper_tag(tag.as_str(), "moved_to_owners_libraries")
+    }) else {
+        return Ok(vec![resolve_player_filter(game, &effect.player, ctx)?]);
+    };
     let mut owners = Vec::new();
     for player in game.team_apnap_player_order() {
         if snapshots.iter().any(|snapshot| snapshot.owner == player) && !owners.contains(&player) {
@@ -234,14 +254,14 @@ fn distinct_tagged_owners(
             owners.push(snapshot.owner);
         }
     }
-    Some(owners)
+    Ok(owners)
 }
 
 /// Shuffling asks no choices and runs no replacement-added programs. Resolve
 /// the player before any member of a simultaneous batch changes the world.
 #[derive(Debug)]
 struct ShuffleProposal {
-    player: crate::ids::PlayerId,
+    players: Vec<crate::ids::PlayerId>,
 }
 impl crate::effects::SimultaneousEffectProposal for ShuffleProposal {
     fn commit(
@@ -261,8 +281,7 @@ impl crate::effects::SimultaneousEffectProposal for ShuffleProposal {
         crate::effects::SimultaneousEffectCommit<crate::effects::CompletedEffectOutputs>,
         ExecutionError,
     > {
-        ShuffleLibraryEffect::new(crate::target::PlayerFilter::Specific(self.player))
-            .execute_with_outputs(game, ctx)
+        shuffle_players_with_outputs(game, ctx, self.players)
             .map(crate::effects::SimultaneousEffectCommit::finished)
     }
 }

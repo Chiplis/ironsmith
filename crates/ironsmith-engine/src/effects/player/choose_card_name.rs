@@ -78,6 +78,7 @@ pub(crate) fn synthetic_chosen_name_snapshot(
         blocking: false,
         attacking_alone: false,
         blocking_alone: false,
+        blocked_status: None,
         goaded: None,
             suspected: None,
             ring_bearer: None,
@@ -163,7 +164,7 @@ impl TextInputContext {
     pub fn allows_card_name(&self, game: &GameState, name: &str) -> bool {
         let name = name.trim();
         let matches = |other: &String| crate::filter::names_match(other, name);
-        !name.is_empty() && !name.contains("//")
+        !name.is_empty() && (!name.contains("//") || crate::cards::is_oracle_card_name(name))
             && !self.excluded_names.iter().any(matches)
             && self.allowed_names.as_ref().is_none_or(|names| names.iter().any(matches))
             && self.name_filter.as_deref().is_none_or(|(filter, ctx)| self.source.is_some_and(|source|

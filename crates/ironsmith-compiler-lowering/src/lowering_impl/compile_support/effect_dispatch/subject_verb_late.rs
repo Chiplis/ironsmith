@@ -455,6 +455,7 @@ fn compile_put_counters_action_inner(
     ctx: &mut EffectLoweringContext,
 ) -> Result<EffectCompileOutcome, CardTextError> {
     let SubjectVerbActionAst::Counters(CounterActionAst::PutCounters {
+        borrow_keyword_variants,
         maximum_total,
         counter_type,
         count,
@@ -544,6 +545,7 @@ fn compile_put_counters_action_inner(
                     resolved_count,
                     ChooseSpec::Tagged(tag.clone()),
                 );
+                put_counters.keyword_grant = borrow_keyword_variants.then_some(ironsmith_core::effect::KeywordCounterGrant::FromCondition);
                 put_counters.maximum_total = *maximum_total;
                 if count.has_surface_hint(ironsmith_core::ValueSurfaceHint::BlightKeywordAction) {
                     put_counters = put_counters
@@ -562,6 +564,7 @@ fn compile_put_counters_action_inner(
     }
     let mut put_counters =
         crate::effects::PutCountersEffect::new(*counter_type, resolved_count, spec.clone());
+    put_counters.keyword_grant = borrow_keyword_variants.then_some(ironsmith_core::effect::KeywordCounterGrant::FromCondition);
     put_counters.maximum_total = *maximum_total;
     if count.has_surface_hint(ironsmith_core::ValueSurfaceHint::BlightKeywordAction) {
         put_counters =

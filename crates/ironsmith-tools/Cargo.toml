@@ -222,6 +222,10 @@ name = "probe_tap_differential"
 path = "src/bin/probe_tap_differential.rs"
 test = false
 
+[[test]]
+name = "loop_shortcut_corpus"
+path = "tests/loop_shortcut_corpus.rs"
+
 # BEGIN GENERATED NATIVE TEST SUITES
 # Regenerate with python3 scripts/generate-native-test-suites.py.
 

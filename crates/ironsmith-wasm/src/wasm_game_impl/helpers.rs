@@ -509,6 +509,7 @@ pub(super) fn action_drag_metadata(
 ) {
     match action {
         LegalAction::PassPriority => ("pass_priority", None, None, None, None),
+        LegalAction::ShortcutLoop => ("shortcut_loop", None, None, None, None),
         LegalAction::KeepOpeningHand => ("pass_priority", None, None, None, None),
         LegalAction::TakeMulligan => ("take_mulligan", None, None, None, None),
         LegalAction::ContinuePregame => ("pass_priority", None, None, None, None),
@@ -712,6 +713,10 @@ pub(super) fn describe_action(game: &GameState, action: &LegalAction)
 fn describe_action_with_face_up_cost(game: &GameState, action: &LegalAction, face_up_cost: Option<&str>) -> String {
     match action {
         LegalAction::PassPriority => "Pass priority".to_string(),
+        LegalAction::ShortcutLoop => match game.loop_shortcut_offer() {
+            Some(offer) => format!("Repeat loop ({})", offer.describe_per_lap(game)),
+            None => "Repeat loop".to_string(),
+        },
         LegalAction::KeepOpeningHand => "Keep hand".to_string(),
         LegalAction::TakeMulligan => "Mulligan".to_string(),
         LegalAction::ContinuePregame | LegalAction::BeginGame => "Pregame".to_string(),
@@ -1408,6 +1413,7 @@ pub(super) fn optional_cost_selection_metadata(
 pub(super) fn priority_action_ref(action: &LegalAction) -> PriorityActionRef {
     match action {
         LegalAction::PassPriority => PriorityActionRef::PassPriority,
+        LegalAction::ShortcutLoop => PriorityActionRef::ShortcutLoop,
         LegalAction::KeepOpeningHand => PriorityActionRef::KeepOpeningHand,
         LegalAction::TakeMulligan => PriorityActionRef::TakeMulligan,
         LegalAction::ContinuePregame => PriorityActionRef::ContinuePregame,

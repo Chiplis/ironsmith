@@ -128,6 +128,6 @@ impl GameState {
             .or_else(|| self.team_vs_team.as_ref().map(|state| state.seats()))
             .or_else(|| self.alternating_teams.as_ref().map(|state| state.seats()))
             .or_else(|| self.shared_team_turns.as_ref().map(|state| state.seats()))
-            .unwrap_or(self.turn_store.turn_order.as_slice())
+            .unwrap_or(self.turn_store.initial_seats.as_slice())
     }
 }

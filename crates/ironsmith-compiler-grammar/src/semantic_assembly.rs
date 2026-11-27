@@ -16,11 +16,72 @@ use super::util::join_sentences_with_period;
 pub mod activation_costs;
 pub use activation_costs::assemble_activation_cost;
 
+/// A repeated conditional grant borrows every applicable variant of the
+/// named keyword from its donors (CR 702.1c).
+fn borrowed_conditional_keywords(
+    abilities: &[crate::cards::builders::StaticAbilityAst],
+    source: &str,
+) -> Option<crate::cards::builders::StaticAbilityAst> {
+    use crate::cards::builders::{PredicateAst, StaticAbilityAst};
+    use ironsmith_core::{
+        CopyStaticAbilityVariants, StaticAbilityId, StaticAbilityVariantSelector::Any,
+    };
+    if abilities.len() < 2 || !source.to_ascii_lowercase().contains("the same is true for") {
+        return None;
+    }
+    let mut donors = None;
+    let mut selectors = Vec::new();
+    for ability in abilities {
+        let StaticAbilityAst::ConditionalKeywordAction {
+            action,
+            condition:
+                PredicateAst::CountComparison {
+                    count: crate::static_abilities::AnthemCountExpression::MatchingFilter(filter),
+                    comparison: crate::effect::Comparison::GreaterThanOrEqual(1),
+                    ..
+                },
+        } = ability
+        else {
+            return None;
+        };
+        let keyword =
+            ironsmith_compiler_semantic::keyword_abilities::static_ability_for_keyword_action(
+                action.clone(),
+            )?
+            .id?;
+        if filter.static_abilities.as_slice() != [keyword] {
+            return None;
+        }
+        let mut filter = filter.clone();
+        filter.static_abilities.clear();
+        if donors.as_ref().is_some_and(|first| first != &filter) {
+            return None;
+        }
+        donors = Some(filter);
+        selectors.push(Any(keyword));
+        if keyword == StaticAbilityId::Hexproof {
+            selectors.push(Any(StaticAbilityId::HexproofFrom));
+        }
+    }
+    Some(StaticAbilityAst::Static(
+        crate::model::CompilerStaticAbilityCore::copy_static_ability_variants(
+            CopyStaticAbilityVariants::new(donors?, selectors, source),
+        ),
+    ))
+}
+
 fn parsed_line_item(
     info: crate::line_info::LineInfo,
-    chunks: Vec<crate::cards::builders::LineAst>,
+    mut chunks: Vec<crate::cards::builders::LineAst>,
     restrictions: ParsedRestrictions,
 ) -> RewriteSemanticItem {
+    for chunk in &mut chunks {
+        if let crate::cards::builders::LineAst::StaticAbilities(abilities) = chunk
+            && let Some(copy) = borrowed_conditional_keywords(abilities, &info.raw_line)
+        {
+            *abilities = vec![copy];
+        }
+    }
     let semantic_facts = info.semantic_facts.clone();
     let semantic_info = info.semantic_info();
     RewriteSemanticItem::ParsedLine(ParsedLineAst {

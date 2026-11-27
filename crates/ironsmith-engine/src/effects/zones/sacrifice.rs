@@ -976,6 +976,7 @@ fn commit_sacrifices(
     let (batch_lookback, pinned_lookback) =
         begin_sacrifice_batch_lookback(game, chosen_to_sacrifice.len());
 
+    let order = super::GraveyardOrderBatch::begin(game, eligible.len() > 1);
     let original = (|| -> Result<EffectOutcome, ExecutionError> {
         for id in chosen_to_sacrifice.iter().copied() {
             if !eligible.contains(&id) {
@@ -1109,6 +1110,7 @@ fn commit_sacrifices(
         outcome = outcome.with_affected_object_memory(sacrificed_memory);
         Ok(outcome)
     })();
+    order.finish(game, ctx.decision_maker, Some(ctx.source), original.is_ok());
     end_sacrifice_batch_lookback(game, pinned_lookback);
     let original = original?;
     if ctx.decision_maker.awaiting_choice() {

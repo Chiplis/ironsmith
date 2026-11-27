@@ -66,20 +66,20 @@ impl EffectExecutor for ReselectAttackTargetEffect {
                 // the permanent nor declares an attacker or reselects an attack
                 // it is already making (CR506.3d/508.4).
                 if self.enters_combat && fixed_player.is_none() && among_player.is_none() {
-                    if game.combat.as_ref().is_some_and(|combat|combat.attackers.iter().any(|info|info.creature==creature)){continue;}
-                    if let Some(chosen)=super::enter_attacking::choose_enters_attacking_target(game,ctx,creature) {
-                        game.add_entering_attacker(creature,chosen);changed+=1;
+                    if game.combat_for_attacker(creature).is_some() {
+                        continue;
                     }
-                    if ctx.decision_maker.awaiting_choice(){return Ok(EffectOutcome::count(0));}
+                    if let Some(chosen) = super::enter_attacking::choose_enters_attacking_target(game, ctx, creature) {
+                        game.add_entering_attacker(creature, chosen);
+                        changed += 1;
+                    }
+                    if ctx.decision_maker.awaiting_choice() {
+                        return Ok(EffectOutcome::count(0));
+                    }
                     continue;
                 }
-                let Some(current) = game.combat.as_ref().and_then(|combat| {
-                    combat
-                        .attackers
-                        .iter()
-                        .find(|info| info.creature == creature)
-                        .map(|info| info.target.clone())
-                }) else {
+                let Some(current) = game.current_attack_target_across_lanes(creature).cloned()
+                else {
                     // "<it> is attacking a player or planeswalker that
                     // opponent is attacking": the effect's controller chooses
                     // among what that player's other attackers attack, and the
@@ -95,9 +95,10 @@ impl EffectExecutor for ReselectAttackTargetEffect {
                         else {
                             continue;
                         };
-                        let legal = super::enter_attacking::enters_attacking_targets(game, controller);
+                        let legal =
+                            super::enter_attacking::enters_attacking_targets(game, controller);
                         let mut targets: Vec<AttackTarget> = Vec::new();
-                        if let Some(combat) = game.combat.as_ref() {
+                        for combat in game.combat_lanes() {
                             for info in &combat.attackers {
                                 if info.creature == creature
                                     || matches!(info.target, AttackTarget::Nothing { .. })
@@ -218,23 +219,24 @@ impl EffectExecutor for ReselectAttackTargetEffect {
                 if chosen == current {
                     continue;
                 }
-                if let Some(info) = game.combat.as_mut().and_then(|combat| {
+                if let Some(info) = game.combat_for_attacker_mut(creature).and_then(|combat| {
                     combat
                         .attackers
                         .iter_mut()
                         .find(|info| info.creature == creature)
                 }) {
-                    info.target = chosen;
+                    info.target = chosen.clone();
+                    game.mark_continuous_state_dirty();
+                    if let Some(permanent) = chosen.attacked_permanent() {
+                        let types = chosen.permanent_types(game, permanent);
+                        game.combat_for_attacker_mut(creature)
+                            .expect("attacker was reselected")
+                            .attacked_permanent_types
+                            .entry(permanent)
+                            .or_insert(types);
+                    }
                     changed += 1;
                 }
-            }
-            // CR 506.4e: a newly attacked planeswalker or battle records the
-            // types it is attacked as.
-            if changed > 0
-                && let Some(mut combat) = game.combat.take()
-            {
-                combat.record_attacked_permanent_types(game);
-                game.combat = Some(combat);
             }
             Ok(EffectOutcome::count(changed))
         })

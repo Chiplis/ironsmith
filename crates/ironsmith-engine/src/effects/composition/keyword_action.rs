@@ -102,7 +102,7 @@ pub(crate) fn execute_ordered_permanent_actions<'a>(
 /// Preserve explicit subjects, including an explicitly empty subject, and
 /// populate the two internal aliases consistently. A source snapshot is only
 /// a fallback for actions whose performer/source is also their subject.
-pub(super) fn keyword_action_object_bindings(
+pub(crate) fn keyword_action_object_bindings(
     mut tags: std::collections::HashMap<crate::tag::TagKey, Vec<crate::snapshot::ObjectSnapshot>>,
     fallback: Option<&crate::snapshot::ObjectSnapshot>,
 ) -> Vec<(String, Vec<crate::snapshot::ObjectSnapshot>)> {

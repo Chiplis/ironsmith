@@ -140,6 +140,28 @@ pub fn apply_priority_response_with_dm(
     response: &PriorityResponse,
     decision_maker: &mut impl DecisionMaker,
 ) -> Result<GameProgress, GameLoopError> {
+    use super::loop_shortcut::{CallSpec, RecordingDm, begin, finish};
+    let scope = begin(game, state.has_pending_action(), CallSpec::Response(response));
+    let mut recorder = RecordingDm::new(decision_maker, &scope);
+    let result = if matches!(
+        response,
+        PriorityResponse::PriorityAction(LegalAction::ShortcutLoop)
+    ) {
+        super::loop_shortcut::execute(game, trigger_queue, state, &mut recorder)
+    } else {
+        apply_priority_response_unrecorded(game, trigger_queue, state, response, &mut recorder)
+    };
+    let awaiting = recorder.awaiting_choice();
+    finish(game, trigger_queue, Some(state), scope, result, awaiting)
+}
+
+fn apply_priority_response_unrecorded(
+    game: &mut GameState,
+    trigger_queue: &mut TriggerQueue,
+    state: &mut PriorityLoopState,
+    response: &PriorityResponse,
+    decision_maker: &mut impl DecisionMaker,
+) -> Result<GameProgress, GameLoopError> {
     if !decision_maker.awaiting_choice() {
         game.clear_pending_decision_controllers();
     }
@@ -896,6 +918,9 @@ pub(super) fn apply_admitted_priority_action(
             permission,
             decision_maker,
         ),
+        LegalAction::ShortcutLoop => {
+            super::loop_shortcut::execute(game, trigger_queue, state, decision_maker)
+        }
         LegalAction::PassPriority => super::priority_mana::apply_priority_action_with_dm(
             game,
             trigger_queue,

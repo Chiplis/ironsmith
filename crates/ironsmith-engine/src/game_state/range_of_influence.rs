@@ -466,11 +466,7 @@ impl GameState {
         observer: PlayerId,
         mut predicate: impl FnMut(PlayerId) -> bool,
     ) -> Option<PlayerId> {
-        let seats = self
-            .range_of_influence
-            .as_ref()
-            .map(|state| state.seats.as_slice())
-            .unwrap_or(self.turn_store.turn_order.as_slice());
+        let seats = self.physical_seats();
         let start = seats.iter().position(|player| *player == observer)?;
         (1..=seats.len())
             .map(|offset| seats[(start + offset) % seats.len()])
@@ -488,11 +484,7 @@ impl GameState {
         observer: PlayerId,
         mut predicate: impl FnMut(PlayerId) -> bool,
     ) -> Option<PlayerId> {
-        let seats = self
-            .range_of_influence
-            .as_ref()
-            .map(|state| state.seats.as_slice())
-            .unwrap_or(self.turn_store.turn_order.as_slice());
+        let seats = self.physical_seats();
         let start = seats.iter().position(|player| *player == observer)?;
         (1..=seats.len())
             .map(|offset| seats[(start + seats.len() - (offset % seats.len())) % seats.len()])

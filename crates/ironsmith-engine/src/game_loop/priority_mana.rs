@@ -5518,13 +5518,20 @@ pub fn run_priority_loop_with<D: DecisionMaker>(
                 loop {
                     let auto_passed = should_auto_pass_ctx(&current_ctx);
                     let result = if auto_passed {
-                        apply_priority_action_with_dm(
+                        use super::loop_shortcut::{CallSpec, RecordingDm, begin, finish};
+                        let pass = PriorityResponse::PriorityAction(LegalAction::PassPriority);
+                        let scope =
+                            begin(game, state.has_pending_action(), CallSpec::Response(&pass));
+                        let mut recorder = RecordingDm::new(decision_maker, &scope);
+                        let result = apply_priority_action_with_dm(
                             game,
                             trigger_queue,
                             &mut state,
                             &LegalAction::PassPriority,
-                            decision_maker,
-                        )
+                            &mut recorder,
+                        );
+                        let awaiting = recorder.awaiting_choice();
+                        finish(game, trigger_queue, Some(&state), scope, result, awaiting)
                     } else {
                         apply_decision_context_with_dm(
                             game,
@@ -5607,6 +5614,22 @@ pub fn run_priority_loop_with<D: DecisionMaker>(
 
 /// Apply a context-based decision directly using typed decision primitives.
 pub fn apply_decision_context_with_dm<D: DecisionMaker>(
+    game: &mut GameState,
+    trigger_queue: &mut TriggerQueue,
+    state: &mut PriorityLoopState,
+    ctx: &crate::decisions::context::DecisionContext,
+    decision_maker: &mut D,
+) -> Result<GameProgress, GameLoopError> {
+    use super::loop_shortcut::{CallSpec, RecordingDm, begin, finish};
+    let scope = begin(game, state.has_pending_action(), CallSpec::Context);
+    let mut recorder = RecordingDm::new(decision_maker, &scope);
+    let result =
+        apply_decision_context_unrecorded(game, trigger_queue, state, ctx, &mut recorder);
+    let awaiting = recorder.awaiting_choice();
+    finish(game, trigger_queue, Some(state), scope, result, awaiting)
+}
+
+fn apply_decision_context_unrecorded<D: DecisionMaker>(
     game: &mut GameState,
     trigger_queue: &mut TriggerQueue,
     state: &mut PriorityLoopState,
@@ -6072,6 +6095,9 @@ pub(super) fn apply_priority_action_with_dm(
     decision_maker: &mut impl DecisionMaker,
 ) -> Result<GameProgress, GameLoopError> {
     match action {
+        LegalAction::ShortcutLoop => {
+            super::loop_shortcut::execute(game, trigger_queue, state, decision_maker)
+        }
         LegalAction::PassPriority => {
             let total_started_at = PerfTimer::start();
             state.mandatory_loop.observe_priority_snapshot(game);

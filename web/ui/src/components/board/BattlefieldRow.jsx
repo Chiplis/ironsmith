@@ -1,4 +1,5 @@
 import { allocateBattlefieldScene } from '@/lib/battlefield-scene-layout';
+import { setFieldHoverDwell } from "@/lib/field-hover-dwell";
 import useBattlefieldScene from '@/hooks/useBattlefieldScene';
 import BattlefieldSceneCard from './scene/BattlefieldSceneCard';
 import { arenaPermanentKind } from '@/lib/mobile-arena';
@@ -82,6 +83,50 @@ const DENSE_BATTLEFIELD_THRESHOLD = 18;
 const DENSE_BATTLEFIELD_MAX_COLUMNS = 24;
 const MOBILE_OBJECT_LONG_PRESS_MS = 380;
 const MOBILE_LONG_PRESS_SUPPRESS_WINDOW_MS = 700;
+// While attackers or blockers are being declared a click on a permanent is a
+// combat choice, so its card frame opens only on a deliberate hold. The ring
+// stays hidden for the first stretch so an ordinary click never flashes it.
+const COMBAT_INSPECT_HOLD_MS = 750;
+const COMBAT_INSPECT_RING_DELAY_MS = 120;
+const COMBAT_INSPECT_MOVE_CANCEL_DISTANCE_SQ = 8 * 8;
+// A hover preview opens once the pointer has stayed on a card this long; the
+// same ring counts it down and follows the pointer while it moves.
+const FIELD_HOVER_DWELL_MS = 750;
+const FIELD_HOVER_RING_DELAY_MS = 120;
+
+function isCombatDeclaration(combatMode) {
+  return combatMode?.mode === "attackers" || combatMode?.mode === "blockers";
+}
+
+// A white ring at the pointer that fills clockwise over the hold. Plain DOM:
+// it tracks one press and must not re-render the battlefield.
+function showCombatHoldRing(x, y, holdMs = COMBAT_INSPECT_HOLD_MS, delayMs = COMBAT_INSPECT_RING_DELAY_MS) {
+  if (typeof document === "undefined") return () => {};
+  const ring = document.createElement("div");
+  ring.className = "combat-hold-ring";
+  ring.setAttribute("aria-hidden", "true");
+  ring.style.left = `${x}px`;
+  ring.style.top = `${y}px`;
+  ring.style.setProperty("--combat-hold-delay", `${delayMs}ms`);
+  ring.style.setProperty("--combat-hold-fill", `${holdMs - delayMs}ms`);
+  // Two half-rings that rotate into view: only transforms animate, so the
+  // fill runs on the compositor and does not stall when the hover it sits on
+  // makes the page render.
+  ring.innerHTML = '<i class="combat-hold-ring__half combat-hold-ring__half--first"><b></b></i>'
+    + '<i class="combat-hold-ring__half combat-hold-ring__half--second"><b></b></i>';
+  document.body.appendChild(ring);
+  const remove = (completed = false) => {
+    if (!completed) { ring.remove(); return; }
+    ring.dataset.complete = "true";
+    window.setTimeout(() => ring.remove(), 220);
+  };
+  // The ring travels with the pointer without restarting its fill.
+  remove.moveTo = (nextX, nextY) => {
+    ring.style.left = `${nextX}px`;
+    ring.style.top = `${nextY}px`;
+  };
+  return remove;
+}
 const MOBILE_LONG_PRESS_MOVE_CANCEL_DISTANCE_SQ = 16 * 16;
 const MOBILE_BOTTOM_BACK_ROW_TRANSLATE_Y_PX = 32;
 const MOBILE_BOTTOM_MIN_VISIBLE_BACK_ROW_RATIO = 0.6;
@@ -994,6 +1039,56 @@ export default function BattlefieldRow({
     });
   }, [cancelPointerHover, setHoveredCard]);
   useEffect(() => cancelPointerHover, [cancelPointerHover]);
+  // Pointer dwell: see lib/field-hover-dwell. `armFieldHoverDwell` runs on
+  // entry and on every move inside the card until the pointer has rested.
+  const fieldHoverDwellRef = useRef({ cardId: null, timer: 0, removeRing: null, dwelled: false });
+  const stopFieldHoverDwellCountdown = useCallback(() => {
+    const dwell = fieldHoverDwellRef.current;
+    clearTimeout(dwell.timer);
+    dwell.timer = 0;
+    dwell.removeRing?.();
+    dwell.removeRing = null;
+  }, []);
+  const endFieldHoverDwell = useCallback(() => {
+    stopFieldHoverDwellCountdown();
+    fieldHoverDwellRef.current = { cardId: null, timer: 0, removeRing: null, dwelled: false };
+    setFieldHoverDwell(null);
+  }, [stopFieldHoverDwellCountdown]);
+  const armFieldHoverDwell = useCallback((event, cardId) => {
+    const id = String(cardId);
+    let dwell = fieldHoverDwellRef.current;
+    if (dwell.cardId === id && dwell.dwelled) return;
+    // Moving inside the card does not restart the countdown; the ring just
+    // follows the pointer.
+    if (dwell.cardId === id && dwell.timer && !event.buttons) {
+      dwell.removeRing?.moveTo(event.clientX, event.clientY);
+      return;
+    }
+    stopFieldHoverDwellCountdown();
+    // A held button is a click or a drag, not a rest. A card entered mid-drag
+    // (a combat arrow looking for its target) previews as it always has.
+    if (event.buttons) {
+      if (dwell.cardId !== id) {
+        fieldHoverDwellRef.current = { cardId: null, timer: 0, removeRing: null, dwelled: false };
+        setFieldHoverDwell(null);
+      }
+      return;
+    }
+    if (dwell.cardId !== id) {
+      dwell = fieldHoverDwellRef.current = { cardId: id, timer: 0, removeRing: null, dwelled: false };
+    }
+    setFieldHoverDwell({ pending: id });
+    dwell.removeRing = showCombatHoldRing(event.clientX, event.clientY, FIELD_HOVER_DWELL_MS, FIELD_HOVER_RING_DELAY_MS);
+    dwell.timer = window.setTimeout(() => {
+      if (fieldHoverDwellRef.current !== dwell) return;
+      dwell.timer = 0;
+      dwell.removeRing?.(true);
+      dwell.removeRing = null;
+      dwell.dwelled = true;
+      setFieldHoverDwell({ dwelled: id });
+    }, FIELD_HOVER_DWELL_MS);
+  }, [stopFieldHoverDwellCountdown]);
+  useEffect(() => endFieldHoverDwell, [endFieldHoverDwell]);
   // The card the pointer just left still carries its app-reported hover until
   // the clear has rendered. Marking the node directly lets its shrink start on
   // time; the mark only needs to outlive that render.
@@ -1499,6 +1594,8 @@ export default function BattlefieldRow({
   const battlefieldMoveDragRef = useRef(null);
   const battlefieldMoveListenersRef = useRef(null);
   const battlefieldMoveClickSuppressRef = useRef({ cardId: null, suppressedAt: 0 });
+  const combatInspectHoldRef = useRef(null);
+  const combatInspectSuppressRef = useRef({ cardId: null, suppressedAt: 0 });
   const mobileCardPressRef = useRef({
     timer: null,
     cardId: null,
@@ -2254,6 +2351,40 @@ export default function BattlefieldRow({
     layoutHoldTimersRef.current.clear();
   }, []);
 
+  const cancelCombatInspectHold = useCallback(() => {
+    const hold = combatInspectHoldRef.current;
+    if (!hold) return;
+    combatInspectHoldRef.current = null;
+    clearTimeout(hold.timer);
+    hold.removeRing();
+  }, []);
+
+  useEffect(() => cancelCombatInspectHold, [cancelCombatInspectHold]);
+
+  const startCombatInspectHold = useCallback((event, card) => {
+    cancelCombatInspectHold();
+    if (mobileObjectGesturesEnabled || !isCombatDeclaration(combatModeRef.current)) return;
+    if (event.button !== 0 || event.isPrimary === false) return;
+    const removeRing = showCombatHoldRing(event.clientX, event.clientY);
+    const timer = window.setTimeout(() => {
+      combatInspectHoldRef.current = null;
+      removeRing(true);
+      // The release that follows must neither toggle the attack/block nor
+      // count as a click.
+      combatInspectSuppressRef.current = { cardId: String(card.id), suppressedAt: performance.now() };
+      if (dragRef.current) dragRef.current.held = true;
+      handInspectionLockedRef.current = false;
+      // The workspace ignores inspect requests while combat is being declared,
+      // so the frame is opened the way a rested pointer opens it: as a hover
+      // that has already served its delay.
+      stopFieldHoverDwellCountdown();
+      fieldHoverDwellRef.current = { cardId: String(card.id), timer: 0, removeRing: null, dwelled: true };
+      setFieldHoverDwell({ dwelled: card.id });
+      hoverCard(card.id);
+    }, COMBAT_INSPECT_HOLD_MS);
+    combatInspectHoldRef.current = { timer, removeRing, startX: event.clientX, startY: event.clientY };
+  }, [cancelCombatInspectHold, combatModeRef, hoverCard, mobileObjectGesturesEnabled, stopFieldHoverDwellCountdown]);
+
   // Combat drag handlers
   const handleCombatPointerDown = useCallback((e, card) => {
     const cm = combatModeRef.current;
@@ -2271,8 +2402,9 @@ export default function BattlefieldRow({
       if (!dt) return;
       const dx = me.clientX - dt.sx;
       const dy = me.clientY - dt.sy;
-      if (!dt.dragging && (dx * dx + dy * dy) > 36) {
+      if (!dt.dragging && !dt.held && (dx * dx + dy * dy) > 36) {
         dt.dragging = true;
+        cancelCombatInspectHold();
         startDragArrow(dt.cardId, me.clientX, me.clientY, cm.color);
       }
       if (dt.dragging) {
@@ -2299,6 +2431,7 @@ export default function BattlefieldRow({
       const dt = dragRef.current;
       dragRef.current = null;
       endDragArrow();
+      cancelCombatInspectHold();
 
       const curMode = combatModeRef.current;
       if (!dt) return;
@@ -2306,7 +2439,7 @@ export default function BattlefieldRow({
       if (dt.dragging && curMode?.onDrop) {
         curMode.onDrop(dt.cardId, ue.clientX, ue.clientY);
         clearHover();
-      } else if (!dt.dragging) {
+      } else if (!dt.dragging && !dt.held) {
         // Click (no drag) — toggle via onClick or fall through to onCardClick
         if (curMode?.onClick) {
           curMode.onClick(dt.cardId);
@@ -2317,7 +2450,7 @@ export default function BattlefieldRow({
     document.addEventListener("pointermove", onMove);
     document.addEventListener("pointerup", onUp);
     document.addEventListener("pointercancel", onUp);
-  }, [combatModeRef, startDragArrow, updateDragArrow, endDragArrow, hoverCard, clearHover]);
+  }, [combatModeRef, startDragArrow, updateDragArrow, endDragArrow, hoverCard, clearHover, cancelCombatInspectHold]);
 
   const handleBattlefieldMovePointerDown = useCallback((event, card) => {
     const canReposition = (
@@ -2534,6 +2667,22 @@ export default function BattlefieldRow({
     }
 
     const cm = combatModeRef.current;
+    // Declaring attackers or blockers: a pointer click is only ever a combat
+    // choice. The card frame opens from the hold (startCombatInspectHold),
+    // whose own release lands here and is dropped. Keyboard activation
+    // (detail 0) still inspects.
+    const combatPointerClick = isCombatDeclaration(cm) && !mobileObjectGesturesEnabled
+      && event.type === "click" && event.detail > 0;
+    if (combatPointerClick) {
+      const held = combatInspectSuppressRef.current;
+      combatInspectSuppressRef.current = { cardId: null, suppressedAt: 0 };
+      if (held.cardId === String(card.id)
+        && (performance.now() - held.suppressedAt) < MOBILE_LONG_PRESS_SUPPRESS_WINDOW_MS) {
+        event.preventDefault();
+        event.stopPropagation();
+        return;
+      }
+    }
     if (cm?.onTargetCardClick) {
       const hasActiveSelection = cm.mode === "attackers"
         ? cm.selectedAttacker != null
@@ -2544,6 +2693,8 @@ export default function BattlefieldRow({
         return;
       }
     }
+
+    if (combatPointerClick) return;
 
     const cardObjectIds = [Number(card?.id)];
     if (Array.isArray(card?.member_ids)) {
@@ -2681,6 +2832,8 @@ export default function BattlefieldRow({
 
   const handleCardPointerPressStart = useCallback((event, card, isCombatCandidate = false) => {
     if ((paymentActionMap.get(Number(card?.id)) || []).length) return;
+    stopFieldHoverDwellCountdown();
+    startCombatInspectHold(event, card);
     if (isCombatCandidate) {
       handleCombatPointerDown(event, card);
       return;
@@ -2724,13 +2877,25 @@ export default function BattlefieldRow({
     mobileObjectGesturesEnabled,
     onCardPointerDown,
     onMobileCardLongPress,
+    startCombatInspectHold,
+    stopFieldHoverDwellCountdown,
   ]);
 
   const handleCardPointerPressEnd = useCallback(() => {
+    cancelCombatInspectHold();
     clearMobileCardPress({ preserveSuppressCardId: true });
-  }, [clearMobileCardPress]);
+  }, [cancelCombatInspectHold, clearMobileCardPress]);
 
   const handleCardPointerPressMove = useCallback((event) => {
+    if (event.pointerType !== "touch" && fieldHoverDwellRef.current.cardId != null
+      && (event.movementX !== 0 || event.movementY !== 0)) {
+      armFieldHoverDwell(event, fieldHoverDwellRef.current.cardId);
+    }
+    const hold = combatInspectHoldRef.current;
+    if (hold) {
+      const hx = event.clientX - hold.startX, hy = event.clientY - hold.startY;
+      if ((hx * hx) + (hy * hy) > COMBAT_INSPECT_MOVE_CANCEL_DISTANCE_SQ) cancelCombatInspectHold();
+    }
     const press = mobileCardPressRef.current;
     if (!press.timer) return;
     const dx = event.clientX - press.startX;
@@ -2738,7 +2903,7 @@ export default function BattlefieldRow({
     if ((dx * dx) + (dy * dy) > MOBILE_LONG_PRESS_MOVE_CANCEL_DISTANCE_SQ) {
       clearMobileCardPress({ preserveSuppressCardId: true });
     }
-  }, [clearMobileCardPress]);
+  }, [armFieldHoverDwell, cancelCombatInspectHold, clearMobileCardPress]);
 
   const handleFieldKeyboardNavigation = useCallback((_event, nextCardElement) => {
     keyboardNavigationRef.current = true;
@@ -2988,9 +3153,10 @@ export default function BattlefieldRow({
                 return;
               }
               markPointerOnCard(event.currentTarget);
+              armFieldHoverDwell(event, card.id);
               closeManaPopover(); hoverCardAfterPaint(card.id); event.currentTarget.focus({ preventScroll: true });
             })}
-            onMouseLeave={isLayoutHold ? undefined : ((event) => { markPointerLeftCard(event.currentTarget); clearHover(); leaveManaPopover(); })}
+            onMouseLeave={isLayoutHold ? undefined : ((event) => { endFieldHoverDwell(); markPointerLeftCard(event.currentTarget); clearHover(); leaveManaPopover(); })}
             onFocus={isLayoutHold ? undefined : (() => {
               closeManaPopover();
               // Touch browsers focus the card before delivering its click.

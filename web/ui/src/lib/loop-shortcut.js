@@ -339,3 +339,49 @@ export function loopReplayPosition(steps, completed) {
   if (length === 0) return { iteration: 0, stepIndex: 0 };
   return { iteration: Math.floor(completed / length), stepIndex: completed % length };
 }
+
+// ---------------------------------------------------------------------------
+// Detected loops. The engine notices when the player with priority has
+// returned the game to an earlier state of this turn except for a resource
+// change, proves the actions in between repeat, and reports the loop as
+// `state.loop_offer`. The client keeps a short log of the commands the local
+// player submitted, each tagged with the snapshot's `loop_serial`; the loop is
+// the logged commands tagged at or after the offer's `start_serial`.
+// ---------------------------------------------------------------------------
+
+export const LOOP_HISTORY_LIMIT = 512;
+
+/** Append an accepted command to the log; another turn's commands are dropped. */
+export function appendLoopHistory(history, entry) {
+  if (!entry?.step || !Number.isFinite(Number(entry.serial))) return history || [];
+  const turn = Number(entry.turn);
+  const kept = (history || []).filter((previous) => Number(previous.turn) === turn);
+  kept.push({ step: entry.step, serial: Number(entry.serial), turn });
+  return kept.length > LOOP_HISTORY_LIMIT ? kept.slice(kept.length - LOOP_HISTORY_LIMIT) : kept;
+}
+
+/**
+ * The steps of the loop the engine is offering to the local player, or null
+ * when there is no offer for them or the log does not cover the whole loop.
+ */
+export function detectedLoopSteps(history, state) {
+  const offer = state?.loop_offer;
+  const decision = state?.decision;
+  if (!offer || state?.loop_shortcut || state?.game_over) return null;
+  if (decision?.kind !== "priority") return null;
+  if (Number(offer.proposer) !== Number(state?.perspective)) return null;
+  if (Number(decision.player) !== Number(offer.proposer)) return null;
+  const start = Number(offer.start_serial);
+  if (!Number.isFinite(start)) return null;
+  const turn = Number(state?.turn_number);
+  const entries = (history || []).filter((entry) => Number(entry.turn) === turn);
+  // The log must reach back to the loop's first command, or part of it is missing.
+  if (!entries.some((entry) => entry.serial === start)) return null;
+  const steps = entries.filter((entry) => entry.serial >= start).map((entry) => entry.step);
+  return steps.length > 0 ? steps : null;
+}
+
+/** "+1 colorless mana, -1 life (Bob)" for the offer's per-repetition change. */
+export function describeLoopOffer(offer) {
+  return String(offer?.summary || "");
+}

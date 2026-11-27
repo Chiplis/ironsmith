@@ -251,7 +251,10 @@ fn tag_instruction_result(
             // departure belongs to this instruction; a replacement may move
             // some other candidate as part of its own program.
             (!state.pre_snapshots_from_decision_hints
-                || outcome.chosen_objects().is_some_and(|chosen| chosen.contains(&snapshot.object_id)))
+                || outcome.chosen_objects().is_some_and(|chosen| chosen.contains(&snapshot.object_id))
+                // An all-objects move has no player selection. Its receipt
+                // identifies each original that was actually affected.
+                || outcome.affected_objects().is_some_and(|affected| affected.contains(&snapshot.object_id)))
                 && game.object(snapshot.object_id).is_none()
                 && (game
                     .find_object_by_stable_id(snapshot.stable_id)

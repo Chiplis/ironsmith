@@ -1239,12 +1239,8 @@ pub(super) fn matches_subject(
     if filter.enlist_eligible && !object_is_enlist_eligible(game, subject.object_id()) {
         return false;
     }
-    // Both flags together are the "attacking or blocking" union the filter
-    // renders as "attacking/blocking"; the blocking half is checked below.
-    let attacking_or_blocking = filter.attacking && filter.blocking;
-    if filter.attacking
-        && (!attacking_or_blocking || !subject.is_live())
-        && !subject.attacking(game)
+    if (filter.attacking || filter.blocking)
+        && !(filter.attacking && subject.attacking(game) || filter.blocking && subject.blocking(game))
     {
         return false;
     }
@@ -1255,7 +1251,7 @@ pub(super) fn matches_subject(
         return false;
     }
     if filter.attacking_battle
-        && !game.combat.as_ref().is_some_and(|combat| {
+        && !game.combat_lanes().any(|combat| {
             combat.attackers.iter().any(|attacker| {
                 attacker.creature == subject.object_id()
                     && matches!(attacker.target, crate::combat_state::AttackTarget::Battle(_))
@@ -1265,7 +1261,7 @@ pub(super) fn matches_subject(
         return false;
     }
     if filter.attacking_planeswalker
-        && !game.combat.as_ref().is_some_and(|combat| {
+        && !game.combat_lanes().any(|combat| {
             combat.attackers.iter().any(|attacker| {
                 attacker.creature == subject.object_id()
                     && matches!(
@@ -1353,43 +1349,11 @@ pub(super) fn matches_subject(
             return false;
         }
     }
-    if subject.is_live()
-        && filter.blocking
-        && !(attacking_or_blocking && subject.attacking(game))
-        && !game
-            .combat
-            .as_ref()
-            .is_some_and(|combat| crate::combat_state::is_blocking(combat, subject.object_id()))
-    {
+    if filter.nonattacking && subject.attacking(game) || filter.nonblocking && subject.blocking(game) {
         return false;
     }
-    if filter.nonattacking && subject.attacking(game) {
-        return false;
-    }
-    if subject.is_live()
-        && filter.nonblocking
-        && game
-            .combat
-            .as_ref()
-            .is_some_and(|combat| crate::combat_state::is_blocking(combat, subject.object_id()))
-    {
-        return false;
-    }
-    if subject.is_live()
-        && filter.blocked
-        && !game
-            .combat
-            .as_ref()
-            .is_some_and(|combat| crate::combat_state::is_blocked(combat, subject.object_id()))
-    {
-        return false;
-    }
-    if subject.is_live()
-        && filter.unblocked
-        && !game
-            .combat
-            .as_ref()
-            .is_some_and(|combat| crate::combat_state::is_unblocked(combat, subject.object_id()))
+    if filter.blocked && subject.blocked_status(game) != Some(true)
+        || filter.unblocked && subject.blocked_status(game) != Some(false)
     {
         return false;
     }
@@ -1402,16 +1366,17 @@ pub(super) fn matches_subject(
         let Some(source_id) = ctx.source else {
             return false;
         };
-        let currently_blocked = game.combat.as_ref().is_some_and(|combat| {
-            combat.blockers.get(&subject.object_id())
+        let currently_blocked = game.combat_lanes().any(|combat| {
+            combat
+                .blockers
+                .get(&subject.object_id())
                 .is_some_and(|blockers| blockers.contains(&source_id))
         });
-        let source_left = game.object(source_id)
+        let source_left = game
+            .object(source_id)
             .is_none_or(|source| source.zone != crate::zone::Zone::Battlefield);
-        let blocked_at_source_lki = source_left
-            && game.turn_store.turn_history.creature_was_blocked_by_in_combat(
-                subject.object_id(), source_id, game.turn_store.combat_phases_started_this_turn,
-            );
+        let blocked_at_source_lki =
+            source_left && game.blocked_at_departure(subject.object_id(), source_id);
         if !currently_blocked && !blocked_at_source_lki {
             return false;
         }
@@ -1498,15 +1463,11 @@ pub(super) fn matches_subject(
         {
             partners.push(host);
         }
-        let Some(combat) = &game.combat else {
-            return false;
-        };
-        if partners.is_empty()
-            || !partners.iter().any(|partner| {
+        if !game.combat_lanes().any(|combat| partners.iter().any(|partner| {
                 crate::combat_state::get_blockers(combat, *partner).contains(&subject.object_id())
                     || combat.blockers.get(&subject.object_id())
                         .is_some_and(|blockers| blockers.contains(partner))
-            })
+            }))
         {
             return false;
         }

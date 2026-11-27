@@ -717,6 +717,7 @@ fn test_ability_granting_counters() {
     // Calculate characteristics
     let mut chars = CalculatedCharacteristics {
         copy_values: None,
+        has_copy_overlay: false,
         alternate_name: creature.split_other_half_name().map(str::to_string),
         name_set_timestamp: None,
         name: creature.name.clone(),
@@ -787,6 +788,7 @@ fn test_multiple_ability_counters() {
 
     let mut chars = CalculatedCharacteristics {
         copy_values: None,
+        has_copy_overlay: false,
         alternate_name: creature.split_other_half_name().map(str::to_string),
         name_set_timestamp: None,
         name: creature.name.clone(),
@@ -873,6 +875,7 @@ fn test_counter_flying_preserves_independent_redundant_instances() {
     let printed_id = printed_flying.instance_id();
     let mut chars = CalculatedCharacteristics {
         copy_values: None,
+        has_copy_overlay: false,
         alternate_name: creature.split_other_half_name().map(str::to_string),
         name_set_timestamp: None,
         name: creature.name.clone(),
@@ -2221,7 +2224,7 @@ fn retained_copy_schema_fixture() -> crate::snapshot::RetainedCopiableValues<Str
     crate::snapshot::RetainedCopiableValues {
         has_additional_casting_cost: false,
         definition_dependencies:None,
-        copy_face_layout: Default::default(), other_copy_face: None, alternative_casts: vec![], optional_costs: vec![],
+        copy_face_layout: Default::default(), room_half_is_right: false, other_copy_face: None, alternative_casts: vec![], optional_costs: vec![],
         name: "Retained characteristics".into(),
         mana_cost: Some(ManaCost::from_symbols(vec![
             ManaSymbol::Generic(3),
@@ -2278,7 +2281,7 @@ fn retained_copy_text_schema_preserves_complete_metadata_and_requires_abilities(
     let native = CopiableValues {
         has_additional_casting_cost: copy.has_additional_casting_cost,
         definition_dependencies:None,
-        copy_face_layout: Default::default(), other_copy_face: None, alternative_casts: vec![], optional_costs: vec![],
+        copy_face_layout: Default::default(), room_half_is_right: false, other_copy_face: None, alternative_casts: vec![], optional_costs: vec![],
         name: copy.name,
         mana_cost: copy.mana_cost,
         compiled_card_text: copy.compiled_card_text,

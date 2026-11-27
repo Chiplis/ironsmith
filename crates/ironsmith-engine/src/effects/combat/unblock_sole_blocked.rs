@@ -14,28 +14,27 @@ pub type UnblockSoleBlockedAttackersEffect = ironsmith_core::UnblockSoleBlockedA
 /// blocks them. Declarations this combat come from turn history, so a blocker
 /// already removed from combat (CR 506.4) still identifies what it blocked.
 fn attackers_blocked_only_by(game: &GameState, blocker: ObjectId) -> Vec<ObjectId> {
-    let Some(combat) = game.combat.as_ref() else {
-        return Vec::new();
-    };
-    let combat_phase = game.turn_store.combat_phases_started_this_turn;
-    combat
-        .attackers
-        .iter()
-        .map(|info| info.creature)
-        .filter(|attacker| crate::combat_state::is_blocked(combat, *attacker))
-        .filter(|attacker| {
-            let current = combat.blockers.get(attacker).cloned().unwrap_or_default();
-            if current.contains(&blocker) {
-                return false;
-            }
-            let mut ever = game
-                .turn_store
-                .turn_history
-                .blockers_of_in_combat(*attacker, combat_phase);
-            ever.extend(current);
-            ever.sort_unstable();
-            ever.dedup();
-            ever == [blocker]
+    game.combat_lanes_with_turn()
+        .flat_map(|(combat, _, store)| {
+            let combat_phase = store.combat_phases_started_this_turn;
+            combat
+                .attackers
+                .iter()
+                .map(|info| info.creature)
+                .filter(move |attacker| crate::combat_state::is_blocked(combat, *attacker))
+                .filter(move |attacker| {
+                    let current = combat.blockers.get(attacker).cloned().unwrap_or_default();
+                    if current.contains(&blocker) {
+                        return false;
+                    }
+                    let mut ever = store
+                        .turn_history
+                        .blockers_of_in_combat(*attacker, combat_phase);
+                    ever.extend(current);
+                    ever.sort_unstable();
+                    ever.dedup();
+                    ever == [blocker]
+                })
         })
         .collect()
 }
@@ -60,10 +59,10 @@ impl EffectExecutor for UnblockSoleBlockedAttackersEffect {
             if unblocked.is_empty() {
                 return Ok(EffectOutcome::count(0));
             }
-            let Some(combat) = game.combat.as_mut() else {
-                return Ok(EffectOutcome::count(0));
-            };
             for attacker in &unblocked {
+                let Some(combat) = game.combat_for_attacker_mut(*attacker) else {
+                    continue;
+                };
                 combat.blocked_attackers.remove(attacker);
                 combat.blockers.insert(*attacker, Vec::new());
                 combat.damage_assignment_order.remove(attacker);

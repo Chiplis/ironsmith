@@ -3,12 +3,17 @@
 use crate::decisions::ask_choose_one;
 use crate::effect::{EffectOutcome, Value};
 use crate::effects::helpers::{resolve_player_filter, resolve_value};
-use crate::effects::{CompletedEffectOutputs, EffectExecutor};
+use crate::effects::{
+    CompletedEffectOutputs, EffectExecutor, SimultaneousEffectCommit, SimultaneousEffectProposal,
+};
 use crate::effects::{ExecutionContext, ExecutionError};
+use crate::events::processing::{
+    PreparedReplacementProgram, ReplacementEventContext, TraitEventResult,
+};
 use crate::events::{KeywordActionEvent, KeywordActionKind};
-use crate::filter::PlayerFilterExt;
 use crate::game_state::GameState;
 use crate::ids::{ObjectId, PlayerId};
+use crate::static_abilities::misc::event_amount_replacement::may_have_keyword_action_replacements;
 use crate::target::PlayerFilter;
 
 fn players_in_turn_order(game: &GameState) -> Vec<PlayerId> {
@@ -62,104 +67,78 @@ fn choose_fateseal_opponent(
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug)]
 struct ScryArrangement {
     viewer: PlayerId,
     player_id: PlayerId,
-    total_looked: usize,
     top_cards_top_to_bottom: Vec<ObjectId>,
     bottom_cards_top_to_bottom: Vec<ObjectId>,
-    observation: EffectOutcome,
+    observation: Option<CompletedEffectOutputs>,
 }
 
-fn choose_scry_arrangement(
+fn look_for_arrangement(
     game: &mut GameState,
     ctx: &mut ExecutionContext,
-    viewer_id: PlayerId,
-    subject_id: PlayerId,
+    viewer: PlayerId,
+    player_id: PlayerId,
     count: usize,
-    action: &str,
-    retained_children: &mut Vec<CompletedEffectOutputs>,
+    action: KeywordActionKind,
 ) -> Result<ScryArrangement, ExecutionError> {
-    let top_cards_top_to_bottom = top_library_cards_top_to_bottom(game, subject_id, count);
-    if top_cards_top_to_bottom.is_empty() {
-        return Ok(ScryArrangement {
-            viewer: viewer_id,
-            player_id: subject_id,
-            total_looked: 0,
-            top_cards_top_to_bottom: Vec::new(),
-            bottom_cards_top_to_bottom: Vec::new(),
-            observation: EffectOutcome::count(0),
-        });
-    }
-
-    game.remember_library_group(viewer_id, subject_id, &top_cards_top_to_bottom, false);
-    let look = super::look_at_cards_with_outputs(
-        game,
-        ctx,
-        viewer_id,
-        subject_id,
-        crate::zone::Zone::Library,
-        &top_cards_top_to_bottom,
-        format!("{action} {} card(s)", top_cards_top_to_bottom.len()),
-    )?;
-    let observation = look.outcome.clone();
-    retained_children.push(look);
-    if ctx.decision_maker.awaiting_choice() {
-        return Ok(ScryArrangement {
-            viewer: viewer_id,
-            player_id: subject_id,
-            total_looked: 0,
-            top_cards_top_to_bottom: Vec::new(),
-            bottom_cards_top_to_bottom: Vec::new(),
-            observation,
-        });
-    }
-    let Some(bottom_cards_top_to_bottom) = super::choose_library_bottom_partition(
-        game, ctx, viewer_id, &top_cards_top_to_bottom,
-    ) else {
-        return Ok(ScryArrangement {
-            viewer: viewer_id,
-            player_id: subject_id,
-            total_looked: 0,
-            top_cards_top_to_bottom: Vec::new(),
-            bottom_cards_top_to_bottom: Vec::new(),
-            observation,
-        });
+    let cards = top_library_cards_top_to_bottom(game, player_id, count);
+    let observation = if cards.is_empty() {
+        None
+    } else {
+        game.remember_library_group(viewer, player_id, &cards, false);
+        Some(super::look_at_cards_with_outputs(
+            game,
+            ctx,
+            viewer,
+            player_id,
+            crate::zone::Zone::Library,
+            &cards,
+            format!("{action:?} {} card(s)", cards.len()),
+        )?)
     };
-
-    let kept_on_top: Vec<ObjectId> = top_cards_top_to_bottom
-        .iter()
-        .filter(|card| !bottom_cards_top_to_bottom.contains(card))
-        .copied()
-        .collect();
-    let ordered_top_cards = super::order_library_cards_top_to_bottom(
-        game,
-        ctx,
-        viewer_id,
-        "Reorder cards to keep on top of your library",
-        &kept_on_top,
-    );
-    let ordered_bottom_cards = super::order_library_cards_top_to_bottom(
-        game,
-        ctx,
-        viewer_id,
-        "Reorder cards to put on the bottom of your library",
-        &bottom_cards_top_to_bottom,
-    );
-
     Ok(ScryArrangement {
-        viewer: viewer_id,
-            player_id: subject_id,
-        total_looked: top_cards_top_to_bottom.len(),
-        top_cards_top_to_bottom: ordered_top_cards,
-        bottom_cards_top_to_bottom: ordered_bottom_cards,
+        viewer,
+        player_id,
+        top_cards_top_to_bottom: cards,
+        bottom_cards_top_to_bottom: Vec::new(),
         observation,
     })
 }
 
+fn choose_arrangement(
+    game: &GameState,
+    ctx: &mut ExecutionContext,
+    arrangement: &mut ScryArrangement,
+) {
+    let viewer = arrangement.viewer;
+    let cards = &mut arrangement.top_cards_top_to_bottom;
+    let Some(bottom) = super::choose_library_bottom_partition(game, ctx, viewer, cards) else {
+        return;
+    };
+    cards.retain(|card| !bottom.contains(card));
+    *cards = super::order_library_cards_top_to_bottom(
+        game,
+        ctx,
+        viewer,
+        "Reorder cards to keep on top of your library",
+        cards,
+    );
+    arrangement.bottom_cards_top_to_bottom = super::order_library_cards_top_to_bottom(
+        game,
+        ctx,
+        viewer,
+        "Reorder cards to put on the bottom of your library",
+        &bottom,
+    );
+}
+
 fn apply_scry_arrangement(game: &mut GameState, arrangement: &ScryArrangement) {
-    if arrangement.total_looked == 0 {
+    if arrangement.top_cards_top_to_bottom.is_empty()
+        && arrangement.bottom_cards_top_to_bottom.is_empty()
+    {
         return;
     }
     super::arrange_library_cards(
@@ -169,7 +148,10 @@ fn apply_scry_arrangement(game: &mut GameState, arrangement: &ScryArrangement) {
         &arrangement.bottom_cards_top_to_bottom,
         "scry or fateseal arranged library cards",
     );
-    for cards in [&arrangement.top_cards_top_to_bottom, &arrangement.bottom_cards_top_to_bottom] {
+    for cards in [
+        &arrangement.top_cards_top_to_bottom,
+        &arrangement.bottom_cards_top_to_bottom,
+    ] {
         game.remember_library_group(arrangement.viewer, arrangement.player_id, cards, false);
     }
 }
@@ -196,131 +178,290 @@ fn apply_scry_arrangement(game: &mut GameState, arrangement: &ScryArrangement) {
 pub type ScryEffect = ironsmith_core::ScryEffect;
 
 impl EffectExecutor for ScryEffect {
+    fn supports_simultaneous_player_action(&self) -> bool {
+        true
+    }
+
+    fn prepare_simultaneous_player_action(
+        &self,
+        game: &GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<Box<dyn SimultaneousEffectProposal>, ExecutionError> {
+        Ok(Box::new(ScryProposal {
+            player: resolve_player_filter(game, &self.player, ctx)?,
+            count: resolve_value(game, &self.count, ctx)?.max(0) as u32,
+            processed: None,
+            arrangement: None,
+            sealed: false,
+        }))
+    }
+
     #[crate::effects::project_effect_outcome]
     fn execute_with_outputs(
         &self,
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<CompletedEffectOutputs, ExecutionError> {
+        if may_have_keyword_action_replacements(game) {
+            let proposal = self.prepare_simultaneous_player_action(game, ctx)?;
+            return crate::effects::composition::complete_prepared_original_with_outputs(
+                proposal, game, ctx, false,
+            );
+        }
         crate::effects::composition::execute_transaction(
             game,
             ctx,
             || CompletedEffectOutputs::aggregate_only(EffectOutcome::count(0)),
             |game, ctx| {
-                let player_id = resolve_player_filter(game, &self.player, ctx)?;
+                let player = resolve_player_filter(game, &self.player, ctx)?;
                 let count = resolve_value(game, &self.count, ctx)?.max(0) as usize;
-
-                if count == 0 {
-                    return Ok(CompletedEffectOutputs::aggregate_only(
-                        EffectOutcome::count(0),
-                    ));
-                }
-                // CR 614.1a, 616.1: the scry is proposed before any card is
-                // looked at, so "scry that many cards plus one instead"
-                // (Kenessos) modifies it and "draw that many cards instead"
-                // (Eligeth) replaces it.
-                // Nothing could replace or modify it: skip the replacement
-                // pass (and its state copy) and perform the action directly.
-                if !crate::static_abilities::misc::event_amount_replacement::may_have_keyword_action_replacements(game) {
-                    return execute_scry_body(game, ctx, player_id, count);
-                }
-                crate::effects::composition::execute_keyword_action_with_outputs(
+                complete_individual_arrangement(
                     game,
                     ctx,
-                    crate::events::Event::new_with_provenance(
-                        KeywordActionEvent::new(
-                            KeywordActionKind::Scry,
-                            player_id,
-                            ctx.source,
-                            u32::try_from(count).unwrap_or(u32::MAX),
-                        ),
-                        ctx.provenance,
-                    ),
-                    crate::effects::composition::KeywordActionOutput::Body,
-                    crate::effects::composition::KeywordActionAmount::BodyMagnitude,
-                    |game, ctx, action| {
-                        execute_scry_body(game, ctx, action.player, action.amount as usize)
-                    },
+                    player,
+                    player,
+                    count,
+                    KeywordActionKind::Scry,
                 )
             },
         )
     }
 }
 
-/// Scry `count` cards for `player_id` once the proposed scry proceeds.
-fn execute_scry_body(
+#[derive(Debug)]
+struct ScryProposal {
+    player: PlayerId,
+    count: u32,
+    processed: Option<TraitEventResult>,
+    arrangement: Option<ScryArrangement>,
+    sealed: bool,
+}
+
+impl SimultaneousEffectProposal for ScryProposal {
+    fn prepare_selection(
+        &mut self,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<(), ExecutionError> {
+        if self.count == 0 || self.processed.is_some() {
+            return Ok(());
+        }
+        let event = crate::events::Event::new_with_provenance(
+            KeywordActionEvent::new(KeywordActionKind::Scry, self.player, ctx.source, self.count),
+            ctx.provenance,
+        );
+        self.processed = Some(if may_have_keyword_action_replacements(game) {
+            crate::events::processing::process_trait_event_with_execution_context(game, event, ctx)?
+        } else {
+            TraitEventResult::Proceed(event)
+        });
+        Ok(())
+    }
+
+    // CR 701.22c: all participants look before anyone partitions their cards.
+    fn prepare_original(
+        &mut self,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<(), ExecutionError> {
+        self.prepare_selection(game, ctx)?;
+        if self.arrangement.is_none()
+            && let Some(event) = self
+                .processed
+                .as_ref()
+                .and_then(TraitEventResult::resolved_event)
+        {
+            let action = crate::events::downcast_event::<KeywordActionEvent>(event.inner())
+                .filter(|action| action.action == KeywordActionKind::Scry)
+                .ok_or_else(|| {
+                    ExecutionError::InternalError("scry replacement lost its action".into())
+                })?;
+            if action.amount > 0 {
+                self.arrangement = Some(look_for_arrangement(
+                    game,
+                    ctx,
+                    action.player,
+                    action.player,
+                    action.amount as usize,
+                    KeywordActionKind::Scry,
+                )?);
+            }
+        }
+        Ok(())
+    }
+
+    fn seal_original(
+        &mut self,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<(), ExecutionError> {
+        if !self.sealed {
+            self.prepare_original(game, ctx)?;
+            if let Some(arrangement) = &mut self.arrangement {
+                choose_arrangement(game, ctx, arrangement);
+            }
+            self.sealed = !ctx.decision_maker.awaiting_choice();
+        }
+        Ok(())
+    }
+
+    fn commit_original_with_outputs(
+        mut self: Box<Self>,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<SimultaneousEffectCommit<CompletedEffectOutputs>, ExecutionError> {
+        self.seal_original(game, ctx)?;
+        let zero = || CompletedEffectOutputs::aggregate_only(EffectOutcome::count(0));
+        let Some(processed) = self
+            .processed
+            .take()
+            .filter(|_| !ctx.decision_maker.awaiting_choice())
+        else {
+            return Ok(SimultaneousEffectCommit::finished(zero()));
+        };
+        let (original, additions) = processed.into_expansion();
+        let committed = match original {
+            TraitEventResult::Proceed(_) | TraitEventResult::Modified(_) => {
+                let outcome = match self.arrangement {
+                    Some(arrangement) => {
+                        complete_arrangement(game, ctx, arrangement, KeywordActionKind::Scry)?
+                    }
+                    None => zero(), // CR 701.22b: scry 0 produces no event.
+                };
+                SimultaneousEffectCommit::finished(outcome)
+            }
+            TraitEventResult::Replaced {
+                context,
+                effects,
+                source,
+                controller,
+                ..
+            } => {
+                let bindings = scry_replacement_bindings(&context)?;
+                crate::effects::replacement::commit_bound_replacement_program_original_with_outputs(
+                    game,
+                    ctx,
+                    PreparedReplacementProgram {
+                        context,
+                        effects,
+                        source,
+                        controller,
+                        source_snapshot: None,
+                    },
+                    bindings,
+                )?
+            }
+            TraitEventResult::Prevented => {
+                let mut outcome = EffectOutcome::prevented();
+                outcome.set_value(crate::effect::OutcomeValue::Count(0));
+                SimultaneousEffectCommit::finished(CompletedEffectOutputs::aggregate_only(outcome))
+            }
+            _ => {
+                return Err(ExecutionError::InternalError(
+                    "scry replacement did not finish selection".into(),
+                ));
+            }
+        };
+        Ok(
+            crate::effects::replacement::defer_replacement_programs_with_outputs(
+                committed,
+                additions,
+                scry_replacement_bindings,
+            ),
+        )
+    }
+
+    fn commit_original(
+        self: Box<Self>,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<SimultaneousEffectCommit, ExecutionError> {
+        self.commit_original_with_outputs(game, ctx)
+            .map(SimultaneousEffectCommit::into_aggregate)
+    }
+
+    fn commit(
+        self: Box<Self>,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<EffectOutcome, ExecutionError> {
+        crate::effects::composition::complete_prepared_original_with_outputs(self, game, ctx, false)
+            .map(CompletedEffectOutputs::into_outcome)
+    }
+}
+
+fn scry_replacement_bindings(
+    context: &ReplacementEventContext,
+) -> Result<crate::effects::replacement::ReplacementProgramBindings, ExecutionError> {
+    let action = crate::events::downcast_event::<KeywordActionEvent>(context.event.inner())
+        .filter(|action| action.action == KeywordActionKind::Scry)
+        .ok_or_else(|| ExecutionError::InternalError("scry replacement lost its action".into()))?;
+    Ok(crate::effects::replacement::ReplacementProgramBindings {
+        targets: None,
+        object_tags: crate::effects::composition::keyword_action_object_bindings(
+            action.object_tags.clone(),
+            action.snapshot.as_ref(),
+        ),
+    })
+}
+
+fn complete_individual_arrangement(
     game: &mut GameState,
     ctx: &mut ExecutionContext,
-    player_id: PlayerId,
+    viewer: PlayerId,
+    player: PlayerId,
     count: usize,
+    action: KeywordActionKind,
 ) -> Result<CompletedEffectOutputs, ExecutionError> {
-    let mut retained_children = Vec::new();
-    // CR 701.22d: scry 0 (after a replacement halved it, say) is no event.
     if count == 0 {
         return Ok(CompletedEffectOutputs::aggregate_only(
             EffectOutcome::count(0),
         ));
     }
-    let arrangement = choose_scry_arrangement(
-        game,
-        ctx,
-        player_id,
-        player_id,
-        count,
-        "Scry",
-        &mut retained_children,
-    )?;
+    let mut arrangement = look_for_arrangement(game, ctx, viewer, player, count, action)?;
+    choose_arrangement(game, ctx, &mut arrangement);
     if ctx.decision_maker.awaiting_choice() {
         return Ok(CompletedEffectOutputs::aggregate_only(
             EffectOutcome::count(0),
         ));
     }
-    // CR 701.22d: the player still scries (and "whenever you scry"
-    // triggers) even if the library is empty; only scry 0 is no event.
-    apply_scry_arrangement(game, &arrangement);
+    complete_arrangement(game, ctx, arrangement, action)
+}
 
-    let keyword = crate::effects::composition::complete_keyword_action_with_outputs(
+fn complete_arrangement(
+    game: &mut GameState,
+    ctx: &mut ExecutionContext,
+    arrangement: ScryArrangement,
+    action: KeywordActionKind,
+) -> Result<CompletedEffectOutputs, ExecutionError> {
+    apply_scry_arrangement(game, &arrangement);
+    let bottom = arrangement.bottom_cards_top_to_bottom.len();
+    let count = arrangement.top_cards_top_to_bottom.len() + bottom;
+    let mut outputs = CompletedEffectOutputs::with_primary_result(
+        EffectOutcome::count(count as i64),
+        arrangement.observation,
+    );
+    // CR 701.22d: a nonzero instruction still completes on an empty library.
+    outputs = crate::effects::composition::complete_keyword_action_with_outputs(
         game,
         ctx,
-        CompletedEffectOutputs::aggregate_only(EffectOutcome::count(
-            arrangement.total_looked as i32,
-        )),
-        KeywordActionEvent::new(
-            KeywordActionKind::Scry,
-            player_id,
-            ctx.source,
-            arrangement.total_looked as u32,
-        ),
+        outputs,
+        KeywordActionEvent::new(action, arrangement.viewer, ctx.source, count as u32),
     )?;
-    let keyword_outcome = keyword.outcome.clone();
-    retained_children.push(keyword);
-    // CR 701.22a: choosing to put looked-at cards on the bottom is its own
-    // observable event ("Whenever you choose to put one or more cards on the
-    // bottom of your library while scrying", The Temporal Anchor).
-    let bottomed = arrangement.bottom_cards_top_to_bottom.len();
-    if bottomed > 0 {
-        let bottom = crate::effects::composition::complete_keyword_action_with_outputs(
+    if action == KeywordActionKind::Scry && bottom > 0 {
+        outputs = crate::effects::composition::complete_keyword_action_with_outputs(
             game,
             ctx,
-            CompletedEffectOutputs::aggregate_only(EffectOutcome::count(0)),
+            outputs,
             KeywordActionEvent::new(
                 KeywordActionKind::ScryToBottom,
-                player_id,
+                arrangement.viewer,
                 ctx.source,
-                bottomed as u32,
+                bottom as u32,
             ),
         )?;
-        retained_children.push(bottom);
     }
-    Ok(CompletedEffectOutputs::from_children(
-        retained_children,
-        |_| {
-            EffectOutcome::aggregate_with_primary_result(
-                keyword_outcome,
-                [arrangement.observation],
-            )
-        },
-    ))
+    Ok(outputs)
 }
 
 /// Effect that lets a player fateseal N cards.
@@ -363,7 +504,6 @@ impl EffectExecutor for FatesealEffect {
             ctx,
             || CompletedEffectOutputs::aggregate_only(EffectOutcome::count(0)),
             |game, ctx| {
-                let mut retained_children = Vec::new();
                 let fatesealer = resolve_player_filter(game, &self.player, ctx)?;
                 let count = resolve_value(game, &self.count, ctx)?.max(0) as usize;
 
@@ -383,46 +523,14 @@ impl EffectExecutor for FatesealEffect {
                     ));
                 }
 
-                let arrangement = choose_scry_arrangement(
+                complete_individual_arrangement(
                     game,
                     ctx,
                     fatesealer,
                     opponent,
                     count,
-                    "Fateseal",
-                    &mut retained_children,
-                )?;
-                if ctx.decision_maker.awaiting_choice() {
-                    return Ok(CompletedEffectOutputs::aggregate_only(
-                        EffectOutcome::count(0),
-                    ));
-                }
-                apply_scry_arrangement(game, &arrangement);
-
-                let keyword = crate::effects::composition::complete_keyword_action_with_outputs(
-                    game,
-                    ctx,
-                    CompletedEffectOutputs::aggregate_only(EffectOutcome::count(
-                        arrangement.total_looked as i32,
-                    )),
-                    KeywordActionEvent::new(
-                        KeywordActionKind::Fateseal,
-                        fatesealer,
-                        ctx.source,
-                        arrangement.total_looked as u32,
-                    ),
-                )?;
-                let keyword_outcome = keyword.outcome.clone();
-                retained_children.push(keyword);
-                Ok(CompletedEffectOutputs::from_children(
-                    retained_children,
-                    |_| {
-                        EffectOutcome::aggregate_with_primary_result(
-                            keyword_outcome,
-                            [arrangement.observation],
-                        )
-                    },
-                ))
+                    KeywordActionKind::Fateseal,
+                )
             },
         )
     }
@@ -438,87 +546,20 @@ impl EffectExecutor for EachPlayerScryEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<CompletedEffectOutputs, ExecutionError> {
-        crate::effects::composition::execute_transaction(
-            game,
-            ctx,
-            || CompletedEffectOutputs::aggregate_only(EffectOutcome::count(0)),
-            |game, ctx| {
-                let mut retained_children = Vec::new();
-                let count = resolve_value(game, &self.count, ctx)?.max(0) as usize;
-                if count == 0 {
-                    return Ok(CompletedEffectOutputs::aggregate_only(
-                        EffectOutcome::count(0),
-                    ));
-                }
-
-                // The execution context's filter context carries the opponent and
-                // teammate lists "each opponent" matches against.
-                let filter_ctx = ctx.filter_context(game);
-                let players: Vec<PlayerId> = players_in_turn_order(game)
-                    .into_iter()
-                    .filter(|player_id| self.player_filter.matches_player(*player_id, &filter_ctx))
-                    .collect();
-                if players.is_empty() {
-                    return Ok(CompletedEffectOutputs::aggregate_only(
-                        EffectOutcome::count(0),
-                    ));
-                }
-
-                let Some(arrangements) = crate::effects::composition::scoped_choice::collect_choices_before_commit(
-                    game, ctx, players, |game, ctx, player_id| {
-                        // Each player scries even with an empty library.
-                        choose_scry_arrangement(game, ctx, player_id, player_id, count,
-                            "Scry", &mut retained_children)
-                    },
-                )? else {
-                    return Ok(CompletedEffectOutputs::aggregate_only(EffectOutcome::count(0)));
-                };
-
-                for arrangement in &arrangements {
-                    apply_scry_arrangement(game, arrangement);
-                }
-
-                let total: i64 = arrangements.iter().map(|a| a.total_looked as i64).sum();
-                let observations = arrangements
-                    .iter()
-                    .map(|arrangement| arrangement.observation.clone())
-                    .collect::<Vec<_>>();
-                let mut children = observations;
-                for arrangement in arrangements {
-                    let keyword =
-                        crate::effects::composition::publish_keyword_action_completion_receipt(
-                            game,
-                            ctx,
-                            crate::triggers::TriggerEvent::new_with_provenance(
-                                KeywordActionEvent::new(
-                                    KeywordActionKind::Scry,
-                                    arrangement.player_id,
-                                    ctx.source,
-                                    arrangement.total_looked as u32,
-                                ),
-                                ctx.provenance,
-                            ),
-                        )?;
-                    children.push(keyword.outcome.clone());
-                    retained_children.push(keyword);
-                    if ctx.decision_maker.awaiting_choice() {
-                        return Ok(CompletedEffectOutputs::aggregate_only(
-                            EffectOutcome::count(0),
-                        ));
-                    }
-                }
-
-                Ok(CompletedEffectOutputs::from_children(
-                    retained_children,
-                    |_| {
-                        EffectOutcome::aggregate_with_primary_result(
-                            EffectOutcome::count(total),
-                            children,
-                        )
-                    },
-                ))
-            },
+        let count = resolve_value(game, &self.count, ctx)?;
+        if count <= 0 {
+            return Ok(CompletedEffectOutputs::aggregate_only(
+                EffectOutcome::count(0),
+            ));
+        }
+        crate::effects::ForPlayersEffect::new(
+            self.player_filter.clone(),
+            vec![crate::effect::Effect::new(ScryEffect::new(
+                count,
+                PlayerFilter::IteratedPlayer,
+            ))],
         )
+        .execute_with_outputs(game, ctx)
     }
 }
 
@@ -831,7 +872,21 @@ mod tests {
 
         assert_eq!(partition_calls, vec![alice, bob]);
         assert_eq!(outcome.value, crate::effect::OutcomeValue::Count(4));
-        assert_eq!(outcome.events.len(), 2);
+        let events: Vec<_> = outcome
+            .events
+            .iter()
+            .filter_map(|event| event.downcast::<KeywordActionEvent>())
+            .map(|event| (event.action, event.player, event.amount))
+            .collect();
+        assert_eq!(
+            events,
+            [
+                (KeywordActionKind::Scry, alice, 2),
+                (KeywordActionKind::ScryToBottom, alice, 1),
+                (KeywordActionKind::Scry, bob, 2),
+                (KeywordActionKind::ScryToBottom, bob, 1)
+            ]
+        );
         assert_eq!(
             library_names_bottom_to_top(&game, alice),
             vec!["A2".to_string(), "A1".to_string()]

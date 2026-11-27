@@ -4250,69 +4250,29 @@ impl GameState {
             .map(|o| o.id)
     }
 
-    /// Check if a player controls any of their own commanders on the battlefield.
-    ///
-    /// This checks if the player controls a permanent that is designated as
-    /// one of their own commanders.
-    pub fn player_controls_own_commander(&self, player_id: PlayerId) -> bool {
-        let commanders = if let Some(player) = self.player(player_id) {
-            player.get_commanders().to_vec()
-        } else {
-            return false;
-        };
-
-        // Check if any of the player's commanders are on the battlefield
-        // under their control
-        for &commander_id in &commanders {
-            // A commander might have a different ObjectId now due to zone changes.
-            // We check both the current ID and the stable_id (which persists across zone changes).
-            for &bf_id in &self.battlefield {
-                if let Some(obj) = self.object(bf_id)
-                    && self.controller_of(obj) == player_id
-                {
-                    // Check if this is the commander by current ID
-                    if bf_id == commander_id {
-                        return true;
-                    }
-                    // Also check stable_id in case the commander moved zones
-                    if obj.stable_id == StableId::from(commander_id) {
-                        return true;
-                    }
-                }
-            }
-        }
-
-        false
+    /// Whether this player controls the permanent representing the designated card.
+    fn controls_commander_card(&self, player: PlayerId, commander: ObjectId) -> bool {
+        self.current_commander_object(commander)
+            .and_then(|id| self.object(id))
+            .is_some_and(|object| {
+                object.zone == Zone::Battlefield
+                    && !self.is_phased_out(object.id)
+                    && self.controller_of(object) == player
+            })
     }
 
-    /// Check if a player controls ANY commander on the battlefield.
-    ///
-    /// This checks if the player controls a permanent that is designated as
-    /// a commander by ANY player (including opponents' commanders that were stolen).
-    /// Used for cards like Akroma's Will which say "if you control a commander".
-    pub fn player_controls_a_commander(&self, player_id: PlayerId) -> bool {
-        // Collect all commander IDs from all players
-        let all_commanders: Vec<ObjectId> = self
-            .players
-            .iter()
-            .flat_map(|p| p.get_commanders().iter().copied())
-            .collect();
+    /// Whether the player controls one of their own commanders (CR 903.3b–d).
+    pub fn player_controls_own_commander(&self, player: PlayerId) -> bool {
+        self.player(player).is_some_and(|owner| {
+            owner.get_commanders().iter().any(|&id| self.controls_commander_card(player, id))
+        })
+    }
 
-        // Check if any commander is on the battlefield under this player's control
-        for &commander_id in &all_commanders {
-            for &bf_id in &self.battlefield {
-                if let Some(obj) = self.object(bf_id)
-                    && self.controller_of(obj) == player_id
-                {
-                    // Check if this is a commander by current ID or stable_id
-                    if bf_id == commander_id || obj.stable_id == StableId::from(commander_id) {
-                        return true;
-                    }
-                }
-            }
-        }
-
-        false
+    /// Whether the player controls any player's commander (CR 903.3d).
+    pub fn player_controls_a_commander(&self, player: PlayerId) -> bool {
+        self.players.iter().flat_map(|owner| owner.get_commanders()).any(|&id| {
+            self.controls_commander_card(player, id)
+        })
     }
 
     // =========================================================================
@@ -4447,20 +4407,14 @@ impl GameState {
         // target announcement. An attacking source identifies its own defender;
         // a combat spell can refer to any player currently being attacked.
         let mut defending_players = Vec::new();
-        if let Some(combat) = &self.combat {
-            let source_attack =
-                source.and_then(|id| crate::combat_state::get_attack_target(combat, id));
-            for target in source_attack.into_iter().chain(
-                combat
-                    .attackers
-                    .iter()
-                    .filter(|_| source_attack.is_none())
-                    .map(|attacker| &attacker.target),
-            ) {
+        if let Some(target) = source.and_then(|id| self.current_attack_target_across_lanes(id)) {
+            defending_players.extend(crate::combat_state::defending_player_for_attack_target(self, target));
+        } else if let Some(combat) = &self.combat {
+            for attacker in &combat.attackers {
                 if let Some(player) =
-                    crate::combat_state::defending_player_for_attack_target(self, target)
+                    crate::combat_state::defending_player_for_attack_target(self, &attacker.target)
                 {
-                    let players = if source_attack.is_none() && self.shared_team_turns_enabled() {
+                    let players = if self.shared_team_turns_enabled() {
                         self.team_players_for(player)
                     } else {
                         vec![player]
@@ -4534,30 +4488,24 @@ impl GameState {
         ctx
     }
 
-    /// Get the combined color identity of a player's commanders.
-    ///
-    /// This returns the union of color identities of all the player's commanders.
-    /// Used for cards like Arcane Signet and Command Tower.
-    /// If the player has no commanders, returns COLORLESS (producing colorless mana).
-    pub fn get_commander_color_identity(&self, player_id: PlayerId) -> crate::color::ColorSet {
-        let commanders = if let Some(player) = self.player(player_id) {
-            player.get_commanders().to_vec()
-        } else {
-            return crate::color::ColorSet::COLORLESS;
-        };
+    /// Colors available to effects such as Command Tower. With no commander this set is empty.
+    pub fn get_commander_color_identity(&self, player: PlayerId) -> crate::color::ColorSet {
+        self.defined_commander_color_identity(player).unwrap_or_default()
+    }
+
+    /// CR 903.4f distinguishes an undefined identity from a commander's defined, empty identity.
+    pub(crate) fn defined_commander_color_identity(&self, player: PlayerId) -> Option<crate::color::ColorSet> {
+        let owner = self.player(player)?;
+        if owner.get_commanders().is_empty() {
+            return None;
+        }
 
         let mut identity = crate::color::ColorSet::COLORLESS;
-
-        let fixed_identities = self
-            .player(player_id)
-            .map(|player| player.commander_color_identities.clone())
-            .unwrap_or_default();
-
-        for &commander_id in &commanders {
+        for &commander_id in owner.get_commanders() {
             // CR 903.4a: the identity established when the commander was
             // designated. The lookups below cover commanders designated
             // without a recorded identity (e.g. hand-built states).
-            if let Some(fixed) = fixed_identities.get(&commander_id) {
+            if let Some(fixed) = owner.commander_color_identities.get(&commander_id) {
                 identity = identity.union(*fixed);
                 continue;
             }
@@ -4579,7 +4527,7 @@ impl GameState {
             }
         }
 
-        identity
+        Some(identity)
     }
 
     /// Color identity of a commander card that is currently a component of a

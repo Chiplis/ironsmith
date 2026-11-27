@@ -462,6 +462,9 @@ pub(crate) fn rewrite_anthem_count_words(count: &AnthemCountExpression, change: 
         | AnthemCountExpression::PlayerCounters(player, _) => {
             *player = rewrite_player_filter_words(player, change)?;
         }
+        AnthemCountExpression::ManaSymbolsOfColorInAffectedCost(color) => {
+            change.replace_color_word(color);
+        }
         AnthemCountExpression::GraveyardsWithAtLeastCards { .. } | AnthemCountExpression::ColorsOfAffected
         | AnthemCountExpression::AffectedAttackedThisTurn | AnthemCountExpression::CountersOnSource(_)
         | AnthemCountExpression::CountersOnSourceWithSurface { .. }
@@ -469,7 +472,6 @@ pub(crate) fn rewrite_anthem_count_words(count: &AnthemCountExpression, change: 
         | AnthemCountExpression::StickersOnSource { .. } | AnthemCountExpression::CountersOnAffected(_)
         | AnthemCountExpression::BlockingSource
         | AnthemCountExpression::PlayersLostGame
-        | AnthemCountExpression::ManaSymbolsOfColorInAffectedCost(_)
         | AnthemCountExpression::BushidoOfAffected
         | AnthemCountExpression::SourcePower => {}
     }

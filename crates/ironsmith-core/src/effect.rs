@@ -2030,7 +2030,18 @@ pub struct LinkObjectsToGroupEffect {
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, PartialEq, TagKeyWalk)]
+pub enum KeywordCounterGrant {
+    /// Expand the surrounding keyword-list instruction once for each applicable variant.
+    FromCondition,
+    HexproofFrom(Box<crate::filter_model::ObjectFilter>),
+    TrampleOverPlaneswalkers,
+}
+
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug, Clone, PartialEq, TagKeyWalk)]
 pub struct PutCountersEffect {
+    #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "Option::is_none"))]
+    pub keyword_grant: Option<KeywordCounterGrant>,
     /// Only this placement is capped; other abilities may exceed the total.
     #[cfg_attr(
         feature = "serde",
@@ -2105,6 +2116,7 @@ impl PutCountersEffect {
             distributed: false,
             required_recipient: None,
             counter_kind_from_trigger: false,
+            keyword_grant: None,
         }
     }
 

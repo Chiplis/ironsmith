@@ -506,19 +506,13 @@ fn rebind_controller_sensitive_direct_effects(
 ) {
     let is_control = |effect: &ContinuousEffect| matches!(effect.modification,
         Modification::ChangeController(_) | Modification::ChangeControllerToEffectController);
-    let sensitive = |source: &SourceStaticEffectEntry| source.abilities.iter().any(|ability|
-        matches!(&ability.kind, AbilityKind::Static(static_ability)
-            if static_ability.id()
-                == crate::static_abilities::StaticAbilityId::SourceHasFullTextOfTopGraveyardCard));
-    if !sources.iter().any(|source| source.effects.iter().any(is_control))
-        || !sources.iter().any(|source| sensitive(source))
-    {
+    if !sources.iter().any(|source| source.effects.iter().any(is_control)) {
         return;
     }
     let mut known = registered.to_vec();
     known.extend(sources.iter().flat_map(|source| source.effects.iter().cloned()));
     for source in sources.iter_mut() {
-        if !sensitive(&*source) {
+        if !source.abilities.iter().any(|ability| matches!(&ability.kind, AbilityKind::Static(_))) {
             continue;
         }
         let Some(object) = game.object(source.object_id) else { continue; };

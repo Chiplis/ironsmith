@@ -3,7 +3,7 @@
 //! Runs a list of effects in order and exposes the terminal outcome.
 
 use crate::effect::{Effect, EffectOutcome};
-use crate::effects::{CostExecutableEffect, CostValidationError, EffectExecutor};
+use crate::effects::{CostExecutableEffect, CostValidationError, EffectExecutor, ForPlayersEffect};
 use crate::effects::{ExecutionContext, ExecutionError, rebase_target_scope};
 use crate::game_state::GameState;
 
@@ -408,6 +408,54 @@ impl SequenceEffect {
         }
     }
 
+    /// A coordinated scry by the controller and a tagged group is one invitation. Compiled
+    /// programs retain separate grammatical subjects for card-text rendering.
+    fn coordinated_scry(&self) -> Option<ForPlayersEffect> {
+        use crate::effects::{ForEachTaggedPlayerEffect, MayEffect, ScryEffect};
+        use crate::target::PlayerFilter;
+
+        let [controller, others] = self.effects.as_slice() else {
+            return None;
+        };
+        if self.surface != ironsmith_core::SequenceSurface::Coordinated {
+            return None;
+        }
+        let controller = controller.downcast_ref::<MayEffect>()?;
+        let others = others.downcast_ref::<ForEachTaggedPlayerEffect>()?;
+        let [offer] = others.effects.as_slice() else {
+            return None;
+        };
+        let offer = offer.downcast_ref::<MayEffect>()?;
+        let ([own], [theirs]) = (controller.effects.as_slice(), offer.effects.as_slice()) else {
+            return None;
+        };
+        let own = own.downcast_ref::<ScryEffect>()?;
+        let theirs = theirs.downcast_ref::<ScryEffect>()?;
+        if others.require_evidence
+            || controller.pay_as_cost
+            || offer.pay_as_cost
+            || controller.payment_receipt.is_some()
+            || offer.payment_receipt.is_some()
+            || controller.fallback != offer.fallback
+            || !matches!(controller.decider, None | Some(PlayerFilter::You))
+            || offer.decider != Some(PlayerFilter::IteratedPlayer)
+            || own.player != PlayerFilter::You
+            || theirs.player != PlayerFilter::IteratedPlayer
+            || own.count != theirs.count
+        {
+            return None;
+        }
+        // Everyone participates except noncontrollers outside the captured set.
+        let ineligible = PlayerFilter::excluding(
+            PlayerFilter::NotYou,
+            PlayerFilter::TaggedPlayer(others.tag.clone()),
+        );
+        Some(ForPlayersEffect::new(
+            PlayerFilter::excluding(PlayerFilter::Any, ineligible),
+            others.effects.clone(),
+        ))
+    }
+
     /// "Create a 1/1 Snake, a 2/2 Wolf, and a 3/3 Elephant token" (Bestial
     /// Menace): one coordinated creation instruction whose tokens are created
     /// and enter simultaneously, so "one or more tokens enter" observers see
@@ -492,7 +540,7 @@ impl EffectExecutor for SequenceEffect {
                 proposal,
             )));
         }
-        Ok(Some(sequence_cursor(self, ctx)))
+        Ok(Some(resolving_sequence_cursor(self, game, ctx)))
     }
 
     fn cost_choice_bindings(&self) -> crate::effects::CostChoiceBindings {
@@ -567,7 +615,7 @@ fn execute_sequence_with_outputs(
                     proposal,
                 )
             } else {
-                sequence_cursor(sequence, ctx)
+                resolving_sequence_cursor(sequence, game, ctx)
             };
             let opened = matches!(purpose, crate::effects::EffectExecutionPurpose::Action)
                 && sequence.is_coordinated_token_creation()
@@ -607,10 +655,25 @@ impl std::fmt::Debug for SequenceCursor {
             .finish_non_exhaustive()
     }
 }
+fn resolving_sequence_cursor(
+    sequence: &SequenceEffect,
+    game: &GameState,
+    ctx: &mut ExecutionContext,
+) -> Box<dyn crate::effects::ActionProgramCursor> {
+    if let Some(grouped) = super::owner_library_moves::put_then_shuffle(sequence, game, ctx) {
+        return sequence_cursor(&grouped, ctx);
+    }
+    sequence_cursor(sequence, ctx)
+}
+
 pub(super) fn sequence_cursor(
     sequence: &SequenceEffect,
     ctx: &ExecutionContext,
 ) -> Box<dyn crate::effects::ActionProgramCursor> {
+    if let Some(scry) = sequence.coordinated_scry() {
+        let grouped = SequenceEffect::new(vec![Effect::new(scry)]);
+        return Box::new(SequenceCursor::new(&grouped, ctx));
+    }
     Box::new(SequenceCursor::new(sequence, ctx))
 }
 

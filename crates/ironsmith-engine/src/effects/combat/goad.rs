@@ -277,6 +277,7 @@ mod tests {
                 blocking: false,
                 attacking_alone: false,
                 blocking_alone: false,
+                blocked_status: None,
                 goaded: None,
                 suspected: None,
                 ring_bearer: None,

@@ -43,9 +43,12 @@ impl EffectExecutor for RemoveFromCombatEffect {
             &self.spec,
             result_policy,
             |game, _ctx, object_id| {
-                let removed = game.combat.as_ref().is_some_and(|combat| {
-                    combat.attackers.iter().any(|info| info.creature == object_id)
-                        || combat.blockers.values().any(|blockers| blockers.contains(&object_id))
+                let removed = game.combat_lanes().any(|combat| {
+                    combat
+                        .attackers
+                        .iter()
+                        .any(|info| info.creature == object_id)
+                        || crate::combat_state::is_blocking(combat, object_id)
                 });
                 if removed {
                     // Use the same departure boundary as phasing and zone
@@ -54,7 +57,7 @@ impl EffectExecutor for RemoveFromCombatEffect {
                 }
                 // CR 506.4 / 506.4c: a planeswalker or battle removed from
                 // combat stops being attacked; its attackers attack nothing.
-                let was_attacked = game.combat.as_ref().is_some_and(|combat| {
+                let was_attacked = game.combat_lanes().any(|combat| {
                     combat
                         .attackers
                         .iter()

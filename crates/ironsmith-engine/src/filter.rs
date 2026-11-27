@@ -366,10 +366,7 @@ fn object_is_enlist_eligible(game: &GameState, id: ObjectId) -> bool {
     if game.is_tapped(id) {
         return false;
     }
-    if game
-        .combat
-        .as_ref()
-        .is_some_and(|combat| crate::combat_state::is_attacking(combat, id))
+    if game.combat_lanes().any(|combat| crate::combat_state::is_attacking(combat, id))
     {
         return false;
     }
@@ -1842,7 +1839,7 @@ fn source_attachment_host_for_tag(
 /// Two different attacking creatures in the same attacking band (CR 702.22).
 fn objects_are_banded_together(game: &GameState, first: ObjectId, second: ObjectId) -> bool {
     first != second
-        && game.combat.as_ref().is_some_and(|combat| {
+        && game.combat_lanes().any(|combat| {
             combat
                 .attacking_bands
                 .iter()
@@ -2803,7 +2800,7 @@ fn resolve_filter_comparison_rhs_value(
             .objects_in_deterministic_order()
             .into_iter()
             .filter(|object| filter.matches(object, ctx, game))
-            .map(|object| i64::from(object_mana_value_for_filter(object)))
+            .map(|object| i64::from(ObjectSubject::Live(object).mana_value(game)))
             .chain(
                 departed_battlefield_lookback(filter, game, ctx)
                     .map(|snapshot| i64::from(snapshot_mana_value_for_filter(snapshot))),
@@ -3082,7 +3079,7 @@ fn resolve_filter_comparison_rhs_value(
             let mut seen = std::collections::HashSet::new();
             for object in game.objects_in_deterministic_order() {
                 if filter.matches(object, ctx, game) {
-                    seen.insert(object_mana_value_for_filter(object));
+                    seen.insert(ObjectSubject::Live(object).mana_value(game));
                 }
             }
             Some(seen.len() as i64)
@@ -3434,7 +3431,7 @@ fn creature_was_blocked_by_ref(
     if blockers.is_empty() {
         return false;
     }
-    if let Some(combat) = &game.combat {
+    for combat in game.combat_lanes() {
         let current_blockers = crate::combat_state::get_blockers(combat, attacker);
         if blockers
             .iter()
@@ -3456,10 +3453,7 @@ fn object_attacks_same_defender_as_source(
     ctx: &FilterContext,
     object_id: ObjectId,
 ) -> bool {
-    let Some(combat) = &game.combat else {
-        return false;
-    };
-    let Some(subject_target) = crate::combat_state::get_attack_target(combat, object_id) else {
+    let Some(subject_target) = game.current_attack_target_across_lanes(object_id) else {
         return false;
     };
     let source_ids = ctx.source.into_iter().chain(
@@ -3468,7 +3462,7 @@ fn object_attacks_same_defender_as_source(
             .map(|snapshot| snapshot.object_id),
     );
     source_ids.into_iter().any(|source_id| {
-        crate::combat_state::get_attack_target(combat, source_id)
+        game.current_attack_target_across_lanes(source_id)
             .is_some_and(|source_target| source_target == subject_target)
     })
 }
@@ -3513,28 +3507,25 @@ fn object_is_in_combat_with_source_lki(
     ctx: &FilterContext,
     object_id: ObjectId,
 ) -> bool {
-    let Some(combat) = &game.combat else {
-        return false;
-    };
     let source_ids = ctx.source.into_iter().chain(
         ctx.source_snapshot
             .as_ref()
             .map(|snapshot| snapshot.object_id),
     );
-    source_ids.into_iter().any(|source_id| {
-        crate::combat_state::get_blockers(combat, source_id).contains(&object_id)
-            || combat.blockers.get(&object_id).is_some_and(|blockers| blockers.contains(&source_id))
-            // A source that left the battlefield was removed from combat
-            // (CR 506.4), but its ability still refers to the creatures it
-            // was in combat with through last known information (CR 608.2h).
-            || (game
-                .object(source_id)
-                .is_none_or(|source| source.zone != crate::zone::Zone::Battlefield)
-                && (game.turn_store.turn_history.creature_was_blocked_by_in_combat(
-                    source_id, object_id, game.turn_store.combat_phases_started_this_turn,
-                ) || game.turn_store.turn_history.creature_was_blocked_by_in_combat(
-                    object_id, source_id, game.turn_store.combat_phases_started_this_turn,
-                )))
+    source_ids.into_iter().any(|source| {
+        if game
+            .object(source)
+            .is_none_or(|object| object.zone != crate::zone::Zone::Battlefield)
+        {
+            // CR 608.2h. An earlier block no longer counts if one of the
+            // combatants had already been removed from combat before departure.
+            return game.blocked_at_departure(source, object_id)
+                || game.blocked_at_departure(object_id, source);
+        }
+        game.combat_lanes().any(|combat| {
+            crate::combat_state::get_blockers(combat, source).contains(&object_id)
+                || crate::combat_state::get_blockers(combat, object_id).contains(&source)
+        })
     })
 }
 

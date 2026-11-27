@@ -35,6 +35,28 @@ pub(crate) fn require_captured_public_collections(
     filter.any_of.iter().all(|branch| require_captured_public_collections(game, branch, ctx))
 }
 
+/// CR 903.3e lets a characteristic reference such as "among your commanders"
+/// find the designated cards in every zone. Zone-limited references and
+/// references to commanders a player controls use their ordinary candidates.
+pub(crate) fn commander_characteristic_candidates(
+    game: &GameState,
+    filter: &ObjectFilter,
+) -> Option<Vec<ObjectId>> {
+    if !filter.is_commander || filter.owner.is_none() || filter.controller.is_some()
+        || filter.zone.is_some() || !filter.any_of.is_empty() || !filter.card_types.is_empty()
+    {
+        return None;
+    }
+    let mut ids: Vec<_> = game.players.iter()
+        .flat_map(|owner| owner.get_commanders())
+        .filter_map(|&id| game.current_commander_object(id))
+        .filter(|&id| !game.is_phased_out(id))
+        .collect();
+    ids.sort_unstable();
+    ids.dedup();
+    Some(ids)
+}
+
 /// Collect candidate object IDs for a zone.
 ///
 /// When `zone` is `None`, this defaults to battlefield candidates.

@@ -107,12 +107,10 @@ fn is_team_shared_life_setting(effect: &Effect) -> bool {
     false
 }
 
-/// In Two-Headed Giant, a shared-life action like a "set life total" effect
-/// applies once per team: the team's primary player picks which head performs
-/// it at the team's first position in APNAP order. Returns, per shared
-/// effect, the acting players in that order; other effects keep ordinary
-/// per-player iteration.
-fn twohg_shared_action_players(
+/// When an instruction sets the life total of every member of a shared-life
+/// team, that team chooses one member to perform it (CR 810.9d, 904.13b).
+/// Each team's choice occupies its first APNAP position.
+fn shared_life_action_players(
     game: &GameState,
     ctx: &mut ExecutionContext,
     effects: &[Effect],
@@ -120,26 +118,28 @@ fn twohg_shared_action_players(
 ) -> Result<std::collections::HashMap<usize, Vec<PlayerId>>, ExecutionError> {
     let mut shared: std::collections::HashMap<usize, Vec<PlayerId>> =
         std::collections::HashMap::new();
-    if game.two_headed_giant().is_none() {
+    if game.two_headed_giant().is_none() && game.archenemy.is_none() {
         return Ok(shared);
     }
     for (effect_index, effect) in effects.iter().enumerate() {
         if !is_team_shared_life_setting(effect) {
             continue;
         }
-        let mut seen_teams = std::collections::HashSet::new();
+        let mut seen_players = std::collections::HashSet::new();
         for player in players.iter().copied() {
-            let Some(team) = game.team_index_for(player) else {
-                continue;
-            };
-            if !seen_teams.insert(team) {
+            if seen_players.contains(&player) {
                 continue;
             }
-            let candidates = game
-                .team_players_for(player)
-                .into_iter()
-                .filter(|member| players.contains(member))
-                .collect::<Vec<_>>();
+            let members = game.shared_life_team_members(player).unwrap_or_else(|| vec![player]);
+            let members: Vec<_> = members.into_iter()
+                .filter(|member| game.player(*member).is_some_and(|state| state.is_in_game()))
+                .collect();
+            let candidates = if members.iter().all(|member| players.contains(member)) {
+                members
+            } else {
+                vec![player]
+            };
+            seen_players.extend(candidates.iter().copied());
             if candidates.len() == 1 {
                 shared.entry(effect_index).or_default().push(candidates[0]);
                 continue;
@@ -151,7 +151,7 @@ fn twohg_shared_action_players(
                         .map(|candidate| (candidate.name.to_string(), *member))
                 })
                 .collect::<Vec<_>>();
-            let chooser = game.primary_player_for_team(team).unwrap_or(player);
+            let chooser = game.team_index_for(player).and_then(|team| game.primary_player_for_team(team)).unwrap_or(player);
             let chosen = crate::decisions::ask_choose_one(
                 game,
                 &mut ctx.decision_maker,
@@ -1340,8 +1340,35 @@ type OriginalBatchOutcome = (
     crate::effects::SimultaneousEffectCommit<crate::effects::CompletedEffectOutputs>,
     Option<PlayerOriginalContext>,
 );
+/// The returned history follows physical phases even when a later draw
+/// belongs to an earlier player. Keep the exact occurrences across a pause.
+#[derive(Default)]
+struct BatchEventOrder(std::collections::HashMap<usize, (usize, crate::events::RawEvent)>);
+
+impl BatchEventOrder {
+    fn record(&mut self, participants: &[OriginalBatchOutcome]) {
+        for (_, receipt, _) in participants {
+            for event in &receipt.outcome.outcome.events {
+                let next = self.0.len();
+                self.0
+                    .entry(event.occurrence_key())
+                    .or_insert_with(|| (next, event.clone()));
+            }
+        }
+    }
+
+    fn apply(&self, events: &mut [crate::events::RawEvent]) {
+        if !self.0.is_empty() {
+            // The unrecorded tail already follows APNAP completion order.
+            events.sort_by_key(|event| {
+                self.0.get(&event.occurrence_key()).map_or(usize::MAX, |(index, _)| *index)
+            });
+        }
+    }
+}
 struct PendingBatchDraw {
     unit_index: usize,
+    event_order: BatchEventOrder,
     outcomes: Vec<OriginalBatchOutcome>,
     tags: PlayerObjectTags,
 }
@@ -1592,7 +1619,7 @@ impl ForPlayersActionState {
         // proposal without leaking into the next player's pass; game
         // mutations are deferred to the batched commit below.
         let shared_action_players =
-            twohg_shared_action_players(game, ctx, &simultaneous_effects, &players)?;
+            shared_life_action_players(game, ctx, &simultaneous_effects, &players)?;
         if ctx.decision_maker.awaiting_choice() {
             return Ok(None);
         }
@@ -1900,7 +1927,7 @@ impl ForPlayersActionState {
                 continue;
             }
             let batch_resumed = pending_batch_draw.is_some();
-            let (mut batch_outcomes, mut accumulated_unit_tags) = if let Some(pending) =
+            let (mut batch_outcomes, mut accumulated_unit_tags, mut event_order) = if let Some(pending) =
                 pending_batch_draw.take()
             {
                 if pending.unit_index != unit_index {
@@ -1908,7 +1935,7 @@ impl ForPlayersActionState {
                         "player continuation lost its original action unit".into(),
                     ));
                 }
-                (pending.outcomes, pending.tags)
+                (pending.outcomes, pending.tags, pending.event_order)
             } else {
                 let mut prepared: Vec<(
                     usize,
@@ -2645,7 +2672,33 @@ impl ForPlayersActionState {
                 // Replacement eligibility observes one pre-mutation world.
                 // One-shot consumption and APNAP choices remain ordered, but
                 // no player's original life change has committed yet.
-                for (index, tags, proposal, optional, path) in &mut prepared {
+                // Begin markers and read-only choices can precede the action.
+                // The unit's last instruction owns its prepared proposals.
+                let mut remaining_libraries = Vec::new();
+                if let Some(&action) = unit.last()
+                    && crate::effects::cards::simultaneous_search::controller_searches_each_library(
+                        &simultaneous_effects[action],
+                    )
+                {
+                    remaining_libraries.extend(
+                        prepared.iter().enumerate().map(|(position, action)| (position, players[action.0])),
+                    );
+                }
+                for default_position in 0..prepared.len() {
+                    let position = if remaining_libraries.is_empty() {
+                        default_position
+                    } else {
+                        let Some(next) = crate::effects::cards::simultaneous_search::choose_next_library(
+                            game, ctx, &mut remaining_libraries,
+                        ) else {
+                            return Ok((
+                                ActionRun::Complete(EffectOutcome::count(0)),
+                                retained_outputs,
+                            ));
+                        };
+                        next
+                    };
+                    let (index, tags, proposal, optional, path) = &mut prepared[position];
                     ctx.tagged_objects = tags.clone();
                     ctx.effect_outcomes = effect_outcomes_by_player[*index].clone();
                     if matches!(purpose, crate::effects::EffectExecutionPurpose::Payment) {
@@ -2820,6 +2873,9 @@ impl ForPlayersActionState {
                 let mut original_observations = Vec::new();
                 let mut accumulated_unit_tags = ctx.tagged_objects.clone();
                 let mut active_commit_player = None;
+                let graveyard_order = crate::effects::zones::GraveyardOrderBatch::begin(
+                    game, prepared.len() > 1,
+                );
                 for action in prepared {
                     let Some((player_index, prepared_tagged_objects, proposal, optional, path)) =
                         action
@@ -2845,6 +2901,7 @@ impl ForPlayersActionState {
                                 ))),
                             ));
                             if ctx.decision_maker.awaiting_choice() {
+                                graveyard_order.finish(game, ctx.decision_maker, Some(ctx.source), false);
                                 game.close_simultaneous_action(opened_batch);
                                 crate::effects::helpers::end_simultaneous_zone_change_lookback(
                                     game,
@@ -2919,6 +2976,7 @@ impl ForPlayersActionState {
                         }
                     }
                     if ctx.decision_maker.awaiting_choice() {
+                        graveyard_order.finish(game, ctx.decision_maker, Some(ctx.source), false);
                         game.close_simultaneous_action(opened_batch);
                         crate::effects::helpers::end_simultaneous_zone_change_lookback(
                             game,
@@ -2932,6 +2990,11 @@ impl ForPlayersActionState {
                     }
                 }
 
+                if !graveyard_order.finish(game, ctx.decision_maker, Some(ctx.source), true) {
+                    game.restore_execution_checkpoint(game_checkpoint, true);
+                    ctx.tagged_objects = pre_unit_tagged_objects;
+                    return Ok((ActionRun::Complete(EffectOutcome::count(0)), retained_outputs));
+                }
                 super::original_observations::retain_original_observations(
                     batch_outcomes.iter_mut().map(|(_, receipt, _)| receipt),
                     original_observations,
@@ -2942,7 +3005,7 @@ impl ForPlayersActionState {
                     pinned_lookback,
                 );
                 merge_tagged_object_sets(&mut accumulated_unit_tags, &ctx.tagged_objects);
-                (batch_outcomes, accumulated_unit_tags)
+                (batch_outcomes, accumulated_unit_tags, BatchEventOrder::default())
             };
             if !batch_resumed {
                 batch_outcomes =
@@ -2960,6 +3023,12 @@ impl ForPlayersActionState {
                             )
                         },
                     )?;
+            }
+            let has_continuations = batch_outcomes
+                .iter()
+                .any(|(_, receipt, _)| receipt.completion.is_some());
+            if has_continuations {
+                event_order.record(&batch_outcomes);
             }
             if defer_draws {
                 let mut boundaries = Vec::with_capacity(batch_outcomes.len());
@@ -3028,6 +3097,7 @@ impl ForPlayersActionState {
                     }
                 }
                 batch_outcomes = boundaries;
+                event_order.record(&batch_outcomes);
                 if ctx.resolution_stopped() {
                     for (_, receipt, _) in &mut batch_outcomes {
                         receipt.completion = None;
@@ -3043,15 +3113,18 @@ impl ForPlayersActionState {
                         actual_events.clone(),
                         Some(owner_facts.clone()),
                     )?;
-                    let prefix = EffectOutcome::aggregate(
+                    let previous_events = completed_prefix.events.len();
+                    let mut prefix = EffectOutcome::aggregate(
                         std::iter::once(completed_prefix).chain(
                             batch_outcomes
                                 .iter()
                                 .map(|(_, receipt, _)| receipt.outcome.outcome.clone()),
                         ),
                     );
+                    event_order.apply(&mut prefix.events[previous_events..]);
                     let pending_batch_draw = Some(PendingBatchDraw {
                         unit_index,
+                        event_order,
                         outcomes: batch_outcomes,
                         tags: accumulated_unit_tags,
                     });
@@ -3162,6 +3235,9 @@ impl ForPlayersActionState {
                     ));
                 };
                 batch_outcomes = phased;
+                if has_continuations {
+                    event_order.record(&batch_outcomes);
+                }
             }
             let completed_outcomes = {
                 let mut completed = Vec::new();
@@ -3351,6 +3427,7 @@ impl ForPlayersActionState {
                 &players,
                 &mut effect_outcomes_by_player,
             );
+            let unit_start = actual_events.len();
             for group in completed_outcomes {
                 if let Some(owner) = group.owner {
                     actual_events.extend(owner.events);
@@ -3372,6 +3449,7 @@ impl ForPlayersActionState {
                     );
                 }
             }
+            event_order.apply(&mut actual_events[unit_start..]);
         }
         ctx.tagged_players =
             merge_tagged_players_by_player(&incoming_tagged_players, &tagged_players_by_player);

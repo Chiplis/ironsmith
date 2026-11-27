@@ -113,56 +113,13 @@ impl EffectExecutor for CastTaggedEffect {
                 .get_tagged_all(self.tag.as_str())
                 .is_some_and(|linked| linked.len() > 1)
         {
-            // The player plays them one at a time in the order they choose
-            // (each is played during resolution, so the last one cast ends
-            // up on top of the stack).
-            let linked = ctx
-                .get_tagged_all(self.tag.as_str())
-                .cloned()
-                .unwrap_or_default();
-            let chooser =
+            let caster =
                 crate::effects::helpers::resolve_player_filter_as_chooser(game, &self.player, ctx)?;
-            let ids: Vec<crate::ids::ObjectId> =
-                linked.iter().map(|snapshot| snapshot.object_id).collect();
-            let order_ctx = crate::decisions::context::OrderContext::new(
-                chooser,
-                Some(ctx.source),
-                "Choose the order to play the exiled cards. The first option is played first.",
-                // Linked hideaway snapshots are public placeholders (empty
-                // names); the chooser may look at the cards (CR 702.75a), and
-                // the client gates each label by decision visibility.
-                linked
-                    .iter()
-                    .map(|snapshot| {
-                        let name = game
-                            .object(snapshot.object_id)
-                            .map(|object| object.name.to_string())
-                            .filter(|name| !name.is_empty())
-                            .unwrap_or_else(|| snapshot.name.clone());
-                        (snapshot.object_id, name)
-                    })
-                    .collect(),
-            );
-            let order = crate::effects::cards::normalize_order_response(
-                ctx.decision_maker.decide_order(game, &order_ctx),
-                &ids,
-            );
-            if ctx.decision_maker.awaiting_choice() {
-                return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
-                    EffectOutcome::count(0),
-                ));
-            }
-            let ordered: Vec<crate::snapshot::ObjectSnapshot> = order
-                .iter()
-                .filter_map(|id| linked.iter().find(|snapshot| snapshot.object_id == *id))
-                .cloned()
-                .collect();
-            let order_tag = crate::tag::TagKey::from("__linked_play_order__");
-            ctx.set_tagged_objects(order_tag.clone(), ordered);
             let mut each = self.clone();
             each.tag = crate::tag::TagKey::from("__it__");
+            each.player = crate::target::PlayerFilter::Specific(caster);
             return crate::effects::ForEachTaggedEffect::new(
-                order_tag,
+                self.tag.clone(),
                 vec![crate::effect::Effect::new(each)],
             )
             .execute_child_with_outputs(game, ctx);

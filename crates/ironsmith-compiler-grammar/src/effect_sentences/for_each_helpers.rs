@@ -57,7 +57,21 @@ pub(crate) fn parse_imperative_optional_participant(tokens: &[OwnedLexToken]) ->
     parse_for_each_opponent_clause(tokens)
 }
 
-// Imperative “for each” scopes the whole body to one participant at a time.
+// A single search instruction over several libraries lets its controller look
+// through all of them before choosing. The library owners are the iterations.
+fn searches_each_participants_library(effects: &[EffectAst]) -> bool {
+    let [action] = effects else { return false };
+    let mut action = action;
+    while let EffectAst::TagAffected { effect, .. } | EffectAst::TagReferenced { effect, .. } = action {
+        action = effect;
+    }
+    matches!(action, EffectAst::SubjectVerb(SubjectVerbEffectAst {
+        action: SubjectVerbActionAst::ZoneMoves(crate::cards::builders::ZoneMoveActionAst::SearchLibrary {
+            chooser: PlayerAst::You | PlayerAst::Implicit, player: PlayerAst::That, ..
+        }), ..
+    }))
+}
+
 fn sequential_participant_body(effect: EffectAst) -> EffectAst {
     use crate::cards::builders::ForEachEffectAst;
     let (filter, effects) = match effect {
@@ -74,8 +88,8 @@ fn sequential_participant_body(effect: EffectAst) -> EffectAst {
     };
     EffectAst::ForEach(ForEachEffectAst::ForEachPlayersFiltered {
         filter,
+        sequential: !searches_each_participants_library(&effects),
         effects,
-        sequential: true,
     })
 }
 

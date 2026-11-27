@@ -33,7 +33,7 @@ impl BlocksTrigger {
         blocker: crate::ids::ObjectId,
         ctx: &TriggerContext,
     ) -> bool {
-        let Some(combat) = ctx.game.combat.as_ref() else {
+        let Some(combat) = ctx.game.combat_lanes().find(|combat| crate::combat_state::is_blocking(combat, blocker)) else {
             return true;
         };
         let Some(first_matching) = combat
@@ -63,7 +63,7 @@ pub(crate) fn is_first_blocked_attacker_for_blocker(
     blocker: crate::ids::ObjectId,
     attacker: crate::ids::ObjectId,
 ) -> bool {
-    let Some(combat) = game.combat.as_ref() else {
+    let Some(combat) = game.combat_for_attacker(attacker) else {
         return true;
     };
     combat

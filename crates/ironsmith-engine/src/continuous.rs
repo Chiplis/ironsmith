@@ -2440,6 +2440,8 @@ pub struct CalculatedCharacteristics {
     // Frozen layer-1 payload shared by calculation snapshots. Mutations must
     // detach with Arc::make_mut; live P/T and controller remain local below.
     pub(crate) copy_values: Option<Arc<CopiableValues>>,
+    /// A layer-1 effect supplied these values over the object's own text box.
+    pub(crate) has_copy_overlay: bool,
     /// A provisional layer computation that could not fit the native signed
     /// P/T domain. Checked owners reject it before publishing any snapshot.
     pub(crate) numeric_range_error: Option<(&'static str, i128)>,
@@ -3368,6 +3370,7 @@ fn object_text_box_characteristics(object: &Object) -> CalculatedCharacteristics
     let (power, toughness) = (copy_values.power, copy_values.toughness);
     let mut chars = CalculatedCharacteristics {
         copy_values: Some(copy_values),
+        has_copy_overlay: false,
         alternate_name: object.split_other_half_name().map(str::to_string),
         name_set_timestamp: None,
         name: object.name.clone(),
@@ -3593,6 +3596,7 @@ fn copy_characteristics_from_copiable_values(
     if let Some(dependencies)=retained_dependencies {
         if let Some(packet)=&mut retained_values.definition_dependencies{packet.include(&dependencies);}else{retained_values.definition_dependencies=Some(dependencies);}
     }
+    chars.has_copy_overlay = origin.is_some();
     chars.copy_values = Some(Arc::new(retained_values));
     chars.name = values.name.clone().into();
     chars.alternate_name = None;
@@ -3649,13 +3653,16 @@ fn apply_room_no_unlocked_door_layer(
     chars: &mut CalculatedCharacteristics,
     game: &crate::game_state::GameState,
 ) {
-    if apply_copied_room_door_layer(object, chars, game) {
+    if object.zone != Zone::Battlefield || object.face_down_cast_state.is_some() {
         return;
     }
-    if object.zone != Zone::Battlefield || !game.room_has_no_unlocked_door(object.id) {
-        return;
+    if chars.has_copy_overlay {
+        if let Some(values) = chars.copy_values.clone().filter(|v| copied_values_are_room(v)) {
+            apply_copied_room_door_layer(object, chars, game, &values);
+        }
+    } else if game.room_has_no_unlocked_door(object.id) {
+        clear_locked_room_text(chars);
     }
-    clear_locked_room_text(chars);
 }
 
 /// Copiable values that make their holder a Room with two doors (CR 709.5).
@@ -3672,32 +3679,21 @@ pub(crate) fn room_half_name(name: &str) -> &str {
     name.split(" // ").next().unwrap_or(name).trim()
 }
 
-/// CR 707.2, 709.5, 709.5c: a permanent that is a Room only through a
-/// layer-1 copy effect (Mirage Mirror) copies both halves, but the unlocked
-/// designations are the permanent's own. A half without its designation
-/// contributes no name, mana cost or rules text. Returns whether `object` is
-/// such a copied Room.
+/// The copy supplies the two printed halves. The recipient supplies the
+/// left and right unlocked designations (CR 709.5c).
 fn apply_copied_room_door_layer(
     object: &Object,
     chars: &mut CalculatedCharacteristics,
     game: &crate::game_state::GameState,
-) -> bool {
-    if object.zone != Zone::Battlefield
-        || object.linked_face_layout == crate::card::LinkedFaceLayout::Split
-    {
-        return false;
-    }
-    let Some(envelope) = chars.copy_values.clone().filter(|values| copied_values_are_room(values))
-    else {
-        return false;
-    };
-    let Some(second) = envelope.other_copy_face.as_deref() else {
-        return false;
-    };
+    envelope: &CopiableValues,
+) {
+    let Some(second) = envelope.other_copy_face.as_deref() else { return };
     let origin = chars.abilities.current_effect_origin();
     let first_name = room_half_name(&envelope.name);
     let second_name = room_half_name(&second.name);
-    match game.copied_room_unlocked_halves(object.id) {
+    let (left, right) = game.copied_room_unlocked_halves(object.id);
+    let unlocked = if envelope.room_half_is_right { (right, left) } else { (left, right) };
+    match unlocked {
         (false, false) => clear_locked_room_text(chars),
         (true, false) => {
             chars.name = first_name.into();
@@ -3715,26 +3711,31 @@ fn apply_copied_room_door_layer(
             chars.static_abilities = extract_static_abilities(&chars.abilities).into();
         }
         (true, true) => {
-            // CR 709.5e: a fully unlocked Room has both halves' characteristics.
-            chars.name = format!("{first_name} // {second_name}").into();
+            // Preserve printed left/right order regardless of which half the
+            // donor was showing when its copiable values were captured.
+            let (left, right) = if envelope.room_half_is_right {
+                (second, envelope)
+            } else {
+                (envelope, second)
+            };
+            chars.name = format!("{} // {}", room_half_name(&left.name), room_half_name(&right.name)).into();
             chars.alternate_name = None;
-            let pips = envelope.mana_cost.iter().chain(second.mana_cost.iter())
+            let pips = left.mana_cost.iter().chain(right.mana_cost.iter())
                 .flat_map(|cost| cost.pips().iter().cloned()).collect::<Vec<_>>();
             chars.mana_cost = (!pips.is_empty()).then(|| ManaCost::from_pips(pips).into());
             chars.linked_face_mana_value = None;
-            chars.colors = envelope.colors.union(second.colors);
-            chars.compiled_card_text = [envelope.compiled_card_text.as_str(), second.compiled_card_text.as_str()]
+            chars.colors = left.colors.union(right.colors);
+            chars.compiled_card_text = [left.compiled_card_text.as_str(), right.compiled_card_text.as_str()]
                 .into_iter().filter(|text| !text.is_empty()).collect::<Vec<_>>().join("\n").into();
-            let mut labels = envelope.ability_labels.clone();
-            labels.extend(second.ability_labels.iter().cloned());
+            let mut labels = left.ability_labels.clone();
+            labels.extend(right.ability_labels.iter().cloned());
             chars.ability_labels = labels.into();
-            let mut abilities = envelope.abilities.as_ref().clone();
-            abilities.extend(second.abilities.iter().cloned());
+            let mut abilities = left.abilities.as_ref().clone();
+            abilities.extend(right.abilities.iter().cloned());
             replace_rules_text_abilities(chars, abilities, origin, false);
             chars.static_abilities = extract_static_abilities(&chars.abilities).into();
         }
     }
-    true
 }
 
 fn clear_locked_room_text(chars: &mut CalculatedCharacteristics) {
@@ -3891,6 +3892,9 @@ pub(crate) fn intrinsic_starting_counter_abilities(
 }
 
 fn add_intrinsic_abilities(chars: &mut CalculatedCharacteristics) {
+    if chars.abilities.expand_color_variants(chars.colors) {
+        chars.static_abilities = extract_static_abilities(&chars.abilities).into();
+    }
     if chars.subtypes.contains(&Subtype::Saga) {
         let rule = ironsmith_core::IntrinsicStartingCounter::Lore;
         let ability = StaticAbility::intrinsic_starting_counters(rule);
@@ -6301,6 +6305,21 @@ fn effect_target_applies_to_direct(
     }
 }
 
+fn characteristics_in_effect_range(
+    game: &crate::game_state::GameState,
+    effect: &ContinuousEffect,
+    id: ObjectId,
+    chars: &CalculatedCharacteristics,
+) -> bool {
+    game.limited_range_of_influence().is_none()
+        || game.source_is_exempt_from_range(Some(effect.source))
+        || game.player_is_within_range(effect.controller, chars.controller)
+        || (chars.card_types.contains(&CardType::Battle)
+            && game
+                .battle_protector(id)
+                .is_some_and(|protector| game.player_is_within_range(effect.controller, protector)))
+}
+
 fn effect_target_matches_object_direct(
     effect: &ContinuousEffect,
     object: &Object,
@@ -6320,11 +6339,7 @@ fn effect_target_matches_object_direct(
     // CR 801.10: under a limited range of influence, an ability can't
     // affect objects controlled by players outside its controller's range.
     // (Resolution effects already locked range-checked targets above.)
-    let within_range = || {
-        game.limited_range_of_influence().is_none()
-            || game.source_is_exempt_from_range(Some(effect.source))
-            || game.player_is_within_range(effect.controller, chars.controller)
-    };
+    let within_range = || characteristics_in_effect_range(game, effect, object.id, chars);
 
     // For StaticAbility, CharacteristicDefining, Combat, and Copy effects,
     // check the EffectTarget as normal (they apply dynamically).
@@ -7449,19 +7464,23 @@ pub(crate) fn bind_effect_controller_in_ability(ability: &Ability, effect_contro
 }
 
 fn push_granted_complete_ability(chars: &mut CalculatedCharacteristics, ability: Ability) {
-    let static_payload=match &ability.kind {
-        AbilityKind::Static(payload)=>Some(payload.clone()),
-        _=>None,
-    };
+    if let AbilityKind::Static(keyword) = &ability.kind {
+        if let Some(variants) = keyword.individual_color_variants(chars.colors) {
+            for variant in variants {
+                let mut granted = ability.clone();
+                granted.kind = AbilityKind::Static(variant.clone());
+                chars.abilities.push(granted);
+                chars.static_abilities.push(variant.clone());
+            }
+            return;
+        }
+        chars.static_abilities.push(keyword.clone());
+    }
     chars.abilities.push(ability);
-    if let Some(payload)=static_payload {chars.static_abilities.push(payload);}
 }
 
 fn push_granted_static_ability(chars: &mut CalculatedCharacteristics, ability: StaticAbility) {
-    chars
-        .abilities
-        .push(Ability::static_ability(ability.clone()));
-    chars.static_abilities.push(ability);
+    push_granted_complete_ability(chars, Ability::static_ability(ability));
 }
 
 fn push_static_ability_once(chars: &mut CalculatedCharacteristics, ability: StaticAbility) {
@@ -7506,7 +7525,9 @@ pub(crate) fn static_ability_matches_variant_selector(
         return false;
     }
     match selector {
-        ironsmith_core::StaticAbilityVariantSelector::Any(id) => ability.id() == id,
+        ironsmith_core::StaticAbilityVariantSelector::Any(id) => ability.id() == id
+            || (id == crate::static_abilities::StaticAbilityId::Trample
+                && ability.id() == crate::static_abilities::StaticAbilityId::TrampleOverPlaneswalkers),
         ironsmith_core::StaticAbilityVariantSelector::ProtectionFromColor => {
             if ability.id() != crate::static_abilities::StaticAbilityId::Protection {
                 return false;
@@ -7520,6 +7541,25 @@ pub(crate) fn static_ability_matches_variant_selector(
             }
         }
     }
+}
+
+/// CR 702.1c grants each distinct variant once per instruction. Two
+/// printings can have the same variant, while text changes can give two
+/// copies of one printing different variants without changing instance IDs.
+pub(crate) fn select_distinct_static_variant(
+    ability: &StaticAbility,
+    selectors: &[ironsmith_core::StaticAbilityVariantSelector],
+    selected: &mut Vec<StaticAbility>,
+) -> bool {
+    if !selectors
+        .iter()
+        .any(|&selector| static_ability_matches_variant_selector(ability, selector))
+        || selected.contains(ability)
+    {
+        return false;
+    }
+    selected.push(ability.clone());
+    true
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -7540,7 +7580,7 @@ fn copy_static_ability_variants_into(
 ) {
     // Deduplicate variants inside this instruction only. Independent copy
     // effects must each materialize their own borrowed ability occurrence.
-    let mut seen_variants = HashSet::new();
+    let mut seen_variants = Vec::new();
     let mut candidate_ids: Vec<_> = objects.keys().copied().collect();
     candidate_ids.sort();
 
@@ -7561,6 +7601,9 @@ fn copy_static_ability_variants_into(
         ) else {
             continue;
         };
+        if !characteristics_in_effect_range(game, effect, candidate.id, &candidate_chars) {
+            continue;
+        }
         if !filter_matches_with_characteristics(
             filter,
             candidate,
@@ -7576,26 +7619,34 @@ fn copy_static_ability_variants_into(
             let AbilityKind::Static(ability) = &runtime_ability.kind else {
                 continue;
             };
-            if (!copy_all && !selectors.iter().copied().any(|selector| static_ability_matches_variant_selector(ability, selector)))
-                || excluded_ability_designations.iter().any(|name| runtime_ability.has_designation(name))
-                || !seen_variants.insert(ability.instance_id())
+            if excluded_ability_designations
+                .iter()
+                .any(|name| runtime_ability.has_designation(name))
             {
                 continue;
             }
-            let origin = candidate_chars
-                .abilities
-                .origin(slot)
-                .expect("copied static variant retains its paired donor origin")
-                .clone();
-            chars.abilities.push_with_origin(
-                runtime_ability.clone(),
-                AbilityOrigin::Borrowed {
-                    effect: effect.into(),
-                    source: candidate.id,
-                    origin: Box::new(origin),
-                },
-            );
-            chars.static_abilities.push(ability.clone());
+            ability.visit_borrowed_variants(game, candidate.id, |variant| {
+                if !copy_all
+                    && !select_distinct_static_variant(variant, selectors, &mut seen_variants)
+                {
+                    return;
+                }
+                let origin = candidate_chars
+                    .abilities
+                    .origin(slot)
+                    .expect("copied static variant retains its paired donor origin");
+                let mut borrowed = runtime_ability.clone();
+                borrowed.kind = AbilityKind::Static(variant.clone());
+                chars.abilities.push_with_origin(
+                    borrowed,
+                    AbilityOrigin::Borrowed {
+                        effect: effect.into(),
+                        source: candidate.id,
+                        origin: Box::new(origin.clone()),
+                    },
+                );
+                chars.static_abilities.push(variant.clone());
+            });
         }
     }
 }
@@ -7937,9 +7988,6 @@ fn apply_modification_to_chars(
                 if *exclude_source_id && candidate.id == object.id {
                     continue;
                 }
-                if *exclude_source_name && candidate.name == object.name {
-                    continue;
-                }
                 if let Some(counter_type) = counter
                     && candidate.counters.get(counter_type).copied().unwrap_or(0) == 0
                 {
@@ -7957,6 +8005,12 @@ fn apply_modification_to_chars(
                     continue;
                 };
 
+                if !crate::continuous::characteristics_in_effect_range(game, effect, candidate.id, &candidate_chars)
+                    || (*exclude_source_name && crate::filter::ObjectNames::layered(object, chars, game)
+                        .shares(crate::filter::ObjectNames::layered(candidate, &candidate_chars, game), game))
+                {
+                    continue;
+                }
                 if !filter_matches_with_characteristics_in_context(
                     filter,
                     candidate,
@@ -8061,9 +8115,6 @@ fn apply_modification_to_chars(
                 if *exclude_source_id && candidate.id == object.id {
                     continue;
                 }
-                if *exclude_source_name && candidate.name == object.name {
-                    continue;
-                }
 
                 let Some(candidate_chars) = calculate_characteristics_with_effects_simple(
                     candidate.id,
@@ -8076,6 +8127,12 @@ fn apply_modification_to_chars(
                     continue;
                 };
 
+                if !crate::continuous::characteristics_in_effect_range(game, effect, candidate.id, &candidate_chars)
+                    || (*exclude_source_name && crate::filter::ObjectNames::layered(object, chars, game)
+                        .shares(crate::filter::ObjectNames::layered(candidate, &candidate_chars, game), game))
+                {
+                    continue;
+                }
                 if !filter_matches_with_characteristics_in_context(
                     filter,
                     candidate,

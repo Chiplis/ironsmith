@@ -1280,6 +1280,12 @@ impl SnapshotJsEncodingCache {
             .serialize(&serde_wasm_bindgen::Serializer::json_compatible())
             .map_err(|error| JsValue::from_str(&format!("snapshot field loop_shortcut encode failed: {error}")))?;
         self.set_value(&object, "loop_shortcut", &loop_shortcut)?;
+        let loop_offer = snapshot
+            .loop_offer
+            .serialize(&serde_wasm_bindgen::Serializer::json_compatible())
+            .map_err(|error| JsValue::from_str(&format!("snapshot field loop_offer encode failed: {error}")))?;
+        self.set_value(&object, "loop_offer", &loop_offer)?;
+        self.set_serde(&object, "loop_serial", &snapshot.loop_serial)?;
         self.set_serde(&object, "stack_size", &snapshot.stack_size)?;
         self.set_serde(&object, "stack_preview", &snapshot.stack_preview)?;
         self.set_serde(&object, "stack_objects", &snapshot.stack_objects)?;
@@ -2835,6 +2841,12 @@ pub(super) struct GameSnapshot {
     pub(super) sticker_sheets: Vec<PlayerStickerSheetsView>,
     /// The CR 732.2 loop shortcut being agreed or replayed.
     pub(super) loop_shortcut: Option<serde_json::Value>,
+    /// A loop the engine detected in the priority player's own actions and
+    /// proved repeatable (CR 732.2a); the client may propose repeating it.
+    pub(super) loop_offer: Option<serde_json::Value>,
+    /// Engine counter of recorded player steps; a client tags the commands it
+    /// submits with it to find the commands that make up an offered loop.
+    pub(super) loop_serial: u64,
     pub(super) snapshot_id: u64,
     pub(super) perspective: u8,
     pub(super) turn_number: u32,
@@ -3826,6 +3838,8 @@ impl GameSnapshot {
             pass_intents: Vec::new(),
             sticker_sheets: Vec::new(),
             loop_shortcut: None,
+            loop_offer: None,
+            loop_serial: game.loop_shortcut_serial(),
             turn_number: game.turn.turn_number,
             active_player_turn: game.turns_taken_by(game.turn.active_player).max(1),
             storm_count: game.turn_store.turn_history.total_spells_cast_this_turn(),

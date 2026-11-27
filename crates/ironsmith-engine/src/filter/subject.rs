@@ -5,10 +5,6 @@ use crate::derived_view::DerivedGameView;
 use crate::game_state::StackEntry;
 use crate::mana::ManaCost;
 
-fn live_locked_room(object: &Object, game: &GameState) -> bool {
-    object.zone == Zone::Battlefield && game.room_has_no_unlocked_door(object.id)
-}
-
 #[derive(Clone, Copy)]
 pub(crate) enum ObjectSubject<'a> {
     Live(&'a Object),
@@ -62,8 +58,11 @@ impl<'a> ObjectSubject<'a> {
     pub(crate) fn mana_cost(self, game: &GameState) -> Option<std::borrow::Cow<'a, ManaCost>> {
         if self.zone() == Zone::Exile && self.face_down(game) { return None; }
         match self {
-            // CR 709.5d: a Room with neither door unlocked has no mana cost.
-            Self::Live(object) if live_locked_room(object, game) => None,
+            // Layer 1 supplies the cost of a copied permanent, including the
+            // unlocked halves if its copiable values describe a Room.
+            Self::Live(object) if object.zone == Zone::Battlefield => {
+                object_current_mana_cost(game, object.id).map(std::borrow::Cow::Owned)
+            }
             // CR 709.4b: both split halves' costs outside the stack.
             Self::Live(object) => match object.split_combined_mana_cost() {
                 Some(combined) => Some(std::borrow::Cow::Owned(combined)),
@@ -87,7 +86,11 @@ impl<'a> ObjectSubject<'a> {
     pub(crate) fn mana_value(self, game: &GameState) -> i32 {
         if self.zone() == Zone::Exile && self.face_down(game) { return 0; }
         match self {
-            Self::Live(object) if live_locked_room(object, game) => 0,
+            // CR 202.3, 707.2. Temporary copies have the copied permanent's
+            // mana cost. Keep projected card faces and snapshots in their own view.
+            Self::Live(object) if object.zone == Zone::Battlefield => {
+                object_current_mana_value_for_relation(object, game)
+            }
             Self::Live(object) => object_mana_value_for_filter(object),
             Self::Snapshot(snapshot) => snapshot_mana_value_for_filter(snapshot),
         }
@@ -168,11 +171,24 @@ impl<'a> ObjectSubject<'a> {
     }
     pub(crate) fn attacking(self, game: &GameState) -> bool {
         match self {
-            Self::Live(object) => game
-                .combat
-                .as_ref()
-                .is_some_and(|combat| crate::combat_state::is_attacking(combat, object.id)),
+            Self::Live(object) => game.current_attack_target_across_lanes(object.id).is_some(),
             Self::Snapshot(snapshot) => snapshot.attacking,
+        }
+    }
+    pub(crate) fn blocking(self, game: &GameState) -> bool {
+        match self {
+            Self::Live(object) => game
+                .combat_lanes()
+                .any(|combat| crate::combat_state::is_blocking(combat, object.id)),
+            Self::Snapshot(snapshot) => snapshot.blocking,
+        }
+    }
+    pub(crate) fn blocked_status(self, game: &GameState) -> Option<bool> {
+        match self {
+            Self::Live(object) => game
+                .combat_lanes()
+                .find_map(|combat| crate::combat_state::blocked_status(combat, object.id)),
+            Self::Snapshot(snapshot) => snapshot.blocked_status,
         }
     }
     /// "attacking alone" (CR 506.5), from last-known information for a

@@ -2453,6 +2453,36 @@ impl Object {
         }
     }
 
+    /// Return the captured opposite face with the current face as its partner.
+    /// A later copy of this Room must still receive both halves after a switch.
+    pub(crate) fn opposite_copied_room_half(&self) -> Option<CopiableValues> {
+        let values = self.copied_face_values.as_deref()?;
+        if !crate::continuous::copied_values_are_room(values) { return None; }
+        let mut previous = values.clone();
+        let mut next = *previous.other_copy_face.take()?;
+        previous.copy_face_layout = LinkedFaceLayout::None;
+        next.copy_face_layout = LinkedFaceLayout::Split;
+        next.room_half_is_right = !previous.room_half_is_right;
+        next.other_copy_face = Some(Box::new(previous));
+        Some(next)
+    }
+
+    /// The displayed half can change as doors unlock. The printed card id
+    /// stays fixed, and token copies retain the orientation of their source.
+    pub(crate) fn room_current_half_is_right(&self) -> bool {
+        if self.linked_face_layout != LinkedFaceLayout::Split
+            || !self.subtypes.contains(&Subtype::Room)
+        {
+            return false;
+        }
+        if let Some(values) = self.copied_face_values.as_ref() {
+            let primary_is_linked = self.other_face_name.as_deref()
+                == Some(crate::continuous::room_half_name(&values.name));
+            return values.room_half_is_right ^ primary_is_linked;
+        }
+        self.card.is_some() && self.card == self.other_face
+    }
+
     /// Copies copiable values from another object (for Clone effects).
     /// Per MTG rule 707.2, copiable values are: name, mana cost, color, card types,
     /// subtypes, supertypes, rules text, power, toughness, loyalty, and abilities.

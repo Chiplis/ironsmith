@@ -1057,6 +1057,7 @@ impl ObservedDiscardOriginals {
 /// Physical commitment supplies actual receipts here. Deferred original owners
 /// can use this same boundary to capture arrival snapshots and Madness.
 struct DiscardBatchProjection {
+    graveyard_order_view: Option<Box<GameState>>,
     player_id: crate::ids::PlayerId,
     cause: crate::events::cause::EventCause,
     chosen_cards: Vec<ObjectId>,
@@ -1151,7 +1152,16 @@ impl DiscardBatchProjection {
     }
 
     fn finish(self, game: &mut GameState, ctx: &mut ExecutionContext) -> CommittedDiscardBatch {
+        if let Some(view) = &self.graveyard_order_view {
+            let arrivals = self.results.iter()
+                .filter_map(|(_, result)| result.new_id)
+                .collect::<Vec<_>>();
+            crate::effects::zones::order_simultaneous_graveyard_batch(
+                view, game, ctx.decision_maker, Some(ctx.source), &arrivals,
+            );
+        }
         let Self {
+            graveyard_order_view: _,
             player_id,
             cause,
             chosen_cards,
@@ -1225,7 +1235,7 @@ enum DiscardOriginalStreamCommit {
 }
 
 impl DiscardOriginalStream {
-    fn new(prepared: PreparedDiscardBatch) -> Self {
+    fn new(game: &GameState, prepared: PreparedDiscardBatch) -> Self {
         let PreparedDiscardBatch {
             player_id,
             cause,
@@ -1236,6 +1246,8 @@ impl DiscardOriginalStream {
             prepared_discards,
         } = prepared;
         let projection = DiscardBatchProjection {
+            graveyard_order_view: (chosen_cards.len() > 1 && !game.collecting_graveyard_order())
+                .then(|| Box::new(game.clone())),
             player_id,
             cause,
             chosen_cards,
@@ -1389,7 +1401,7 @@ pub(crate) fn commit_selected_discard_batch(
     ctx: &mut ExecutionContext,
     prepared: PreparedDiscardBatch,
 ) -> Result<CommittedDiscardBatch, ExecutionError> {
-    match DiscardOriginalStream::new(prepared).commit_remaining(game, ctx, false)? {
+    match DiscardOriginalStream::new(game, prepared).commit_remaining(game, ctx, false)? {
         DiscardOriginalStreamCommit::Finished(batch) => Ok(batch),
         DiscardOriginalStreamCommit::Retained(_) => Err(ExecutionError::InternalError(
             "atomic discard batch retained an original stream".into(),
@@ -1407,7 +1419,7 @@ fn commit_selected_discard_original_stream(
     ExecutionError,
 > {
     discard_original_stream_receipt(
-        DiscardOriginalStream::new(prepared).commit_remaining(game, ctx, true)?,
+        DiscardOriginalStream::new(game, prepared).commit_remaining(game, ctx, true)?,
     )
 }
 

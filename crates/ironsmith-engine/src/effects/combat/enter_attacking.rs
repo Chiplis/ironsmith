@@ -23,30 +23,12 @@ impl EnterAttackingEffect {
     }
 }
 
-/// CR 506.2: is a combat phase in progress? `game.combat` alone can't answer
-/// this — it stays `Some` (emptied) after the first combat of the game, and
-/// is still `None` during the first beginning of combat step.
-fn combat_phase_in_progress(game: &GameState) -> bool {
-    game.turn.phase == crate::game_state::Phase::Combat
-}
-
-/// Is `controller` an attacking player this combat (CR 506.2; with shared
-/// team turns, every member of the active team)?
-fn is_attacking_player(game: &GameState, controller: PlayerId) -> bool {
-    let active = game.turn.active_player;
-    controller == active
-        || (game.shared_team_turns_enabled() && game.are_teammates(controller, active))
-}
-
 /// CR 506.3a / 506.3b / 506.3f / 508.4: may the permanent `object_id`, just
 /// put onto the battlefield "attacking", actually become an attacking
 /// creature? Only during a combat phase, only if it's a creature (and not a
 /// battle), and only if its controller is an attacking player. Otherwise it
 /// enters but is never attacking.
 pub(crate) fn can_enter_attacking(game: &GameState, object_id: ObjectId) -> bool {
-    if !combat_phase_in_progress(game) {
-        return false;
-    }
     let Some(object) = game.object(object_id) else {
         return false;
     };
@@ -56,7 +38,23 @@ pub(crate) fn can_enter_attacking(game: &GameState, object_id: ObjectId) -> bool
     {
         return false;
     }
-    is_attacking_player(game, game.controller_of(object))
+    game.combat_turn_for_attacking_player(game.controller_of(object))
+        .is_some()
+}
+
+/// CR 506.3 and 508.4a. The cost fixes the defender, but control and types
+/// can change before the permanent enters.
+pub(crate) fn enter_attacking_recorded_target(
+    game: &mut GameState,
+    creature: ObjectId,
+    target: AttackTarget,
+) {
+    if can_enter_attacking(game, creature)
+        && let Some(controller) = game.controller_of_id(creature)
+        && enters_attacking_targets(game, controller).contains(&target)
+    {
+        game.add_entering_attacker(creature, target);
+    }
 }
 
 /// CR 509.4 / 509.4a / 506.3a / 506.3e / 506.3f: make `blocker`, just put
@@ -72,7 +70,10 @@ pub(crate) fn put_onto_battlefield_blocking(
     blocker: ObjectId,
     attacker: ObjectId,
 ) -> bool {
-    if !combat_phase_in_progress(game) {
+    if !game.combat_lanes_with_turn().any(|(combat, turn, _)| {
+        turn.phase == crate::game_state::Phase::Combat
+            && crate::combat_state::is_attacking(combat, attacker)
+    }) {
         return false;
     }
     let Some(object) = game.object(blocker) else {
@@ -85,19 +86,13 @@ pub(crate) fn put_onto_battlefield_blocking(
         return false;
     }
     let controller = game.controller_of(object);
-    let Some(target) = game.combat.as_ref().and_then(|combat| {
-        combat
-            .attackers
-            .iter()
-            .find(|info| info.creature == attacker)
-            .map(|info| info.target.clone())
-    }) else {
+    let Some(target) = game.current_attack_target_across_lanes(attacker).cloned() else {
         return false;
     };
     if crate::combat_state::defending_player_for_attack_target(game, &target) != Some(controller) {
         return false;
     }
-    let Some(combat) = game.combat.as_mut() else {
+    let Some(combat) = game.combat_for_attacker_mut(attacker) else {
         return false;
     };
     let blockers = combat.blockers.entry(attacker).or_default();
@@ -125,16 +120,37 @@ pub(crate) fn add_blocker_after_declaration(
     attacker: ObjectId,
     entered: bool,
 ) -> bool {
-    let (attacker_was_blocked, blocker_was_blocking) =
-        game.combat.as_ref().map_or((false, false), |combat| {
-            (
-                crate::combat_state::is_blocked(combat, attacker),
-                crate::combat_state::is_blocking(combat, blocker),
-            )
-        });
+    let Some(combat) = game.combat_for_attacker(attacker) else {
+        return false;
+    };
+    if crate::combat_state::get_blockers(combat, attacker).contains(&blocker) {
+        return true;
+    }
+    let attacker_was_blocked = crate::combat_state::is_blocked(combat, attacker);
+    let blocker_was_blocking = crate::combat_state::is_blocking(combat, blocker);
     if !put_onto_battlefield_blocking(game, blocker, attacker) {
         return false;
     }
+    publish_block_transition(
+        game,
+        blocker,
+        attacker,
+        entered,
+        blocker_was_blocking,
+        attacker_was_blocked,
+    );
+    true
+}
+
+/// Publish a newly established blocking relationship after all assignments are in place.
+pub(super) fn publish_block_transition(
+    game: &mut GameState,
+    blocker: ObjectId,
+    attacker: ObjectId,
+    entered: bool,
+    blocker_was_blocking: bool,
+    attacker_was_blocked: bool,
+) {
     let snapshot = |game: &GameState, id: ObjectId| {
         game.object(id).map(|object| {
             crate::snapshot::ObjectSnapshot::from_object_with_calculated_characteristics(
@@ -155,7 +171,14 @@ pub(crate) fn add_blocker_after_declaration(
         }
         _ => crate::events::CreatureBlockedEvent::new(blocker, attacker),
     }
-    .with_combat_phase(game.turn_store.combat_phases_started_this_turn)
+    .with_combat_phase(
+        game.combat_lanes_with_turn()
+            .find(|(combat, _, _)| crate::combat_state::is_attacking(combat, attacker))
+            .map_or(
+                game.turn_store.combat_phases_started_this_turn,
+                |(_, _, store)| store.combat_phases_started_this_turn,
+            ),
+    )
     .after_declaration(entered, blocker_was_blocking);
     let provenance = game
         .provenance_graph_mut()
@@ -165,9 +188,7 @@ pub(crate) fn add_blocker_after_declaration(
         crate::triggers::TriggerEvent::new_with_provenance(blocked_event, provenance),
     );
     if !attacker_was_blocked
-        && let Some(target) = game.combat.as_ref().and_then(|combat| {
-            crate::combat_state::get_attack_target(combat, attacker).cloned()
-        })
+        && let Some(target) = game.current_attack_target_across_lanes(attacker).cloned()
     {
         let event = crate::events::CreatureBecameBlockedEvent::with_target_and_blockers(
             attacker,
@@ -186,7 +207,6 @@ pub(crate) fn add_blocker_after_declaration(
                 .with_defending_player_reference(reference),
         );
     }
-    true
 }
 
 /// CR 506.2 / 802.2 / 508.4: what a creature put onto the battlefield
@@ -200,7 +220,7 @@ pub(crate) fn enters_attacking_targets(
     game: &GameState,
     controller: PlayerId,
 ) -> Vec<AttackTarget> {
-    if !combat_phase_in_progress(game) || !is_attacking_player(game, controller) {
+    if game.combat_turn_for_attacking_player(controller).is_none() {
         return Vec::new();
     }
 

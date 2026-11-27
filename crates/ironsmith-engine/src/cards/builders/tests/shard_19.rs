@@ -2381,6 +2381,7 @@ pub(super) fn branching_evolution_runtime_doubles_only_your_plus_one_counters() 
         distributed: false,
         required_recipient: None,
         counter_kind_from_trigger: false,
+        keyword_grant: None,
     };
     plus_one
         .execute(&mut game, &mut ctx)
@@ -2412,6 +2413,7 @@ pub(super) fn branching_evolution_runtime_doubles_only_your_plus_one_counters() 
         distributed: false,
         required_recipient: None,
         counter_kind_from_trigger: false,
+        keyword_grant: None,
     };
     deathtouch_counter
         .execute(&mut game, &mut ctx)

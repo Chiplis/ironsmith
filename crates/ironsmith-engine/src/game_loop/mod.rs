@@ -73,6 +73,7 @@ mod combat_damage;
 mod combat_decisions;
 mod exile_face_down;
 mod exile_play;
+mod loop_shortcut;
 mod mandatory_loop;
 pub(crate) use mandatory_loop::object_control_fingerprint;
 mod priority_apply;
@@ -128,6 +129,11 @@ pub use self::combat_damage::*;
 pub(crate) use self::combat_damage::prepare_combat_damage_assigners;
 pub use self::combat_decisions::*;
 pub use self::priority_apply::apply_priority_response_with_dm;
+pub(crate) use self::loop_shortcut::LoopShortcutTracker;
+pub use self::loop_shortcut::detect_loop_shortcut;
+pub use self::loop_shortcut::{
+    LoopDeltaEntry, LoopShortcutOffer, LoopShortcutReport, LoopShortcutStop, MAX_LOOP_SHORTCUT_LAPS,
+};
 pub use self::priority_apply::{PriorityActionPerfMetrics, last_priority_action_perf};
 pub(crate) use self::priority_cast::{
     EffectDrivenCastOutputs, cast_spell_from_resolving_effect_with_context,

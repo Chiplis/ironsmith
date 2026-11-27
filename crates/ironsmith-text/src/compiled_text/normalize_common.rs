@@ -1083,6 +1083,7 @@ pub(super) fn describe_pt_value(value: crate::card::PtValue) -> String {
         crate::card::PtValue::Fixed(n) => n.to_string(),
         crate::card::PtValue::Star => "*".to_string(),
         crate::card::PtValue::StarPlus(n) => format!("*+{n}"),
+        crate::card::PtValue::NumberMinusStar(n) => format!("{n}-*"),
     }
 }
 

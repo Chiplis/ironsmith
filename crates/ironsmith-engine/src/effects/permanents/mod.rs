@@ -429,18 +429,11 @@ fn choose_creature_card_name_and_type_as_becomes_attached(
         return;
     }
     let chosen_name = chosen_name.trim();
-    if !chosen_name.is_empty() {
-        let mut registry = crate::cards::CardRegistry::new();
-        registry.ensure_cards_loaded([chosen_name]);
-        if let Some(definition) = registry.get(chosen_name)
-            && definition
-                .card
-                .card_types
-                .contains(&crate::types::CardType::Creature)
-        {
-            let name = definition.name().to_string();
-            game.set_chosen_named_option(attachment_id, name);
-        }
+    if name_ctx.allows_card_name(game, chosen_name) && (crate::cards::is_oracle_card_name(chosen_name)
+        || game.objects_map().values().any(|object| matches!(object.kind, crate::object::ObjectKind::Card)
+            && crate::filter::names_match(&object.name, chosen_name)))
+    {
+        game.set_chosen_named_option(attachment_id, chosen_name.to_owned());
     }
 
     let types = game.subtypes_in_family(crate::types::SubtypeFamily::Creature);

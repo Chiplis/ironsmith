@@ -67,8 +67,19 @@ export function LoopShortcutButton() {
     );
   }
 
+  const detected = loopShortcut.detectedLoop;
   return (
     <span className="loop-shortcut-control">
+      {detected ? (
+        <button
+          type="button"
+          className="decision-phase-pass loop-shortcut-detected"
+          title={ui("You repeated a loop. Each repetition: {0}. Propose repeating it automatically.", { 0: detected.summary })}
+          onClick={loopShortcut.proposeDetectedLoop}
+        >
+          {ui("Repeat loop ({0})", { 0: detected.summary })}
+        </button>
+      ) : null}
       <button
         type="button"
         className="loop-shortcut-action loop-shortcut-record"
@@ -105,6 +116,7 @@ function ProposalDialog() {
           <SheetTitle>{ui("Repeat this loop")}</SheetTitle>
           <SheetDescription>
             {ui("{0} recorded step(s). Opponents can accept or choose an iteration to interrupt. Accepted iterations run automatically.", { 0: draft.steps.length })}
+            {draft.summary ? ` ${ui("Each repetition: {0}.", { 0: draft.summary })}` : ""}
           </SheetDescription>
         </SheetHeader>
         <div className="grid gap-3 px-4 py-4">

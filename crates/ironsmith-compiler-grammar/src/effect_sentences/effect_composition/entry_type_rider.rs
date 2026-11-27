@@ -119,6 +119,11 @@ pub(crate) fn parse_entry_type_rider(
         {
             continue;
         }
+        // A descriptive entry rider can set base P/T and a creature subtype
+        // without making the arriving permanent a creature (CR 205.3d, 208.3a).
+        if !all_words[copula_start..end].iter().any(|word| matches!(*word, "creature" | "creatures")) {
+            changes.added_card_types.retain(|ty| *ty != CardType::Creature);
+        }
         let assemble = |slices: &[&[OwnedLexToken]]| {
             let mut tokens = Vec::new();
             for slice in slices {

@@ -506,6 +506,72 @@ fn queue_vote_events(
     Ok(completion)
 }
 
+/// A quantity of cards to discard or permanents to sacrifice is determined by
+/// the votes before any of them move. Catalogs encode “a card for each … vote”
+/// as a repeat around the player instruction. Preserve the player and choice
+/// filters while passing the total to the existing simultaneous action.
+fn vote_counted_player_movement(
+    effect: &crate::Effect,
+    votes: &[PlayerVote],
+) -> Option<crate::Effect> {
+    use crate::effect::Value;
+    use crate::effects::zones::SacrificePlayerEffect;
+    use crate::effects::{
+        ChooseObjectsEffect, DiscardEffect, ForPlayersEffect, RepeatEffectsEffect,
+    };
+    let repeat = effect.downcast_ref::<RepeatEffectsEffect>()?;
+    let Value::VoteCount(option) = &repeat.count else {
+        return None;
+    };
+    if !votes
+        .iter()
+        .any(|vote| vote.option_name.eq_ignore_ascii_case(option))
+    {
+        return None;
+    }
+    let [child] = repeat.effects.as_slice() else {
+        return None;
+    };
+    let players = child.downcast_ref::<ForPlayersEffect>()?;
+    let actions = match players.effects.as_slice() {
+        [action] => {
+            let mut discard = action.downcast_ref::<DiscardEffect>()?.clone();
+            if discard.count != Value::Fixed(1)
+                || discard.any_number
+                || discard.player != crate::PlayerFilter::IteratedPlayer
+            {
+                return None;
+            }
+            discard.count = repeat.count.clone();
+            vec![crate::Effect::new(discard)]
+        }
+        [choice, action] => {
+            let mut choice = choice.downcast_ref::<ChooseObjectsEffect>()?.clone();
+            let mut sacrifice = action.downcast_ref::<SacrificePlayerEffect>()?.clone();
+            if choice.count_value.is_some()
+                || choice.count.min != 1
+                || choice.count.max != Some(1)
+                || choice.chooser != crate::PlayerFilter::IteratedPlayer
+                || sacrifice.player != crate::PlayerFilter::IteratedPlayer
+                || sacrifice.count != Value::Fixed(1)
+                || !sacrifice.filter.tagged_constraints.iter().any(|binding| {
+                    binding.tag == choice.tag
+                        && binding.relation == crate::filter::TaggedOpbjectRelation::IsTaggedObject
+                })
+            {
+                return None;
+            }
+            choice.count_value = Some(repeat.count.clone());
+            sacrifice.count = repeat.count.clone();
+            vec![crate::Effect::new(choice), crate::Effect::new(sacrifice)]
+        }
+        _ => return None,
+    };
+    let mut grouped = players.clone();
+    grouped.effects = actions;
+    Some(crate::Effect::new(grouped))
+}
+
 fn execute_vote_payloads(
     effect: &VoteEffect,
     votes: &[PlayerVote],
@@ -517,8 +583,10 @@ fn execute_vote_payloads(
         for payload in &effect.payloads {
             let outcome = match payload {
                 ironsmith_core::VotePayload::Effects(effects) => {
-                    crate::effects::SequenceEffect::new(effects.clone())
-                        .execute_child_with_outputs(game, ctx)?
+                    let effects = effects.iter().map(|effect| {
+                        vote_counted_player_movement(effect, votes).unwrap_or_else(|| effect.clone())
+                    }).collect();
+                    crate::effects::SequenceEffect::new(effects).execute_child_with_outputs(game, ctx)?
                 }
                 ironsmith_core::VotePayload::ForEachVote { option, effects } => {
                     // Keep every occurrence and its voter binding. Set-valued

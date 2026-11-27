@@ -1232,7 +1232,7 @@ impl AnthemValueRuntimeExt for AnthemValue {
     }
 }
 
-fn anthem_value_as_layer_value(value: &AnthemValue) -> Option<Value> {
+fn anthem_value_as_layer_value(value: &AnthemValue, source_only: bool) -> Option<Value> {
     match value {
         AnthemValue::Fixed(value) => Some(Value::Fixed(*value)),
         // Linked cards supply their current characteristics in exile (CR
@@ -1255,11 +1255,46 @@ fn anthem_value_as_layer_value(value: &AnthemValue) -> Option<Value> {
         AnthemValue::PerCount {
             multiplier,
             count: AnthemCountExpression::MatchingFilter(filter),
-        } => Some(if *multiplier == 1 {
+        } if source_only || !value.uses_affected_object() => Some(if *multiplier == 1 {
             Value::Count(filter.clone())
         } else {
             Value::CountScaled(filter.clone(), *multiplier)
         }),
+        // The recipient's cost includes layer-1 copy effects before its
+        // power and toughness are modified in layer 7c (CR 613.1, 707.2).
+        AnthemValue::PerCount {
+            multiplier,
+            count: AnthemCountExpression::ManaSymbolsOfColorInAffectedCost(color),
+        }
+        | AnthemValue::CappedPerCount {
+            multiplier,
+            count: AnthemCountExpression::ManaSymbolsOfColorInAffectedCost(color),
+            ..
+        } => {
+            let symbols = Value::ManaSymbolsInManaCostOf {
+                spec: Box::new(crate::target::ChooseSpec::Iterated),
+                color: *color,
+            };
+            let scaled = if *multiplier == 1 {
+                symbols
+            } else {
+                Value::Scaled(Box::new(symbols), *multiplier)
+            };
+            Some(match value {
+                AnthemValue::CappedPerCount { maximum, .. } => {
+                    Value::Min(Box::new(scaled), Box::new(Value::Fixed(*maximum)))
+                }
+                _ => scaled,
+            })
+        }
+        // Compare mana costs after layer 1 has applied copy effects (CR 613.1a).
+        AnthemValue::PerCount {
+            multiplier,
+            count: AnthemCountExpression::GreatestManaValueAmong(filter),
+        } => {
+            let value = Value::GreatestManaValue(filter.clone());
+            Some(if *multiplier == 1 { value } else { Value::Scaled(Box::new(value), *multiplier) })
+        }
         AnthemValue::PerCount { .. } => None,
         AnthemValue::CappedPerCount { .. } => None,
     }
@@ -4335,21 +4370,12 @@ pub(crate) fn resolve_anthem_count_expression_in_context(
         AnthemCountExpression::PlayersLostGame => {
             game.players.iter().filter(|player| player.has_lost).count() as i32
         }
-        // Chroma (CR 702.49): mana symbols of that color in the affected
-        // object's mana cost; a hybrid symbol of that color counts.
         AnthemCountExpression::BushidoOfAffected => bushido_total(game, source),
         AnthemCountExpression::SourcePower => game.calculated_power(source).unwrap_or(0),
         AnthemCountExpression::ManaSymbolsOfColorInAffectedCost(color) => {
-            let symbol = crate::mana::ManaSymbol::from_color(*color);
-            game.object(source)
-                .and_then(|object| object.mana_cost.as_deref())
-                .map(|cost| {
-                    cost.pips()
-                        .iter()
-                        .filter(|pip| pip.contains(&symbol))
-                        .count() as i32
-                })
-                .unwrap_or(0)
+            crate::filter::object_current_mana_cost(game, source)
+                .as_ref()
+                .map_or(0, |cost| crate::targeting::mana_symbols_of_color(cost, *color))
         }
         AnthemCountExpression::AffectedAttackedThisTurn => {
             game.creature_attack_count_this_turn(source) as i32
@@ -4450,8 +4476,7 @@ pub(crate) fn resolve_anthem_count_expression_in_context(
             seen.len() as i32
         }
         AnthemCountExpression::BlockingSource => game
-            .combat
-            .as_ref()
+            .combat_for_attacker(source)
             .and_then(|combat| combat.blockers.get(&source))
             .map(|blockers| blockers.len() as i32)
             .unwrap_or(0),
@@ -5451,6 +5476,30 @@ impl StaticAbilityKind for Anthem {
             )];
         }
 
+        let target = if self.source_only {
+            EffectTarget::Source
+        } else {
+            effect_target_for_filter(source, &self.filter)
+        };
+        if (!matches!(self.power, AnthemValue::Fixed(_))
+            || !matches!(self.toughness, AnthemValue::Fixed(_)))
+            && let (Some(power), Some(toughness)) = (
+                anthem_value_as_layer_value(&self.power, self.source_only),
+                anthem_value_as_layer_value(&self.toughness, self.source_only),
+            )
+        {
+            return vec![effect_with_optional_static_condition(
+                ContinuousEffect::new(
+                    source,
+                    controller,
+                    target,
+                    Modification::ModifyPowerToughnessValue { power, toughness },
+                )
+                .with_source_type(EffectSourceType::StaticAbility),
+                &self.condition,
+            )];
+        }
+
         let uses_affected =
             self.power.uses_affected_object() || self.toughness.uses_affected_object();
 
@@ -5502,30 +5551,6 @@ impl StaticAbilityKind for Anthem {
                 ));
             }
             return effects;
-        }
-
-        let target = if self.source_only {
-            EffectTarget::Source
-        } else {
-            effect_target_for_filter(source, &self.filter)
-        };
-        if (!matches!(self.power, AnthemValue::Fixed(_))
-            || !matches!(self.toughness, AnthemValue::Fixed(_)))
-            && let (Some(power), Some(toughness)) = (
-                anthem_value_as_layer_value(&self.power),
-                anthem_value_as_layer_value(&self.toughness),
-            )
-        {
-            return vec![effect_with_optional_static_condition(
-                ContinuousEffect::new(
-                    source,
-                    controller,
-                    target,
-                    Modification::ModifyPowerToughnessValue { power, toughness },
-                )
-                .with_source_type(EffectSourceType::StaticAbility),
-                &self.condition,
-            )];
         }
 
         let power = self.power.evaluate(game, source, controller);

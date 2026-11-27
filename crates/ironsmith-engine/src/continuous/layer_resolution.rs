@@ -532,9 +532,6 @@ pub(super) fn calculate_with_layers(
                         if *exclude_source_id && candidate.id == object.id {
                             continue;
                         }
-                        if *exclude_source_name && candidate.name == object.name {
-                            continue;
-                        }
                         if let Some(counter_type) = counter
                             && candidate.counters.get(counter_type).copied().unwrap_or(0) == 0
                         {
@@ -552,6 +549,12 @@ pub(super) fn calculate_with_layers(
                             continue;
                         };
 
+                        if !crate::continuous::characteristics_in_effect_range(ctx.game, effect, candidate.id, &candidate_chars)
+                            || (*exclude_source_name && crate::filter::ObjectNames::layered(object, &chars, ctx.game)
+                                .shares(crate::filter::ObjectNames::layered(candidate, &candidate_chars, ctx.game), ctx.game))
+                        {
+                            continue;
+                        }
                         if !filter_matches_with_characteristics_in_context(
                             filter,
                             candidate,
@@ -657,9 +660,6 @@ pub(super) fn calculate_with_layers(
                         if *exclude_source_id && candidate.id == object.id {
                             continue;
                         }
-                        if *exclude_source_name && candidate.name == object.name {
-                            continue;
-                        }
 
                         let Some(candidate_chars) = calculate_characteristics_with_effects_simple(
                             candidate.id,
@@ -672,6 +672,12 @@ pub(super) fn calculate_with_layers(
                             continue;
                         };
 
+                        if !crate::continuous::characteristics_in_effect_range(ctx.game, effect, candidate.id, &candidate_chars)
+                            || (*exclude_source_name && crate::filter::ObjectNames::layered(object, &chars, ctx.game)
+                                .shares(crate::filter::ObjectNames::layered(candidate, &candidate_chars, ctx.game), ctx.game))
+                        {
+                            continue;
+                        }
                         if !filter_matches_with_characteristics_in_context(
                             filter,
                             candidate,
@@ -1484,6 +1490,14 @@ pub(super) fn for_each_filter_candidate(
         for_each_zone_candidate(ctx, zone, visitor);
         return;
     }
+    if let Some(ids) = crate::object_query::commander_characteristic_candidates(ctx.game, filter) {
+        for id in ids {
+            if let Some(object) = ctx.objects.get(&id) {
+                visitor(object);
+            }
+        }
+        return;
+    }
     if filter.any_of.is_empty() {
         for_each_zone_candidate(ctx, Zone::Battlefield, visitor);
         return;
@@ -1909,7 +1923,7 @@ pub(super) fn tracked_source_ids_for_layer(
     let mut ids = HashSet::new();
     for effect in layer_effects {
         if effect.originating_static_ability.is_some() {
-            ids.insert(effect.source);
+            ids.insert(effect.source_controller_context_host());
         }
         if effect.has_source_controller_context() {
             ids.insert(effect.source_controller_context_host());
@@ -1926,7 +1940,7 @@ pub(super) fn effect_source_is_active(
         return true;
     };
 
-    source_state.get(&effect.source).is_some_and(|chars| {
+    source_state.get(&effect.source_controller_context_host()).is_some_and(|chars| {
         if chars
             .static_abilities
             .iter()

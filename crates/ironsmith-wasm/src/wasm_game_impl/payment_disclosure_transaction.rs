@@ -307,6 +307,7 @@ impl WasmGame {
         command: UiCommand,
         command_decode_ms: f64,
     ) -> Result<JsValue, JsValue> {
+        self.enable_loop_detection();
         if let UiCommand::PriorityYield { mode, stops } = command {
             if self.loop_shortcut.is_some() {
                 return Err(payment_disclosure_error("resolve one step at a time while a loop shortcut is in progress"));

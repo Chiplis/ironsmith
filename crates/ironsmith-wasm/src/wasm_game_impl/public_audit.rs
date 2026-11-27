@@ -261,6 +261,8 @@ pub(crate) struct PublicAuditCheckpoint {
     /// null is absent/uncommitted, [] committed empty, otherwise sorted players.
     /// It is not evidence that the current arbitrary step contains an attack.
     last_attack_declaration_step_players: Option<Vec<u8>>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    retained_blockers: Vec<u64>,
     hidden_zones: Vec<PublicAuditHiddenZone>,
     /// SHA-256 (hex) of the canonical JSON of the shared hidden-claim ledger
     /// (obligations, face-down cast claims, claim subjects, library anchor
@@ -799,6 +801,8 @@ struct SyncGrandMeleeCombat {
     blockers: Vec<(u64, Vec<u64>)>,
     #[serde(default)]
     blocked_attackers: Vec<u64>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    retained_blockers: Vec<u64>,
     damage_assignment_order: Vec<(u64, Vec<u64>)>,
     attacking_bands: Vec<Vec<u64>>,
     had_to_attack_this_combat: Vec<u64>,
@@ -1118,6 +1122,7 @@ fn sync_grand_melee_combat(combat: &ironsmith::combat_state::CombatState) -> Syn
             .collect(),
         blockers,
         blocked_attackers,
+        retained_blockers: combat.retained_blockers.iter().map(|id| id.0).collect(),
         damage_assignment_order,
         attacking_bands: combat
             .attacking_bands
@@ -1846,6 +1851,9 @@ impl WasmGame {
         Ok(PublicAuditCheckpoint {
             version: PUBLIC_AUDIT_VERSION,
             last_attack_declaration_step_players: sync_last_attack_declaration_step_players(self.game.combat.as_ref()),
+            retained_blockers: self.game.combat.iter()
+                .flat_map(|combat| combat.retained_blockers.iter().map(|id| id.0))
+                .collect(),
             hidden_incarnation_high_water: self.game.hidden_incarnation_high_water(),
             format: self.match_format,
             perspective: 0,

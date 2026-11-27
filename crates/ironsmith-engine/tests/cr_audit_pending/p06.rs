@@ -1342,6 +1342,11 @@ fn cr_510_1e_illegal_total_damage_assignment_is_rejected() {
                 ));
                 runner.respond_distribute(vec![(Target::Object(b1), 2), (Target::Object(b2), 2)]);
             }
+            TurnAction::Decision(DecisionContext::Order(order)) => {
+                assert_eq!(order.player, bob);
+                assert_eq!(order.items.len(), 2);
+                runner.respond_order(order.items.into_iter().map(|(id, _)| id).collect());
+            }
             other => panic!("unexpected {other:?}"),
         }
     }

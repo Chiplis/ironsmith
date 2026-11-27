@@ -16,6 +16,7 @@ pub enum CounterActionAst {
         target: TargetAst,
     },
     PutCounters {
+        borrow_keyword_variants: bool,
         maximum_total: Option<u32>,
         counter_type: CounterType,
         count: Value,

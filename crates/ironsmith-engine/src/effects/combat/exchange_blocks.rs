@@ -10,41 +10,29 @@ use crate::ids::ObjectId;
 pub type ExchangeBlocksEffect = ironsmith_core::ExchangeBlocksEffect;
 
 fn attackers_blocked_by(game: &GameState, blocker: ObjectId) -> Vec<ObjectId> {
-    game.combat
-        .as_ref()
-        .map(|combat| {
-            combat
-                .blockers
-                .iter()
-                .filter(|(_, blockers)| blockers.contains(&blocker))
-                .map(|(attacker, _)| *attacker)
-                .collect()
-        })
-        .unwrap_or_default()
+    game.combat_lanes()
+        .flat_map(|combat| combat.blockers.iter())
+        .filter(|(_, blockers)| blockers.contains(&blocker))
+        .map(|(attacker, _)| *attacker)
+        .collect()
 }
 
-/// Could `blocker` block every one of `attackers` (evasion, restrictions,
-/// protection), judged one attacker at a time?
-fn could_block_all(game: &GameState, blocker: ObjectId, attackers: &[ObjectId]) -> bool {
-    let Some(blocker) = game.object(blocker) else {
+/// Resolve "could block" against the defending side of this attack before
+/// checking evasion, protection and other blocking restrictions.
+fn could_block(game: &GameState, attacker: ObjectId, blocker: ObjectId) -> bool {
+    let (Some(combat), Some(blocker), Some(attacking_object)) = (
+        game.combat_for_attacker(attacker),
+        game.object(blocker),
+        game.object(attacker),
+    ) else {
         return false;
     };
-    attackers.iter().all(|attacker| {
-        game.object(*attacker)
-            .is_some_and(|attacker| crate::rules::combat::can_block(attacker, blocker, game))
-    })
-}
-
-/// Could `attacker` be blocked by every one of `blockers`, judged one blocker
-/// at a time?
-fn could_be_blocked_by_all(game: &GameState, attacker: ObjectId, blockers: &[ObjectId]) -> bool {
-    let Some(attacker) = game.object(attacker) else {
-        return false;
-    };
-    blockers.iter().all(|blocker| {
-        game.object(*blocker)
-            .is_some_and(|blocker| crate::rules::combat::can_block(attacker, blocker, game))
-    })
+    crate::combat_state::controller_can_block_in_combat(
+        game,
+        combat,
+        attacker,
+        game.controller_of(blocker),
+    ) && crate::rules::combat::can_block(attacking_object, blocker, game)
 }
 
 /// General Jarkeld: two blocked attackers trade every creature blocking
@@ -56,7 +44,7 @@ fn exchange_attackers_blockers(
     first: ObjectId,
     second: ObjectId,
 ) -> Result<EffectOutcome, ExecutionError> {
-    let Some(combat) = game.combat.as_ref() else {
+    let Some(combat) = game.combat_for_attacker(first) else {
         return Ok(EffectOutcome::count(0));
     };
     let attacking = |id: ObjectId| combat.attackers.iter().any(|info| info.creature == id);
@@ -69,8 +57,12 @@ fn exchange_attackers_blockers(
     }
     let first_blockers = combat.blockers.get(&first).cloned().unwrap_or_default();
     let second_blockers = combat.blockers.get(&second).cloned().unwrap_or_default();
-    if !could_be_blocked_by_all(game, first, &second_blockers)
-        || !could_be_blocked_by_all(game, second, &first_blockers)
+    if !second_blockers
+        .iter()
+        .all(|blocker| could_block(game, first, *blocker))
+        || !first_blockers
+            .iter()
+            .all(|blocker| could_block(game, second, *blocker))
     {
         return Ok(EffectOutcome::count(0));
     }
@@ -100,7 +92,7 @@ fn exchange_attackers_blockers(
         .chain(only_first.iter().copied())
         .collect::<Vec<_>>();
     let moved = (only_first.len() + only_second.len()) as i32;
-    let Some(combat) = game.combat.as_mut() else {
+    let Some(combat) = game.combat_for_attacker_mut(first) else {
         return Ok(EffectOutcome::count(0));
     };
     for (attacker, blockers) in [(first, new_first), (second, new_second)] {
@@ -110,6 +102,13 @@ fn exchange_attackers_blockers(
         combat.blockers.insert(attacker, blockers);
     }
     game.mark_continuous_state_dirty();
+    for (attacker, blockers) in [(first, only_second), (second, only_first)] {
+        for blocker in blockers {
+            super::enter_attacking::publish_block_transition(
+                game, blocker, attacker, false, true, true,
+            );
+        }
+    }
     Ok(EffectOutcome::count(moved))
 }
 
@@ -148,28 +147,44 @@ impl EffectExecutor for ExchangeBlocksEffect {
             let second_blocks = attackers_blocked_by(game, second);
             // Both must still be blocking, and each must be able to block
             // everything the other blocks; otherwise nothing happens.
-            if first_blocks.is_empty()
-                || second_blocks.is_empty()
-                || !could_block_all(game, first, &second_blocks)
-                || !could_block_all(game, second, &first_blocks)
+            if !second_blocks
+                .iter()
+                .all(|attacker| could_block(game, *attacker, first))
+                || !first_blocks
+                    .iter()
+                    .all(|attacker| could_block(game, *attacker, second))
             {
                 return Ok(EffectOutcome::count(0));
             }
-            let Some(combat) = game.combat.as_mut() else {
+            let Some(combat) = game.combat_lanes_mut().find(|combat| {
+                crate::combat_state::is_blocking(combat, first)
+                    && crate::combat_state::is_blocking(combat, second)
+            }) else {
                 return Ok(EffectOutcome::count(0));
             };
+            // Both leave combat before they block the other's attackers. A
+            // blocking creature with no remaining attacker can still exchange.
+            combat.retained_blockers.remove(&first);
+            combat.retained_blockers.remove(&second);
             for blockers in combat.blockers.values_mut() {
                 swap_in(blockers, first, second);
-                // A creature both were blocking keeps one entry for each.
-                let mut seen = std::collections::HashSet::new();
-                blockers.retain(|id| seen.insert(*id));
             }
             for order in combat.damage_assignment_order.values_mut() {
                 swap_in(order, first, second);
-                let mut seen = std::collections::HashSet::new();
-                order.retain(|id| seen.insert(*id));
             }
             game.mark_continuous_state_dirty();
+            for (blocker, attackers) in [(first, second_blocks), (second, first_blocks)] {
+                for (index, attacker) in attackers.into_iter().enumerate() {
+                    super::enter_attacking::publish_block_transition(
+                        game,
+                        blocker,
+                        attacker,
+                        false,
+                        index != 0,
+                        true,
+                    );
+                }
+            }
             Ok(EffectOutcome::count(2))
         })
     }

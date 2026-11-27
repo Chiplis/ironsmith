@@ -2663,6 +2663,14 @@ pub(crate) fn activation_timing_allows(
         crate::ability::ActivationTiming::AnyTime | crate::ability::ActivationTiming::AsInstant => {
             true
         }
+        // CR 702.49. Catalog definitions encode ninjutsu as a combat ability.
+        // Its cost requires an unblocked attacker in the activator's combat,
+        // regardless of which Grand Melee stack receives the activation.
+        crate::ability::ActivationTiming::DuringCombat
+            if activated.keyword == Some(ironsmith_core::ActivatedAbilityKeyword::Ninjutsu) =>
+        {
+            game.combat_turn_for_attacking_player(controller).is_some()
+        }
         crate::ability::ActivationTiming::DuringCombat => matches!(game.turn.phase, Phase::Combat),
         crate::ability::ActivationTiming::SorcerySpeed => {
             if activated.is_loyalty_ability()
@@ -2717,15 +2725,7 @@ pub(crate) fn activation_timing_allows(
                 && game.stack_is_empty()
         }
         crate::ability::ActivationTiming::DeclareAttackersStepByAttackedPlayer => {
-            game.turn.phase == Phase::Combat
-                && game.turn.step == Some(crate::game_state::Step::DeclareAttackers)
-                && game.combat.as_ref().is_some_and(|combat| {
-                    combat.attackers.iter().any(|info| {
-                        info.creature == source
-                            && info.target
-                                == crate::combat_state::AttackTarget::Player(controller)
-                    })
-                })
+            game.is_being_attacked_by_during_declare_attackers(controller, source)
         }
         crate::ability::ActivationTiming::DuringSourceOwnersUpkeep => {
             game.object(source)

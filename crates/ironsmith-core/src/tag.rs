@@ -102,6 +102,9 @@ pub const PRIOR_EXILED_CARD_TAG: &str = "__prior_exiled_card__";
 /// runtime execution agree on the same typed result-set identity.
 pub const REVEALED_THIS_WAY_TAG: &str = "__revealed_this_way__";
 
+/// Objects actually sacrificed by the preceding instruction in this resolution.
+pub const SACRIFICED_THIS_WAY_TAG: &str = "__this_way_sacrificed__";
+
 /// The creatures that actually fought in the current resolution ("a creature
 /// that fought this way", T'Pring, Never Parted). A fight that does not
 /// happen (CR 701.14b) or an optional fight that is declined adds nothing.
@@ -381,6 +384,7 @@ pub const WELL_KNOWN_TAGS: &[&str] = &[
     ZONE_REPLACEMENT_OBJECT_TAG,
     PRIOR_EXILED_CARD_TAG,
     REVEALED_THIS_WAY_TAG,
+    SACRIFICED_THIS_WAY_TAG,
     FOUGHT_THIS_WAY_TAG,
     LOOKED_AT_HAND_TAG,
     SOURCE_OBJECT_TAG,

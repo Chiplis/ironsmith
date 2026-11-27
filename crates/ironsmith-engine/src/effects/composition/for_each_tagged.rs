@@ -296,13 +296,13 @@ impl EffectExecutor for ForEachControllerOfTaggedEffect {
     }
     fn select_prepared_action_program(
         &self,
-        _game: &mut GameState,
+        game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<Option<Box<dyn crate::effects::ActionProgramCursor>>, ExecutionError> {
         if ctx.decision_maker.awaiting_choice() {
             return Ok(None);
         }
-        Ok(Some(tagged_controller_cursor(self, ctx)))
+        Ok(Some(tagged_controller_cursor(self, game, ctx)))
     }
 
     fn visit_child_effects(&self, visitor: &mut dyn FnMut(&Effect)) {
@@ -450,11 +450,31 @@ impl super::iteration_program::SelectedIterationPlan for TaggedObjectPlan {
         summarize_tagged_iterations(outcomes, ranges)
     }
 }
+fn iterated_zone_move(child: &Effect, objects: &TagKey) -> Option<Effect> {
+    if let Some(tagged) = child.downcast_ref::<crate::effects::TaggedEffect>() {
+        let movement = iterated_zone_move(&tagged.effect, objects)?;
+        return Some(Effect::new(tagged.with_effect(movement)));
+    }
+    let movement = child.downcast_ref::<crate::effects::MoveToZoneEffect>()?;
+    if !matches!(movement.target, crate::target::ChooseSpec::Iterated)
+        || !matches!(
+            movement.zone,
+            crate::zone::Zone::Hand | crate::zone::Zone::Graveyard | crate::zone::Zone::Exile
+        )
+        || movement.to_top
+        || movement.library_order.is_some()
+        || !movement.tagged_destinations.is_empty()
+    {
+        return None;
+    }
+    let mut grouped = movement.clone();
+    grouped.target = crate::target::ChooseSpec::Tagged(objects.clone());
+    Some(Effect::new(grouped))
+}
+
 /// The lowered "put the rest into <zone>" complement: for each tagged card,
 /// unless it shares a stable identity with the kept selection, move it.
-fn tagged_remainder_move(
-    effect: &ForEachTaggedEffect,
-) -> Option<(&TagKey, &crate::effects::MoveToZoneEffect)> {
+fn tagged_remainder_move(effect: &ForEachTaggedEffect) -> Option<(&TagKey, &Effect)> {
     let [child] = effect.effects.as_slice() else {
         return None;
     };
@@ -465,15 +485,6 @@ fn tagged_remainder_move(
     let [move_child] = conditional.if_false.as_slice() else {
         return None;
     };
-    let move_effect = move_child.downcast_ref::<crate::effects::MoveToZoneEffect>()?;
-    if !matches!(move_effect.target, crate::target::ChooseSpec::Iterated)
-        || move_effect.zone == crate::zone::Zone::Library
-        || move_effect.zone == crate::zone::Zone::Battlefield
-        || move_effect.to_top
-        || move_effect.library_order.is_some()
-    {
-        return None;
-    }
     let crate::effect::Condition::TaggedObjectMatches(condition_tag, membership) =
         &conditional.condition
     else {
@@ -497,7 +508,7 @@ fn tagged_remainder_move(
     } else {
         return None;
     };
-    (keep != &effect.tag).then_some((keep, move_effect))
+    (keep != &effect.tag).then_some((keep, move_child))
 }
 
 fn tagged_object_cursor(
@@ -505,8 +516,36 @@ fn tagged_object_cursor(
     game: &GameState,
     ctx: &mut ExecutionContext,
 ) -> Result<Box<dyn crate::effects::ActionProgramCursor>, ExecutionError> {
-    let snapshots = tagged_iteration_snapshots(effect, ctx);
-    if snapshots.is_empty() {
+    if let Some(group) = super::owner_library_moves::consult_former_controllers(effect) {
+        return Ok(tagged_controller_cursor(&group, game, ctx));
+    }
+    if let Some(shuffle) = super::owner_library_moves::shuffle_targeted_cards(effect, ctx) {
+        return Ok(super::sequence::sequence_cursor(
+            &crate::effects::SequenceEffect::new(vec![shuffle]), ctx,
+        ));
+    }
+    if let Some(group) = crate::effects::cards::controller_search::grouped_controller_search(effect, game, ctx) {
+        return Ok(super::sequence::sequence_cursor(
+            &crate::effects::SequenceEffect::new(vec![Effect::new(group)]), ctx,
+        ));
+    }
+    if let Some(group) = crate::effects::cards::search_group::grouped_name_search(effect, game, ctx) {
+        return Ok(super::sequence::sequence_cursor(&group, ctx));
+    }
+    let mut snapshots = tagged_iteration_snapshots(effect, ctx);
+    if effect.controller_at_last_blocked_by.is_none()
+        && let Some(search) = super::for_each_object::prepare_name_search_slots(&effect.effects, &snapshots, game, ctx)?
+    {
+        return Ok(super::sequence::sequence_cursor(&search, ctx));
+    }
+    super::for_each_object::order_cast_iterations(
+        &effect.effects,
+        &mut snapshots,
+        game,
+        ctx,
+        |card| (card.object_id, card),
+    );
+    if snapshots.is_empty() || ctx.decision_maker.awaiting_choice() {
         return Ok(super::action_program::finished_program_cursor(
             crate::effects::CompletedEffectOutputs::aggregate_only(EffectOutcome::count(0)),
         ));
@@ -515,7 +554,18 @@ fn tagged_object_cursor(
     // remaining card at once (CR 608.2c), so a "one or more cards are put
     // into your graveyard" trigger sees a single event (CR 603.2c), not one
     // per card.
-    if let Some((keep, move_effect)) = tagged_remainder_move(effect) {
+    if let [child] = effect.effects.as_slice()
+        && let Some(grouped) = iterated_zone_move(child, &effect.tag)
+        && effect.controller_at_last_blocked_by.is_none()
+    {
+        return Ok(super::sequence::sequence_cursor(
+            &crate::effects::SequenceEffect::new(vec![grouped]), ctx,
+        ));
+    }
+    let rest_tag = TagKey::from("__tagged_remainder__");
+    if let Some((keep, child)) = tagged_remainder_move(effect)
+        && let Some(grouped) = iterated_zone_move(child, &rest_tag)
+    {
         let kept: Vec<_> = ctx
             .get_tagged_all(keep)
             .into_iter()
@@ -536,13 +586,10 @@ fn tagged_object_cursor(
                 crate::effects::CompletedEffectOutputs::aggregate_only(EffectOutcome::count(0)),
             ));
         }
-        let rest_tag = TagKey::from("__tagged_remainder__");
         ctx.set_tagged_objects(rest_tag.clone(), rest);
-        let mut grouped = move_effect.clone();
-        grouped.target = crate::target::ChooseSpec::Tagged(rest_tag);
         return Ok(super::branch_program::selected_branch_cursor(vec![
             super::branch_program::SelectedProgramBranch {
-                effects: vec![Effect::new(grouped)],
+                effects: vec![grouped],
                 identity: vec![0],
                 repetitions: 1,
                 scope: crate::effects::ProgramActionScope::default(),
@@ -603,13 +650,13 @@ impl super::iteration_program::SelectedIterationPlan for TaggedControllerPlan {
 }
 fn tagged_controller_cursor(
     effect: &ForEachControllerOfTaggedEffect,
+    game: &GameState,
     ctx: &mut ExecutionContext,
 ) -> Box<dyn crate::effects::ActionProgramCursor> {
-    let mut controllers = ctx
-        .count_tagged_by_controller(&effect.tag)
-        .into_iter()
-        .collect::<Vec<_>>();
-    controllers.sort_by_key(|(player, _)| player.0);
+    let counts = ctx.count_tagged_by_controller(&effect.tag);
+    let controllers = game.team_apnap_player_order().into_iter()
+        .filter_map(|player| counts.get(&player).map(|count| (player, *count)))
+        .collect();
     super::iteration_program::selected_iteration_cursor(
         Box::new(TaggedControllerPlan {
             effects: effect.effects.clone(),
@@ -679,7 +726,7 @@ fn execute_tagged_controller_iterations(
     ctx: &mut ExecutionContext,
 ) -> Result<crate::effects::CompletedEffectOutputs, ExecutionError> {
     super::action_program::execute_action_program_with_outputs(
-        tagged_controller_cursor(effect, ctx),
+        tagged_controller_cursor(effect, game, ctx),
         game,
         ctx,
         crate::effects::EffectExecutionPurpose::Action,

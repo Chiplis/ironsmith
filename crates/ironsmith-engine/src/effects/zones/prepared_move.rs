@@ -419,7 +419,10 @@ pub(crate) fn commit_zone_moves_with_completion<'a, R>(
             && crate::effects::helpers::begin_simultaneous_zone_change_lookback(game);
         let result: Result<(_, _, _), ExecutionError> = (|| {
             let (proposals, mut draws) = prepare_zone_moves(game, ctx, moves)?;
-            let receipts = commit_prepared_zone_moves(game, ctx, proposals, &mut draws)?;
+            let order = super::GraveyardOrderBatch::begin(game, proposals.len() > 1);
+            let receipts = commit_prepared_zone_moves(game, ctx, proposals, &mut draws);
+            order.finish(game, ctx.decision_maker, Some(ctx.source), receipts.is_ok());
+            let receipts = receipts?;
             if ctx.decision_maker.awaiting_choice() {
                 return Ok((crate::effect::EffectOutcome::count(0), Vec::new(), draws));
             }

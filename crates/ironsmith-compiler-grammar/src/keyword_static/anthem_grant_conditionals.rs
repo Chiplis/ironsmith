@@ -3804,7 +3804,7 @@ pub fn parse_subject_is_every_subtype_family_line(
     let subject = parse_anthem_subject(shape.subject_tokens)?;
     if shape.basic_land_types || shape.nonbasic_land_types {
         let basic_land_types = if shape.nonbasic_land_types {
-            crate::types::Subtype::nonbasic_land_types().to_vec()
+            crate::types::Subtype::nonbasic_land_types().iter().copied().filter(|ty| !ty.is_custom_vocabulary()).collect::<Vec<_>>()
         } else {
             vec![
                 crate::types::Subtype::Plains,

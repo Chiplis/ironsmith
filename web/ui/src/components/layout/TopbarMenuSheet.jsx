@@ -560,7 +560,7 @@ export default function TopbarMenuSheet({
                   <input
                     className="settings-accent-input"
                     type="color"
-                    value={perspectiveAccent?.hex || "#b79cff"}
+                    value={perspectiveAccent?.hex || "#4da3ff"}
                     onChange={(event) => setPlayerAccentOverride(perspective ?? 0, event.target.value)}
                     aria-label={t("settings.playerAccent")}
                   />

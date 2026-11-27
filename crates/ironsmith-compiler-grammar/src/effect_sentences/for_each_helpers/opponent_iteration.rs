@@ -166,8 +166,8 @@ pub fn parse_for_each_opponent_clause(
     } else {
         EffectAst::ForEach(ForEachEffectAst::ForEachPlayersFiltered {
             filter: iteration_filter,
+            sequential: !searches_each_participants_library(&effects),
             effects,
-            sequential: true,
         })
     }))
 }

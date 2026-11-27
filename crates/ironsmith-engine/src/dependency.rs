@@ -370,10 +370,11 @@ fn source_ability_presence_changed(
     let Some(originating_static_ability) = &a.originating_static_ability else {
         return false;
     };
-    let Some(source_obj) = objects.get(&a.source) else {
+    let host = a.source_controller_context_host();
+    let Some(source_obj) = objects.get(&host) else {
         return false;
     };
-    let Some(source_chars_before) = baseline.get(&a.source) else {
+    let Some(source_chars_before) = baseline.get(&host) else {
         return false;
     };
 
@@ -3919,6 +3920,7 @@ mod tests {
             object.id,
             CalculatedCharacteristics {
                 copy_values: None,
+                has_copy_overlay: false,
                 alternate_name: object.split_other_half_name().map(str::to_string),
                 name_set_timestamp: None,
                 name: object.name.clone(),
@@ -3988,6 +3990,7 @@ mod tests {
             land.id,
             CalculatedCharacteristics {
                 copy_values: None,
+                has_copy_overlay: false,
                 alternate_name: land.split_other_half_name().map(str::to_string),
                 name_set_timestamp: None,
                 name: land.name.clone(),
@@ -4130,6 +4133,7 @@ mod tests {
             land.id,
             CalculatedCharacteristics {
                 copy_values: None,
+                has_copy_overlay: false,
                 alternate_name: land.split_other_half_name().map(str::to_string),
                 name_set_timestamp: None,
                 name: land.name.clone(),
@@ -4324,6 +4328,7 @@ mod tests {
             object.id,
             CalculatedCharacteristics {
                 copy_values: None,
+                has_copy_overlay: false,
                 alternate_name: object.split_other_half_name().map(str::to_string),
                 name_set_timestamp: None,
                 name: object.name.clone(),
@@ -4565,6 +4570,7 @@ mod tests {
     fn chars_for(object: &crate::object::Object) -> CalculatedCharacteristics {
         CalculatedCharacteristics {
             copy_values: None,
+            has_copy_overlay: false,
             alternate_name: object.split_other_half_name().map(str::to_string),
             name_set_timestamp: None,
             name: object.name.clone(),

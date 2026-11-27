@@ -31,6 +31,8 @@ pub enum PtValue {
     Star,
     /// Star plus a number (e.g., *+1)
     StarPlus(i32),
+    /// Printed forms such as 7−*.
+    NumberMinusStar(i32),
 }
 
 impl PtValue {
@@ -39,7 +41,7 @@ impl PtValue {
         match self {
             PtValue::Fixed(n) => n,
             PtValue::Star => 0,
-            PtValue::StarPlus(n) => n,
+            PtValue::StarPlus(n) | PtValue::NumberMinusStar(n) => n,
         }
     }
 }
@@ -51,6 +53,7 @@ impl std::fmt::Display for PtValue {
             PtValue::Star => f.write_str("*"),
             PtValue::StarPlus(n) if *n >= 0 => write!(f, "*+{n}"),
             PtValue::StarPlus(n) => write!(f, "*{n}"),
+            PtValue::NumberMinusStar(n) => write!(f, "{n}-*"),
         }
     }
 }

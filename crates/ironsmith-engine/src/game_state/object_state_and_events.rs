@@ -1995,7 +1995,8 @@ impl GameState {
         let Some((sets_day_if_unset, daybound, nightbound)) = self.object(id).and_then(|object| {
             (object.zone == Zone::Battlefield).then(|| {
                 (
-                    Self::object_starts_daytime_if_unset_as_enters(object),
+                    Self::object_starts_daytime_if_unset_as_enters(object)
+                        && self.current_has_static_ability_id(id, crate::static_abilities::StaticAbilityId::DayNightStartsDayAsEnters),
                     may_be_day_night && self.permanent_has_day_night_keyword_for_designation(
                         id,
                         crate::static_abilities::StaticAbilityId::Daybound,
@@ -2415,49 +2416,43 @@ impl GameState {
     ) {
         // A creature is attacking at most once (CR 506.4): an entry already
         // made attacking by one instruction isn't added again by another.
-        if self
-            .combat
-            .as_ref()
-            .is_some_and(|combat| combat.attackers.iter().any(|info| info.creature == creature))
-        {
+        if self.current_attack_target_across_lanes(creature).is_some() {
             return;
         }
-        let attacked_permanent = target.attacked_permanent();
-        let as_battle = matches!(target, crate::combat_state::AttackTarget::Battle(_));
-        self.retain_attacking_role(creature, &target);
-        self.combat
-            .get_or_insert_with(Default::default)
-            .attackers
-            .push(crate::combat_state::AttackerInfo { creature, target });
-        // CR 506.3d / 508.4d: entering attacking during the declare blockers,
-        // combat damage, or end of combat step means entering unblocked, even
-        // when this combat skipped its declare blockers step.
-        if self.turn.phase == crate::game_state::Phase::Combat
+        let turn = self
+            .controller_of_id(creature)
+            .and_then(|player| self.combat_turn_for_attacking_player(player))
+            .unwrap_or(&self.turn);
+        let active = turn.active_player;
+        let after_blockers = turn.phase == super::Phase::Combat
             && matches!(
-                self.turn.step,
+                turn.step,
                 Some(
-                    crate::game_state::Step::DeclareBlockers
-                        | crate::game_state::Step::CombatDamage
-                        | crate::game_state::Step::EndCombat
+                    super::Step::DeclareBlockers
+                        | super::Step::CombatDamage
+                        | super::Step::EndCombat
                 )
-            )
-            && let Some(combat) = self.combat.as_mut()
-        {
+            );
+        let attacked_permanent = target.attacked_permanent();
+        let combat = self
+            .combat_slot_for_turn_mut(active)
+            .get_or_insert_with(Default::default);
+        combat.attackers.push(crate::combat_state::AttackerInfo {
+            creature,
+            target: target.clone(),
+        });
+        if after_blockers {
             combat.block_declaration_complete = true;
         }
+        self.retain_attacking_role(creature, &target);
         // Combat roles can change characteristics and replacement eligibility.
         self.mark_continuous_state_dirty();
         // Capture history at the role commit. Waiting until a later refresh
         // can record the next instruction's changed types as the original
         // attacked types (CR 506.4e).
         if let Some(permanent) = attacked_permanent {
-            let original_types = crate::combat_state::AttackedPermanentTypes {
-                planeswalker: !as_battle
-                    || self.object_has_card_type(permanent, crate::types::CardType::Planeswalker),
-                battle: as_battle
-                    || self.object_has_card_type(permanent, crate::types::CardType::Battle),
-            };
-            self.combat
+            let original_types = target.permanent_types(self, permanent);
+            self.combat_slot_for_turn_mut(active)
                 .as_mut()
                 .expect("role committed")
                 .attacked_permanent_types
@@ -2478,15 +2473,33 @@ impl GameState {
         self.remove_object_from_combat_with(id, true);
     }
 
+    pub(crate) fn blocked_at_departure(&self, attacker: ObjectId, blocker: ObjectId) -> bool {
+        self.combat_transients
+            .departed_block_relations
+            .contains(&(attacker, blocker))
+    }
+
     fn remove_object_from_combat_with(&mut self, id: ObjectId, departed: bool) {
         self.retire_attacking_role(id);
+        let mut departure_relations = Vec::new();
         let was_participating = self.mutate_combat_lanes(|combat| {
             if departed {
-                combat.remove_departed_combatant(id)
-            } else {
-                combat.remove_combatant(id)
+                for (&attacker, blockers) in &combat.blockers {
+                    if attacker == id {
+                        departure_relations
+                            .extend(blockers.iter().map(|&blocker| (attacker, blocker)));
+                    } else if blockers.contains(&id) {
+                        departure_relations.push((attacker, id));
+                    }
+                }
             }
+            combat.remove_combatant(id)
         });
+        if !departure_relations.is_empty() {
+            self.combat_transients_mut()
+                .departed_block_relations
+                .extend(departure_relations);
+        }
         self.clear_ninjutsu_attack_targets_for(id);
         if was_participating {
             // Combat roles can condition abilities and replacement matchers.
@@ -2990,7 +3003,7 @@ impl GameState {
             .copied()
     }
 
-    /// Return every player who may legally protect the battle right now.
+    /// Players its controller can currently choose as a new protector.
     pub fn legal_battle_protectors(&self, battle: ObjectId) -> Vec<PlayerId> {
         let Some(object) = self.object(battle) else {
             return Vec::new();
@@ -3018,25 +3031,30 @@ impl GameState {
         controller: PlayerId,
         is_siege: bool,
     ) -> Vec<PlayerId> {
-        if !is_siege {
-            return self
-                .player(controller)
-                .is_some_and(|player| player.is_in_game())
-                .then_some(controller)
-                .into_iter()
-                .collect();
-        }
-        // CR 310.11a: a Siege's protector is an opponent of its controller,
-        // never a teammate.
         self.players
             .iter()
             .filter(|player| {
-                player.id != controller
-                    && player.is_in_game()
-                    && self.are_opponents(controller, player.id)
+                player.is_in_game()
+                    && self.battle_type_allows_protector(controller, is_siege, player.id)
+                    && self.player_is_within_range(controller, player.id)
             })
             .map(|player| player.id)
             .collect()
+    }
+
+    /// CR 310.9a, 310.12a: battle type determines who can be its protector.
+    /// CR 801.5a adds a range requirement when making a new choice.
+    pub(crate) fn battle_type_allows_protector(
+        &self,
+        controller: PlayerId,
+        is_siege: bool,
+        protector: PlayerId,
+    ) -> bool {
+        if is_siege {
+            self.are_opponents(controller, protector)
+        } else {
+            controller == protector
+        }
     }
 
     /// Designate a legal protector for a battle.
@@ -5452,6 +5470,13 @@ impl GameState {
                 .insert(stable_id, self.turn.turn_number);
         }
         let (object_snapshot, source_snapshot) = self.projected_turn_event_snapshots(event);
+        if let Some(attacker) = became_blocked
+            && let Some((_, store)) = self.other_turn_for_attacker_mut(attacker)
+        {
+            // A later effect in the attacker's combat can ask who blocked it.
+            // Record the occurrence there without queuing its triggers twice.
+            store.turn_history.record_event(event, object_snapshot.clone(), source_snapshot.clone());
+        }
         self.turn_store
             .turn_history
             .record_event(event, object_snapshot, source_snapshot);

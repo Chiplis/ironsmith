@@ -26,6 +26,9 @@ const phaseIcons = {
   Combat: Axe, Main2: Sparkles, End: Sunset, Cleanup: BrushCleaning,
 };
 const STOP_STATUS = { always: 'Stop every time', can_act: 'Stop when I can act' };
+// The legend on the right of the strip: one sample cell ("Phase" stands in for
+// any phase) per dot state, in the order a click cycles them.
+const STOP_LEGEND = [['off', 'No stop'], ['can_act', 'Stop if I can act'], ['always', 'Stop every time']];
 
 // One icon per phase. Between the icon and its label sits one dot per player,
 // bordered in that player's color: hollow = no stop on their turn, white =
@@ -217,6 +220,17 @@ export default function PhaseTrack({ compact = false, reserveCombatSpace = false
         {renderTrack(PHASE_TRACK, active, 'phase')}
         {(showCombat || reserveCombatSpace) && renderTrack(COMBAT_STEPS, priorityStepKey(state), 'step', !showCombat)}
       </div>
+      {reserveCombatSpace && <ul className="phase-track-stop-legend" style={{ '--stop-accent': self ? accentOf(self) : undefined }}
+        aria-label={ui('Stop dots under each phase')}
+        title={ui('Each phase has one dot per player. Click a dot to cycle it; right-click for more.')}>
+        {STOP_LEGEND.map(([mode, meaning]) => <li key={mode} className="phase-track-stop-legend-row">
+          <span className="phase-track-stop-legend-sample" aria-hidden="true">
+            <span className="phase-track-stop-legend-dot" data-stop={mode} />
+            <span className="phase-track-stop-legend-phase">{ui('Phase')}</span>
+          </span>
+          <span className="phase-track-stop-legend-meaning">{ui(meaning)}</span>
+        </li>)}
+      </ul>}
     </div>
   </div>;
 }

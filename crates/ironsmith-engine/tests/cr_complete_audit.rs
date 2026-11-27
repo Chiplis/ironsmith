@@ -26123,8 +26123,6 @@ fn cr_801_2d_battle_is_in_range_through_either_its_controller_or_its_protector()
                 ],
                 20,
             );
-            game.enable_limited_range_of_influence(players.clone(), vec![1; 5])
-                .unwrap();
             let in_range = |i: usize| matches!(i, 0 | 1 | 4);
             let source =
                 CardDefinitionBuilder::new(CardId::new(), "Ordinary source observing its range")
@@ -26142,6 +26140,9 @@ fn cr_801_2d_battle_is_in_range_through_either_its_controller_or_its_protector()
             let battle =
                 game.create_object_from_definition(&def, players[controller], Zone::Battlefield);
             assert!(game.set_battle_protector(battle, players[protector]));
+            // Establish the existing protector before applying the range used by the observer.
+            game.enable_limited_range_of_influence(players.clone(), vec![1; 5])
+                .unwrap();
             let def = CardDefinitionBuilder::new(CardId::new(), "Nonbattle visibility control")
                 .card_types(vec![CardType::Artifact])
                 .build();
@@ -26224,8 +26225,6 @@ fn cr_801_7a_departed_battle_trigger_range_uses_its_predeparture_protector() {
                         ],
                         20,
                     );
-                    game.enable_limited_range_of_influence(players.clone(), vec![1; 5])
-                        .unwrap();
                     let in_range = |i: usize| matches!(i, 0 | 1 | 4);
                     let source = CardDefinitionBuilder::new(
                         CardId::new(),
@@ -26253,6 +26252,9 @@ fn cr_801_7a_departed_battle_trigger_range_uses_its_predeparture_protector() {
                     );
                     let stable = game.object(battle).unwrap().stable_id;
                     assert!(game.set_battle_protector(battle, players[protector]));
+                    // Establish the existing protector before applying the range used by the observer.
+                    game.enable_limited_range_of_influence(players.clone(), vec![1; 5])
+                        .unwrap();
                     let watcher = CardDefinitionBuilder::new(
                         CardId::new(),
                         "Observer of a permanent leaving its range",
@@ -26480,8 +26482,6 @@ fn audit_range_scope_of_generic_block_events(observes_blocks: bool) -> Vec<Strin
                     );
                     let mut ranges = vec![2; 5];
                     ranges[observer] = range;
-                    game.enable_limited_range_of_influence(players.clone(), ranges)
-                        .unwrap();
                     game.turn.active_player = attacking_player;
                     game.turn.phase = Phase::Combat;
                     game.turn.step = Some(Step::DeclareAttackers);
@@ -26489,14 +26489,6 @@ fn audit_range_scope_of_generic_block_events(observes_blocks: bool) -> Vec<Strin
                         let apart = observer.abs_diff(subject);
                         apart.min(5 - apart) <= range as usize
                     };
-                    assert_eq!(
-                        game.player_is_within_range(players[observer], attacking_player),
-                        visible(1)
-                    );
-                    assert_eq!(
-                        game.player_is_within_range(players[observer], defending_player),
-                        visible(2)
-                    );
                     let attacker = CardDefinitionBuilder::new(
                         CardId::new(),
                         "Attacker involved in scope-sensitive block events",
@@ -26591,6 +26583,17 @@ fn audit_range_scope_of_generic_block_events(observes_blocks: bool) -> Vec<Strin
                             AttackTarget::Battle(battle)
                         }
                     };
+                    // Establish the existing protector before applying the range used by the observer.
+                    game.enable_limited_range_of_influence(players.clone(), ranges)
+                        .unwrap();
+                    assert_eq!(
+                        game.player_is_within_range(players[observer], attacking_player),
+                        visible(1)
+                    );
+                    assert_eq!(
+                        game.player_is_within_range(players[observer], defending_player),
+                        visible(2)
+                    );
                     let mut combat = combat_state::new_combat();
                     let mut queue = ironsmith::triggers::TriggerQueue::new();
                     ironsmith::game_loop::apply_attacker_declarations(

@@ -897,7 +897,7 @@ pub(super) fn for_each_search_then_those_players_put_onto_battlefield(
         *count,
         count_value.clone(),
         None,
-        crate::effect::SearchResultReferenceSurface::ThatCard,
+        crate::effect::SearchResultReferenceSurface::ThoseCards,
         false,
         tapped,
         false,

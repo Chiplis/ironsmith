@@ -270,6 +270,14 @@ impl MayEffect {
         Ok(true)
     }
 
+    pub(super) fn accepts_search_slot(
+        &self,
+        game: &GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<bool, ExecutionError> {
+        Ok(self.prepare_optional_decision(game, ctx)?.is_some())
+    }
+
     /// Capture the acceptance claim without mutating the original world. The
     /// same decision owner is used by live, prepared and scheduled programs.
     fn prepare_optional_decision(
@@ -307,7 +315,7 @@ impl MayEffect {
                 super::choose_objects_runtime::friendly_same_name_search_prompt(
                     game,
                     ctx,
-                    &choose.filter,
+                    choose,
                     choose.count.min,
                     max,
                 )
@@ -1063,7 +1071,9 @@ impl MayEffect {
 
         if let Some(pay_life) = self.effects[0].downcast_ref::<crate::effects::PayLifeEffect>() {
             let player = resolve_player_from_spec(game, &pay_life.player, ctx)?;
-            let amount = resolve_value(game, &pay_life.amount, ctx)?.max(0) as u32;
+            let Some(amount) = crate::effects::helpers::resolve_payment_amount(game, &pay_life.amount, ctx)? else {
+                return Ok(true);
+            };
             return Ok(!game.can_pay_life_with_reason(
                 player,
                 amount,

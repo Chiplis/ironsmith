@@ -1887,6 +1887,7 @@ impl WasmGame {
                 | SpecialAction::PerformRepeatableManaPaymentAction { .. } => None,
             },
             LegalAction::PassPriority
+            | LegalAction::ShortcutLoop
             | LegalAction::KeepOpeningHand
             | LegalAction::TakeMulligan
             | LegalAction::ContinuePregame
@@ -2018,13 +2019,11 @@ impl WasmGame {
                 id,
                 kind: AvailableActionKind::Cast {
                     card_id: object_id(self.manabrew_game(), *room_id),
-                    // CR 709.5: the printed left half is the front face. The
-                    // engine names doors relative to the permanent's current
-                    // half, which is the right one once it has been swapped.
                     mode: PlayCardMode::UnlockDoor {
-                        door: match door {
-                            ironsmith::special_actions::RoomDoor::Linked => RoomDoor::Right,
-                            ironsmith::special_actions::RoomDoor::Current => RoomDoor::Left,
+                        door: if ironsmith::special_actions::room_door_is_right(self.manabrew_game(), *room_id, *door) {
+                            RoomDoor::Right
+                        } else {
+                            RoomDoor::Left
                         },
                     },
                     label: described.unwrap_or_else(|| "Unlock door".to_string()),

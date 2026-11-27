@@ -3466,12 +3466,9 @@ fn lock_effect_cast_price(
                 ),
             ))
         } else if let Some(life) = effect.downcast_ref::<crate::effects::PayLifeEffect>() {
-            Some(crate::effect::Effect::new(
-                crate::effects::PayLifeEffect::new(
-                    crate::effects::helpers::resolve_value(game, &life.amount, &context)?,
-                    life.player.clone(),
-                ),
-            ))
+            crate::effects::helpers::resolve_payment_amount(game, &life.amount, &context)?.map(|amount| {
+                crate::effect::Effect::new(crate::effects::PayLifeEffect::new(amount, life.player.clone()))
+            })
         } else if let Some(energy) = effect.downcast_ref::<crate::effects::PayEnergyEffect>() {
             Some(crate::effect::Effect::new(
                 crate::effects::PayEnergyEffect::new(

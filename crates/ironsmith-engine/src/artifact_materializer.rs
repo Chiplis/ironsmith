@@ -954,6 +954,26 @@ impl crate::effect_model_interpreter::EffectModelInterpreterHooks<WireEffectMode
         ArtifactMaterializationError::UnsupportedEffect { detail }
     }
 
+    fn legacy_collective_search_destination(&self) -> bool {
+        // Old artifacts marked the per-object search result as singular even
+        // when the following instruction moved all found cards collectively.
+        ["those players put those cards onto the battlefield tapped, then shuffle",
+         "those players put those cards onto the battlefield, then shuffle"]
+            .iter().any(|text| self.creator_text.contains(text))
+    }
+
+    fn legacy_simultaneous_library_search(&self, filter: &crate::target::PlayerFilter) -> bool {
+        use crate::target::PlayerFilter;
+        // Older artifacts serialized the ordinary imperative “for each” as a
+        // serial loop. Use its retained instruction to distinguish explicit order.
+        let scope = match filter {
+            PlayerFilter::Any => "for each player, search that player's library",
+            PlayerFilter::Opponent => "for each opponent, search that player's library",
+            _ => return false,
+        };
+        self.creator_text.contains(scope)
+    }
+
     fn legacy_token_word_roles(
         &self,
         create: &crate::effects::CreateTokenEffect,

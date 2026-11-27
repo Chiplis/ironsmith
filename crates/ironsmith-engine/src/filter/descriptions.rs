@@ -148,8 +148,7 @@ pub(super) fn attacking_defending_player_for_object(
     object_id: ObjectId,
     game: &crate::game_state::GameState,
 ) -> Option<PlayerId> {
-    let combat = game.combat.as_ref()?;
-    let target = crate::combat_state::get_attack_target(combat, object_id)?;
+    let target = game.current_attack_target_across_lanes(object_id)?;
     match target {
         crate::combat_state::AttackTarget::Player(player_id) => Some(*player_id),
         crate::combat_state::AttackTarget::Planeswalker(planeswalker_id) => game
@@ -167,8 +166,7 @@ pub(super) fn attacking_player_for_object(
     object_id: ObjectId,
     game: &crate::game_state::GameState,
 ) -> Option<PlayerId> {
-    let combat = game.combat.as_ref()?;
-    match crate::combat_state::get_attack_target(combat, object_id)? {
+    match game.current_attack_target_across_lanes(object_id)? {
         crate::combat_state::AttackTarget::Player(player_id) => Some(*player_id),
         crate::combat_state::AttackTarget::Planeswalker(_) => None,
         crate::combat_state::AttackTarget::Battle(_) => None,

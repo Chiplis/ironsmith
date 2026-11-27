@@ -756,6 +756,7 @@ fn parse_unless_put_counters_clause_as_cost(
                     target_count,
                     distributed: false,
                     required_recipient: None,
+                    ..
                 }),
             ..
         }),

@@ -57,8 +57,14 @@ pub(crate) fn apply_outcome_tags(
     mut runtime: TaggedRuntimeState,
 ) {
     let outcome = outcome.instruction_result();
-    if let Some(action)=effect.action {
-        ctx.set_tagged_objects(effect.tag.clone(),outcome.action_objects(action,None).into_iter().cloned().collect());
+    if let Some(action) = effect.action {
+        let objects: Vec<_> = outcome.action_objects(action, None).into_iter().cloned().collect();
+        if action == crate::effect::PriorEffectAction::Sacrificed {
+            // A following instruction may refer to the whole simultaneous
+            // sacrifice, including objects contributed by other controllers.
+            ctx.set_tagged_objects(ironsmith_core::tag::SACRIFICED_THIS_WAY_TAG, objects.clone());
+        }
+        ctx.set_tagged_objects(effect.tag.clone(), objects);
         return;
     }
     runtime.outcome_only = effect.outcome_only;

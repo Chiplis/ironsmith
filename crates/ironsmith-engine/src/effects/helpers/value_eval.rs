@@ -8,6 +8,18 @@ pub(crate) use context::NumericProperty;
 use context::Reduction;
 pub(crate) use damage_history::resolve_damage_history_for_comparison;
 
+/// A cost referring to an undefined commander color identity cannot be paid (CR 903.4f),
+/// even if evaluating its arithmetic would otherwise produce a payable number.
+pub(crate) fn resolve_payment_amount(
+    game: &GameState,
+    value: &Value,
+    ctx: &ExecutionContext,
+) -> Result<Option<u32>, ExecutionError> {
+    let context = EvaluationContext::execution_context(game, ctx);
+    let amount = resolve(value, &context)?;
+    Ok((!context.undefined_commander_identity.get()).then_some(amount.max(0) as u32))
+}
+
 pub(crate) fn resolve_continuous(value: &Value, layer: LayerValueContext<'_, '_>) -> i32 {
     let context = EvaluationContext::continuous(layer);
     resolve(value, &context)
@@ -1307,12 +1319,15 @@ pub(crate) fn resolve_wide(
         }
         Value::CommanderColorIdentityColors(player_spec) => {
             let player_ids = context.player_ids(value, player_spec)?;
-            Ok(i64::from(
-                player_ids
-                    .into_iter()
-                    .map(|player_id| game.get_commander_color_identity(player_id).count() as i64)
-                    .sum::<i64>(),
-            ))
+            let mut count = 0;
+            for id in player_ids {
+                if let Some(identity) = game.defined_commander_color_identity(id) {
+                    count += i64::from(identity.count());
+                } else {
+                    context.undefined_commander_identity.set(true);
+                }
+            }
+            Ok(count)
         }
         Value::ThisAbilityManaProductionCountThisTurn => {
             let ctx = context.require_execution(value, RESOLUTION_ONLY);

@@ -5,374 +5,620 @@ use crate::decisions::{SearchSpec, make_decision_with_fallback};
 use crate::effect::{EffectOutcome, SearchSelectionMode};
 use crate::effects::EffectExecutor;
 use crate::effects::helpers::resolve_value;
+use crate::effects::{
+    CompletedEffectOutputs, OriginalPhaseStatus, SimultaneousEffectCommit,
+    SimultaneousEffectCompletion,
+};
 use crate::effects::{ExecutionContext, ExecutionError};
 use crate::events::SearchLibraryEvent;
 use crate::filter::ObjectFilterExt as _;
 use crate::game_state::GameState;
-use crate::ids::ObjectId;
+use crate::ids::{ObjectId, PlayerId};
 use crate::snapshot::ObjectSnapshot;
 use crate::zone::Zone;
+use std::borrow::Cow;
 
 use super::search_overrides::{
-    LibrarySearchRequest, execute_library_search_scope,
+    LibrarySearchLook, LibrarySearchRequest, LibrarySearchScope, OppositionAgentSearch,
+    execute_library_search_scope_after_look,
 };
 
 pub type SearchLibraryEffect = ironsmith_core::SearchLibraryEffect;
 
 impl EffectExecutor for SearchLibraryEffect {
+    fn supports_simultaneous_player_action(&self) -> bool {
+        true
+    }
+
+    fn prepare_simultaneous_player_action(
+        &self,
+        game: &GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<Box<dyn crate::effects::SimultaneousEffectProposal>, ExecutionError> {
+        let search = SingleCardSearch::new(Cow::Owned(self.clone()), game, ctx)?;
+        let request = search.request(ctx);
+        Ok(super::simultaneous_search::prepare_search(search, request))
+    }
+
     #[crate::effects::project_effect_outcome]
     fn execute_with_outputs(
         &self,
         game: &mut GameState,
         ctx: &mut ExecutionContext,
-    ) -> Result<crate::effects::CompletedEffectOutputs, ExecutionError> {
+    ) -> Result<CompletedEffectOutputs, ExecutionError> {
         if ctx.decision_maker.awaiting_choice() {
-            return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
+            return Ok(CompletedEffectOutputs::aggregate_only(
                 EffectOutcome::count(0),
             ));
         }
-        game.clear_pending_decision_controllers();
-        let mut published_cast_outputs = Vec::new();
-        let mut retained_children = Vec::new();
+        let search = SingleCardSearch::new(Cow::Borrowed(self), game, ctx)?;
+        search.run(game, ctx, None, None)
+    }
+}
+
+#[derive(Debug)]
+struct SingleCardSearch<'a> {
+    effect: Cow<'a, SearchLibraryEffect>,
+    chooser: PlayerId,
+    owner: PlayerId,
+}
+
+#[derive(Debug)]
+struct FoundCard {
+    chosen: Option<ObjectId>,
+    allowed: bool,
+    policy: Option<OppositionAgentSearch>,
+    event: Option<crate::triggers::TriggerEvent>,
+    reveal: Option<CompletedEffectOutputs>,
+}
+
+impl<'a> SingleCardSearch<'a> {
+    fn new(
+        effect: Cow<'a, SearchLibraryEffect>,
+        game: &GameState,
+        ctx: &ExecutionContext,
+    ) -> Result<Self, ExecutionError> {
+        let chooser =
+            crate::effects::helpers::resolve_player_filter_as_chooser(game, &effect.chooser, ctx)?;
+        let owner = crate::effects::helpers::resolve_player_filter(game, &effect.player, ctx)?;
+        Ok(Self {
+            effect,
+            chooser,
+            owner,
+        })
+    }
+    fn request(&self, ctx: &ExecutionContext) -> LibrarySearchRequest {
+        LibrarySearchRequest {
+            chooser: self.chooser,
+            library_owner: Some(self.owner),
+            search_library: true,
+            require_library_access: ctx.optional_action,
+            library_scope_cards: None,
+            refresh_library_access: false,
+        }
+    }
+    fn choose(
+        &self,
+        game: &GameState,
+        ctx: &mut ExecutionContext,
+        search: &LibrarySearchScope,
+    ) -> Result<Option<ObjectId>, ExecutionError> {
+        if !search.library_access {
+            return Ok(None);
+        }
+        let chooser_id = self.chooser;
+        let library_cards = &search.library_cards;
+        let filter_ctx = ctx.filter_context(game);
+        let matching_cards: Vec<_> = library_cards
+            .iter()
+            .copied()
+            .filter(|id| {
+                game.object(*id).is_some_and(|obj| {
+                    obj.zone == Zone::Library && self.effect.filter.matches(obj, &filter_ctx, game)
+                })
+            })
+            .collect();
+        let unknown_hidden_cards: Vec<ObjectId> = if matching_cards.is_empty() {
+            library_cards
+                .iter()
+                .copied()
+                .filter(|id| game.is_hidden_card_placeholder(*id))
+                .collect()
+        } else {
+            Vec::new()
+        };
+        let decision_candidates = if matching_cards.is_empty() {
+            unknown_hidden_cards
+        } else {
+            matching_cards.clone()
+        };
+
+        // Let the player choose a card (or fail to find) using the spec-based system
+        let may_fail_to_find = match self.effect.search_mode {
+            SearchSelectionMode::Exact => self.effect.filter.has_search_stated_quality(),
+            SearchSelectionMode::Optional | SearchSelectionMode::AllMatching => true,
+        };
+        let spec = if may_fail_to_find {
+            SearchSpec::new(ctx.source, decision_candidates, self.effect.reveal)
+        } else {
+            SearchSpec::mandatory(ctx.source, decision_candidates, self.effect.reveal)
+        }
+        .with_viewed_cards(library_cards.to_vec());
+        let mut chosen_card = make_decision_with_fallback(
+            game,
+            &mut ctx.decision_maker,
+            chooser_id,
+            Some(ctx.source),
+            spec,
+            if may_fail_to_find {
+                FallbackStrategy::Decline
+            } else {
+                FallbackStrategy::FirstOption
+            },
+        );
+        if ctx.decision_maker.awaiting_choice() {
+            return Ok(None);
+        }
+        if chosen_card.is_none() && !may_fail_to_find {
+            chosen_card = matching_cards.first().copied();
+        }
+
+        // Validate the selected physical identity before any participant moves it.
+        if let Some(card_id) = chosen_card {
+            if !library_cards.contains(&card_id) {
+                return Err(ExecutionError::InvalidTarget);
+            }
+            let chosen_matches = game
+                .object(card_id)
+                .is_some_and(|obj| self.effect.filter.matches(obj, &filter_ctx, game));
+            if !chosen_matches && !game.is_hidden_card_placeholder(card_id) {
+                return Err(ExecutionError::InvalidTarget);
+            }
+        }
+        Ok(chosen_card)
+    }
+
+    fn reveal(
+        &self,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+        found: &mut FoundCard,
+    ) -> Result<(), ExecutionError> {
+        let Some(card_id) = found.chosen.filter(|_| self.effect.reveal) else {
+            return Ok(());
+        };
+        let chooser_id = self.chooser;
+        let selected = ObjectSnapshot::from_object_id(game, card_id).ok_or_else(|| {
+            ExecutionError::IncompleteEvidence("selected search card has no object snapshot".into())
+        })?;
+        let outputs = super::reveal_objects_with_outputs(
+            game,
+            ctx,
+            vec![selected],
+            Some(chooser_id),
+            "Reveal searched card",
+            None,
+        )?;
+        if ctx.decision_maker.awaiting_choice() {
+            return Ok(());
+        }
+
+        found.reveal = Some(outputs);
+        Ok(())
+    }
+
+    fn move_found_card(
+        &self,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+        mut found: FoundCard,
+    ) -> Result<(CompletedEffectOutputs, SearchShuffle), ExecutionError> {
+        let mut children = Vec::new();
         let mut disclosures = Vec::new();
+        if let Some(reveal) = found.reveal.take() {
+            disclosures.push(reveal.outcome.clone());
+            children.push(reveal);
+        }
+        let mut shuffle = SearchShuffle {
+            owner: self.owner,
+            restore: None,
+        };
+        let outcome = self.movement(game, ctx, found, &disclosures, &mut children, &mut shuffle)?;
+        Ok((
+            CompletedEffectOutputs::from_children(children, |_| outcome),
+            shuffle,
+        ))
+    }
+
+    fn movement(
+        &self,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+        found: FoundCard,
+        disclosures: &[EffectOutcome],
+        retained_children: &mut Vec<CompletedEffectOutputs>,
+        shuffle: &mut SearchShuffle,
+    ) -> Result<EffectOutcome, ExecutionError> {
+        let FoundCard {
+            chosen,
+            allowed,
+            policy: search_override,
+            event: search_event,
+            ..
+        } = found;
+        let chooser_id = self.chooser;
+        let player_id = self.owner;
+        if !allowed {
+            // Prohibiting the mandatory search leaves its shuffle instruction intact.
+            return Ok(EffectOutcome::prevented());
+        }
+        if let Some(card_id) = chosen.filter(|id| {
+            game.player(player_id)
+                .is_some_and(|p| p.library.contains(id))
+        }) {
+            let chosen_memory = ObjectSnapshot::from_object_id(game, card_id);
+            // For "put on top of library" effects (like Vampiric Tutor), we need to:
+            // 1. Remove the card from the library
+            // 2. Shuffle the library
+            // 3. Put the card on top
+            // This matches the card text "then shuffle and put that card on top"
+            if self.effect.destination == Zone::Library && search_override.is_none() {
+                let position_from_top =
+                    if let Some(position) = self.effect.library_position_from_top.as_ref() {
+                        resolve_value(game, position, ctx)?.max(1) as usize
+                    } else {
+                        1
+                    };
+                shuffle.restore =
+                    Some((card_id, position_from_top, chooser_id, self.effect.reveal));
+                let mut outcome =
+                    EffectOutcome::with_objects(vec![card_id]).with_events(search_event.clone());
+                if let Some(memory) = chosen_memory {
+                    outcome = outcome
+                        .with_chosen_object_memory(vec![memory.clone()])
+                        .with_affected_object_memory(vec![memory]);
+                }
+                let outcome = include_search_disclosures(outcome, disclosures);
+                return Ok(outcome);
+            }
+
+            // Complete the found-card instruction and all permission
+            // links before additions; shuffle only after it resolves.
+            let movement_outputs = if search_override.is_some() {
+                let (found, published_outputs) = super::search_result_program::prepare_found_cards(
+                    game,
+                    ctx,
+                    &[card_id],
+                    self.effect.destination,
+                    chooser_id,
+                    true,
+                    false,
+                )?;
+                if ctx.decision_maker.awaiting_choice() {
+                    return Ok(EffectOutcome::count(0));
+                }
+                let mut original = if found.moved_ids.is_empty() {
+                    EffectOutcome::count(0)
+                } else {
+                    EffectOutcome::with_objects(found.moved_ids.clone())
+                        .with_affected_objects(found.moved_ids.clone())
+                };
+                if let Some(memory) = chosen_memory.clone() {
+                    original = original.with_chosen_object_memory(vec![memory]);
+                }
+                super::search_result_program::finish_found_cards(
+                    game,
+                    ctx,
+                    found,
+                    published_outputs,
+                    original,
+                )?
+            } else {
+                let move_to = |zone: Zone| {
+                    crate::effect::Effect::move_to_zone(
+                        crate::target::ChooseSpec::SpecificObject(card_id),
+                        zone,
+                        false,
+                    )
+                };
+                // "put it into your hand or graveyard" (Dina's
+                // Guidance): the searcher picks the destination
+                // after the found card is revealed.
+                let move_effect = if let Some(alternative) = self.effect.alternative_destination {
+                    crate::effect::Effect::new(
+                        crate::effects::ChooseModeEffect::choose_one(vec![
+                            crate::effect::EffectMode {
+                                source_text: format!("Put it into {:?}", self.effect.destination),
+                                effects: vec![move_to(self.effect.destination)],
+                            },
+                            crate::effect::EffectMode {
+                                source_text: format!("Put it into {alternative:?}"),
+                                effects: vec![move_to(alternative)],
+                            },
+                        ])
+                        .with_chooser(crate::target::PlayerFilter::Specific(chooser_id)),
+                    )
+                } else {
+                    move_to(self.effect.destination)
+                };
+                crate::effects::execute_effect_with_outputs(game, &move_effect, ctx)?
+            };
+            if ctx.decision_maker.awaiting_choice() {
+                return Ok(EffectOutcome::count(0));
+            }
+            let mut movement = movement_outputs.outcome.clone();
+            retained_children.push(movement_outputs);
+            // Only actual arrivals belong to this move. A later
+            // movement by an addition is a different object/event.
+            // Added actions may report affected objects even when the
+            // original move was prevented. They are not search arrivals.
+            let ids = movement.objects().unwrap_or(&[]).to_vec();
+            let mut outcome = if ids.is_empty() {
+                EffectOutcome::count(0)
+            } else {
+                EffectOutcome::with_objects(ids.clone()).with_affected_objects(ids)
+            };
+            outcome.events.extend(search_event);
+            outcome.events.append(&mut movement.events);
+            outcome
+                .execution_facts
+                .append(&mut movement.execution_facts);
+            if let Some(memory) = chosen_memory {
+                outcome = outcome.with_chosen_object_memory(vec![memory]);
+            }
+            let outcome = include_search_disclosures(outcome, disclosures);
+
+            return Ok(outcome);
+        }
+
+        Ok(EffectOutcome::count(0).with_events(search_event))
+    }
+
+    fn run(
+        &self,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+        look: Option<LibrarySearchLook>,
+        mut selected: Option<&mut Option<FoundCard>>,
+    ) -> Result<CompletedEffectOutputs, ExecutionError> {
+        game.clear_pending_decision_controllers();
+        let mut published = Vec::new();
+        let mut retained = Vec::new();
         let instruction =
             crate::effects::composition::execute_result_transaction(game, ctx, |game, ctx| {
-                let chooser_id = crate::effects::helpers::resolve_player_filter_as_chooser(
-                    game,
-                    &self.chooser,
-                    ctx,
-                )?;
-                let player_id =
-                    crate::effects::helpers::resolve_player_filter(game, &self.player, ctx)?;
-                execute_library_search_scope(
+                execute_library_search_scope_after_look(
                     game,
                     ctx,
-                    LibrarySearchRequest {
-                        chooser: chooser_id,
-                        library_owner: Some(player_id),
-                        search_library: true,
-                        require_library_access: ctx.optional_action,
-                        library_scope_cards: None,
-                        refresh_library_access: false,
-                    },
-                    |game, ctx, search| {
-                        published_cast_outputs.extend(search.completed_outputs);
-                        let search_override = search.found_card_policy;
-                        let search_event = search.event;
-                        if !search.library_access {
-                            // Prohibiting the mandatory search leaves its shuffle instruction intact.
-                            let shuffle = super::search_result_program::shuffle_after_search(
-                                game,
-                                ctx,
-                                player_id,
-                                &[],
-                                1,
-                                "library shuffled after search",
-                            )?;
-                            let outcome = EffectOutcome::aggregate_with_primary_result(
-                                EffectOutcome::prevented(),
-                                [shuffle.outcome.clone()],
-                            );
-                            retained_children.push(shuffle);
-                            return Ok(outcome);
-                        }
-                        let library_cards = search.library_cards;
-                        let filter_ctx = ctx.filter_context(game);
-                        let matching_cards: Vec<_> = library_cards
-                            .iter()
-                            .copied()
-                            .filter(|id| {
-                                game.object(*id).is_some_and(|obj| {
-                                    obj.zone == Zone::Library
-                                        && self.filter.matches(obj, &filter_ctx, game)
-                                })
-                            })
-                            .collect();
-                        let unknown_hidden_cards: Vec<ObjectId> = if matching_cards.is_empty() {
-                            library_cards
-                                .iter()
-                                .copied()
-                                .filter(|id| game.is_hidden_card_placeholder(*id))
-                                .collect()
-                        } else {
-                            Vec::new()
-                        };
-                        let decision_candidates = if matching_cards.is_empty() {
-                            unknown_hidden_cards
-                        } else {
-                            matching_cards.clone()
-                        };
-
-                        // Let the player choose a card (or fail to find) using the spec-based system
-                        let may_fail_to_find = match self.search_mode {
-                            SearchSelectionMode::Exact => self.filter.has_search_stated_quality(),
-                            SearchSelectionMode::Optional | SearchSelectionMode::AllMatching => {
-                                true
-                            }
-                        };
-                        let spec = if may_fail_to_find {
-                            SearchSpec::new(ctx.source, decision_candidates, self.reveal)
-                        } else {
-                            SearchSpec::mandatory(ctx.source, decision_candidates, self.reveal)
-                        }
-                        .with_viewed_cards(library_cards.clone());
-                        let mut chosen_card = make_decision_with_fallback(
-                            game,
-                            &mut ctx.decision_maker,
-                            chooser_id,
-                            Some(ctx.source),
-                            spec,
-                            if may_fail_to_find {
-                                FallbackStrategy::Decline
-                            } else {
-                                FallbackStrategy::FirstOption
-                            },
-                        );
+                    self.request(ctx),
+                    look,
+                    |game, ctx, mut search| {
+                        published.append(&mut search.completed_outputs);
+                        let chosen = self.choose(game, ctx, &search)?;
                         if ctx.decision_maker.awaiting_choice() {
-                            return Ok(EffectOutcome::count(0).with_events(search_event));
+                            return Ok(EffectOutcome::count(0));
                         }
-                        if chosen_card.is_none() && !may_fail_to_find {
-                            chosen_card = matching_cards.first().copied();
+                        let mut found = FoundCard {
+                            chosen,
+                            allowed: search.library_access,
+                            policy: search.found_card_policy,
+                            event: search.event,
+                            reveal: None,
+                        };
+                        if let Some(output) = selected.as_mut() {
+                            **output = Some(found);
+                            return Ok(EffectOutcome::resolved());
                         }
-
-                        // If a card was chosen, move it to the destination
-                        if let Some(card_id) = chosen_card {
-                            if !library_cards.contains(&card_id) {
-                                return Err(ExecutionError::InvalidTarget);
-                            }
-                            let chosen_matches = game
-                                .object(card_id)
-                                .is_some_and(|obj| self.filter.matches(obj, &filter_ctx, game));
-                            if !chosen_matches && !game.is_hidden_card_placeholder(card_id) {
-                                return Err(ExecutionError::InvalidTarget);
-                            }
-                            // Verify the card is still in the library (in case decision maker did something weird)
-                            let still_in_library = game
-                                .player(player_id)
-                                .is_some_and(|p| p.library.contains(&card_id));
-
-                            if still_in_library {
-                                if self.reveal {
-                                    let selected = ObjectSnapshot::from_object_id(game, card_id)
-                                        .ok_or_else(|| {
-                                            ExecutionError::IncompleteEvidence(
-                                                "selected search card has no object snapshot"
-                                                    .into(),
-                                            )
-                                        })?;
-                                    let outputs = super::reveal_objects_with_outputs(
-                                        game,
-                                        ctx,
-                                        vec![selected],
-                                        Some(chooser_id),
-                                        "Reveal searched card",
-                                        None,
-                                    )?;
-                                    if ctx.decision_maker.awaiting_choice() {
-                                        return Ok(EffectOutcome::count(0));
-                                    }
-                                    disclosures.push(outputs.outcome.clone());
-                                    retained_children.push(outputs);
-                                }
-                                let chosen_memory = ObjectSnapshot::from_object_id(game, card_id);
-                                // For "put on top of library" effects (like Vampiric Tutor), we need to:
-                                // 1. Remove the card from the library
-                                // 2. Shuffle the library
-                                // 3. Put the card on top
-                                // This matches the card text "then shuffle and put that card on top"
-                                if self.destination == Zone::Library && search_override.is_none() {
-                                    let position_from_top = if let Some(position) =
-                                        self.library_position_from_top.as_ref()
-                                    {
-                                        resolve_value(game, position, ctx)?.max(1) as usize
-                                    } else {
-                                        1
-                                    };
-                                    let shuffle =
-                                        super::search_result_program::shuffle_after_search(
-                                            game,
-                                            ctx,
-                                            player_id,
-                                            &[card_id],
-                                            position_from_top,
-                                            "searched card restored after library shuffle",
-                                        )?;
-                                    let shuffle_outcome = shuffle.outcome.clone();
-                                    retained_children.push(shuffle);
-                                    // The searcher put it there; a reveal shows the table.
-                                    if game.object(card_id).is_some_and(|card| card.zone == Zone::Library) {
-                                        let viewers: Vec<_> = game.players.iter().map(|player| player.id)
-                                            .filter(|viewer| self.reveal || *viewer == chooser_id)
-                                            .collect();
-                                        for viewer in viewers {
-                                            game.remember_library_group(viewer, player_id, &[card_id], false);
-                                        }
-                                    }
-                                    let mut outcome = EffectOutcome::with_objects(vec![card_id])
-                                        .with_events(search_event.clone());
-                                    if let Some(memory) = chosen_memory {
-                                        outcome = outcome
-                                            .with_chosen_object_memory(vec![memory.clone()])
-                                            .with_affected_object_memory(vec![memory]);
-                                    }
-                                    let outcome = include_search_disclosures(outcome, &disclosures);
-                                    return Ok(EffectOutcome::aggregate_with_primary_result(
-                                        outcome,
-                                        [shuffle_outcome],
-                                    ));
-                                }
-
-                                // Complete the found-card instruction and all permission
-                                // links before additions; shuffle only after it resolves.
-                                let movement_outputs = if search_override.is_some() {
-                                    let (found, published_outputs) =
-                                        super::search_result_program::prepare_found_cards(
-                                            game,
-                                            ctx,
-                                            &[card_id],
-                                            self.destination,
-                                            chooser_id,
-                                            true,
-                                            false,
-                                        )?;
-                                    if ctx.decision_maker.awaiting_choice() {
-                                        return Ok(EffectOutcome::count(0));
-                                    }
-                                    let mut original = if found.moved_ids.is_empty() {
-                                        EffectOutcome::count(0)
-                                    } else {
-                                        EffectOutcome::with_objects(found.moved_ids.clone())
-                                            .with_affected_objects(found.moved_ids.clone())
-                                    };
-                                    if let Some(memory) = chosen_memory.clone() {
-                                        original = original.with_chosen_object_memory(vec![memory]);
-                                    }
-                                    super::search_result_program::finish_found_cards(
-                                        game,
-                                        ctx,
-                                        found,
-                                        published_outputs,
-                                        original,
-                                    )?
-                                } else {
-                                    let move_to = |zone: Zone| {
-                                        crate::effect::Effect::move_to_zone(
-                                            crate::target::ChooseSpec::SpecificObject(card_id),
-                                            zone,
-                                            false,
-                                        )
-                                    };
-                                    // "put it into your hand or graveyard" (Dina's
-                                    // Guidance): the searcher picks the destination
-                                    // after the found card is revealed.
-                                    let move_effect = if let Some(alternative) =
-                                        self.alternative_destination
-                                    {
-                                        crate::effect::Effect::new(
-                                            crate::effects::ChooseModeEffect::choose_one(vec![
-                                                crate::effect::EffectMode {
-                                                    source_text: format!(
-                                                        "Put it into {:?}",
-                                                        self.destination
-                                                    ),
-                                                    effects: vec![move_to(self.destination)],
-                                                },
-                                                crate::effect::EffectMode {
-                                                    source_text: format!(
-                                                        "Put it into {alternative:?}"
-                                                    ),
-                                                    effects: vec![move_to(alternative)],
-                                                },
-                                            ])
-                                            .with_chooser(crate::target::PlayerFilter::Specific(
-                                                chooser_id,
-                                            )),
-                                        )
-                                    } else {
-                                        move_to(self.destination)
-                                    };
-                                    crate::effects::execute_effect_with_outputs(
-                                        game,
-                                        &move_effect,
-                                        ctx,
-                                    )?
-                                };
-                                if ctx.decision_maker.awaiting_choice() {
-                                    return Ok(EffectOutcome::count(0));
-                                }
-                                let mut movement = movement_outputs.outcome.clone();
-                                retained_children.push(movement_outputs);
-                                // Only actual arrivals belong to this move. A later
-                                // movement by an addition is a different object/event.
-                                // Added actions may report affected objects even when the
-                                // original move was prevented. They are not search arrivals.
-                                let ids = movement.objects().unwrap_or(&[]).to_vec();
-                                let mut outcome = if ids.is_empty() {
-                                    EffectOutcome::count(0)
-                                } else {
-                                    EffectOutcome::with_objects(ids.clone())
-                                        .with_affected_objects(ids)
-                                };
-                                outcome.events.extend(search_event);
-                                outcome.events.append(&mut movement.events);
-                                outcome
-                                    .execution_facts
-                                    .append(&mut movement.execution_facts);
-                                if let Some(memory) = chosen_memory {
-                                    outcome = outcome.with_chosen_object_memory(vec![memory]);
-                                }
-                                let outcome = include_search_disclosures(outcome, &disclosures);
-
-                                let shuffle = super::search_result_program::shuffle_after_search(
-                                    game,
-                                    ctx,
-                                    player_id,
-                                    &[],
-                                    1,
-                                    "library shuffled after search",
-                                )?;
-                                let shuffle_outcome = shuffle.outcome.clone();
-                                retained_children.push(shuffle);
-                                return Ok(EffectOutcome::aggregate_with_primary_result(
-                                    outcome,
-                                    [shuffle_outcome],
-                                ));
-                            }
+                        self.reveal(game, ctx, &mut found)?;
+                        if ctx.decision_maker.awaiting_choice() {
+                            return Ok(EffectOutcome::count(0));
                         }
-
-                        // No card found or chosen - still shuffle (searching always shuffles)
-                        let shuffle = super::search_result_program::shuffle_after_search(
-                            game,
-                            ctx,
-                            player_id,
-                            &[],
-                            1,
-                            "library shuffled after search",
-                        )?;
-                        let shuffle_outcome = shuffle.outcome.clone();
-                        retained_children.push(shuffle);
-                        Ok(EffectOutcome::aggregate_with_primary_result(
-                            EffectOutcome::count(0).with_events(search_event),
-                            [shuffle_outcome],
-                        ))
+                        let (moved, shuffle) = self.move_found_card(game, ctx, found)?;
+                        if ctx.decision_maker.awaiting_choice() {
+                            return Ok(EffectOutcome::count(0));
+                        }
+                        let outputs = shuffle.apply(game, ctx, moved)?;
+                        let outcome = outputs.outcome.clone();
+                        retained.push(outputs);
+                        Ok(outcome)
                     },
                 )
             });
-        let pending = ctx.decision_maker.awaiting_choice();
-        if pending {
-            return instruction.map(|_| {
-                crate::effects::CompletedEffectOutputs::aggregate_only(EffectOutcome::count(0))
-            });
+        if ctx.decision_maker.awaiting_choice() {
+            return instruction
+                .map(|_| CompletedEffectOutputs::aggregate_only(EffectOutcome::count(0)));
         }
         instruction.map(|outcome| {
-            super::search_overrides::retain_search_participants(ctx, self.participant_tag.as_ref(), &outcome);
-            let mut outputs =
-                crate::effects::CompletedEffectOutputs::from_children(retained_children, |_| {
-                    outcome
-                });
-            outputs.retain_published_references(published_cast_outputs);
+            if selected.as_deref().is_none_or(Option::is_none) {
+                super::search_overrides::retain_search_participants(
+                    ctx,
+                    self.effect.participant_tag.as_ref(),
+                    &outcome,
+                );
+            }
+            let mut outputs = CompletedEffectOutputs::from_children(retained, |_| outcome);
+            outputs.retain_published_references(published);
             outputs
         })
+    }
+}
+
+impl super::simultaneous_search::LibrarySearchAction for SingleCardSearch<'static> {
+    type Selection = (Option<FoundCard>, CompletedEffectOutputs);
+    fn select(
+        &self,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+        look: LibrarySearchLook,
+    ) -> Result<Self::Selection, ExecutionError> {
+        let mut selected = None;
+        let inputs = self.run(game, ctx, Some(look), Some(&mut selected))?;
+        Ok((selected, inputs))
+    }
+    fn disclose(
+        &self,
+        (selected, _): &mut Self::Selection,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<(), ExecutionError> {
+        if let Some(found) = selected {
+            self.reveal(game, ctx, found)?;
+        }
+        Ok(())
+    }
+    fn finish(
+        &self,
+        (selected, inputs): Self::Selection,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<SimultaneousEffectCommit<CompletedEffectOutputs>, ExecutionError> {
+        let Some(found) = selected else {
+            return Ok(SimultaneousEffectCommit::finished(inputs));
+        };
+        let event = found.event.clone();
+        let (moved, shuffle) = self.move_found_card(game, ctx, found)?;
+        super::search_overrides::retain_search_participants(
+            ctx,
+            self.effect.participant_tag.as_ref(),
+            &moved.outcome,
+        );
+        if ctx.resolution_stopped() || ctx.decision_maker.awaiting_choice() {
+            return Ok(SimultaneousEffectCommit::finished(
+                moved.append_owned_child(inputs),
+            ));
+        }
+        let prefix = inputs.project_aggregate(EffectOutcome::resolved().with_events(event));
+        Ok(SimultaneousEffectCommit {
+            outcome: prefix,
+            completion: Some(Box::new(FoundCardCompletion { moved, shuffle })),
+        })
+    }
+}
+
+/// Physical movements run in the open simultaneous action. Retain their observations
+/// until every search has been recorded, then shuffle every participating library.
+struct FoundCardCompletion {
+    moved: CompletedEffectOutputs,
+    shuffle: SearchShuffle,
+}
+impl SimultaneousEffectCompletion for FoundCardCompletion {
+    fn freeze(&mut self, _: &mut GameState) -> Result<(), ExecutionError> {
+        Ok(())
+    }
+    fn original_phase_status(&self) -> OriginalPhaseStatus {
+        OriginalPhaseStatus::Retained
+    }
+    fn complete_original_phase_from_outputs(
+        self: Box<Self>,
+        _: &mut GameState,
+        _: &mut ExecutionContext,
+        prefix: CompletedEffectOutputs,
+    ) -> Result<SimultaneousEffectCommit<CompletedEffectOutputs>, ExecutionError> {
+        let mut moved = self.moved;
+        crate::effects::composition::inherit_original_observations(
+            &mut moved.outcome,
+            &prefix.outcome.events,
+        );
+        moved.retain_owned_child(prefix);
+        Ok(SimultaneousEffectCommit {
+            outcome: moved,
+            completion: Some(Box::new(self.shuffle)),
+        })
+    }
+    fn complete_from_original_outputs(
+        self: Box<Self>,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+        prefix: CompletedEffectOutputs,
+    ) -> Result<CompletedEffectOutputs, ExecutionError> {
+        let receipt = self.complete_original_phase_from_outputs(game, ctx, prefix)?;
+        crate::effects::composition::complete_committed_original_with_outputs(game, ctx, receipt)
+    }
+    fn complete(
+        self: Box<Self>,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+        prefix: EffectOutcome,
+    ) -> Result<EffectOutcome, ExecutionError> {
+        self.complete_from_original_outputs(
+            game,
+            ctx,
+            CompletedEffectOutputs::aggregate_only(prefix),
+        )
+        .map(CompletedEffectOutputs::into_outcome)
+    }
+}
+
+struct SearchShuffle {
+    owner: PlayerId,
+    // Card, position from the top, searcher, and whether placement is public.
+    restore: Option<(ObjectId, usize, PlayerId, bool)>,
+}
+impl SearchShuffle {
+    fn apply(
+        self,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+        moved: CompletedEffectOutputs,
+    ) -> Result<CompletedEffectOutputs, ExecutionError> {
+        let shuffle = if let Some((card, position, searcher, public)) = self.restore {
+            let result = super::search_result_program::shuffle_after_search(
+                game,
+                ctx,
+                self.owner,
+                &[card],
+                position,
+                "searched card restored after library shuffle",
+            )?;
+            if !ctx.decision_maker.awaiting_choice()
+                && game.object(card).is_some_and(|o| o.zone == Zone::Library)
+            {
+                let viewers: Vec<_> = game
+                    .players
+                    .iter()
+                    .map(|p| p.id)
+                    .filter(|&p| public || p == searcher)
+                    .collect();
+                for viewer in viewers {
+                    game.remember_library_group(viewer, self.owner, &[card], false);
+                }
+            }
+            result
+        } else {
+            super::search_result_program::shuffle_after_search(
+                game,
+                ctx,
+                self.owner,
+                &[],
+                1,
+                "library shuffled after search",
+            )?
+        };
+        Ok(moved.append_batch_completion_outputs(shuffle))
+    }
+}
+impl SimultaneousEffectCompletion for SearchShuffle {
+    fn freeze(&mut self, _: &mut GameState) -> Result<(), ExecutionError> {
+        Ok(())
+    }
+    fn original_phase_status(&self) -> OriginalPhaseStatus {
+        OriginalPhaseStatus::Complete
+    }
+    fn complete_from_original_outputs(
+        self: Box<Self>,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+        original: CompletedEffectOutputs,
+    ) -> Result<CompletedEffectOutputs, ExecutionError> {
+        self.apply(game, ctx, original)
+    }
+    fn complete(
+        self: Box<Self>,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+        original: EffectOutcome,
+    ) -> Result<EffectOutcome, ExecutionError> {
+        self.apply(game, ctx, CompletedEffectOutputs::aggregate_only(original))
+            .map(CompletedEffectOutputs::into_outcome)
     }
 }
 
@@ -386,11 +632,13 @@ fn include_search_disclosures(
     if disclosures.is_empty() {
         return original;
     }
-    debug_assert!(
+    // CR 701.23h. A later selection in the same search has no second
+    // search event. Its reveal precedes that selection's other observations.
+    let after_search = usize::from(
         original
             .events
             .first()
-            .is_some_and(|event| event.downcast::<SearchLibraryEvent>().is_some())
+            .is_some_and(|event| event.downcast::<SearchLibraryEvent>().is_some()),
     );
     let original_event_count = original.events.len();
     let events = disclosures
@@ -401,7 +649,7 @@ fn include_search_disclosures(
         EffectOutcome::aggregate_replacement_outcomes(original, disclosures.iter().cloned());
     // These are alternate projections of actual child packets, not new events.
     outcome.events.truncate(original_event_count);
-    outcome.events.splice(1..1, events);
+    outcome.events.splice(after_search..after_search, events);
     outcome
 }
 

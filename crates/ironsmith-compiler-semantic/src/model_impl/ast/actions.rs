@@ -2585,6 +2585,7 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 .field("target", target)
                 .finish(),
             Self::Counters(CounterActionAst::PutCounters {
+                borrow_keyword_variants,
                 maximum_total,
                 counter_type,
                 count,
@@ -2594,6 +2595,7 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 required_recipient,
             }) => {
                 let mut debug = f.debug_struct("PutCounters");
+                if *borrow_keyword_variants { debug.field("borrow_keyword_variants", borrow_keyword_variants); }
                 debug
                     .field("maximum_total", maximum_total)
                     .field("counter_type", counter_type)

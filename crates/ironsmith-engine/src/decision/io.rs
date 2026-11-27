@@ -2546,6 +2546,10 @@ fn zone_label(zone: Zone) -> &'static str {
 pub(crate) fn format_action_short(game: &GameState, action: &LegalAction, face_up_cost: Option<&str>) -> String {
     match action {
         LegalAction::PassPriority => "Pass".to_string(),
+        LegalAction::ShortcutLoop => match game.loop_shortcut_offer() {
+            Some(offer) => format!("Repeat loop ({} each time)", offer.describe_per_lap(game)),
+            None => "Repeat loop".to_string(),
+        },
         LegalAction::CastExiledCardFaceDown { .. } => "Cast exiled card face down".to_string(),
         LegalAction::OpenExiledCardForPlay { .. } => "Play exiled card".to_string(),
         LegalAction::KeepOpeningHand => "Keep hand".to_string(),

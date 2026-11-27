@@ -6384,6 +6384,7 @@ retain_original_types: false, retain_original_name: false,
         let owner = self.object(object)?.owner;
         Some(crate::continuous::CalculatedCharacteristics {
             copy_values: None,
+            has_copy_overlay: false,
             name_set_timestamp: None,
             alternate_name: None,
             name: "".into(),
@@ -7049,6 +7050,7 @@ retain_original_types: false, retain_original_name: false,
             self.calculated_characteristics(id)
                 .unwrap_or_else(|| CalculatedCharacteristics {
                     copy_values: None,
+                    has_copy_overlay: false,
                     name_set_timestamp: None,
                     alternate_name: object.split_other_half_name().map(str::to_string),
                     name: object.name.clone(),

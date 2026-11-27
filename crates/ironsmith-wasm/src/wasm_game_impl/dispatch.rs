@@ -311,6 +311,10 @@ impl WasmGame {
         snap.loop_shortcut = self
             .loop_shortcut_view()
             .and_then(|view| serde_json::to_value(view).ok());
+        self.refresh_loop_offer();
+        snap.loop_offer = self
+            .loop_offer_view()
+            .and_then(|view| serde_json::to_value(view).ok());
         snap.combat_damage_step = combat_damage_step_for_runner(self.runner.as_ref());
         snap.crypto_requirements = self.last_crypto_requirements.clone();
         insert_pending_stack_object_snapshots(&mut snap, self.pending_trigger_stack_objects());
@@ -3723,6 +3727,10 @@ impl WasmGame {
         snap.sticker_sheets = self.sticker_sheet_views();
         snap.loop_shortcut = self
             .loop_shortcut_view()
+            .and_then(|view| serde_json::to_value(view).ok());
+        self.refresh_loop_offer();
+        snap.loop_offer = self
+            .loop_offer_view()
             .and_then(|view| serde_json::to_value(view).ok());
         snap.combat_damage_step = combat_damage_step_for_runner(self.runner.as_ref());
         snap.crypto_requirements = self.last_crypto_requirements.clone();

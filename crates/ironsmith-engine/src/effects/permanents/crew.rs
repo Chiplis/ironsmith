@@ -47,12 +47,18 @@ fn source_has_loyalty_crew_alternative(game: &GameState, source: ObjectId) -> bo
         .contains(&ironsmith_core::KeywordMarkerMechanic::LoyaltyCounterPaysCrewCost)
 }
 
-fn loyalty_planeswalker_for_crew(game: &GameState, controller: PlayerId) -> Option<ObjectId> {
-    game.battlefield.iter().copied().find(|id| {
+fn loyalty_planeswalkers_for_crew(
+    game: &GameState,
+    controller: PlayerId,
+) -> impl Iterator<Item = ObjectId> + '_ {
+    game.battlefield.iter().copied().filter(move |id| {
         let Some(obj) = game.object(*id) else {
             return false;
         };
-        if game.controller_of(obj) != controller || obj.loyalty().unwrap_or(0) == 0 {
+        if game.is_phased_out(*id)
+            || game.current_controller(*id) != Some(controller)
+            || obj.loyalty().unwrap_or(0) == 0
+        {
             return false;
         }
         game.calculated_characteristics(*id)
@@ -67,14 +73,22 @@ fn can_pay_loyalty_crew_alternative(
     controller: PlayerId,
 ) -> bool {
     source_has_loyalty_crew_alternative(game, source)
-        && loyalty_planeswalker_for_crew(game, controller).is_some()
+        && loyalty_planeswalkers_for_crew(game, controller).next().is_some()
 }
 
 fn pay_loyalty_crew_alternative(
     game: &mut GameState,
     ctx: &mut ExecutionContext,
 ) -> Result<CompletedEffectOutputs, ExecutionError> {
-    let planeswalker = loyalty_planeswalker_for_crew(game, ctx.controller).ok_or_else(|| {
+    let candidates: Vec<_> = loyalty_planeswalkers_for_crew(game, ctx.controller)
+        .map(|id| (game.current_name(id).unwrap_or_default(), id)).collect();
+    let choice = if candidates.is_empty() { None } else if let [(_, id)] = candidates.as_slice() { Some(*id) } else {
+        crate::decisions::ask_choose_one(game, &mut ctx.decision_maker, ctx.controller, ctx.source, &candidates)
+    };
+    if ctx.decision_maker.awaiting_choice() {
+        return Ok(CompletedEffectOutputs::aggregate_only(EffectOutcome::count(0)));
+    }
+    let planeswalker = choice.ok_or_else(|| {
         ExecutionError::Impossible(
             "No planeswalker with a loyalty counter available to pay crew cost".to_string(),
         )

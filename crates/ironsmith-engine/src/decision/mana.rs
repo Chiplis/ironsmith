@@ -646,11 +646,11 @@ pub(crate) fn calculate_effective_activation_total_cost_without_grants(
                 .effect_ref()
                 .and_then(|effect| effect.downcast_ref::<crate::effects::PayLifeEffect>())
                 && !matches!(life.amount.unhinted(), crate::effect::Value::Fixed(_))
-                && let Ok(amount) =
-                    crate::effects::helpers::resolve_value(game, &life.amount, &amount_context)
+                && let Ok(Some(amount)) =
+                    crate::effects::helpers::resolve_payment_amount(game, &life.amount, &amount_context)
             {
                 return crate::costs::Cost::validated_effect(crate::effect::Effect::new(
-                    crate::effects::PayLifeEffect::new(amount.max(0), life.player.clone()),
+                    crate::effects::PayLifeEffect::new(amount, life.player.clone()),
                 ));
             }
             component.clone()
@@ -2524,20 +2524,7 @@ pub(crate) fn this_spell_cast_condition_allows(
             .sum::<u32>()
             >= *count,
         crate::static_abilities::ThisSpellCastCondition::CreatureIsAttackingYou => {
-            // Present-tense permission must not inherit retained attack history.
-            game.combat.as_ref().is_some_and(|combat| {
-                combat.attackers.iter().any(|attacker| match attacker.target {
-                    crate::combat_state::AttackTarget::Player(defender) => defender == player,
-                    crate::combat_state::AttackTarget::Planeswalker(planeswalker_id) => game
-                        .object(planeswalker_id)
-                        .is_some_and(|planeswalker| game.controller_of(planeswalker) == player),
-                    crate::combat_state::AttackTarget::Battle(battle_id) => {
-                        game.battle_protector(battle_id) == Some(player)
-                    }
-                    // CR 506.4c: it isn't attacking anything.
-                    crate::combat_state::AttackTarget::Nothing { .. } => false,
-                })
-            })
+            game.combat_lanes().any(|combat| crate::combat_state::is_defending_player(combat, player))
         }
         crate::static_abilities::ThisSpellCastCondition::CreatureDiedThisTurn => {
             game.turn_store.turn_history.total_creatures_died_this_turn() > 0
@@ -2566,9 +2553,7 @@ pub(crate) fn this_spell_cast_condition_allows(
         crate::static_abilities::ThisSpellCastCondition::Condition(_) => true,
         crate::static_abilities::ThisSpellCastCondition::YouControlFewerCreaturesThanEachOpponent => {
             let your_creatures = game.creatures_controlled_by(player).len();
-            game.players
-                .iter()
-                .filter(|opponent| opponent.is_in_game() && opponent.id != player)
+            game.opponents_in_source_range(player, None)
                 .all(|opponent| your_creatures < game.creatures_controlled_by(opponent.id).len())
         }
         crate::static_abilities::ThisSpellCastCondition::YouControlNameWordOrMore {
@@ -3123,9 +3108,8 @@ fn casting_method_grants_sneak_timing(
         return false;
     };
     method.returns_attacker_enters_attacking()
-        && game.active_players().contains(&player)
-        && matches!(game.turn.phase, Phase::Combat)
-        && game.turn.step == Some(Step::DeclareBlockers)
+        && game.combat_turn_for_attacking_player(player)
+            .is_some_and(|turn| turn.step == Some(Step::DeclareBlockers))
 }
 
 pub(crate) fn face_down_cast_mana_cost() -> crate::mana::ManaCost {

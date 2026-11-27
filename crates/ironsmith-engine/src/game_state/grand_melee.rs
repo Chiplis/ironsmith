@@ -123,29 +123,154 @@ impl GrandMeleeState {
 }
 
 impl GameState {
-    pub(super) fn combat_lanes(&self) -> Vec<&CombatState> {
-        let mut combats = self.combat.iter().collect::<Vec<_>>();
-        if let Some(state) = &self.grand_melee {
-            combats.extend(state.markers.iter().filter(|marker| marker.number != state.focused_marker)
-                .filter_map(|marker| marker.lane.combat.as_ref()));
-        }
-        combats
+    /// The battlefield is shared even though each Grand Melee marker owns a combat.
+    pub(crate) fn combat_lanes_with_turn(
+        &self,
+    ) -> impl Iterator<Item = (&CombatState, &TurnState, &TurnStore)> {
+        self.combat
+            .iter()
+            .map(|combat| (combat, &self.turn, &*self.turn_store))
+            .chain(self.grand_melee.iter().flat_map(|state| {
+                state
+                    .markers
+                    .iter()
+                    .filter(|marker| {
+                        marker.number != state.focused_marker
+                            && marker.status == GrandMeleeMarkerStatus::Active
+                    })
+                    .filter_map(|marker| {
+                        marker
+                            .lane
+                            .combat
+                            .as_ref()
+                            .map(|combat| (combat, &marker.lane.turn, &marker.lane.turn_store))
+                    })
+            }))
     }
-    pub(super) fn mutate_combat_lanes(&mut self, mut change: impl FnMut(&mut CombatState) -> bool) -> bool {
-        let mut changed = self.combat.as_mut().is_some_and(&mut change);
-        if let Some(state) = self.grand_melee.as_mut() {
-            for marker in &mut state.markers {
-                if marker.number != state.focused_marker && let Some(combat) = marker.lane.combat.as_mut() {
-                    changed |= change(combat);
-                }
-            }
+
+    pub(crate) fn combat_lanes(&self) -> impl Iterator<Item = &CombatState> {
+        self.combat_lanes_with_turn().map(|(combat, _, _)| combat)
+    }
+
+    pub(crate) fn combat_lanes_mut(&mut self) -> impl Iterator<Item = &mut CombatState> {
+        self.combat
+            .iter_mut()
+            .chain(self.grand_melee.iter_mut().flat_map(|state| {
+                let focused = state.focused_marker;
+                state
+                    .markers
+                    .iter_mut()
+                    .filter(move |marker| {
+                        marker.number != focused && marker.status == GrandMeleeMarkerStatus::Active
+                    })
+                    .filter_map(|marker| marker.lane.combat.as_mut())
+            }))
+    }
+
+    pub(super) fn mutate_combat_lanes(
+        &mut self,
+        mut change: impl FnMut(&mut CombatState) -> bool,
+    ) -> bool {
+        let mut changed = false;
+        for combat in self.combat_lanes_mut() {
+            changed |= change(combat);
         }
         changed
     }
-    pub(crate) fn current_attack_target_across_lanes(&self, attacker: ObjectId)
-        -> Option<&crate::combat_state::AttackTarget>
-    {
-        self.combat_lanes().into_iter().find_map(|combat| crate::combat_state::get_attack_target(combat, attacker))
+
+    /// Find this player's combat independently of the stack being resolved.
+    /// At beginning of combat there need not be a CombatState yet.
+    pub(crate) fn combat_turn_for_attacking_player(&self, player: PlayerId) -> Option<&TurnState> {
+        if self.turn.phase == super::Phase::Combat
+            && (self.turn.active_player == player
+                || self.shared_team_turns_enabled()
+                    && self.are_teammates(player, self.turn.active_player))
+        {
+            return Some(&self.turn);
+        }
+        let state = self.grand_melee.as_ref()?;
+        state
+            .markers
+            .iter()
+            .filter(|marker| {
+                marker.number != state.focused_marker
+                    && marker.status == GrandMeleeMarkerStatus::Active
+            })
+            .map(|marker| &marker.lane.turn)
+            .find(|turn| turn.active_player == player && turn.phase == super::Phase::Combat)
+    }
+
+    pub(super) fn combat_slot_for_turn_mut(
+        &mut self,
+        active: PlayerId,
+    ) -> &mut Option<CombatState> {
+        if active != self.turn.active_player
+            && let Some(state) = self.grand_melee.as_mut()
+            && let Some(marker) = state.markers.iter_mut().find(|marker| {
+                marker.number != state.focused_marker
+                    && marker.status == GrandMeleeMarkerStatus::Active
+                    && marker.lane.turn.active_player == active
+            })
+        {
+            return &mut marker.lane.combat;
+        }
+        &mut self.combat
+    }
+
+    /// A resolving effect keeps its stack, but an off-stack attack also belongs
+    /// to the history of the turn in which that combat is taking place.
+    pub(super) fn other_turn_for_attacker_mut(
+        &mut self,
+        attacker: ObjectId,
+    ) -> Option<(&TurnState, &mut TurnStore)> {
+        let state = self.grand_melee.as_mut()?;
+        let lane =
+            &mut state
+                .markers
+                .iter_mut()
+                .find(|marker| {
+                    marker.number != state.focused_marker
+                        && marker.status == GrandMeleeMarkerStatus::Active
+                        && marker.lane.combat.as_ref().is_some_and(|combat| {
+                            crate::combat_state::is_attacking(combat, attacker)
+                        })
+                })?
+                .lane;
+        Some((&lane.turn, &mut lane.turn_store))
+    }
+
+    pub(crate) fn is_being_attacked_by_during_declare_attackers(
+        &self,
+        player: PlayerId,
+        attacker: ObjectId,
+    ) -> bool {
+        self.combat_lanes_with_turn().any(|(combat, turn, _)| {
+            turn.phase == super::Phase::Combat
+                && turn.step == Some(super::Step::DeclareAttackers)
+                && crate::combat_state::get_attack_target(combat, attacker)
+                    == Some(&crate::combat_state::AttackTarget::Player(player))
+        })
+    }
+
+    pub(crate) fn combat_for_attacker(&self, attacker: ObjectId) -> Option<&CombatState> {
+        self.combat_lanes()
+            .find(|combat| crate::combat_state::is_attacking(combat, attacker))
+    }
+
+    pub(crate) fn combat_for_attacker_mut(
+        &mut self,
+        attacker: ObjectId,
+    ) -> Option<&mut CombatState> {
+        self.combat_lanes_mut()
+            .find(|combat| crate::combat_state::is_attacking(combat, attacker))
+    }
+
+    pub(crate) fn current_attack_target_across_lanes(
+        &self,
+        attacker: ObjectId,
+    ) -> Option<&crate::combat_state::AttackTarget> {
+        self.combat_lanes()
+            .find_map(|combat| crate::combat_state::get_attack_target(combat, attacker))
     }
 
     fn grand_melee_lane(&self) -> GrandMeleeTurnLane {

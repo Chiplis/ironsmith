@@ -219,10 +219,14 @@ fn make_decision_from_context<R: FromPrimitiveResponse>(
                 dm,
                 &DecisionContext::Partition(ctx.clone()),
             );
-            let result = dm.decide_partition(game, &ctx);
+            let mut result = dm.decide_partition(game, &ctx);
             if dm.awaiting_choice() {
                 return R::pending_response(fallback);
             }
+            // A partition assigns each offered card to one destination exactly once.
+            let mut available: std::collections::HashSet<_> =
+                ctx.cards.iter().map(|(card, _)| *card).collect();
+            result.retain(|card| available.remove(card));
             R::from_partition(result, fallback)
         }
         DecisionContext::Proliferate(ctx) => {

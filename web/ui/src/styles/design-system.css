@@ -110,20 +110,18 @@
 @keyframes floating-preview-hero-in {
   from {
     opacity: 0;
-    visibility: visible;
     transform: translate(var(--preview-hero-shift-x, 0px), var(--preview-hero-shift-y, 0px))
       scale(var(--preview-hero-scale-from, 0.95));
   }
   40% { opacity: 1; }
-  to { opacity: 1; visibility: visible; transform: translate(0, 0) scale(1); }
+  to { opacity: 1; transform: translate(0, 0) scale(1); }
 }
 
 @keyframes floating-preview-hero-out {
-  from { opacity: 1; visibility: visible; transform: translate(0, 0) scale(1); }
+  from { opacity: 1; transform: translate(0, 0) scale(1); }
   60% { opacity: 1; }
   to {
     opacity: 0;
-    visibility: hidden;
     transform: translate(var(--preview-hero-shift-x, 0px), var(--preview-hero-shift-y, 0px))
       scale(var(--preview-hero-scale-from, 0.95));
   }
@@ -139,7 +137,10 @@
     animation: floating-preview-hero-in 220ms cubic-bezier(0.16, 1, 0.3, 1) both;
   }
 
+  /* Only transform and opacity are animated, so the trip runs on the
+     compositor and survives the render the hover itself triggers. */
   .floating-card-preview[data-hero="out"] {
+    visibility: visible;
     animation: floating-preview-hero-out 130ms ease-in both;
   }
 
@@ -1546,7 +1547,7 @@ select.stone-select.topbar-phase-perspective-select:disabled {
   padding: 4px 8px !important;
   border: 1px solid var(--ui-border-subtle) !important;
   background:
-    linear-gradient(90deg, rgba(var(--player-accent-rgb, 183, 156, 255), 0.1), transparent 26%),
+    linear-gradient(90deg, rgba(var(--player-accent-rgb, 77, 163, 255), 0.1), transparent 26%),
     linear-gradient(180deg, #24211d, #171614) !important;
 }
 
@@ -1705,35 +1706,35 @@ select.stone-select.topbar-phase-perspective-select:disabled {
 .decision-option-row:hover:not(:disabled),
 .mobile-decision-action-row:hover:not(:disabled),
 .decision-option-row.is-highlighted {
-  border-color: rgba(var(--decision-option-accent-rgb, var(--player-accent-rgb, 183, 156, 255)), 0.62) !important;
+  border-color: rgba(var(--decision-option-accent-rgb, var(--player-accent-rgb, 77, 163, 255)), 0.62) !important;
   color: var(--ui-text-secondary) !important;
   -webkit-text-fill-color: var(--ui-text-secondary) !important;
   background:
     linear-gradient(
       90deg,
-      rgba(var(--decision-option-accent-rgb, var(--player-accent-rgb, 183, 156, 255)), 0.24),
-      rgba(var(--decision-option-accent-rgb, var(--player-accent-rgb, 183, 156, 255)), 0.08) 72%,
+      rgba(var(--decision-option-accent-rgb, var(--player-accent-rgb, 77, 163, 255)), 0.24),
+      rgba(var(--decision-option-accent-rgb, var(--player-accent-rgb, 77, 163, 255)), 0.08) 72%,
       rgba(19, 19, 18, 0.96)
     ) !important;
   box-shadow:
-    inset 3px 0 var(--decision-option-accent, var(--player-accent, #b79cff)),
+    inset 3px 0 var(--decision-option-accent, var(--player-accent, #4da3ff)),
     inset 0 1px rgba(255, 255, 255, 0.045) !important;
 }
 
 .decision-option-row.is-selected,
 .decision-option-row[aria-pressed="true"] {
-  border-color: rgba(var(--decision-option-accent-rgb, var(--player-accent-rgb, 183, 156, 255)), 0.74) !important;
+  border-color: rgba(var(--decision-option-accent-rgb, var(--player-accent-rgb, 77, 163, 255)), 0.74) !important;
   color: var(--ui-text-secondary) !important;
   -webkit-text-fill-color: var(--ui-text-secondary) !important;
   background:
     linear-gradient(
       90deg,
-      rgba(var(--decision-option-accent-rgb, var(--player-accent-rgb, 183, 156, 255)), 0.3),
-      rgba(var(--decision-option-accent-rgb, var(--player-accent-rgb, 183, 156, 255)), 0.11) 72%,
+      rgba(var(--decision-option-accent-rgb, var(--player-accent-rgb, 77, 163, 255)), 0.3),
+      rgba(var(--decision-option-accent-rgb, var(--player-accent-rgb, 77, 163, 255)), 0.11) 72%,
       rgba(19, 19, 18, 0.96)
     ) !important;
   box-shadow:
-    inset 3px 0 var(--decision-option-accent, var(--player-accent, #b79cff)),
+    inset 3px 0 var(--decision-option-accent, var(--player-accent, #4da3ff)),
     inset 0 1px rgba(255, 255, 255, 0.06) !important;
 }
 
@@ -1752,18 +1753,18 @@ select.stone-select.topbar-phase-perspective-select:disabled {
 
 .action-strip-pill.is-interactive:hover,
 .action-strip-pill.is-linked-active {
-  border-color: rgba(var(--decision-option-accent-rgb, var(--player-accent-rgb, 183, 156, 255)), 0.62) !important;
+  border-color: rgba(var(--decision-option-accent-rgb, var(--player-accent-rgb, 77, 163, 255)), 0.62) !important;
   color: var(--ui-text-secondary) !important;
   -webkit-text-fill-color: var(--ui-text-secondary) !important;
   background:
     linear-gradient(
       90deg,
-      rgba(var(--decision-option-accent-rgb, var(--player-accent-rgb, 183, 156, 255)), 0.24),
-      rgba(var(--decision-option-accent-rgb, var(--player-accent-rgb, 183, 156, 255)), 0.08) 72%,
+      rgba(var(--decision-option-accent-rgb, var(--player-accent-rgb, 77, 163, 255)), 0.24),
+      rgba(var(--decision-option-accent-rgb, var(--player-accent-rgb, 77, 163, 255)), 0.08) 72%,
       rgba(19, 19, 18, 0.96)
     ) !important;
   box-shadow:
-    inset 3px 0 var(--decision-option-accent, var(--player-accent, #b79cff)),
+    inset 3px 0 var(--decision-option-accent, var(--player-accent, #4da3ff)),
     inset 0 1px rgba(255, 255, 255, 0.045) !important;
 }
 
@@ -2661,11 +2662,11 @@ select.stone-select.topbar-phase-perspective-select:disabled {
     background:
       linear-gradient(
         90deg,
-        rgba(var(--decision-option-accent-rgb, var(--player-accent-rgb, 183, 156, 255)), 0.26),
-        rgba(var(--decision-option-accent-rgb, var(--player-accent-rgb, 183, 156, 255)), 0.08) 76%,
+        rgba(var(--decision-option-accent-rgb, var(--player-accent-rgb, 77, 163, 255)), 0.26),
+        rgba(var(--decision-option-accent-rgb, var(--player-accent-rgb, 77, 163, 255)), 0.08) 76%,
         rgba(255, 255, 255, 0.02)
       ) !important;
-    box-shadow: inset 3px 0 var(--decision-option-accent, var(--player-accent, #b79cff)) !important;
+    box-shadow: inset 3px 0 var(--decision-option-accent, var(--player-accent, #4da3ff)) !important;
   }
 
   .table-decision-overlay-slot .action-strip-pill {
@@ -2681,11 +2682,11 @@ select.stone-select.topbar-phase-perspective-select:disabled {
     background:
       linear-gradient(
         90deg,
-        rgba(var(--decision-option-accent-rgb, var(--player-accent-rgb, 183, 156, 255)), 0.26),
-        rgba(var(--decision-option-accent-rgb, var(--player-accent-rgb, 183, 156, 255)), 0.08) 76%,
+        rgba(var(--decision-option-accent-rgb, var(--player-accent-rgb, 77, 163, 255)), 0.26),
+        rgba(var(--decision-option-accent-rgb, var(--player-accent-rgb, 77, 163, 255)), 0.08) 76%,
         rgba(255, 255, 255, 0.02)
       ) !important;
-    box-shadow: inset 3px 0 var(--decision-option-accent, var(--player-accent, #b79cff)) !important;
+    box-shadow: inset 3px 0 var(--decision-option-accent, var(--player-accent, #4da3ff)) !important;
   }
 
   .table-shell[data-decision-strip-removed="true"]
@@ -3592,9 +3593,9 @@ button:disabled,
 }
 
 [data-player-target].player-target-box {
-  border: 1px solid var(--player-accent, #b79cff) !important;
+  border: 1px solid var(--player-accent, #4da3ff) !important;
   outline: none !important;
-  box-shadow: 0 0 8px var(--player-accent, #b79cff) !important;
+  box-shadow: 0 0 8px var(--player-accent, #4da3ff) !important;
   filter: none !important;
 }
 
@@ -3781,10 +3782,10 @@ button:disabled,
 }
 .my-zone-action-rail .table-zone-action-button:is(:hover, :focus-visible):not(:disabled) {
   background: linear-gradient(90deg,
-    rgba(var(--player-accent-rgb, 183, 156, 255), 0.26),
-    rgba(var(--player-accent-rgb, 183, 156, 255), 0.08) 76%,
+    rgba(var(--player-accent-rgb, 77, 163, 255), 0.26),
+    rgba(var(--player-accent-rgb, 77, 163, 255), 0.08) 76%,
     rgba(255, 255, 255, 0.02)) !important;
-  box-shadow: inset 3px 0 var(--player-accent, #b79cff) !important;
+  box-shadow: inset 3px 0 var(--player-accent, #4da3ff) !important;
   outline: none;
 }
 .my-zone-action-rail .table-zone-action-button::before,
@@ -3969,8 +3970,8 @@ button:disabled,
 .table-shell .battlefield-panel--self {
   background: radial-gradient(
     ellipse at 50% 55%,
-    rgba(var(--player-accent-rgb, 183, 156, 255), 0.13) 0%,
-    rgba(var(--player-accent-rgb, 183, 156, 255), 0.055) 42%,
+    rgba(var(--player-accent-rgb, 77, 163, 255), 0.13) 0%,
+    rgba(var(--player-accent-rgb, 77, 163, 255), 0.055) 42%,
     transparent 72%
   ) !important;
 }
@@ -7376,7 +7377,7 @@ html[data-hand-pointer-suspended="true"] * {
     height: 8px;
     flex: 0 0 8px;
     border-radius: 999px;
-    background: var(--option-accent, #b79cff);
+    background: var(--option-accent, #4da3ff);
   }
 
   .table-shell[data-focused-hud="true"] .player-header-perspective-name {

@@ -57,6 +57,8 @@ pub struct CombatState {
     /// Mapping from attacker to their blockers.
     /// Ordered so every iteration (damage, triggers, sync) is peer-stable.
     pub blockers: std::collections::BTreeMap<ObjectId, Vec<ObjectId>>,
+    /// Creatures still blocking after their attacker was removed from combat (CR 509.1g).
+    pub retained_blockers: std::collections::BTreeSet<ObjectId>,
     /// CR 509.1h: becoming blocked persists when the last blocker leaves.
     pub blocked_attackers: HashSet<ObjectId>,
     /// Damage assignment order: attacker -> ordered list of blockers.
@@ -80,17 +82,12 @@ pub struct AttackedPermanentTypes {
 }
 
 impl CombatState {
-    /// Remove a combatant that left the battlefield. CR 509.1g: creatures
-    /// that were blocking it remain blocking creatures, so its blocker list
-    /// is kept under the departed (never reused) ID; nothing can deal or be
-    /// dealt combat damage through an object that no longer exists.
-    pub(crate) fn remove_departed_combatant(&mut self, id: ObjectId) -> bool {
-        let retained_blockers = self.blockers.get(&id).cloned();
-        let was_participating = self.remove_combatant(id);
-        if let Some(blockers) = retained_blockers.filter(|blockers| !blockers.is_empty()) {
-            self.blockers.insert(id, blockers);
-        }
-        was_participating
+    pub(crate) fn blocking_creatures(&self) -> impl Iterator<Item = ObjectId> + '_ {
+        self.blockers
+            .values()
+            .flatten()
+            .copied()
+            .chain(self.retained_blockers.iter().copied())
     }
 
     pub(crate) fn remove_combatant(&mut self, id: ObjectId) -> bool {
@@ -98,13 +95,13 @@ impl CombatState {
             .attackers
             .iter()
             .any(|attacker| attacker.creature == id)
-            || self
-                .blockers
-                .values()
-                .any(|blockers| blockers.contains(&id));
+            || is_blocking(self, id);
         self.remember_blocked_attackers();
         self.attackers.retain(|attacker| attacker.creature != id);
-        self.blockers.remove(&id);
+        if let Some(blockers) = self.blockers.remove(&id) {
+            self.retained_blockers.extend(blockers);
+        }
+        self.retained_blockers.remove(&id);
         self.blocked_attackers.remove(&id);
         self.damage_assignment_order.remove(&id);
         self
@@ -156,18 +153,7 @@ impl CombatState {
             };
             self.attacked_permanent_types
                 .entry(permanent)
-                .or_insert_with(|| {
-                    let as_battle = matches!(info.target, AttackTarget::Battle(_));
-                    AttackedPermanentTypes {
-                        planeswalker: !as_battle
-                            || game.object_has_card_type(
-                                permanent,
-                                crate::types::CardType::Planeswalker,
-                            ),
-                        battle: as_battle
-                            || game.object_has_card_type(permanent, crate::types::CardType::Battle),
-                    }
-                });
+                .or_insert_with(|| info.target.permanent_types(game, permanent));
         }
     }
 
@@ -219,6 +205,20 @@ pub enum AttackTarget {
 }
 
 impl AttackTarget {
+    pub(crate) fn permanent_types(
+        &self,
+        game: &GameState,
+        permanent: ObjectId,
+    ) -> AttackedPermanentTypes {
+        let as_battle = matches!(self, Self::Battle(_));
+        AttackedPermanentTypes {
+            planeswalker: !as_battle
+                || game.object_has_card_type(permanent, crate::types::CardType::Planeswalker),
+            battle: as_battle
+                || game.object_has_card_type(permanent, crate::types::CardType::Battle),
+        }
+    }
+
     /// The planeswalker or battle being attacked, if any.
     pub fn attacked_permanent(&self) -> Option<ObjectId> {
         match self {
@@ -485,6 +485,7 @@ pub fn end_combat(combat: &mut CombatState) {
     combat.block_declaration_complete = false;
     combat.attackers.clear();
     combat.blockers.clear();
+    combat.retained_blockers.clear();
     combat.blocked_attackers.clear();
     combat.damage_assignment_order.clear();
     combat.attacking_bands.clear();
@@ -959,11 +960,7 @@ fn declare_blockers_internal(
             .object(*attacker_id)
             .ok_or(CombatError::NotOnBattlefield(*attacker_id))?;
 
-        if defending_player_for_attacker(game, combat, *attacker_id).is_none_or(|defender| {
-            defender != game.controller_of(blocker)
-                && !(game.shared_team_turns_enabled()
-                    && game.are_teammates(defender, game.controller_of(blocker)))
-        }) {
+        if !controller_can_block_in_combat(game, combat, *attacker_id, game.controller_of(blocker)) {
             return Err(CombatError::CreatureCannotBlock {
                 blocker: *blocker_id,
                 attacker: *attacker_id,
@@ -1439,11 +1436,7 @@ fn legal_block_edge(
     blocker.zone == Zone::Battlefield
         && attacker.zone == Zone::Battlefield
         && is_attacking(combat, attacker_id)
-        && defending_player_for_attacker(game, combat, attacker_id).is_some_and(|defender| {
-            defender == game.controller_of(blocker)
-                || (game.shared_team_turns_enabled()
-                    && game.are_teammates(defender, game.controller_of(blocker)))
-        })
+        && controller_can_block_in_combat(game, combat, attacker_id, game.controller_of(blocker))
         && game.object_has_card_type_with_effects(
             blocker_id,
             crate::types::CardType::Creature,
@@ -2097,42 +2090,39 @@ pub fn is_attacking(combat: &CombatState, creature: ObjectId) -> bool {
 
 /// Returns true if the creature is blocking.
 pub fn is_blocking(combat: &CombatState, creature: ObjectId) -> bool {
-    combat
-        .blockers
-        .values()
-        .any(|blockers| blockers.contains(&creature))
-}
-
-/// "attacking alone" (CR 506.5): the creature is attacking and no other
-/// creature its controller controls is.
-pub fn is_attacking_alone(game: &crate::game_state::GameState, creature: ObjectId) -> bool {
-    let Some(combat) = game.combat.as_ref() else {
-        return false;
-    };
-    if !is_attacking(combat, creature) {
-        return false;
-    }
-    let controller = game.controller_of_id(creature);
-    combat
-        .attackers
-        .iter()
-        .filter(|attacker| game.controller_of_id(attacker.creature) == controller)
-        .count()
-        == 1
-}
-
-/// "blocking alone" (CR 506.5): the creature is blocking and no other
-/// creature is.
-pub fn is_blocking_alone(game: &crate::game_state::GameState, creature: ObjectId) -> bool {
-    let Some(combat) = game.combat.as_ref() else {
-        return false;
-    };
-    is_blocking(combat, creature)
-        && combat
+    combat.retained_blockers.contains(&creature)
+        || combat
             .blockers
             .values()
-            .flatten()
-            .all(|blocker| *blocker == creature)
+            .any(|blockers| blockers.contains(&creature))
+}
+
+/// Live "attacking alone" counts the entire combined attack (CR 506.5, 805.10b).
+pub fn is_attacking_alone(game: &crate::game_state::GameState, creature: ObjectId) -> bool {
+    game.combat_lanes()
+        .any(|combat| matches!(combat.attackers.as_slice(), [only] if only.creature == creature))
+}
+
+pub fn is_blocking_alone(game: &crate::game_state::GameState, creature: ObjectId) -> bool {
+    game.combat_lanes().any(|combat| {
+        is_blocking(combat, creature)
+            && combat
+                .blocking_creatures()
+                .all(|blocker| blocker == creature)
+    })
+}
+
+/// An attacker becomes either blocked or unblocked when blockers are declared.
+/// A previously blocked attacker stays blocked even if all its blockers leave.
+pub(crate) fn blocked_status(combat: &CombatState, creature: ObjectId) -> Option<bool> {
+    if !is_attacking(combat, creature) {
+        return None;
+    }
+    if is_blocked(combat, creature) {
+        Some(true)
+    } else {
+        combat.block_declaration_complete.then_some(false)
+    }
 }
 
 /// Returns the blockers assigned to an attacker.
@@ -2243,9 +2233,8 @@ pub fn defending_player_for_attack_event(
         AttackEventTarget::Planeswalker(planeswalker) => game.controller_of_id(planeswalker),
         AttackEventTarget::Battle(battle) => game.battle_protector(battle),
         AttackEventTarget::Nothing => game
-            .combat
-            .as_ref()
-            .and_then(|combat| defending_player_for_attacker(game, combat, attacker)),
+            .current_attack_target_across_lanes(attacker)
+            .and_then(|target| defending_player_for_attack_target(game, target)),
     }
 }
 
@@ -2257,6 +2246,19 @@ pub fn attackers_targeting_battle(combat: &CombatState, battle: ObjectId) -> Vec
         .filter(|info| matches!(&info.target, AttackTarget::Battle(id) if *id == battle))
         .map(|info| info.creature)
         .collect()
+}
+
+/// CR 802.4a and 805.10d. A blocker may defend a teammate in a shared team turn.
+pub(crate) fn controller_can_block_in_combat(
+    game: &GameState,
+    combat: &CombatState,
+    attacker: ObjectId,
+    controller: PlayerId,
+) -> bool {
+    defending_player_for_attacker(game, combat, attacker).is_some_and(|defender| {
+        defender == controller
+            || (game.shared_team_turns_enabled() && game.are_teammates(defender, controller))
+    })
 }
 
 /// Return the defending player associated with an attacking creature.

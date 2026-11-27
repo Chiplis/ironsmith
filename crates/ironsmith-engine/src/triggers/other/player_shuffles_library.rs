@@ -37,6 +37,10 @@ impl TriggerMatcher for PlayerShufflesLibraryTrigger {
             return false;
         };
 
+        if e.shuffler != e.player {
+            return false;
+        }
+
         let player_matches = match &self.player {
             PlayerFilter::You => e.player == ctx.controller,
             PlayerFilter::Opponent => ctx.game.are_opponents(ctx.controller, e.player),

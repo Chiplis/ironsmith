@@ -1,6 +1,9 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
+  LOOP_HISTORY_LIMIT,
+  appendLoopHistory,
+  detectedLoopSteps,
   loopReplayPosition,
   recordLoopStep,
   resolveLoopStep,
@@ -112,4 +115,44 @@ test("recorded stack resolution uses ordinary passes so interruptions keep every
   const step = {kind:"priority",type:"resolve_stack"};
   const state = stateWith(priority([{index:0,kind:"pass_priority",action_ref:{kind:"pass_priority"}}]),[],{stack_size:2});
   assert.deepEqual(resolveLoopStep(step,state).command,{type:"priority_action",action_ref:{kind:"pass_priority"}});
+});
+
+test("a detected loop is the logged commands from the offer's first serial on", () => {
+  const step = (label) => ({ kind: "priority", type: "priority_action", action: { label } });
+  let history = [];
+  history = appendLoopHistory(history, { step: step("land"), serial: 3, turn: 4 });
+  history = appendLoopHistory(history, { step: step("tap"), serial: 4, turn: 4 });
+  // Two commands of one engine step (a nested choice) share a serial.
+  history = appendLoopHistory(history, { step: step("untap"), serial: 5, turn: 4 });
+  history = appendLoopHistory(history, { step: step("target"), serial: 5, turn: 4 });
+  const state = {
+    perspective: 0,
+    turn_number: 4,
+    decision: { kind: "priority", player: 0, actions: [] },
+    loop_offer: { proposer: 0, start_serial: 4, summary: "+1 colorless mana (Alice)", responders: [1] },
+  };
+  assert.deepEqual(detectedLoopSteps(history, state).map((entry) => entry.action.label), ["tap", "untap", "target"]);
+
+  // Nothing is offered to another seat, during a running shortcut, off priority,
+  // or when the log does not reach back to the loop's first command.
+  assert.equal(detectedLoopSteps(history, { ...state, perspective: 1 }), null);
+  assert.equal(detectedLoopSteps(history, { ...state, loop_shortcut: { proposer: 0 } }), null);
+  assert.equal(detectedLoopSteps(history, { ...state, decision: { kind: "targets", player: 0 } }), null);
+  assert.equal(detectedLoopSteps(history, { ...state, loop_offer: { ...state.loop_offer, start_serial: 2 } }), null);
+  assert.equal(detectedLoopSteps(history, { ...state, loop_offer: null }), null);
+  assert.equal(detectedLoopSteps([], state), null);
+});
+
+test("the command log keeps one turn and a bounded number of commands", () => {
+  const step = { kind: "priority", type: "priority_action", action: { label: "x" } };
+  let history = [];
+  for (let serial = 0; serial < LOOP_HISTORY_LIMIT + 10; serial += 1) {
+    history = appendLoopHistory(history, { step, serial, turn: 2 });
+  }
+  assert.equal(history.length, LOOP_HISTORY_LIMIT);
+  assert.equal(history[0].serial, 10);
+  history = appendLoopHistory(history, { step, serial: 900, turn: 3 });
+  assert.deepEqual(history.map((entry) => entry.serial), [900], "a new turn starts a new log");
+  assert.equal(appendLoopHistory(history, { step: null, serial: 1, turn: 3 }), history);
+  assert.equal(appendLoopHistory(history, { step, serial: undefined, turn: 3 }), history);
 });

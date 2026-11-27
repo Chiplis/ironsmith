@@ -119,11 +119,169 @@ impl super::iteration_program::SelectedIterationPlan for ObjectIterationPlan {
         })
     }
 }
+/// CR 608.2g. A set selection or a linked ability identifies the cards.
+/// The common caster chooses their play order, including for optional plays.
+pub(super) fn order_cast_iterations<T>(
+    effects: &[Effect],
+    cards: &mut [T],
+    game: &GameState,
+    ctx: &mut ExecutionContext,
+    identity: impl Fn(&T) -> (crate::ids::ObjectId, &ObjectSnapshot),
+) {
+    use crate::target::PlayerFilter;
+    let [child] = effects else { return };
+    if cards.len() < 2 {
+        return;
+    }
+    let cast = if let Some(optional) = child.downcast_ref::<crate::effects::MayEffect>() {
+        let [child] = optional.effects.as_slice() else {
+            return;
+        };
+        child
+    } else {
+        child
+    };
+    let Some(cast) = cast.downcast_ref::<crate::effects::CastTaggedEffect>() else {
+        return;
+    };
+    if cast.tag.as_str() != "__it__" {
+        return;
+    }
+    let caster = match cast.player {
+        PlayerFilter::You | PlayerFilter::EffectController => ctx.controller,
+        PlayerFilter::Specific(player) => player,
+        _ => return,
+    };
+    let items: Vec<_> = cards
+        .iter()
+        .map(|card| {
+            let (id, snapshot) = identity(card);
+            // Linked face-down snapshots can have empty names. Ordering decisions
+            // display the identity that the choosing player is allowed to see.
+            let name = game
+                .object(id)
+                .map(|object| object.name.to_string())
+                .filter(|name| !name.is_empty())
+                .unwrap_or_else(|| snapshot.name.clone());
+            (id, name)
+        })
+        .collect();
+    let ids: Vec<_> = items.iter().map(|(id, _)| *id).collect();
+    let choice = crate::decisions::context::OrderContext::new(
+        caster,
+        Some(ctx.source),
+        "Choose the order to play the cards. The first card is played first.",
+        items,
+    );
+    let answer = ctx.decision_maker.decide_order(game, &choice);
+    if ctx.decision_maker.awaiting_choice() {
+        return;
+    }
+    let positions: std::collections::HashMap<_, _> =
+        crate::effects::cards::normalize_order_response(answer, &ids)
+            .into_iter()
+            .enumerate()
+            .map(|(position, id)| (id, position))
+            .collect();
+    cards.sort_by_key(|card| positions[&identity(card).0]);
+}
+
+/// Collect the optional name slots before the one library search begins.
+/// Each accepted slot can find a different physical card (CR 701.23b, h).
+pub(super) fn prepare_name_search_slots<'a>(
+    effects: &[Effect],
+    matching: impl IntoIterator<Item = &'a ObjectSnapshot>,
+    game: &GameState,
+    ctx: &mut ExecutionContext,
+) -> Result<Option<crate::effects::SequenceEffect>, ExecutionError> {
+    use crate::effects::{ChooseObjectsEffect, MayEffect, SearchLibrarySlot, SequenceEffect};
+    use crate::target::PlayerFilter;
+
+    let [body] = effects else { return Ok(None) };
+    let offer = body.downcast_ref::<MayEffect>();
+    let choice = if let Some(offer) = offer {
+        let [choice] = offer.effects.as_slice() else {
+            return Ok(None);
+        };
+        if offer.decider != Some(PlayerFilter::You)
+            || offer.pay_as_cost
+            || offer.payment_receipt.is_some()
+            || ctx.optional_identity_guard.is_some()
+            || ctx.do_this_limit.is_some()
+        {
+            return Ok(None);
+        }
+        choice
+    } else {
+        body
+    };
+    let Some(search) = choice.downcast_ref::<ChooseObjectsEffect>() else {
+        return Ok(None);
+    };
+    if !search.is_search
+        || search.zone != Some(crate::zone::Zone::Library)
+        || !search.additional_zones.is_empty()
+        || search.replace_tagged_objects
+        || search.count != crate::effect::ChoiceCount::exactly(1)
+        || search.count_value.is_some()
+        || search.aggregate_constraint.is_some()
+        || search.chooser != PlayerFilter::You
+        || !matches!(
+            search.filter.owner,
+            None | Some(
+                PlayerFilter::You | PlayerFilter::Target(_) | PlayerFilter::AliasedTarget(_)
+            )
+        )
+        || !matches!(search.filter.tagged_constraints.as_slice(), [relation] if relation.tag.as_str() == "__it__" && relation.relation == TaggedOpbjectRelation::SameNameAsTagged)
+        || !ctx.library_search_groups.has_concluding_shuffle(choice)
+    {
+        return Ok(None);
+    }
+    let mut slots = Vec::new();
+    for card in matching {
+        let id = card.object_id;
+        let yes = if let Some(offer) = offer {
+            let tag = (TagKey::from("__it__"), vec![card.clone()]);
+            super::with_object_iteration(ctx, id, card.controller, vec![tag], |ctx| {
+                offer.accepts_search_slot(game, ctx)
+            })?
+        } else {
+            true
+        };
+        if ctx.decision_maker.awaiting_choice() {
+            return Ok(Some(SequenceEffect::new(Vec::new())));
+        }
+        if yes {
+            let mut filter = search.filter.clone();
+            let reference = TagKey::from(format!(
+                "__pre_move_history__search_slot__{}__{}",
+                search.tag.as_str(),
+                id.0
+            ));
+            ctx.set_tagged_objects(reference.clone(), vec![card.clone()]);
+            filter.tagged_constraints[0].tag = reference;
+            filter.zone = Some(crate::zone::Zone::Library);
+            slots.push(SearchLibrarySlot::optional(filter));
+        }
+    }
+    let actions = if slots.is_empty() {
+        Vec::new()
+    } else {
+        vec![Effect::new(
+            crate::effects::cards::search_library_slots::ChooseLibrarySlots {
+                choice: search.clone(),
+                slots,
+            },
+        )]
+    };
+    Ok(Some(SequenceEffect::new(actions)))
+}
+
 fn object_iteration_cursor(
     effect: &ForEachObject,
     game: &GameState,
     ctx: &mut ExecutionContext,
-) -> Box<dyn crate::effects::ActionProgramCursor> {
+) -> Result<Box<dyn crate::effects::ActionProgramCursor>, ExecutionError> {
     let it_tag = TagKey::from("__it__");
     let batched_effects = if let [child] = effect.effects.as_slice()
         && let Some(sequence) = child.downcast_ref::<crate::effects::SequenceEffect>()
@@ -144,18 +302,32 @@ fn object_iteration_cursor(
         let shuffle = crate::effects::ShuffleObjectsIntoLibraryEffect::new(
             ChooseSpec::all(effect.filter.clone()),
             crate::target::PlayerFilter::OwnerOf(crate::filter::ObjectRef::Target),
-        ).with_owner_library_destination();
-        return super::sequence::sequence_cursor(
-            &crate::effects::SequenceEffect::new(vec![Effect::new(shuffle)]), ctx,
         );
+        return Ok(super::sequence::sequence_cursor(
+            &crate::effects::SequenceEffect::new(vec![Effect::new(shuffle)]), ctx,
+        ));
     }
-    super::iteration_program::selected_iteration_cursor(
+    let mut matching = matching_objects(effect, game, ctx);
+    if let Some(search) = prepare_name_search_slots(
+        &effect.effects, matching.iter().map(|(_, card)| card), game, ctx,
+    )? {
+        return Ok(super::sequence::sequence_cursor(&search, ctx));
+    }
+    order_cast_iterations(&effect.effects, &mut matching, game, ctx, |(id, card)| {
+        (*id, card)
+    });
+    if ctx.decision_maker.awaiting_choice() {
+        return Ok(super::action_program::finished_program_cursor(
+            crate::effects::CompletedEffectOutputs::aggregate_only(EffectOutcome::count(0)),
+        ));
+    }
+    Ok(super::iteration_program::selected_iteration_cursor(
         Box::new(ObjectIterationPlan {
-            matching: matching_objects(effect, game, ctx),
+            matching,
             effects: effect.effects.clone(),
         }),
         ctx,
-    )
+    ))
 }
 
 impl EffectExecutor for ForEachObject {
@@ -186,7 +358,7 @@ impl EffectExecutor for ForEachObject {
                 proposal,
             )));
         }
-        Ok(Some(object_iteration_cursor(self, game, ctx)))
+        Ok(Some(object_iteration_cursor(self, game, ctx)?))
     }
 
     fn supports_damage_action_cohort(&self) -> bool {
@@ -318,7 +490,7 @@ fn execute_object_iterations(
             crate::effects::EffectExecutionPurpose::Action,
         );
     }
-    let cursor = object_iteration_cursor(effect, game, ctx);
+    let cursor = object_iteration_cursor(effect, game, ctx)?;
     // A compound body contains distinct authored actions. Only a direct
     // shared-damage child may keep one simultaneous instruction open.
     // CR 603.2c / 608.2: "for each of them, create a token" is one creation

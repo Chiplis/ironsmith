@@ -7,6 +7,7 @@ pub(crate) struct EvaluationContext<'a, 'game> {
     pub source: ObjectId,
     pub controller: PlayerId,
     mode: Mode<'a, 'game>,
+    pub(super) undefined_commander_identity: std::cell::Cell<bool>,
 }
 
 enum Mode<'a, 'game> {
@@ -38,6 +39,7 @@ impl<'a, 'game> EvaluationContext<'a, 'game> {
             source: ctx.source,
             controller: ctx.controller,
             mode: Mode::Execution(ctx),
+            undefined_commander_identity: Default::default(),
         }
     }
     pub(crate) fn continuous(layer: LayerValueContext<'a, 'game>) -> Self {
@@ -46,6 +48,7 @@ impl<'a, 'game> EvaluationContext<'a, 'game> {
             source: layer.source,
             controller: layer.controller,
             mode: Mode::Continuous(layer),
+            undefined_commander_identity: Default::default(),
         }
     }
     pub(super) fn execution(&self) -> Option<&'a ExecutionContext<'game>> {
@@ -469,7 +472,9 @@ impl<'a, 'game> EvaluationContext<'a, 'game> {
                         });
                     }
                 } else {
-                    for id in value_candidate_ids_for_filter(self.game, filter, ctx) {
+                    let candidates = crate::object_query::commander_characteristic_candidates(self.game, filter)
+                        .unwrap_or_else(|| value_candidate_ids_for_filter(self.game, filter, ctx));
+                    for id in candidates {
                         let Some(object) = self.game.object(id) else {
                             continue;
                         };
@@ -487,7 +492,9 @@ impl<'a, 'game> EvaluationContext<'a, 'game> {
                                 .game
                                 .calculated_toughness(id)
                                 .or_else(|| object.toughness()),
-                            NumericProperty::ManaValue => NumericProperty::ManaValue.raw(object),
+                            NumericProperty::ManaValue => Some(
+                                crate::filter::object_current_mana_value_for_relation(object, self.game)
+                            ),
                             NumericProperty::ManaSpent => {
                                 Some(object.mana_spent_to_cast.total() as i32)
                             }
@@ -510,7 +517,7 @@ impl<'a, 'game> EvaluationContext<'a, 'game> {
                     // transformed back faces use their front faces' mana value
                     // (CR 712.8e, 712.8g).
                     NumericProperty::ManaValue => {
-                        Some(crate::filter::object_mana_value_for_filter(object))
+                        Some(crate::filter::calculated_mana_value_for_filter(object, chars))
                     }
                     NumericProperty::ManaSpent => Some(object.mana_spent_to_cast.total() as i32),
                     NumericProperty::KickerCount => {

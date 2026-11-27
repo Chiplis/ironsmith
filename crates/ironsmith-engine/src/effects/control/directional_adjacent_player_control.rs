@@ -40,11 +40,8 @@ fn players_in_direction(
     start: PlayerId,
     direction: SeatingDirection,
 ) -> Vec<PlayerId> {
-    let players = game
-        .players
-        .iter()
-        .filter(|player| player.is_in_game())
-        .map(|player| player.id)
+    let players = game.physical_seats().iter().copied()
+        .filter(|id| game.player(*id).is_some_and(|player| player.is_in_game()))
         .collect::<Vec<_>>();
     let Some(start_idx) = players.iter().position(|player| *player == start) else {
         return Vec::new();

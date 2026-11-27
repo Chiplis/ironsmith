@@ -36,6 +36,14 @@ pub trait EffectModelInterpreterHooks<M: EffectModel> {
     /// retained the complete creating instruction. Standalone unknowns stay opaque.
     fn legacy_token_word_roles(&self, _token: &crate::effects::CreateTokenEffect) -> Option<ironsmith_core::TokenTextRoles> { None }
 
+    fn legacy_collective_search_destination(&self) -> bool {
+        false
+    }
+
+    fn legacy_simultaneous_library_search(&self, _filter: &crate::target::PlayerFilter) -> bool {
+        false
+    }
+
     fn runtime_ability_hook(
         &mut self,
         ability: M::Ability,
@@ -970,6 +978,13 @@ where
             crate::effects::ForPlayersEffect::new(payload.filter.clone(), effects)
         };
         converted.sequential = payload.sequential;
+        if converted.sequential && !payload.starting_with_controller && !payload.stop_after_first_happened
+            && let [effect] = converted.effects.as_slice()
+            && crate::effects::cards::simultaneous_search::controller_searches_each_library(effect)
+            && hooks.legacy_simultaneous_library_search(&converted.filter)
+        {
+            converted.sequential = false;
+        }
         converted.announcement_condition = payload.announcement_condition.clone();
         if payload.stop_after_first_happened {
             converted = converted.stop_after_first_happened();
@@ -2244,6 +2259,17 @@ where
         )));
     }
 
+    if let Some(search) = M::downcast_ref::<crate::effects::ChooseObjectsEffect>(&effect) {
+        let mut search = search.clone();
+        if hooks.legacy_collective_search_destination()
+            && search.is_search
+            && search.search_result_reference_surface == Some(ironsmith_core::SearchResultReferenceSurface::ThatCard)
+            && matches!(&search.chooser, crate::target::PlayerFilter::ControllerOf(crate::filter::ObjectRef::Tagged(tag)) if tag.as_str() == "__it__")
+        {
+            search.search_result_reference_surface = Some(ironsmith_core::SearchResultReferenceSurface::ThoseCards);
+        }
+        return Ok(Effect::new(search));
+    }
     clone_direct!(
         crate::effects::AmassEffect,
         crate::effects::CollectEvidenceEffect,
@@ -2258,7 +2284,6 @@ where
         crate::effects::BecomeBasicLandTypeChoiceEffect,
         crate::effects::BecomeColorChoiceEffect,
         crate::effects::BecomeCreatureTypeChoiceEffect,
-        crate::effects::ChooseObjectsEffect,
         crate::effects::ChooseSpellCastHistoryEffect,
         crate::effects::ClashEffect,
         crate::effects::TriggerAbilitiesByClassEffect,
@@ -2400,6 +2425,9 @@ pub fn prune_redundant_target_only_effects_in_program(
         }
         index += 1;
     }
+    crate::effects::cards::search_group::bind_target_library_shuffles(
+        segments.iter_mut().flat_map(|segment| segment.default_effects.iter_mut()),
+    );
     program.replace_segments(segments);
 }
 

@@ -548,6 +548,18 @@ impl EffectExecutor for ChooseObjectsEffect {
             .map(|count| count / multiplier)
     }
 
+    fn supports_simultaneous_player_action(&self) -> bool {
+        self.is_search && search_zones(self).is_ok_and(|zones| zones == [Zone::Library])
+    }
+
+    fn prepare_simultaneous_player_action(
+        &self,
+        game: &GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<Box<dyn crate::effects::SimultaneousEffectProposal>, ExecutionError> {
+        super::choose_objects_runtime::prepare_library_object_search(self, game, ctx)
+    }
+
     fn supports_prepared_action_program(&self) -> bool {
         !self.is_search && self.reveal && self.reveal_is_presentation_only == Some(false)
     }

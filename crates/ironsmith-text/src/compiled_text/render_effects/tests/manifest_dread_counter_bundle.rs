@@ -97,6 +97,7 @@ fn manifest_dread_counter_bundle_requires_a_shared_recipient() {
         distributed: false,
         required_recipient: None,
         counter_kind_from_trigger: false,
+        keyword_grant: None,
     };
     let render = |second| {
         super::super::effect_lists::describe_shared_recipient_counter_pair(&[

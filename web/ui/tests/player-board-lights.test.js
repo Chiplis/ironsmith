@@ -6,10 +6,10 @@ const rect = (left, top, right, bottom) => ({ left, top, right, bottom });
 test('each duel light originates beyond its own edge and uses its player accent', () => {
   const lights = playerBoardLights({ width: 1200, height: 800, seats: [
     { owner: '7', rect: rect(0, 0, 1200, 380) }, { owner: '3', rect: rect(0, 420, 1200, 800) },
-  ] }, [{ id: 3, color: '#b79cff' }, { id: 7, color: '#ff3b30' }], 3);
+  ] }, [{ id: 3, color: '#4da3ff' }, { id: 7, color: '#ff3b30' }], 3);
   assert.equal(lights[0].color, '#ff3b30');
   assert.ok(lights[0].y < 0 && lights[0].targetY > 0);
-  assert.equal(lights[1].color, '#b79cff');
+  assert.equal(lights[1].color, '#4da3ff');
   assert.ok(lights[1].y > 800 && lights[1].targetY < 800);
   assert.ok(lights.every(light => light.intensity > 0 && light.z > 0));
 });
@@ -29,7 +29,7 @@ test('multiplayer seats get separate sources; hidden mobile opponents have no li
 });
 
 test('viewport scaling preserves inverse-square illumination and spectator edge placement', () => {
-  const players = [{ id: 0, color: '#b79cff' }];
+  const players = [{ id: 0, color: '#4da3ff' }];
   const small = playerBoardLights({ width: 800, height: 600, seats: [{ owner: '0', rect: rect(0, 300, 800, 600) }] }, players)[0];
   const large = playerBoardLights({ width: 1600, height: 1200, seats: [{ owner: '0', rect: rect(0, 600, 1600, 1200) }] }, players)[0];
   assert.ok(small.y > 600 && large.y > 1200);

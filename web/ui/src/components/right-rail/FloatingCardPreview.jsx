@@ -2,6 +2,7 @@ import { zonePreviewLayout as placeZonePreview } from "@/lib/zone-preview-layout
 import { classifyViewport } from "@/lib/viewport-layout";
 import { placeCardPreview } from "@/lib/card-preview-placement";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useFieldHoverDwell } from "@/lib/field-hover-dwell";
 import { manaPaymentActionMap, manaPaymentFrameActions, manaActivationCommand } from "@/lib/mana-payment-actions";
 import { useManaPaymentEditor } from "@/context/ManaPaymentEditorContext.shared";
 import { useCastTargeting, useDragSession } from "@/context/DragContext";
@@ -175,7 +176,19 @@ function previewPosition(objectId, size, frames = 1) {
       top, bottom: rect.bottom, height: Math.max(0, rect.bottom - top) }, size);
   }
 
-  return battlefieldPreviewLayout(source.getBoundingClientRect(), size, frames);
+  return battlefieldPreviewLayout(restingRect(source), size, frames);
+}
+
+// A hovered battlefield card grows about its centre. The preview is placed
+// against the card at rest, so it does not shift while the card grows or
+// shrinks next to it.
+function restingRect(source) {
+  const rect = source.getBoundingClientRect();
+  const scale = Number.parseFloat(getComputedStyle(source).scale) || 1;
+  if (scale === 1) return rect;
+  const width = rect.width / scale, height = rect.height / scale;
+  const left = rect.left + (rect.width - width) / 2, top = rect.top + (rect.height - height) / 2;
+  return { left, top, width, height, right: left + width, bottom: top + height, x: left, y: top };
 }
 
 function battlefieldPreviewLayout(rect, size, frames = 1) {
@@ -381,6 +394,7 @@ function CardPreviewSurface({
     () => new Set(excludedObjectIds.filter((id) => id != null).map(String)),
     [excludedObjectIds]
   );
+  const fieldHoverDwell = useFieldHoverDwell();
   const isFieldObject = useCallback(id => (state?.players || []).some(player =>
     (player.battlefield || []).some(card => String(card.id) === String(id))), [state?.players]);
   const directlyRequestedObjectId = (
@@ -396,6 +410,9 @@ function CardPreviewSurface({
     )
     && !(cardStackMode && typeof document !== "undefined" && document.querySelector(".stack-card:hover"))
     && hoveredObjectId != null
+    // The pointer is still moving over this battlefield card: its preview
+    // waits for the pointer to rest (the battlefield shows the countdown).
+    && fieldHoverDwell.pending !== String(hoveredObjectId)
     && !manaPaymentActions.has(Number(hoveredObjectId))
     && (canHoverInspectorObject(state, hoveredObjectId)
       || (decisionPreviewSource(hoveredObjectId) && objectExistsInState(state, hoveredObjectId)))
@@ -549,7 +566,9 @@ function CardPreviewSurface({
     // Keep the outgoing card mounted and positioned at its own source until
     // its fade completes. Swapping object content while that transition is
     // running creates a visible flash when moving quickly between cards.
-    const openDelay = lockedObjectId != null || directHandHover || directZoneHover ? 0 : PREVIEW_OPEN_DELAY_MS;
+    // A card the pointer has rested on has already waited out its delay.
+    const openDelay = lockedObjectId != null || directHandHover || directZoneHover
+      || fieldHoverDwell.dwelled === String(requestedObjectId) ? 0 : PREVIEW_OPEN_DELAY_MS;
     const delay = renderedObjectId == null
       ? openDelay
       : directHandHover || directZoneHover ? 0 : Math.max(openDelay, PREVIEW_FADE_MS);
@@ -563,7 +582,7 @@ function CardPreviewSurface({
         closeTimerRef.current = null;
       }
     };
-  }, [directHandHover, directZoneHover, lockedObjectId, renderedObjectId, requestedObjectId]);
+  }, [directHandHover, directZoneHover, fieldHoverDwell.dwelled, lockedObjectId, renderedObjectId, requestedObjectId]);
 
   useLayoutEffect(() => {
     const shell = shellRef.current;

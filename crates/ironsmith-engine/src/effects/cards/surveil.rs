@@ -179,10 +179,7 @@ fn execute_surveil_body(
         player_id,
         Some(ctx.source),
         spec,
-    )
-    .into_iter()
-    .filter(|c| top_cards_top_to_bottom.contains(c))
-    .collect();
+    );
     if ctx.decision_maker.awaiting_choice() {
         return Ok(CompletedEffectOutputs::aggregate_only(
             EffectOutcome::count(0),

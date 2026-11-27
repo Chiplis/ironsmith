@@ -108,7 +108,7 @@ pub(super) fn bind_discarded_keyword_entry_counter(
     if let Some(if_idx) = trimmed.iter().position(|token| token.matches_word("if")) {
         crate::word_claims::claim_tokens(&trimmed[if_idx..]);
     }
-    effects.push(EffectAst::Conditionals(ConditionalEffectAst::Conditional {
+    let mut effect = EffectAst::Conditionals(ConditionalEffectAst::Conditional {
         predicate: PredicateAst::TaggedMatches(tag, has_keyword),
         if_true: vec![EffectAst::subject_verb_put_counters(
             counter,
@@ -118,6 +118,8 @@ pub(super) fn bind_discarded_keyword_entry_counter(
             false,
         )],
         if_false: Vec::new(),
-    }));
+    });
+    effect.borrow_keyword_counter_variants();
+    effects.push(effect);
     true
 }

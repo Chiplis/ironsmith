@@ -299,6 +299,7 @@ fn run_cleanup(
     dm: &mut Dm,
     on_priority: &mut dyn FnMut(&mut GameState),
 ) -> (usize, Vec<usize>, Vec<Option<PlayerId>>, usize) {
+    use ironsmith::decisions::context::DecisionContext;
     use ironsmith::{Step, TurnAction, TurnRunner, TurnRunnerState};
     game.turn.phase = Phase::Ending;
     game.turn.step = Some(Step::Cleanup);
@@ -314,12 +315,17 @@ fn run_cleanup(
         }
         match runner.advance(game, queue).unwrap() {
             TurnAction::Continue => {}
-            TurnAction::Decision(_) => {
+            TurnAction::Decision(DecisionContext::SelectObjects(_)) => {
                 let active = game.turn.active_player;
                 let hand = game.player(active).unwrap().hand.clone();
                 let excess = hand.len().saturating_sub(7);
                 runner.respond_discard(hand.into_iter().take(excess).collect());
             }
+            TurnAction::Decision(DecisionContext::Order(order)) => {
+                assert_eq!(order.player, game.turn.active_player);
+                runner.respond_order(order.items.into_iter().rev().map(|(id, _)| id).collect());
+            }
+            TurnAction::Decision(other) => panic!("unexpected cleanup decision {other:?}"),
             TurnAction::RunPriority => {
                 windows += 1;
                 assert_eq!(game.turn.step, Some(Step::Cleanup));

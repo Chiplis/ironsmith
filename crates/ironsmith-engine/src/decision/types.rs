@@ -111,6 +111,10 @@ pub enum LegalAction {
         permission: crate::alternative_cast::GrantSelection,
     },
 
+    /// CR 732.2: repeat the loop this player just performed. Offered only
+    /// while `GameState::loop_shortcut_offer` names this player; taking it
+    /// asks for the number of repetitions.
+    ShortcutLoop,
 }
 
 /// An option for declaring an attacker.

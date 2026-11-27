@@ -1525,6 +1525,12 @@ impl PreparedPriorityActions {
         self.actions.iter().zip(self.face_up_costs.iter().map(|cost| cost.as_deref()))
     }
     pub fn label(&self, index: usize) -> &str { &self.labels[index] }
+    /// Append an action that needs no face-up cost display.
+    pub(crate) fn push(&mut self, game: &crate::game_state::GameState, action: crate::decision::LegalAction) {
+        self.labels.push(crate::decision::format_action_short(game, &action, None));
+        self.face_up_costs.push(None);
+        self.actions.push(action);
+    }
     pub fn into_vec(self) -> Vec<crate::decision::LegalAction> { self.actions }
 }
 impl std::ops::Deref for PreparedPriorityActions {

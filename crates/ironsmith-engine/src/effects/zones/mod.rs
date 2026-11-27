@@ -63,7 +63,7 @@ mod return_from_graveyard_to_battlefield;
 mod return_from_graveyard_to_hand;
 mod return_to_hand;
 mod sacrifice;
-mod shuffle_objects_into_library;
+pub(crate) mod shuffle_objects_into_library;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AppliedZoneChange {
@@ -292,6 +292,53 @@ fn apply_split_result_order(
     }
 }
 
+/// Owns the ordering of a physical original, before its follow-up instructions.
+/// Nested participants leave that choice to the enclosing simultaneous action.
+pub(crate) struct GraveyardOrderBatch(Option<Box<GameState>>);
+
+impl GraveyardOrderBatch {
+    pub(crate) fn begin(game: &mut GameState, multiple: bool) -> Self {
+        if !multiple || game.collecting_graveyard_order() {
+            return Self(None);
+        }
+        let before = Box::new(game.clone());
+        game.set_collecting_graveyard_order(true);
+        Self(Some(before))
+    }
+
+    pub(crate) fn finish(
+        self,
+        game: &mut GameState,
+        decider: &mut dyn DecisionMaker,
+        source: Option<ObjectId>,
+        committed: bool,
+    ) -> bool {
+        let Some(before) = self.0 else {
+            return !decider.awaiting_choice();
+        };
+        game.set_collecting_graveyard_order(false);
+        if !committed || decider.awaiting_choice() {
+            return false;
+        }
+        let mut arrivals = Vec::new();
+        for player in &game.players {
+            let Some(previous) = before.player(player.id) else {
+                continue;
+            };
+            if player.graveyard.cursor() != previous.graveyard.cursor() {
+                arrivals.extend(
+                    player
+                        .graveyard
+                        .iter()
+                        .filter(|id| !previous.graveyard.contains(id))
+                        .copied(),
+                );
+            }
+        }
+        order_simultaneous_graveyard_batch(&before, game, decider, source, &arrivals)
+    }
+}
+
 /// Collect CR 404.3 ordering choices for one simultaneous graveyard batch.
 ///
 /// `decision_view` is the immutable state from before the event. `game` is a
@@ -306,19 +353,18 @@ pub(crate) fn order_simultaneous_graveyard_batch(
     source: Option<ObjectId>,
     moved_object_ids: &[ObjectId],
 ) -> bool {
-    let mut by_owner = std::collections::HashMap::<PlayerId, Vec<ObjectId>>::new();
+    if moved_object_ids.len() < 2 || game.collecting_graveyard_order() {
+        return true;
+    }
+    let mut by_owner = std::collections::HashMap::<PlayerId, HashSet<ObjectId>>::new();
     for object_id in moved_object_ids.iter().copied() {
         let Some(object) = game.object(object_id) else {
             continue;
         };
-        if object.zone != Zone::Graveyard {
+        if object.zone != Zone::Graveyard || object.kind != crate::object::ObjectKind::Card {
             continue;
         }
-        let owner = object.owner;
-        let ids = by_owner.entry(owner).or_default();
-        if !ids.contains(&object_id) {
-            ids.push(object_id);
-        }
+        by_owner.entry(object.owner).or_default().insert(object_id);
     }
 
     let mut owners = decision_view.team_apnap_player_order();
@@ -332,10 +378,9 @@ pub(crate) fn order_simultaneous_graveyard_batch(
 
     let mut choices = Vec::new();
     for owner in owners {
-        let Some(batch_ids) = by_owner.get(&owner) else {
+        let Some(batch_set) = by_owner.get(&owner).filter(|ids| ids.len() > 1) else {
             continue;
         };
-        let batch_set = batch_ids.iter().copied().collect::<HashSet<_>>();
         let current_order = game
             .player(owner)
             .map(|player| {
@@ -396,6 +441,10 @@ pub(crate) fn maybe_prompt_for_split_result_order(
     cause: &crate::events::cause::EventCause,
     result: &mut AppliedZoneChange,
 ) {
+    // A melded or merged permanent joins every other card arriving for this owner.
+    if final_zone == Zone::Graveyard && game.collecting_graveyard_order() {
+        return;
+    }
     let zone_result_ids = result
         .new_object_ids
         .iter()

@@ -7,9 +7,7 @@ use crate::decision::FallbackStrategy;
 use crate::decisions::{SearchSpec, make_decision_with_fallback};
 use crate::effect::EffectOutcome;
 use crate::effects::EffectExecutor;
-use crate::effects::cards::search_overrides::{
-    LibrarySearchRequest, execute_library_search_scope,
-};
+use crate::effects::cards::search_overrides::{LibrarySearchRequest, execute_library_search_scope};
 use crate::effects::context::ObjectSelectionProgress;
 use crate::effects::helpers::view_hidden_candidate_objects;
 use crate::effects::{ExecutionContext, ExecutionError};
@@ -21,9 +19,77 @@ use crate::zone::Zone;
 pub type SearchLibrarySlot = ironsmith_core::SearchLibrarySlot;
 pub type SearchLibrarySlotsEffect = ironsmith_core::SearchLibrarySlotsEffect;
 
+/// One search with independently constrained choices; its caller performs the
+/// later printed move and shuffle. All finds are committed together, including
+/// when Opposition Agent replaces what happens to them.
+#[derive(Debug, Clone)]
+pub(crate) struct ChooseLibrarySlots {
+    pub slots: Vec<SearchLibrarySlot>,
+    pub choice: crate::effects::ChooseObjectsEffect,
+}
+
+enum SlotResult<'a> {
+    Move { zone: Zone, tapped: bool },
+    Choose(&'a crate::effects::ChooseObjectsEffect),
+}
+
+struct SlotSearch<'a> {
+    slots: &'a [SearchLibrarySlot],
+    progress_tag: crate::tag::TagKey,
+    chooser: &'a crate::target::PlayerFilter,
+    player: &'a crate::target::PlayerFilter,
+    reveal: bool,
+    result: SlotResult<'a>,
+}
+
 impl EffectExecutor for SearchLibrarySlotsEffect {
     #[crate::effects::project_effect_outcome]
     fn execute_with_outputs(
+        &self,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<crate::effects::CompletedEffectOutputs, ExecutionError> {
+        SlotSearch {
+            slots: &self.slots,
+            progress_tag: self.progress_tag.clone(),
+            chooser: &self.chooser,
+            player: &self.player,
+            reveal: self.reveal,
+            result: SlotResult::Move {
+                zone: self.destination,
+                tapped: self.tapped,
+            },
+        }
+        .resolve(game, ctx)
+    }
+}
+
+impl EffectExecutor for ChooseLibrarySlots {
+    #[crate::effects::project_effect_outcome]
+    fn execute_with_outputs(
+        &self,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<crate::effects::CompletedEffectOutputs, ExecutionError> {
+        SlotSearch {
+            slots: &self.slots,
+            progress_tag: format!("__search_slots_progress__{}", self.choice.tag.as_str()).into(),
+            chooser: &self.choice.chooser,
+            player: self
+                .choice
+                .filter
+                .owner
+                .as_ref()
+                .unwrap_or(&self.choice.chooser),
+            reveal: false,
+            result: SlotResult::Choose(&self.choice),
+        }
+        .resolve(game, ctx)
+    }
+}
+
+impl SlotSearch<'_> {
+    fn resolve(
         &self,
         game: &mut GameState,
         ctx: &mut ExecutionContext,
@@ -37,15 +103,17 @@ impl EffectExecutor for SearchLibrarySlotsEffect {
         let mut pending_selection_progress = None;
         let mut published_cast_outputs = Vec::new();
         let mut retained_children = Vec::new();
-        let instruction =
-            crate::effects::composition::execute_result_transaction(game, ctx, |game, ctx| {
+        let instruction = crate::effects::composition::execute_result_transaction(
+            game,
+            ctx,
+            |game, ctx| {
                 let chooser_id = crate::effects::helpers::resolve_player_filter_as_chooser(
                     game,
-                    &self.chooser,
+                    self.chooser,
                     ctx,
                 )?;
                 let player_id =
-                    crate::effects::helpers::resolve_player_filter(game, &self.player, ctx)?;
+                    crate::effects::helpers::resolve_player_filter(game, self.player, ctx)?;
                 execute_library_search_scope(
                     game,
                     ctx,
@@ -147,7 +215,7 @@ impl EffectExecutor for SearchLibrarySlotsEffect {
                                 game.object(*id).is_some_and(|obj| !obj.zone.is_hidden())
                             });
                             let may_decline = slot.optional && !has_public_match;
-                            let (spec, fallback) = if may_decline {
+                            let (mut spec, fallback) = if may_decline {
                                 (
                                     SearchSpec::new(
                                         ctx.source,
@@ -166,6 +234,13 @@ impl EffectExecutor for SearchLibrarySlotsEffect {
                                     FallbackStrategy::FirstOption,
                                 )
                             };
+                            if let SlotResult::Choose(choice) = self.result {
+                                let mut slot_choice = choice.clone();
+                                slot_choice.filter = slot.filter.clone();
+                                spec.prompt = crate::effects::composition::choose_objects_runtime::friendly_same_name_search_prompt(
+                                    game, ctx, &slot_choice, usize::from(!may_decline), 1,
+                                );
+                            }
                             let chosen_card = make_decision_with_fallback(
                                 game,
                                 &mut ctx.decision_maker,
@@ -256,14 +331,42 @@ impl EffectExecutor for SearchLibrarySlotsEffect {
                             .iter()
                             .map(|snapshot| snapshot.object_id)
                             .collect::<Vec<_>>();
+                        let (destination, tapped) = match self.result {
+                            SlotResult::Move { zone, tapped } => (zone, tapped),
+                            SlotResult::Choose(choice) => {
+                                use crate::effects::composition::choose_objects_runtime::{
+                                    SelectedObjectChoice, complete_selected_object_choice,
+                                };
+                                let output = complete_selected_object_choice(
+                                    game,
+                                    ctx,
+                                    SelectedObjectChoice {
+                                        effect: choice.clone(),
+                                        chosen: chosen_ids,
+                                        chooser_id,
+                                        search_viewer,
+                                        search_zones: vec![Zone::Library],
+                                        search_override,
+                                        search_event,
+                                    },
+                                )?;
+                                let outcome = output.outcome.clone();
+                                retained_children.push(output);
+                                if !ctx.decision_maker.awaiting_choice() {
+                                    ctx.clear_object_tag(self.progress_tag.as_str());
+                                    ctx.object_selection_progress.remove(&progress_key);
+                                }
+                                return Ok(outcome);
+                            }
+                        };
                         let (found, published) = super::search_result_program::prepare_found_cards(
                             game,
                             ctx,
                             &chosen_ids,
-                            self.destination,
+                            destination,
                             chooser_id,
                             search_override.is_some(),
-                            self.tapped,
+                            tapped,
                         )?;
                         if ctx.decision_maker.awaiting_choice() {
                             return Ok(EffectOutcome::count(0));
@@ -289,12 +392,12 @@ impl EffectExecutor for SearchLibrarySlotsEffect {
                         if ctx.decision_maker.awaiting_choice() {
                             return Ok(EffectOutcome::count(0));
                         }
-                        let retained =
-                            if self.destination == Zone::Library && search_override.is_none() {
-                                moved_ids
-                            } else {
-                                vec![]
-                            };
+                        let retained = if destination == Zone::Library && search_override.is_none()
+                        {
+                            moved_ids
+                        } else {
+                            vec![]
+                        };
                         let shuffle_outputs = super::search_result_program::shuffle_after_search(
                             game,
                             ctx,
@@ -317,7 +420,8 @@ impl EffectExecutor for SearchLibrarySlotsEffect {
                         ))
                     },
                 )
-            });
+            },
+        );
         let pending = ctx.decision_maker.awaiting_choice();
         if pending {
             if let Some((key, progress)) = pending_selection_progress {

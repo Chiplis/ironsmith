@@ -7317,6 +7317,7 @@ fn parse_composable_typed_statements(
                                     target_count: None,
                                     distributed: false,
                                     required_recipient: None,
+                                    ..
                                 }),
                             ..
                         }),
@@ -7330,6 +7331,7 @@ fn parse_composable_typed_statements(
                                     target_count: None,
                                     distributed: false,
                                     required_recipient: None,
+                                    ..
                                 }),
                             ..
                         }),
@@ -9674,6 +9676,7 @@ fn parse_quoted_token_rule_then_linked_counter_followup(
             target_count: None,
             distributed: false,
             required_recipient: None,
+            ..
         }),
         SubjectVerbActionAst::Counters(CounterActionAst::PutCounters {
             maximum_total: None,
@@ -9683,6 +9686,7 @@ fn parse_quoted_token_rule_then_linked_counter_followup(
             target_count: None,
             distributed: false,
             required_recipient: None,
+            ..
         }),
     ) = (first_action, second_action)
     else {
@@ -17271,6 +17275,7 @@ pub(crate) fn parse_borrowed_variant_gain_sentence(
             return Ok(None);
         };
         let (keyword, selectors) = match words.get(gain + 1) {
+            Some(&"trample") => ("trample", vec![StaticAbilityVariantSelector::Any(StaticAbilityId::Trample)]),
             Some(&"landwalk") => ("landwalk", vec![StaticAbilityVariantSelector::Any(StaticAbilityId::Landwalk)]),
             Some(&"protection") => ("protection", vec![StaticAbilityVariantSelector::Any(StaticAbilityId::Protection)]),
             // CR 702.11d/e: "hexproof from [quality]" is a hexproof ability,
@@ -17283,25 +17288,27 @@ pub(crate) fn parse_borrowed_variant_gain_sentence(
             _ => return Ok(None),
         };
         let tail = &words[gain + 2..];
-        let ["until", "end", "of", "turn", "if", "a" | "an", condition @ .., "has", last] = tail
-        else {
-            return Ok(None);
+        let (first, controlled, last) = match tail {
+            ["until", "end", "of", "turn", "if", "a" | "an", condition @ .., "has", last] if !condition.is_empty() => (gain + 8, false, *last),
+            ["until", "end", "of", "turn", "if", "you", "control", "a" | "an", condition @ .., "with", last] if !condition.is_empty() => (gain + 10, true, *last),
+            _ => return Ok(None),
         };
-        if *last != keyword || condition.is_empty() || gain == 0 {
-            return Ok(None);
-        }
+        if last != keyword || gain == 0 { return Ok(None); }
         let Some(subject_end) = view.map_word_to_token_start(gain) else {
             return Ok(None);
         };
-        let Some(condition_start) = view.map_word_to_token_start(gain + 8) else {
+        let Some(condition_start) = view.map_word_to_token_start(first) else {
             return Ok(None);
         };
         let Some(condition_end) = view.map_word_to_token_start(words.len() - 2) else {
             return Ok(None);
         };
-        let Ok(mut recipients) =
-            crate::object_filters::parse_object_filter(&sentence[..subject_end], false)
-        else {
+        let mut recipients = if crate::util::is_source_reference_words(&words[..gain]) {
+            crate::word_claims::claim_tokens(&sentence[..subject_end]);
+            ObjectFilter::source()
+        } else if let Ok(filter) = crate::object_filters::parse_object_filter(&sentence[..subject_end], false) {
+            filter
+        } else {
             return Ok(None);
         };
         let Ok(mut sources) = crate::object_filters::parse_object_filter(
@@ -17310,6 +17317,7 @@ pub(crate) fn parse_borrowed_variant_gain_sentence(
         ) else {
             return Ok(None);
         };
+        if controlled { sources.controller = Some(PlayerFilter::You); }
         for filter in [&mut recipients, &mut sources] {
             if filter.zone.is_none() {
                 filter.zone = Some(crate::zone::Zone::Battlefield);

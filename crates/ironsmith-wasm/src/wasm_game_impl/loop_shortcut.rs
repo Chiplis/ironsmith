@@ -44,7 +44,80 @@ pub(super) struct LoopShortcutView {
     stepping: bool,
 }
 
+/// One resource a detected loop changes each time it is repeated.
+#[derive(Debug, Clone, Serialize)]
+pub(super) struct LoopOfferDeltaView {
+    player: Option<u8>,
+    resource: String,
+    amount: i64,
+}
+
+/// A loop the engine detected in the priority player's own actions and proved
+/// repeatable by a dry run. The client turns it into an ordinary proposal.
+#[derive(Debug, Clone, Serialize)]
+pub(super) struct LoopOfferView {
+    proposer: u8,
+    per_lap: Vec<LoopOfferDeltaView>,
+    summary: String,
+    /// Other players who received priority during the loop.
+    responders: Vec<u8>,
+    /// `loop_serial` of the snapshot the loop's first command was sent against.
+    start_serial: u64,
+}
+
 impl WasmGame {
+    /// Loop detection is view-only here: the offer is shown to the player who
+    /// performed the loop, and repeating it goes through the replicated
+    /// proposal below, so it never changes what any peer's engine accepts.
+    pub(super) fn enable_loop_detection(&mut self) {
+        self.game.set_loop_shortcut_detection_enabled(true);
+    }
+
+    /// The session works out its own priority prompt after some calls (a
+    /// completed mana ability, for one), so the engine is asked to look for a
+    /// loop whenever a snapshot shows a priority prompt.
+    fn refresh_loop_offer(&mut self) {
+        let Some(DecisionContext::Priority(priority)) = self.pending_decision.as_ref() else {
+            return;
+        };
+        if self.game.turn.priority_player != Some(priority.player) {
+            return;
+        }
+        ironsmith::game_loop::detect_loop_shortcut(
+            &mut self.game,
+            &self.trigger_queue,
+            &self.priority_state,
+        );
+    }
+
+    fn loop_offer_view(&self) -> Option<LoopOfferView> {
+        if self.loop_shortcut.is_some() {
+            return None;
+        }
+        let Some(DecisionContext::Priority(priority)) = self.pending_decision.as_ref() else {
+            return None;
+        };
+        let offer = self.game.loop_shortcut_offer()?;
+        if offer.proposer != priority.player {
+            return None;
+        }
+        Some(LoopOfferView {
+            proposer: offer.proposer.0,
+            per_lap: offer
+                .per_lap
+                .iter()
+                .map(|entry| LoopOfferDeltaView {
+                    player: entry.player.map(|player| player.0),
+                    resource: entry.resource.clone(),
+                    amount: entry.amount,
+                })
+                .collect(),
+            summary: offer.describe_per_lap(&self.game),
+            responders: offer.responders.iter().map(|player| player.0).collect(),
+            start_serial: offer.start_serial,
+        })
+    }
+
     fn loop_shortcut_view(&self) -> Option<LoopShortcutView> {
         self.loop_shortcut
             .as_ref()

@@ -11,7 +11,7 @@ fn cast_action(g: &GameState, card: ObjectId, method: &CastingMethod) -> Option<
         matches!(action, LegalAction::CastSpell { spell_id, casting_method, .. } if *spell_id == card && casting_method == method))
 }
 
-fn spend(g: &mut GameState, card: ObjectId, method: CastingMethod) -> u32 {
+pub(super) fn spend(g: &mut GameState, card: ObjectId, method: CastingMethod) -> u32 {
     let stable = g.object(card).unwrap().stable_id;
     let before = g.player(A).unwrap().mana_pool.total();
     let action = cast_action(g, card, &method).expect("offered cast");

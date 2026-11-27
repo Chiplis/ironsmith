@@ -1345,6 +1345,9 @@ fn parse_pt_value(raw: &str) -> Option<PtValue> {
     if let Some(stripped) = raw.strip_suffix("+*") {
         return stripped.trim().parse::<i32>().ok().map(PtValue::StarPlus);
     }
+    if let Some(base) = raw.strip_suffix("-*").or_else(|| raw.strip_suffix("−*")) {
+        return base.trim().parse().ok().map(PtValue::NumberMinusStar);
+    }
     raw.parse::<i32>().ok().map(PtValue::Fixed)
 }
 
@@ -1462,6 +1465,7 @@ impl CardDefinitionBuilder {
         match value {
             PtValue::Fixed(n) => n.to_string(),
             PtValue::Star => "*".to_string(),
+            PtValue::NumberMinusStar(n) => format!("{n}-*"),
             PtValue::StarPlus(n) => {
                 if n >= 0 {
                     format!("*+{n}")
@@ -2063,7 +2067,8 @@ impl CardDefinitionBuilder {
             match value {
                 PtValue::Fixed(n) => n.to_string(),
                 PtValue::Star => "*".to_string(),
-                PtValue::StarPlus(n) => {
+                PtValue::NumberMinusStar(n) => format!("{n}-*"),
+            PtValue::StarPlus(n) => {
                     if n >= 0 {
                         format!("*+{n}")
                     } else {

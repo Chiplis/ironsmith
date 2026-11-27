@@ -3773,14 +3773,7 @@ pub fn this_spell_cost_condition_is_active_for_player_with_optional_costs_paid(
             })
         }
         ThisSpellCostCondition::CreatureIsAttackingYou => {
-            game.combat.as_ref().is_some_and(|combat| {
-                combat.attackers.iter().any(|attacker| {
-                    matches!(
-                        attacker.target,
-                        crate::combat_state::AttackTarget::Player(player) if player == controller
-                    )
-                })
-            })
+            game.combat_lanes().any(|combat| crate::combat_state::is_defending_player(combat, controller))
         }
         ThisSpellCostCondition::YouDealtCombatDamageToPlayerWithSubtypeThisTurn(subtype) =>
             completed_combat_qualification(game, game.turn_store.turn_history

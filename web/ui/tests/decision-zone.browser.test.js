@@ -32,7 +32,7 @@ test('object, option and target rows keep colored zone glyphs aligned and contro
         }
         const icon = row.locator('.decision-object-zone');
         assert.equal(await icon.getAttribute('aria-label'),'Battlefield · Owner: You · Controller: Bob');
-        assert.equal(await icon.evaluate(n=>getComputedStyle(n).color),'rgb(183, 156, 255)');
+        assert.equal(await icon.evaluate(n=>getComputedStyle(n).color),'rgb(77, 163, 255)');
         assert.equal(await row.locator('.decision-object-name').first().evaluate(n=>getComputedStyle(n).webkitTextFillColor),'rgb(255, 59, 48)');
         const positions = await page.locator('.decision-object-zone').evaluateAll(nodes=>nodes.map(n=>n.getBoundingClientRect().right));
         assert.ok(Math.max(...positions)-Math.min(...positions)<2, `${kind} icons align at ${width}px`);

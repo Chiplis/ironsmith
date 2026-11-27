@@ -188,6 +188,105 @@ pub(crate) fn prepare_conditional_branch(
     Ok((selected.effects, selected.identity_guard))
 }
 
+/// CR 702.1c: each applicable variant repeats the whole instruction,
+/// including its independent choice of counter recipient.
+fn expand_keyword_counter_variants(
+    condition: &ConditionalEffect,
+    game: &GameState,
+    ctx: &ExecutionContext,
+) -> Result<Vec<crate::effect::Effect>, ExecutionError> {
+    use crate::ability::AbilityKind;
+    use crate::effects::PutCountersEffect;
+    use crate::filter::ObjectFilterExt;
+    use crate::object::CounterType;
+    use crate::static_abilities::StaticAbilityId;
+    use ironsmith_core::effect::KeywordCounterGrant;
+    let Some((last, choices)) = condition.if_true.split_last() else {
+        return Ok(Vec::new());
+    };
+    let Some(put) = last
+        .downcast_ref::<PutCountersEffect>()
+        .filter(|put| matches!(put.keyword_grant, Some(KeywordCounterGrant::FromCondition)))
+    else {
+        return Ok(condition.if_true.clone());
+    };
+    let filter_ctx = ctx.filter_context(game);
+    let mut variants = std::collections::BTreeMap::new();
+    let mut collect = |abilities: &[crate::ability::Ability]| {
+        for ability in abilities {
+            let AbilityKind::Static(keyword) = &ability.kind else {
+                continue;
+            };
+            let grant = match (put.counter_type, keyword.id()) {
+                (CounterType::Hexproof, StaticAbilityId::Hexproof)
+                | (CounterType::Trample, StaticAbilityId::Trample) => None,
+                (CounterType::Hexproof, StaticAbilityId::HexproofFrom) => keyword
+                    .hexproof_from_filter()
+                    .cloned()
+                    .map(|filter| KeywordCounterGrant::HexproofFrom(Box::new(filter))),
+                (CounterType::Trample, StaticAbilityId::TrampleOverPlaneswalkers) => {
+                    Some(KeywordCounterGrant::TrampleOverPlaneswalkers)
+                }
+                _ => continue,
+            };
+            let kind = if grant.is_some() {
+                CounterType::Named(keyword.display().to_lowercase().into())
+            } else {
+                put.counter_type
+            };
+            use crate::marker::CounterTypeExt;
+            let program = if kind.is_ability_counter() {
+                None
+            } else {
+                grant
+            };
+            variants.entry(kind).or_insert(program);
+        }
+    };
+    match &condition.condition {
+        Condition::TaggedObjectMatches(tag, filter) => {
+            for snapshot in ctx.get_tagged_all(tag).into_iter().flatten() {
+                if filter.matches_snapshot(snapshot, &filter_ctx, game) {
+                    collect(&snapshot.abilities);
+                }
+            }
+        }
+        Condition::PlayerControls { player, filter } => {
+            for object in game.objects_map().values() {
+                if filter.zone.is_some_and(|zone| object.zone != zone) {
+                    continue;
+                }
+                let controller = if object.zone == crate::Zone::Battlefield {
+                    game.controller_of(object)
+                } else {
+                    object.owner
+                };
+                if crate::filter::player_filter_matches_game(player, controller, game, &filter_ctx)
+                    && game.object_is_within_range(ctx.controller, object.id, Some(ctx.source))
+                    && filter.matches(object, &filter_ctx, game)
+                    && let Some(abilities) = game.current_abilities(object.id)
+                {
+                    collect(&abilities);
+                }
+            }
+        }
+        _ => {
+            return Err(ExecutionError::Impossible(
+                "missing keyword-counter donor condition".into(),
+            ));
+        }
+    }
+    let mut effects = Vec::new();
+    for (kind, grant) in variants {
+        effects.extend_from_slice(choices);
+        let mut placement = put.clone();
+        placement.counter_type = kind;
+        placement.keyword_grant = grant;
+        effects.push(crate::effect::Effect::new(placement));
+    }
+    Ok(effects)
+}
+
 fn select_conditional_branch(
     effect: &ConditionalEffect,
     game: &GameState,
@@ -226,7 +325,7 @@ fn select_conditional_branch(
     }
 
     let effects_to_execute = if result || identity_guard.is_some() {
-        effect.if_true.clone()
+        expand_keyword_counter_variants(effect, game, ctx)?
     } else {
         effect.if_false.clone()
     };

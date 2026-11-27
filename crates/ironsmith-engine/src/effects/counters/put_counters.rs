@@ -68,6 +68,33 @@ fn counter_kind_resolved_from_trigger(
     resolved
 }
 
+fn admit_keyword_counter(
+    game: &mut GameState,
+    effect: &PutCountersEffect,
+) -> Result<(), ExecutionError> {
+    use crate::static_abilities::StaticAbility;
+    use ironsmith_core::effect::KeywordCounterGrant;
+    let keyword = match &effect.keyword_grant {
+        None => return Ok(()),
+        Some(KeywordCounterGrant::FromCondition) => {
+            return Err(ExecutionError::Impossible(
+                "unresolved keyword counter donor".into(),
+            ));
+        }
+        Some(KeywordCounterGrant::TrampleOverPlaneswalkers) => {
+            StaticAbility::trample_over_planeswalkers()
+        }
+        Some(KeywordCounterGrant::HexproofFrom(filter)) => {
+            StaticAbility::hexproof_from((**filter).clone())
+        }
+    };
+    game.register_named_ability_counter(
+        effect.counter_type,
+        vec![crate::ability::Ability::static_ability(keyword)],
+    )
+    .map_err(ExecutionError::Impossible)
+}
+
 impl EffectExecutor for PutCountersEffect {
     fn supports_additional_target_role(&self,spec:&ChooseSpec)->bool {self.target==*spec}
 
@@ -133,6 +160,7 @@ impl EffectExecutor for PutCountersEffect {
                 EffectOutcome::count(0),
             ));
         }
+        admit_keyword_counter(game, self)?;
         game.clear_pending_decision_controllers();
         let result = crate::effects::composition::execute_transaction(
             game,
@@ -875,6 +903,7 @@ impl crate::effects::SimultaneousEffectProposal for CounterInstructionProposal {
         if ctx.decision_maker.awaiting_choice() {
             return Ok(());
         }
+        admit_keyword_counter(game, &self.effect)?;
         if self.input.is_none() || matches!(self.input, Some(CounterInputPlan::Pending)) {
             self.input = Some(resolve_counter_inputs(&self.effect, game, ctx)?);
             if let Some(CounterInputPlan::Placements { requests, .. }) = &self.input {

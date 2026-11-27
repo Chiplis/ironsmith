@@ -9,9 +9,9 @@ const players = [
 ];
 
 test("maps the perspective player to the identity accent", () => {
-  assert.equal(getPlayerAccent(players, 0, 0).hex, "#b79cff");
-  assert.equal(getPlayerAccent(players, 1, 1).hex, "#b79cff");
-  assert.equal(getPlayerAccent(players, 2, 2).hex, "#b79cff");
+  assert.equal(getPlayerAccent(players, 0, 0).hex, "#4da3ff");
+  assert.equal(getPlayerAccent(players, 1, 1).hex, "#4da3ff");
+  assert.equal(getPlayerAccent(players, 2, 2).hex, "#4da3ff");
 });
 
 test("keeps other players colored relative to perspective order", () => {

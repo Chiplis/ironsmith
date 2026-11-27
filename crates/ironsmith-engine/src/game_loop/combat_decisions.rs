@@ -1843,10 +1843,11 @@ fn lock_combat_cost(
             && !matches!(pay_life.amount, crate::effect::Value::Fixed(_))
         {
             let amount =
-                crate::effects::helpers::resolve_value(game, &pay_life.amount, &execution_ctx)
-                    .map_err(crate::cost::CostPaymentError::ExecutionFailed)?;
+                crate::effects::helpers::resolve_payment_amount(game, &pay_life.amount, &execution_ctx)
+                    .map_err(crate::cost::CostPaymentError::ExecutionFailed)?
+                    .ok_or_else(|| crate::cost::CostPaymentError::Other("Undefined commander color identity".into()))?;
             return Ok(crate::costs::Cost::effect(crate::effects::PayLifeEffect::new(
-                crate::effect::Value::Fixed(amount),
+                amount,
                 pay_life.player.clone(),
             )));
         }

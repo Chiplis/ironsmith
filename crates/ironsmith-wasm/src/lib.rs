@@ -2738,6 +2738,9 @@ struct ActionView {
 #[serde(tag = "kind", rename_all = "snake_case")]
 enum PriorityActionRef {
     PassPriority,
+    /// The engine's own CR 732.2 repeat action. The browser session runs
+    /// detection only, so this is never offered there.
+    ShortcutLoop,
     KeepOpeningHand,
     TakeMulligan,
     ContinuePregame,

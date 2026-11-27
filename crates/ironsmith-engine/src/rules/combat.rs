@@ -310,8 +310,8 @@ pub(crate) fn can_block_with_view(
 
     // CR 805.10e: the attacked player remains the defending player when
     // another member of their team supplies the blocker.
-    let defender = game.combat.as_ref()
-        .and_then(|combat| crate::combat_state::defending_player_for_attacker(game, combat, attacker.id))
+    let defender = game.current_attack_target_across_lanes(attacker.id)
+        .and_then(|target| crate::combat_state::defending_player_for_attack_target(game, target))
         .unwrap_or_else(|| game.controller_of(blocker));
     // A blocker that can block landwalkers as though they didn't have
     // landwalk ignores every landwalk evasion of this attacker (CR 702.14).
@@ -538,9 +538,8 @@ pub(crate) fn minimum_blockers_with_view(attacker: &Object, view: &DerivedGameVi
         ability.id() == StaticAbilityId::CantBeBlockedUnlessAllDefendingCreaturesBlock
     }) {
         let game = view.game_state();
-        if let Some(combat) = game.combat.as_ref()
-            && let Some(defender) =
-                crate::combat_state::defending_player_for_attacker(game, combat, attacker.id)
+        if let Some(defender) = game.current_attack_target_across_lanes(attacker.id)
+            .and_then(|target| crate::combat_state::defending_player_for_attack_target(game, target))
         {
             let defending_creatures = game
                 .battlefield
@@ -807,7 +806,8 @@ fn can_attack_defender_kind_with_view(
         return false;
     }
     let allowed = if battle {
-        game.are_opponents(game.controller_of(creature), defending_player)
+        !game.effect_store.cant_effects.cant_attack_battles.contains(&creature.id)
+            && game.are_opponents(game.controller_of(creature), defending_player)
             && game.attack_direction_allows_defender(game.controller_of(creature), defending_player)
             && game.can_attack(creature.id)
     } else {

@@ -20,6 +20,7 @@ use crate::zone::Zone;
 
 /// Admission and view policies supplied by a search adapter. Mixed-zone
 /// selection may proceed when its library part cannot be searched.
+#[derive(Debug)]
 pub(crate) struct LibrarySearchRequest {
     pub chooser: PlayerId,
     pub library_owner: Option<PlayerId>,
@@ -56,43 +57,44 @@ pub(crate) fn execute_library_search_scope<'a>(
         LibrarySearchScope,
     ) -> Result<crate::effect::EffectOutcome, ExecutionError>,
 ) -> Result<crate::effect::EffectOutcome, ExecutionError> {
-    let can_search = request.library_owner.is_some_and(|owner| {
-        game.can_search_library_from_effect(request.chooser, owner, ctx.controller)
-    });
-    if request.require_library_access && request.library_owner.is_some() && !can_search {
-        return Ok(crate::effect::EffectOutcome::prevented());
+    execute_library_search_scope_after_look(game, ctx, request, None, body)
+}
+
+#[derive(Debug)]
+pub(crate) struct LibrarySearchLook {
+    cards: Vec<ObjectId>,
+    first: bool,
+    allowed: bool,
+    pub(super) policy: Option<OppositionAgentSearch>,
+}
+
+impl LibrarySearchRequest {
+    fn allowed(&self, game: &GameState, ctx: &ExecutionContext) -> bool {
+        self.library_owner.is_some_and(|owner| {
+            game.can_search_library_from_effect(self.chooser, owner, ctx.controller)
+        })
     }
-    let found_card_policy = request
-        .library_owner
-        .filter(|_| can_search)
-        .and_then(|owner| opposition_agent_search(game, request.chooser, owner));
-    let control = begin_opposition_agent_search_control(game, request.chooser, found_card_policy);
-    let result = (|| {
-        let mut library_cards = Vec::new();
-        let mut first_search = true;
-        let mut completed_outputs = Vec::new();
-        let access_now = |game: &GameState, ctx: &ExecutionContext| {
-            if request.refresh_library_access {
-                request.library_owner.is_some_and(|owner| {
-                    game.can_search_library_from_effect(request.chooser, owner, ctx.controller)
-                })
-            } else {
-                can_search
-            }
-        };
-        if let Some(owner) = request.library_owner.filter(|_| access_now(game, ctx)) {
-            library_cards = game
+
+    fn inspect(
+        &self,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+        allowed: bool,
+        policy: Option<OppositionAgentSearch>,
+    ) -> LibrarySearchLook {
+        let (cards, first) = if let Some(owner) = self.library_owner.filter(|_| allowed) {
+            let mut library_cards = game
                 .player(owner)
                 .map(|player| player.library.to_vec())
                 .unwrap_or_default();
-            first_search = ctx.library_search_groups.begin(
+            let first_search = ctx.library_search_groups.begin(
                 ctx.executing_effect,
-                request.chooser,
+                self.chooser,
                 owner,
                 &mut library_cards,
-                |cards| game.restrict_library_search_candidates(request.chooser, cards),
+                |cards| game.restrict_library_search_candidates(self.chooser, cards),
             );
-            if let Some(scope) = &request.library_scope_cards {
+            if let Some(scope) = &self.library_scope_cards {
                 let scope: std::collections::HashSet<_> = scope.iter().copied().collect();
                 library_cards.retain(|id| scope.contains(id));
             }
@@ -100,12 +102,88 @@ pub(crate) fn execute_library_search_scope<'a>(
                 crate::effects::helpers::view_hidden_candidate_objects(
                     game,
                     ctx,
-                    request.chooser,
+                    self.chooser,
                     &library_cards,
                     "Search library",
                     false,
                 );
             }
+            (library_cards, first_search)
+        } else {
+            (Vec::new(), true)
+        };
+        LibrarySearchLook {
+            cards,
+            first,
+            allowed,
+            policy,
+        }
+    }
+
+    /// CR 701.23i. Each participating searcher sees their permitted cards before
+    /// anyone chooses a card. Opposition Agent controls only its own searcher.
+    pub(crate) fn look(
+        &self,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> LibrarySearchLook {
+        let allowed = self.allowed(game, ctx);
+        let policy = self
+            .library_owner
+            .filter(|_| allowed)
+            .and_then(|owner| opposition_agent_search(game, self.chooser, owner));
+        let control = begin_opposition_agent_search_control(game, self.chooser, policy);
+        let look = self.inspect(game, ctx, allowed, policy);
+        if ctx.decision_maker.awaiting_choice() {
+            game.capture_pending_decision_controllers();
+        }
+        finish_opposition_agent_search_control(game, control);
+        look
+    }
+}
+
+pub(crate) fn execute_library_search_scope_after_look<'a>(
+    game: &mut GameState,
+    ctx: &mut ExecutionContext<'a>,
+    request: LibrarySearchRequest,
+    look: Option<LibrarySearchLook>,
+    body: impl FnOnce(
+        &mut GameState,
+        &mut ExecutionContext<'a>,
+        LibrarySearchScope,
+    ) -> Result<crate::effect::EffectOutcome, ExecutionError>,
+) -> Result<crate::effect::EffectOutcome, ExecutionError> {
+    let (can_search, found_card_policy) = match &look {
+        Some(look) => (look.allowed, look.policy),
+        None => {
+            let allowed = request.allowed(game, ctx);
+            let policy = request
+                .library_owner
+                .filter(|_| allowed)
+                .and_then(|owner| opposition_agent_search(game, request.chooser, owner));
+            (allowed, policy)
+        }
+    };
+    if request.require_library_access && request.library_owner.is_some() && !can_search {
+        return Ok(crate::effect::EffectOutcome::prevented());
+    }
+    let control = begin_opposition_agent_search_control(game, request.chooser, found_card_policy);
+    let result = (|| {
+        let look =
+            look.unwrap_or_else(|| request.inspect(game, ctx, can_search, found_card_policy));
+        let first_search = look.first;
+        let mut library_cards = look.cards;
+        let mut completed_outputs = Vec::new();
+        let access_now = |game: &GameState, ctx: &ExecutionContext| {
+            if request.refresh_library_access {
+                request.allowed(game, ctx)
+            } else {
+                can_search
+            }
+        };
+        library_cards.retain(|id| game.object(*id).is_some_and(|o| o.zone == Zone::Library));
+        if ctx.decision_maker.awaiting_choice() {
+            return Ok(crate::effect::EffectOutcome::count(0));
         }
         if let Some(owner) = request
             .library_owner

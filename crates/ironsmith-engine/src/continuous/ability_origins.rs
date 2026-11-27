@@ -451,6 +451,42 @@ impl CalculatedAbilities {
     pub fn shared_slot_origins(&self) -> Option<Arc<Vec<AbilityOrigin>>> {
         (self.origins.len() == self.definitions.len()).then(|| Arc::clone(&self.origins))
     }
+    /// Expand shorthand in place in the derived ability list, preserving the
+    /// printed or granted origin and the order of neighboring abilities.
+    pub(crate) fn expand_color_variants(&mut self, colors: crate::color::ColorSet) -> bool {
+        use crate::ability::AbilityKind;
+        let mut expanded = None;
+        for (slot, ability) in self.definitions.iter().enumerate() {
+            let variants = match &ability.kind {
+                AbilityKind::Static(keyword) => keyword.individual_color_variants(colors),
+                _ => None,
+            };
+            if let Some(variants) = variants {
+                let (definitions, origins) = expanded.get_or_insert_with(|| {
+                    (
+                        self.definitions[..slot].to_vec(),
+                        self.origins[..slot].to_vec(),
+                    )
+                });
+                for variant in variants {
+                    let mut concrete = ability.clone();
+                    concrete.kind = AbilityKind::Static(variant.clone());
+                    definitions.push(concrete);
+                    origins.push(self.origins[slot].clone());
+                }
+            } else if let Some((definitions, origins)) = &mut expanded {
+                definitions.push(ability.clone());
+                origins.push(self.origins[slot].clone());
+            }
+        }
+        if let Some((definitions, origins)) = expanded {
+            self.definitions = definitions.into();
+            self.origins = origins.into();
+            return true;
+        }
+        false
+    }
+
     pub fn to_vec(&self) -> Vec<Ability> {
         self.definitions.to_vec()
     }

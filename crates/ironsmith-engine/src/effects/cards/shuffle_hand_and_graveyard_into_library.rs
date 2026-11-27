@@ -1,13 +1,15 @@
 //! Shuffle hand and graveyard into library effect implementation.
 
-use crate::effect::EffectOutcome;
-use crate::effects::EffectExecutor;
+use crate::effects::{CompletedEffectOutputs, EffectExecutor, ShuffleObjectsIntoLibraryEffect, SimultaneousEffectProposal};
 use crate::effects::helpers::resolve_player_filter;
 use crate::effects::{ExecutionContext, ExecutionError};
 #[cfg(test)]
 use crate::events::ShuffleLibraryEvent;
 use crate::game_state::GameState;
-use crate::target::PlayerFilter;
+use crate::snapshot::ObjectSnapshot;
+use crate::target::{ChooseSpec, PlayerFilter};
+
+const MOVING: &str = "__shuffle_union";
 
 #[cfg(test)]
 use crate::zone::Zone;
@@ -37,14 +39,12 @@ impl ShuffleHandAndGraveyardIntoLibraryEffect {
             include_owned_permanents: true,
         }
     }
-}
 
-impl EffectExecutor for ShuffleHandAndGraveyardIntoLibraryEffect {
-    fn execute(
+    fn instruction(
         &self,
-        game: &mut GameState,
-        ctx: &mut ExecutionContext,
-    ) -> Result<EffectOutcome, ExecutionError> {
+        game: &GameState,
+        ctx: &ExecutionContext,
+    ) -> Result<(ShuffleObjectsIntoLibraryEffect, Vec<ObjectSnapshot>), ExecutionError> {
         let player_id = resolve_player_filter(game, &self.player, ctx)?;
 
         let (hand_cards, graveyard_cards) = game
@@ -70,13 +70,41 @@ impl EffectExecutor for ShuffleHandAndGraveyardIntoLibraryEffect {
             .chain(owned_permanents)
             .filter_map(|id| crate::snapshot::ObjectSnapshot::from_object_id(game, id))
             .collect();
-        const MOVING: &str = "__shuffle_union";
-        let mut instruction = crate::effects::ShuffleObjectsIntoLibraryEffect::new(
-            crate::target::ChooseSpec::Tagged(MOVING.into()),
+        let mut instruction = ShuffleObjectsIntoLibraryEffect::new(
+            ChooseSpec::Tagged(MOVING.into()),
             PlayerFilter::Specific(player_id),
         );
         instruction.shuffle_subject_library = true;
-        ctx.with_object_tag(MOVING, objects, |ctx| instruction.execute_child(game, ctx))
+        Ok((instruction, objects))
+    }
+}
+
+impl EffectExecutor for ShuffleHandAndGraveyardIntoLibraryEffect {
+    fn supports_simultaneous_player_action(&self) -> bool {
+        true
+    }
+
+    fn prepare_simultaneous_player_action(
+        &self,
+        game: &GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<Box<dyn SimultaneousEffectProposal>, ExecutionError> {
+        let (instruction, objects) = self.instruction(game, ctx)?;
+        ctx.with_object_tag(MOVING, objects, |ctx| {
+            instruction.prepare_simultaneous_player_action(game, ctx)
+        })
+    }
+
+    #[crate::effects::project_effect_outcome]
+    fn execute_with_outputs(
+        &self,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<CompletedEffectOutputs, ExecutionError> {
+        let (instruction, objects) = self.instruction(game, ctx)?;
+        ctx.with_object_tag(MOVING, objects, |ctx| {
+            instruction.execute_child_with_outputs(game, ctx)
+        })
     }
 }
 

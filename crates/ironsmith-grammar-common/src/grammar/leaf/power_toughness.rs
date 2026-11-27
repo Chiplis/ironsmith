@@ -98,6 +98,7 @@ fn parse_leaf_pt_value(input: &mut &str) -> WResult<PtValue> {
     winnow::combinator::alt((
         (literal("*+"), parse_signed_pt_component).map(|(_, value)| PtValue::StarPlus(value)),
         (parse_signed_pt_component, literal("+*")).map(|(value, _)| PtValue::StarPlus(value)),
+        (parse_signed_pt_component, winnow::combinator::alt((literal("-*"), literal("−*")))).map(|(value, _)| PtValue::NumberMinusStar(value)),
         literal("0.5").value(PtValue::Fixed(0)),
         literal(".5").value(PtValue::Fixed(0)),
         literal("*").value(PtValue::Star),

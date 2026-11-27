@@ -6,7 +6,7 @@ use crate::decisions::make_decision;
 use crate::decisions::specs::ChooseObjectsSpec;
 use crate::effect::{ChoiceCount, EffectOutcome, ExecutionFact, SearchSelectionMode};
 use crate::effects::cards::search_overrides::{
-    LibrarySearchRequest, execute_library_search_scope,
+    LibrarySearchLook, LibrarySearchRequest, execute_library_search_scope_after_look,
     exile_found_cards_for_opposition_agent_with_outputs,
 };
 use crate::effects::helpers::{
@@ -307,17 +307,25 @@ fn same_name_reference_name(
     ctx: &ExecutionContext,
     filter: &ObjectFilter,
 ) -> Option<String> {
+    let constraint = filter.tagged_constraints.iter().find(|constraint| {
+        constraint.relation == crate::filter::TaggedOpbjectRelation::SameNameAsTagged
+    })?;
+    if let Some(cards) = ctx.get_tagged_all(&constraint.tag)
+        && let Some(first) = cards.first()
+    {
+        return Some(if cards.iter().any(|card| card.name != first.name) {
+            "any of those cards".into()
+        } else {
+            first.name.to_string()
+        });
+    }
     if let Some(object_id) = ctx.iteration.iterated_object
         && let Some(object) = game.object(object_id)
     {
         return Some(object.name.to_string());
     }
 
-    let constraint = filter.tagged_constraints.iter().find(|constraint| {
-        constraint.relation == crate::filter::TaggedOpbjectRelation::SameNameAsTagged
-    })?;
-    ctx.get_tagged(constraint.tag.as_str())
-        .map(|snapshot| snapshot.name.to_string())
+    None
 }
 
 fn search_card_noun(filter: &ObjectFilter, singular: bool) -> String {
@@ -362,13 +370,34 @@ fn search_quantity_prefix(min: usize, max: usize) -> String {
 pub(crate) fn friendly_same_name_search_prompt(
     game: &GameState,
     ctx: &ExecutionContext,
-    filter: &ObjectFilter,
+    search: &ChooseObjectsEffect,
     min: usize,
     max: usize,
 ) -> Option<String> {
+    let filter = &search.filter;
     if !filter_has_same_name_constraint(filter) || max == 0 {
         return None;
     }
+    let chooser = crate::effects::helpers::resolve_player_filter_as_chooser(game, &search.chooser, ctx).ok()?;
+    let filter_ctx = choice_filter_context(search, game, ctx, chooser);
+    let owners = library_candidate_players(search, game, ctx, &filter_ctx, chooser).ok()?;
+    let [owner] = owners.as_slice() else { return None };
+    let possessive = if *owner == chooser {
+        "your".to_owned()
+    } else {
+        format!("{}'s", game.player(*owner)?.name)
+    };
+    let mut zones = search_zones(search).ok()?;
+    if zones.len() > 1 && !game.can_search_library_from_effect(chooser, *owner, ctx.controller) {
+        zones.retain(|zone| *zone != Zone::Library);
+    }
+    let names: Vec<_> = zones.iter().map(|zone| zone.name()).collect();
+    let locations = match names.as_slice() {
+        [] => return None,
+        [one] => one.to_string(),
+        [one, two] => format!("{one} and {two}"),
+        [rest @ .., last] => format!("{}, and {last}", rest.join(", ")),
+    };
 
     let quantity = search_quantity_prefix(min, max);
     let noun = search_card_noun(filter, max == 1);
@@ -376,7 +405,7 @@ pub(crate) fn friendly_same_name_search_prompt(
         .unwrap_or_else(|| format!("that {}", same_name_reference_label(filter)));
 
     Some(format!(
-        "Search your library for {quantity} {noun} with the same name as {reference}"
+        "Search {possessive} {locations} for {quantity} {noun} with the same name as {reference}"
     ))
 }
 
@@ -1457,17 +1486,17 @@ pub(crate) fn run_choose_objects(
 /// Inputs selected once by the native chooser, before disclosure or movement.
 /// The proposal carries no completed action or inferred observer snapshot.
 #[derive(Debug)]
-struct SelectedObjectChoice {
-    effect: ChooseObjectsEffect,
-    chosen: Vec<ObjectId>,
-    chooser_id: PlayerId,
-    search_viewer: PlayerId,
-    search_zones: Vec<Zone>,
-    search_override: Option<crate::effects::cards::search_overrides::OppositionAgentSearch>,
-    search_event: Option<crate::triggers::TriggerEvent>,
+pub(crate) struct SelectedObjectChoice {
+    pub(crate) effect: ChooseObjectsEffect,
+    pub(crate) chosen: Vec<ObjectId>,
+    pub(crate) chooser_id: PlayerId,
+    pub(crate) search_viewer: PlayerId,
+    pub(crate) search_zones: Vec<Zone>,
+    pub(crate) search_override: Option<crate::effects::cards::search_overrides::OppositionAgentSearch>,
+    pub(crate) search_event: Option<crate::triggers::TriggerEvent>,
 }
 
-fn complete_selected_object_choice(
+pub(crate) fn complete_selected_object_choice(
     game: &mut GameState,
     ctx: &mut ExecutionContext,
     selected: SelectedObjectChoice,
@@ -1664,7 +1693,7 @@ pub(crate) fn prepare_choose_objects_program(
         ));
     }
     let mut selected = None;
-    let empty = run_choose_objects_phase_with_outputs(effect, game, ctx, Some(&mut selected))?;
+    let empty = run_choose_objects_phase_with_outputs(effect, game, ctx, Some(&mut selected), None)?;
     if ctx.decision_maker.awaiting_choice() {
         return Ok(None);
     }
@@ -1680,12 +1709,139 @@ pub(crate) fn prepare_choose_objects_program(
     ))
 }
 
+fn choice_search_request(
+    effect: &ChooseObjectsEffect,
+    game: &GameState,
+    ctx: &ExecutionContext,
+    chooser_id: PlayerId,
+    search_zones: &[Zone],
+) -> Result<LibrarySearchRequest, ExecutionError> {
+    let library_owner = if effect.is_search && search_zones.contains(&Zone::Library) {
+        let filter_ctx = if object_filter_mentions_iterated_player(&effect.filter)
+            && matches!(effect.chooser, PlayerFilter::Target(_))
+        {
+            let base_ctx = ctx.filter_context(game);
+            if base_ctx.iterated_player.is_none() {
+                base_ctx.with_iterated_player(Some(chooser_id))
+            } else {
+                base_ctx
+            }
+        } else {
+            ctx.filter_context(game)
+        };
+        let owners = library_candidate_players(effect, game, ctx, &filter_ctx, chooser_id)?;
+        if owners.len() == 1 {
+            Some(owners[0])
+        } else {
+            None
+        }
+    } else {
+        None
+    };
+    let library_scope_cards = if effect.is_search && filter_references_tagged_pool(effect) {
+        let filter_ctx = choice_filter_context(effect, game, ctx, chooser_id);
+        let pool = hidden_library_pool_filter(effect);
+        Some(
+            library_owner
+                .and_then(|owner| game.player(owner))
+                .map(|player| {
+                    player
+                        .library
+                        .iter()
+                        .copied()
+                        .filter(|id| {
+                            game.object(*id)
+                                .is_some_and(|object| pool.matches(object, &filter_ctx, game))
+                        })
+                        .collect()
+                })
+                .unwrap_or_default(),
+        )
+    } else {
+        None
+    };
+    Ok(LibrarySearchRequest {
+        chooser: chooser_id,
+        library_owner,
+        search_library: effect.is_search && search_zones.contains(&Zone::Library),
+        require_library_access: effect.is_search && search_zones == [Zone::Library],
+        library_scope_cards,
+        refresh_library_access: true,
+    })
+}
+
+pub(super) fn prepare_library_object_search(
+    effect: &ChooseObjectsEffect,
+    game: &GameState,
+    ctx: &ExecutionContext,
+) -> Result<Box<dyn crate::effects::SimultaneousEffectProposal>, ExecutionError> {
+    let chooser =
+        crate::effects::helpers::resolve_player_filter_as_chooser(game, &effect.chooser, ctx)?;
+    let request = choice_search_request(effect, game, ctx, chooser, &search_zones(effect)?)?;
+    Ok(crate::effects::cards::simultaneous_search::prepare_search(
+        ObjectSearch(effect.clone()),
+        request,
+    ))
+}
+
+#[derive(Debug)]
+struct ObjectSearch(ChooseObjectsEffect);
+impl crate::effects::cards::simultaneous_search::LibrarySearchAction for ObjectSearch {
+    type Selection = (
+        Option<SelectedObjectChoice>,
+        crate::effects::CompletedEffectOutputs,
+    );
+
+    fn select(
+        &self,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+        look: LibrarySearchLook,
+    ) -> Result<Self::Selection, ExecutionError> {
+        let mut selected = None;
+        let outputs = run_choose_objects_phase_with_outputs(
+            &self.0,
+            game,
+            ctx,
+            Some(&mut selected),
+            Some(look),
+        )?;
+        Ok((selected, outputs))
+    }
+
+    fn finish(
+        &self,
+        (selected, inputs): Self::Selection,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<
+        crate::effects::SimultaneousEffectCommit<crate::effects::CompletedEffectOutputs>,
+        ExecutionError,
+    > {
+        use crate::effects::SimultaneousEffectCommit as Commit;
+        let Some(selected) = selected else {
+            return Ok(Commit::finished(inputs));
+        };
+        let completed = complete_selected_object_choice(game, ctx, selected)?;
+        crate::effects::cards::search_overrides::retain_search_participants(
+            ctx,
+            self.0.search_participant_tag.as_ref(),
+            &completed.outcome,
+        );
+        let outcome = completed.outcome.clone();
+        Ok(Commit::finished(
+            crate::effects::CompletedEffectOutputs::from_children(vec![inputs, completed], |_| {
+                outcome
+            }),
+        ))
+    }
+}
 pub(crate) fn run_choose_objects_with_outputs(
     effect: &ChooseObjectsEffect,
     game: &mut GameState,
     ctx: &mut ExecutionContext,
 ) -> Result<crate::effects::CompletedEffectOutputs, ExecutionError> {
-    run_choose_objects_phase_with_outputs(effect, game, ctx, None)
+    run_choose_objects_phase_with_outputs(effect, game, ctx, None, None)
 }
 
 fn run_choose_objects_phase_with_outputs(
@@ -1693,6 +1849,7 @@ fn run_choose_objects_phase_with_outputs(
     game: &mut GameState,
     ctx: &mut ExecutionContext,
     mut prepared_selection: Option<&mut Option<SelectedObjectChoice>>,
+    look: Option<LibrarySearchLook>,
 ) -> Result<crate::effects::CompletedEffectOutputs, ExecutionError> {
     if ctx.decision_maker.awaiting_choice() {
         return Ok(crate::effects::CompletedEffectOutputs::aggregate_only(
@@ -1732,7 +1889,7 @@ fn run_choose_objects_phase_with_outputs(
         resolved.optional_search_zones = false;
         // Search access, events, replacement effects and the shared card limit
         // all belong to this one search over the selected zone subset.
-        return run_choose_objects_phase_with_outputs(&resolved, game, ctx, prepared_selection);
+        return run_choose_objects_phase_with_outputs(&resolved, game, ctx, prepared_selection, look);
     }
     let mut published_cast_outputs = Vec::new();
     let mut retained_children = Vec::new();
@@ -1748,55 +1905,10 @@ fn run_choose_objects_phase_with_outputs(
             )?;
 
             let search_zones = search_zones(effect)?;
-            let library_owner = if effect.is_search && search_zones.contains(&Zone::Library) {
-                let filter_ctx = if object_filter_mentions_iterated_player(&effect.filter)
-                    && matches!(effect.chooser, PlayerFilter::Target(_))
-                {
-                    let base_ctx = ctx.filter_context(game);
-                    if base_ctx.iterated_player.is_none() {
-                        base_ctx.with_iterated_player(Some(chooser_id))
-                    } else {
-                        base_ctx
-                    }
-                } else {
-                    ctx.filter_context(game)
-                };
-                let owners = library_candidate_players(effect, game, ctx, &filter_ctx, chooser_id)?;
-                if owners.len() == 1 {
-                    Some(owners[0])
-                } else {
-                    None
-                }
-            } else {
-                None
-            };
-            let library_scope_cards = if effect.is_search
-                && filter_references_tagged_pool(effect)
-            {
-                let filter_ctx = choice_filter_context(effect, game, ctx, chooser_id);
-                let pool = hidden_library_pool_filter(effect);
-                Some(library_owner
-                    .and_then(|owner| game.player(owner))
-                    .map(|player| player.library.iter().copied().filter(|id| {
-                        game.object(*id).is_some_and(|object| {
-                            pool.matches(object, &filter_ctx, game)
-                        })
-                    }).collect())
-                    .unwrap_or_default())
-            } else {
-                None
-            };
-            execute_library_search_scope(
-                game,
-                ctx,
-                LibrarySearchRequest {
-                    chooser: chooser_id,
-                    library_owner,
-                    search_library: effect.is_search && search_zones.contains(&Zone::Library),
-                    require_library_access: effect.is_search && search_zones == vec![Zone::Library],
-                    library_scope_cards,
-                    refresh_library_access: true,
-                },
+            let request = choice_search_request(effect, game, ctx, chooser_id, &search_zones)?;
+            let library_owner = request.library_owner;
+            execute_library_search_scope_after_look(
+                game, ctx, request, look,
                 |game, ctx, search| {
                     published_cast_outputs.extend(search.completed_outputs);
                     let search_viewer = search.chooser;
@@ -1988,7 +2100,7 @@ fn run_choose_objects_phase_with_outputs(
                             "Choose" | "card" | "cards" | "objects"
                         )
                         && let Some(prompt) =
-                            friendly_same_name_search_prompt(game, ctx, &effect.filter, min, max)
+                            friendly_same_name_search_prompt(game, ctx, effect, min, max)
                     {
                         prompt
                     } else if effect.description == "Choose" {
