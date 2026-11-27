@@ -218,6 +218,12 @@ pub fn ask_choose_one<T: Clone>(
         "ask_choose_one requires at least one option"
     );
 
+    // Choosing exactly one from a list of one is not a decision: nothing is
+    // asked, and the only option is the answer.
+    if let [(_, only)] = options {
+        return Some(only.clone());
+    }
+
     let display_options: Vec<DisplayOption> = options
         .iter()
         .enumerate()

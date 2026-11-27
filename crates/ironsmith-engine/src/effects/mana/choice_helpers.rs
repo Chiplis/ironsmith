@@ -128,11 +128,10 @@ pub(crate) fn choose_mana_colors(
         .and_then(|colors| colors.first().copied())
         .unwrap_or(default_color);
 
-    // An exact output selected in the payment plan is already a choice. Manual
-    // activations keep their ordinary prompt, and distinct-color instructions
-    // still ask when one color cannot satisfy them.
-    if ctx.mana.mana_color_restriction.is_some()
-        && let Some([color]) = effective_available.as_deref()
+    // A menu with one colour on it is not a choice, whether the payment plan
+    // or the effect itself narrowed it. Distinct-color instructions still ask
+    // when one color cannot satisfy them.
+    if let Some([color]) = effective_available.as_deref()
         && (same_color || !distinct_colors || count == 1)
     {
         return Ok(vec![*color; count as usize]);
@@ -481,6 +480,14 @@ pub(crate) fn choose_mana_symbols(
 
     if available_symbols.is_empty() {
         return Ok(vec![default_symbol; count as usize]);
+    }
+
+    // One type on the menu is not a choice (Kinnan, Bonder Prodigy copying a
+    // permanent that only makes colorless): every unit is that type.
+    if let Some(only) = available_symbols.first().copied()
+        && available_symbols.iter().all(|symbol| *symbol == only)
+    {
+        return Ok(vec![only; count as usize]);
     }
 
     let choices = available_symbols

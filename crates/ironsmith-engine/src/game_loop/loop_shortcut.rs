@@ -1929,7 +1929,10 @@ fn run_lap(
                 super::apply_decision_context_with_dm(game, trigger_queue, state, ctx, &mut dm)
             }
         };
-        progress = result.map_err(|error| format!("a recorded action failed: {error}"))?;
+        progress = result.map_err(|error| match dm.failure.take() {
+            Some(failure) => format!("{failure} ({error})"),
+            None => format!("a recorded action failed: {error}"),
+        })?;
         // A game that ends mid-call legitimately leaves later answers unasked.
         if matches!(progress, GameProgress::GameOver(_)) {
             return Ok(LapEnd::GameOver(progress));
@@ -2020,33 +2023,69 @@ fn try_detect(
         ));
     }
     let current = LoopStateSummary::of(game);
-    let mut found = None;
-    for (index, step) in tracker.steps.iter().enumerate().rev() {
+    // Candidate laps, shortest first: every earlier point of this player's
+    // own actions from which the game has only changed in countable ways.
+    // The shortest candidate is not always a lap. Counted things (a token, a
+    // counter) can make the middle of a lap look like its end, so a
+    // candidate that fails its proof gives way to the next longer one.
+    let mut first_failure = None;
+    let mut candidates = 0;
+    for (start, step) in tracker.steps.iter().enumerate().rev() {
         let Some(anchor) = step.anchor.as_ref().filter(|_| step.actor == Some(proposer)) else {
             continue;
         };
-        if let Some(delta) = anchor.delta_to(&current) {
-            // An unchanged state is a no-op, not a loop worth repeating; a
-            // longer lap ending here would only repeat it.
-            if delta.is_empty() {
-                return Err("the game returned to exactly the same state".to_string());
+        let Some(delta) = anchor.delta_to(&current) else {
+            continue;
+        };
+        // An unchanged state is a no-op, not a loop worth repeating; a
+        // longer lap ending here would only repeat it.
+        if delta.is_empty() {
+            return Err("the game returned to exactly the same state".to_string());
+        }
+        candidates += 1;
+        match prove_lap(game, trigger_queue, state, proposer, progress, &current, start, delta) {
+            Ok(offer) => return Ok(offer),
+            Err(reason) => {
+                first_failure.get_or_insert(reason);
             }
-            found = Some((index, delta));
+        }
+        if candidates >= MAX_LAP_CANDIDATES {
             break;
         }
     }
-    let Some((start, delta)) = found else {
-        let latest = tracker
-            .steps
-            .iter()
-            .rev()
-            .find_map(|step| step.anchor.as_ref().filter(|_| step.actor == Some(proposer)))
-            .map(|anchor| anchor.fixed_differences(&current).join("; "))
-            .unwrap_or_default();
-        return Err(format!(
-            "the game is not in a state it was in before any of this player's {anchors} action(s), apart from countable resources (since the latest one, changed: {latest})"
-        ));
-    };
+    if let Some(reason) = first_failure {
+        return Err(reason);
+    }
+    let latest = tracker
+        .steps
+        .iter()
+        .rev()
+        .find_map(|step| step.anchor.as_ref().filter(|_| step.actor == Some(proposer)))
+        .map(|anchor| anchor.fixed_differences(&current).join("; "))
+        .unwrap_or_default();
+    Err(format!(
+        "the game is not in a state it was in before any of this player's {anchors} action(s), apart from countable resources (since the latest one, changed: {latest})"
+    ))
+}
+
+/// Candidate laps proved per look, so a long turn cannot make one prompt slow.
+const MAX_LAP_CANDIDATES: usize = 6;
+
+/// Check one candidate lap (the recorded steps from `start`) and build its
+/// offer: its shape must be replayable, and one more lap on a copy of the
+/// game must be legal and change exactly the same.
+#[allow(clippy::too_many_arguments)]
+fn prove_lap(
+    game: &GameState,
+    trigger_queue: &TriggerQueue,
+    state: Option<&PriorityLoopState>,
+    proposer: PlayerId,
+    progress: &GameProgress,
+    current: &LoopStateSummary,
+    start: usize,
+    delta: Delta,
+) -> Result<LoopShortcutOffer, String> {
+    let tracker = &game.loop_shortcut;
     if tracker.draw_loops_blocked.get()
         && delta
             .iter()
@@ -2064,7 +2103,6 @@ fn try_detect(
     let order = game.turn_store.turn_order.clone();
     responders.sort_by_key(|player| order.iter().position(|seat| seat == player));
 
-    // Proof: one more lap on a copy must be legal and change exactly the same.
     let _nested = DepthGuard::enter();
     let mut trial = game.clone();
     let mut trial_queue = trigger_queue.clone();
@@ -2306,7 +2344,12 @@ pub(super) fn execute(
     // The loop is still available after a complete run. A responder who
     // shortened it wants a real priority window, so the next lap is manual.
     if matches!(stop, LoopShortcutStop::Completed) && executed > 0 {
-        game.loop_shortcut.offer = Some(offer);
+        let mut offer = offer;
+        offer.max_laps = draw_lap_limit(game, &offer.delta);
+        // A draw loop with no card left to draw has no repetition to offer.
+        if offer.max_laps != Some(0) {
+            game.loop_shortcut.offer = Some(offer);
+        }
     }
     let _nested = DepthGuard::enter();
     super::advance_priority_with_dm(

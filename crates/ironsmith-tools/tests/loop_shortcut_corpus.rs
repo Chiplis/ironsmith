@@ -67,6 +67,7 @@ const CARDS: &[&str] = &[
     "Yawgmoth, Thran Physician",
     "Young Wolf",
     "Butcher Ghoul",
+    "Bridge from Below",
     "Island",
     "Forest",
 ];
@@ -392,6 +393,7 @@ impl Table {
     }
 
     fn fail(&self, message: &str) -> ! {
+        eprintln!("engine note: {:?}", self.game.loop_shortcut_note());
         panic!(
             "{message}\nboard: {}\nlog:\n  {}",
             self.describe(),
@@ -771,6 +773,16 @@ fn kinnan_basalt_monolith() {
     check(&KINNAN_BASALT, 6);
 }
 
+#[test]
+fn kinnan_does_not_ask_which_type_when_only_one_was_produced() {
+    let mut table = Table::new(false);
+    table.battlefield(&["Kinnan, Bonder Prodigy", "Basalt Monolith"]);
+    table.tap_for_mana("Basalt Monolith");
+    assert_eq!(table.pool(), 4, "three from the Monolith, one from Kinnan");
+    let asked: Vec<&String> = table.pilot.log.iter().filter(|line| line.starts_with("options:")).collect();
+    assert!(asked.is_empty(), "a one-type menu is not a choice: {asked:?}");
+}
+
 /// Forsaken Monument + Basalt Monolith.
 const MONUMENT_BASALT: Combo = Combo {
     setup: |t| t.battlefield(&["Forsaken Monument", "Basalt Monolith"]),
@@ -1055,6 +1067,40 @@ const YAWGMOTH_UNDYING: Combo = Combo {
         ("life", Some(0), -2),
     ],
 };
+
+/// Yawgmoth with one undying creature and Bridge from Below in the graveyard:
+/// sacrifice the Ghoul with no target (it returns with a counter and the
+/// Bridge makes a Zombie), then sacrifice the Zombie to take the counter off.
+const YAWGMOTH_BRIDGE: Combo = Combo {
+    setup: |t| {
+        t.battlefield(&["Yawgmoth, Thran Physician", "Butcher Ghoul"]);
+        t.put("Bridge from Below", ALICE, Zone::Graveyard);
+        for _ in 0..30 {
+            t.put("Island", ALICE, Zone::Library);
+        }
+    },
+    lap: |t| {
+        t.pilot.target_rules = vec![];
+        t.activate("Yawgmoth, Thran Physician");
+        t.resolve_all();
+        t.pilot.target_rules = vec![("Yawgmoth", "Butcher Ghoul")];
+        t.pilot.next_objects.push_back(vec!["Zombie Token"]);
+        t.activate("Yawgmoth, Thran Physician");
+        t.resolve_all();
+    },
+    // The Ghoul that started in play is not summoning sick until it returns.
+    manual_laps: 2,
+    per_lap: &[
+        ("cards in hand", Some(0), 2),
+        ("cards in library", Some(0), -2),
+        ("life", Some(0), -2),
+    ],
+};
+
+#[test]
+fn yawgmoth_butcher_ghoul_bridge_from_below_draw_loop() {
+    check(&YAWGMOTH_BRIDGE, 3);
+}
 
 #[test]
 fn yawgmoth_undying_draw_loop() {
