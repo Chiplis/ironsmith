@@ -986,7 +986,7 @@ impl GameState {
 
         let departing_turn_boundary = self.next_turn_number_if_player_stayed(player);
         self.record_phased_out_under_departed(player, departing_turn_boundary);
-        self.reveal_face_down_conspiracies(Some(player));
+        self.reveal_face_down_objects(Some(player));
         let departing_team = self.team_index_for(player);
         let was_active_player = self.is_active_player(player);
         let had_priority = self.turn.priority_player == Some(player);
@@ -1030,26 +1030,6 @@ impl GameState {
         // Hidden cards the player must still disclose at the end of the match
         // (hand, face-down spells and permanents) are snapshotted first.
         self.note_departing_hidden_cards(player);
-        // CR 708.9: the departing player's face-down permanents and spells
-        // are revealed to all players. Identities this peer can't open are
-        // left to the hidden-card end-of-match disclosure.
-        let mut departing_face_down: Vec<ObjectId> = self
-            .battlefield_flags
-            .face_down
-            .iter()
-            .copied()
-            .filter(|id| {
-                self.object(*id).is_some_and(|object| {
-                    object.owner == player
-                        && matches!(object.zone, Zone::Battlefield | Zone::Stack)
-                }) && !self.is_hidden_card_placeholder(*id)
-            })
-            .collect();
-        departing_face_down.sort_unstable();
-        for id in departing_face_down {
-            self.record_face_down_reveal(id, player);
-        }
-
         // CR 800.4a first removes every object the player owns. This is not a
         // zone change, so remove_object deliberately emits no zone-change event.
         let owned_objects = self

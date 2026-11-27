@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { playerDisplayName, samePlayerId } from "@/lib/player-display";
+import { getPlayerAccent } from "@/lib/player-colors";
 
 const DEFAULT_REPETITIONS = 10;
 
@@ -88,17 +89,47 @@ export function LoopShortcutButton() {
   );
 }
 
+/** "+1 colorless mana Alice, -1 life Bob", each name in its player's colour. */
+function LoopPerLapSummary({ entries, players, perspective, accentOverrides }) {
+  return entries.map((entry, index) => {
+    const amount = Number(entry.amount) || 0;
+    const player = entry.player == null ? null : players.find((candidate) => samePlayerId(candidate.id, entry.player));
+    const accent = player ? getPlayerAccent(players, player.id, perspective, accentOverrides) : null;
+    return (
+      <span key={`${entry.player ?? "none"}:${entry.resource}`} className="loop-shortcut-delta">
+        {index > 0 ? ", " : ""}
+        {`${amount > 0 ? "+" : ""}${amount} ${entry.resource}`}
+        {player ? (
+          <>
+            {" "}
+            <span className="loop-shortcut-delta-player" style={{ color: accent?.hex, fontWeight: 700 }}>
+              {playerDisplayName(players, player)}
+            </span>
+          </>
+        ) : null}
+      </span>
+    );
+  });
+}
+
 function ProposalDialog() {
-  const { state, loopShortcut } = useGame();
+  const { state, loopShortcut, playerAccentOverrides } = useGame();
   const ui = useUiText();
   const [count, setCount] = useState(String(DEFAULT_REPETITIONS));
   const [submitting, setSubmitting] = useState(false);
   const draft = loopShortcut?.proposalDraft;
-  useEffect(() => { if (draft) setCount(String(DEFAULT_REPETITIONS)); }, [draft]);
+  // A draw loop stops at the last card of the library, never past it.
+  const most = Math.min(10_000, Number.isFinite(Number(draft?.maxRepetitions)) && draft?.maxRepetitions != null ? Number(draft.maxRepetitions) : 10_000);
+  useEffect(() => { if (draft) setCount(String(Math.min(DEFAULT_REPETITIONS, most))); }, [draft, most]);
   if (!draft) return null;
   const decision = state?.decision;
   const hasPriority = decision?.kind === "priority" && samePlayerId(decision.player, state?.perspective);
-  const repetitions = parseRepetitions(count, 10_000);
+  const repetitions = parseRepetitions(count, most);
+  // Cards the proposer draws each repetition, for the up-front warning.
+  const drawnPerLap = (draft.perLap || []).reduce((total, entry) => (
+    entry.resource === "cards in library" && samePlayerId(entry.player, state?.perspective) && entry.amount < 0
+      ? total - Number(entry.amount) : total
+  ), 0);
   const propose = async () => {
     if (!repetitions || submitting) return;
     setSubmitting(true);
@@ -111,14 +142,33 @@ function ProposalDialog() {
           <SheetTitle>{ui("Repeat this loop")}</SheetTitle>
           <SheetDescription>
             {ui("{0} recorded step(s). Opponents can accept or choose an iteration to interrupt. Accepted iterations run automatically.", { 0: draft.steps.length })}
-            {draft.summary ? ` ${ui("Each repetition: {0}.", { 0: draft.summary })}` : ""}
+            {draft.perLap?.length ? (
+              <span className="loop-shortcut-per-lap">
+                {` ${ui("Each repetition:")} `}
+                <LoopPerLapSummary
+                  entries={draft.perLap}
+                  players={state?.players || []}
+                  perspective={state?.perspective}
+                  accentOverrides={playerAccentOverrides}
+                />
+                .
+              </span>
+            ) : draft.summary ? ` ${ui("Each repetition: {0}.", { 0: draft.summary })}` : ""}
           </SheetDescription>
         </SheetHeader>
         <div className="grid gap-3 px-4 py-4">
           <label className="grid gap-1 text-sm">
             <span>{ui("Repetitions")}</span>
-            <Input type="number" min={1} max={10000} value={count} onChange={(event) => setCount(event.target.value)} autoFocus />
+            <Input type="number" min={1} max={most} value={count} onChange={(event) => setCount(event.target.value)} autoFocus />
           </label>
+          {draft.drawsCards ? (
+            <p className="loop-shortcut-draw-warning text-sm" role="alert">
+              {drawnPerLap > 0
+                ? ui("This loop draws cards. You will draw {0} card(s), and you cannot act on any of them until all {1} repetition(s) have finished.", { 0: drawnPerLap * (repetitions || 0), 1: repetitions || 0 })
+                : ui("This loop draws cards. All {0} repetition(s) finish before anyone can act on the cards drawn.", { 0: repetitions || 0 })}
+              {draft.maxRepetitions != null ? ` ${ui("At most {0} repetition(s) before a library runs out.", { 0: most })}` : ""}
+            </p>
+          ) : null}
           {!hasPriority ? <p className="text-sm opacity-80">{ui("You can propose the loop when you have priority.")}</p> : null}
           <div className="flex justify-end gap-2">
             <Button className="decision-neon-button" variant="ghost" onClick={loopShortcut.discardRecording}>{ui("Discard")}</Button>

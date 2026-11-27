@@ -1356,6 +1356,58 @@ fn card(route: &str) -> ironsmith::CardDefinition {
             "Myr Battlesphere",
             "Mana cost: {7}\nType: Artifact Creature — Myr Construct\nPower/Toughness: 4/7\nWhen this creature enters, create four 1/1 colorless Myr artifact creature tokens.\nWhenever this creature attacks, you may tap X untapped Myr you control. If you do, this creature gets +X/+0 until end of turn and deals X damage to the player or planeswalker it's attacking.",
         ),
+        "hooded-hydra" => (
+            "Hooded Hydra",
+            "Mana cost: {X}{G}{G}\nType: Creature — Snake Hydra\nPower/Toughness: 0/0\nThis creature enters with X +1/+1 counters on it.\nWhen this creature dies, create a 1/1 green Snake creature token for each +1/+1 counter on it.\nMorph {3}{G}{G}\nAs this creature is turned face up, put five +1/+1 counters on it.",
+        ),
+        "walking-ballista" => (
+            "Walking Ballista",
+            "Mana cost: {X}{X}\nType: Artifact Creature — Construct\nPower/Toughness: 0/0\nThis creature enters with X +1/+1 counters on it.\n{4}: Put a +1/+1 counter on this creature.\nRemove a +1/+1 counter from this creature: It deals 1 damage to any target.",
+        ),
+        "warbreak-trumpeter" => (
+            "Warbreak Trumpeter",
+            "Mana cost: {R}\nType: Creature — Goblin\nPower/Toughness: 1/1\nMorph {X}{X}{R} (You may cast this card face down as a 2/2 creature for {3}. Turn it face up any time for its morph cost.)\nWhen this creature is turned face up, create X 1/1 red Goblin creature tokens.",
+        ),
+        "cloudpiercer" => (
+            "Cloudpiercer",
+            "Mana cost: {4}{R}\nType: Creature — Dinosaur\nPower/Toughness: 5/4\nMutate {3}{R} (If you cast this spell for its mutate cost, put it over or under target non-Human creature you own. They mutate into the creature on top plus all abilities from under it.)\nReach\nWhenever this creature mutates, you may discard a card. If you do, draw a card.",
+        ),
+        "behold-the-multiverse" => (
+            "Behold the Multiverse",
+            "Mana cost: {3}{U}\nType: Instant\nScry 2, then draw two cards.\nForetell {1}{U} (During your turn, you may pay {2} and exile this card from your hand face down. Cast it on a later turn for its foretell cost.)",
+        ),
+        "clone" => (
+            "Clone",
+            "Mana cost: {3}{U}\nType: Creature — Shapeshifter\nPower/Toughness: 0/0\nYou may have this creature enter as a copy of any creature on the battlefield.",
+        ),
+        "counterspell" => (
+            "Counterspell",
+            "Mana cost: {U}{U}\nType: Instant\nCounter target spell.",
+        ),
+        "cyber-conversion" => (
+            "Cyber Conversion",
+            "Mana cost: {U}{U}\nType: Instant\nTurn target creature face down. It's a 2/2 Cyberman artifact creature.",
+        ),
+        "soul-summons" => (
+            "Soul Summons",
+            "Mana cost: {1}{W}\nType: Sorcery\nManifest the top card of your library. (Put it onto the battlefield face down as a 2/2 creature. Turn it face up any time for its mana cost if it's a creature card.)",
+        ),
+        "essence-of-the-wild" => (
+            "Essence of the Wild",
+            "Mana cost: {3}{G}{G}{G}\nType: Creature — Avatar\nPower/Toughness: 6/6\nCreatures you control enter as a copy of this creature.",
+        ),
+        "yedora-grave-gardener" => (
+            "Yedora, Grave Gardener",
+            "Mana cost: {4}{G}\nType: Legendary Creature — Treefolk Druid\nPower/Toughness: 5/5\nWhenever another nontoken creature you control dies, you may return it to the battlefield face down under its owner's control. It's a Forest land. (It has no other types or abilities.)",
+        ),
+        "magar-of-the-magic-strings" => (
+            "Magar of the Magic Strings",
+            "Mana cost: {1}{B}{R}\nType: Legendary Creature — Minotaur Performer\nPower/Toughness: 3/3\n{1}{B}{R}: Note the name of target instant or sorcery card in your graveyard and put it onto the battlefield face down. It's a 3/3 creature with \"Whenever this creature deals combat damage to a player, you may create a copy of the card with the noted name. You may cast the copy without paying its mana cost\" and \"If this creature would leave the battlefield, exile it instead of putting it anywhere else.\"",
+        ),
+        "the-cyber-controller" => (
+            "The Cyber-Controller",
+            "Mana cost: {X}{U}{U}{B}\nType: Legendary Artifact Creature — Cyberman\nPower/Toughness: 3/3\nWhen The Cyber-Controller enters, each opponent mills X cards. Put all creature cards milled this way onto the battlefield face down under your control. They're 2/2 Cyberman artifact creatures.\nOther artifact creatures you control get +1/+1.",
+        ),
         _ => panic!("unknown regression fixture {route}"),
     };
     ironsmith_compiler_runtime::compile_to_runtime_definition(name, block, false).unwrap()
@@ -2251,3 +2303,6 @@ mod commander_designation;
 
 #[path = "november_2026_rules/mana_symbols.rs"]
 mod mana_symbols;
+
+#[path = "november_2026_rules/face_down_cards.rs"]
+mod face_down_cards;

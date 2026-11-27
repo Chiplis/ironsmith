@@ -1303,6 +1303,49 @@ impl GameState {
         )
     }
 
+    /// Advance a physical card's tracking when it moves, including a component
+    /// of a merged permanent. The caller checks generation overflow before mutation.
+    fn move_hidden_card_tracking(
+        &mut self,
+        mut info: HiddenCardInfo,
+        old_id: ObjectId,
+        new_id: ObjectId,
+        old_zone: Zone,
+        new_zone: Zone,
+    ) {
+        let audit_info = info.clone();
+        let entering_library = (new_zone == Zone::Library && old_zone != Zone::Library)
+            .then(|| audit_info.clone());
+        info.zone = new_zone;
+        info.incarnation = info.incarnation.map(|generation| generation + 1);
+        self.observe_hidden_incarnation(info.incarnation);
+        self.auxiliary_tracking_mut()
+            .hidden_cards
+            .insert(new_id, info);
+        self.hydrate_verified_library_replay_zone(new_id, new_zone);
+        self.push_hidden_info_operation(HiddenInfoOperation::HiddenMove {
+            owner: audit_info.owner,
+            old_object_id: old_id,
+            new_object_id: new_id,
+            from: old_zone,
+            to: new_zone,
+            slot: audit_info.slot,
+            commitment: audit_info.commitment,
+        });
+        if let Some(entering) = entering_library {
+            // A claim subject entering a library is anchored to its
+            // durable ziffle ciphertext (checked at the end-of-match
+            // disclosure), since reshuffles break the object link.
+            self.anchor_hidden_card_entering_library(new_id, &entering);
+        } else if new_zone == Zone::Graveyard {
+            // A card put into a graveyard is face up and opened on every
+            // peer, which checks its claims then; it needs no anchor.
+            if let Some(stable) = self.object(new_id).map(|object| object.stable_id) {
+                self.forget_hidden_claim_subject(stable);
+            }
+        }
+    }
+
     fn move_object_with_snapshot_and_pre_event_lookback_internal(
         &mut self,
         old_id: ObjectId,
@@ -1403,13 +1446,15 @@ impl GameState {
         // commitment. Bind that new object to a distinct public generation.
         // Exhaustion rejects this move before any state, queue or ID mutation;
         // unknown historical generations stay unknown, never restart at zero.
-        let next_hidden_incarnation = match self
-            .hidden_card_info(old_id)
-            .and_then(|info| info.incarnation)
+        if self.hidden_card_info(old_id).is_some_and(|info| info.incarnation == Some(u64::MAX))
+            || self.object(old_id).and_then(|object| self.merged_permanent(object.stable_id))
+                .is_some_and(|group| group.components.iter().any(|component| {
+                    self.hidden_card_info(component.object.id)
+                        .is_some_and(|info| info.incarnation == Some(u64::MAX))
+                }))
         {
-            Some(current) => Some(current.checked_add(1)?),
-            None => None,
-        };
+            return None;
+        }
         // Use the object's current typed abilities while it is still in the
         // origin zone. This honors ability-loss effects on the battlefield and
         // still lets an all-zone retention ability operate from other zones.
@@ -1576,10 +1621,12 @@ impl GameState {
         self.turn_store
             .hand_cards_revealed_until_owners_next_turn
             .remove(&old_id);
-        let hidden_card_info = self.auxiliary_tracking_mut().hidden_cards.remove(&old_id);
+        let mut hidden_card_info = self.auxiliary_tracking_mut().hidden_cards.remove(&old_id);
         if hidden_card_info.is_some()
             && old_object.zone.is_public()
             && !was_face_down
+            && !self.merged_permanent(old_object.stable_id).is_some_and(|group|
+                group.components.iter().any(|part| part.object.id == old_id && part.face_down))
             && !was_foretold
         {
             // Every peer had to open this card while it sat face up in a
@@ -1672,6 +1719,18 @@ impl GameState {
                     .unwrap_or(new_zone);
                 let new_component_id =
                     self.create_merged_component_object(component, component_zone)?;
+                let prior_id = component.object.id;
+                let tracking = if prior_id == old_id {
+                    hidden_card_info.take()
+                } else {
+                    self.auxiliary_tracking_mut().hidden_cards.remove(&prior_id)
+                };
+                if let Some(info) = tracking {
+                    self.move_hidden_card_tracking(info, prior_id, new_component_id, old_zone, component_zone);
+                }
+                if component.face_down {
+                    self.record_known_identity_reveal(&component.destination_object, component.object.owner);
+                }
                 result_object_ids.push(new_component_id);
             }
             self.commander_tracking_mut()
@@ -1842,11 +1901,6 @@ impl GameState {
                 && matches!(new_object.kind, crate::object::ObjectKind::Token));
         let preserve_optional_costs_paid = old_zone == Zone::Stack && new_zone == Zone::Battlefield;
         let preserve_x_value = old_zone == Zone::Stack && new_zone == Zone::Battlefield;
-        // Restore enters-as characteristics first, so the printed values saved
-        // by the face-down, bestow and prototype overlays below always win.
-        if matches!(old_zone, Zone::Battlefield | Zone::Stack) && new_zone != Zone::Battlefield {
-            new_object.end_enters_as_copy_overlay();
-        }
         // CR 702.51c: "creatures that convoked it" stays linked to the
         // permanent the resolving spell becomes.
         if !preserve_optional_costs_paid {
@@ -1867,6 +1921,11 @@ impl GameState {
         // characteristics to return to; only a card does (CR 718.3c, 718.4).
         if !preserve_prototype_overlay && new_object.kind == crate::object::ObjectKind::Card {
             new_object.end_prototype_cast_overlay();
+        }
+        // Entry copies save the physical card beneath any cast overlay. A later
+        // face-down overlay can itself contain the copied creature (CR 400.7).
+        if matches!(old_zone, Zone::Battlefield | Zone::Stack) && new_zone != Zone::Battlefield {
+            new_object.end_enters_as_copy_overlay();
         }
         if !preserve_x_value {
             new_object.x_value = None;
@@ -2067,36 +2126,8 @@ impl GameState {
         if new_zone == Zone::Battlefield {
             self.note_attraction_entered_battlefield(new_id);
         }
-        if let Some(mut info) = hidden_card_info {
-            let audit_info = info.clone();
-            let entering_library = (new_zone == Zone::Library && old_zone != Zone::Library)
-                .then(|| audit_info.clone());
-            info.zone = new_zone;
-            info.incarnation = next_hidden_incarnation;
-            self.observe_hidden_incarnation(info.incarnation);
-            self.auxiliary_tracking_mut()
-                .hidden_cards
-                .insert(new_id, info);
-            self.hydrate_verified_library_replay_zone(new_id, new_zone);
-            self.push_hidden_info_operation(HiddenInfoOperation::HiddenMove {
-                owner: audit_info.owner,
-                old_object_id: old_id,
-                new_object_id: new_id,
-                from: old_zone,
-                to: new_zone,
-                slot: audit_info.slot,
-                commitment: audit_info.commitment,
-            });
-            if let Some(entering) = entering_library {
-                // A claim subject entering a library is anchored to its
-                // durable ziffle ciphertext (checked at the end-of-match
-                // disclosure), since reshuffles break the object link.
-                self.anchor_hidden_card_entering_library(new_id, &entering);
-            } else if new_zone == Zone::Graveyard {
-                // A card put into a graveyard is face up and opened on every
-                // peer, which checks its claims then; it needs no anchor.
-                self.forget_hidden_claim_subject(sticker_identity);
-            }
+        if let Some(info) = hidden_card_info {
+            self.move_hidden_card_tracking(info, old_id, new_id, old_zone, new_zone);
         }
 
         // CR 406.3 / 400.7: a face-down exiled card that leaves exile is a new
@@ -4261,6 +4292,16 @@ impl GameState {
             .contains(&ironsmith_core::EnterAsCopyFollowup::RetainOwnColors)
             .then(|| self.object(new_id).map(|object| object.colors()))
             .flatten();
+        // CR 708.10: install a permanent entry copy beneath the face-down
+        // presentation, including any exceptions that belong to the copy.
+        let face_down_copy = if result.enters_as_copy_of.is_some() && temporary_copy_duration.is_none() {
+            self.object_mut(new_id).and_then(|object| {
+                let state = object.face_down_cast_state.as_ref()?;
+                let form = (state.disguise_ward, state.custom_copiable_values.clone());
+                object.end_face_down_cast_overlay();
+                Some(form)
+            })
+        } else { None };
         if let Some(copy_source_id) = result.enters_as_copy_of {
             if let Some(duration) = temporary_copy_duration.clone() {
                 let copiable_values = crate::continuous::referenced_copiable_values(copy_source_id, self);
@@ -4495,6 +4536,13 @@ retain_original_types: false, retain_original_name: false,
             {
                 new_obj.base_power = Some(crate::card::PtValue::Fixed(power));
                 new_obj.base_toughness = Some(crate::card::PtValue::Fixed(toughness));
+            }
+        }
+
+        if let Some((ward, custom)) = face_down_copy && let Some(object) = self.object_mut(new_id) {
+            object.apply_face_down_cast_overlay_with_disguise_ward(ward);
+            if let Some(values) = custom {
+                object.apply_custom_face_down_overlay(*values);
             }
         }
 

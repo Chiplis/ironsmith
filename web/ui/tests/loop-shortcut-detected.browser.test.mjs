@@ -30,7 +30,7 @@ if(command.type==='propose_loop_shortcut') shortcut={proposer:0,steps:command.st
 if(command.type==='cancel_loop_shortcut') shortcut=null;
 if(command.type==='priority_action'){
   const summary=typeof window.offerSummary==='function'?window.offerSummary():window.offerSummary;
-  offer=summary?{proposer:0,start_serial:serial,summary,per_lap:[],responders:[]}:null;
+  offer=summary?{proposer:0,start_serial:serial,summary,per_lap:[{player:0,resource:'red mana',amount:1}],responders:[],...(window.offerExtra||{})}:null;
   serial+=1;
 }
 window.publish({...s,snapshot_id:s.snapshot_id+1,loop_shortcut:shortcut,loop_offer:offer,loop_serial:serial});
@@ -87,7 +87,11 @@ test("a loop the engine detects is offered, proposed from the logged commands, a
     await page.waitForTimeout(150);
     await page.getByRole('button',{name:'Repeat loop (+1 red mana (Alice))',exact:true}).click();
     await page.getByText('Repeat this loop',{exact:true}).waitFor();
-    await page.getByText(/Each repetition: \+1 red mana \(Alice\)\./).waitFor();
+    await page.getByText(/Each repetition: \+1 red mana Alice\./).waitFor();
+    // The player's name carries that player's colour instead of parentheses.
+    const colour = await page.locator('.loop-shortcut-delta-player').evaluate((node)=>({text:node.textContent,color:node.style.color}));
+    assert.equal(colour.text, 'Alice');
+    assert.notEqual(colour.color, '');
     await page.getByRole('spinbutton').fill('3');
     await page.getByRole('button',{name:'Propose ×3',exact:true}).click();
     await page.waitForFunction(()=>window.submissions.some(c=>c.type==='cancel_loop_shortcut'),null,{timeout:10000});
@@ -131,5 +135,28 @@ test("replay of a detected loop stops when a repetition changes the game differe
     assert.deepEqual(await page.evaluate(()=>window.submissions.map(c=>c.type)),[
       'priority_action','propose_loop_shortcut','priority_action','priority_action','cancel_loop_shortcut',
     ], "two repetitions ran; the third never started");
+  });
+});
+
+test("a draw loop warns before it runs and cannot be asked to empty the library", {timeout:900000}, async () => {
+  await open(async (page) => {
+    await page.evaluate(()=>{
+      window.offerSummary='-2 life (Alice), +1 cards in hand (Alice), -1 cards in library (Alice)';
+      window.offerExtra={draws_cards:true,max_repetitions:4,per_lap:[
+        {player:0,resource:'life',amount:-2},{player:0,resource:'cards in hand',amount:1},{player:0,resource:'cards in library',amount:-1}]};
+    });
+    await page.evaluate((action)=>window.context.dispatch({type:'priority_action',action_index:1,action_ref:action.action_ref}), activate);
+    await page.waitForFunction(()=>window.context.loopShortcut.detectedLoop);
+    await page.waitForTimeout(150);
+    await page.getByRole('button',{name:/Repeat loop/}).click();
+    // The default of ten is cut to what the library can pay for.
+    assert.equal(await page.getByRole('spinbutton').inputValue(), '4');
+    const warning = page.locator('.loop-shortcut-draw-warning');
+    assert.match(await warning.innerText(), /You will draw 4 card\(s\), and you cannot act on any of them until all 4 repetition\(s\) have finished\./);
+    assert.match(await warning.innerText(), /At most 4 repetition\(s\) before a library runs out\./);
+    await page.getByRole('spinbutton').fill('2');
+    assert.match(await warning.innerText(), /You will draw 2 card\(s\)/);
+    await page.getByRole('spinbutton').fill('9');
+    await page.getByRole('button',{name:'Propose ×4',exact:true}).waitFor();
   });
 });

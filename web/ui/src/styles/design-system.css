@@ -7815,6 +7815,14 @@ html[data-hand-pointer-suspended="true"] * {
 @media (prefers-reduced-motion: reduce) {
   .loop-shortcut-control--available { animation: none; }
 }
+.loop-shortcut-draw-warning {
+  margin: 0;
+  padding: 8px 10px;
+  border: 1px solid rgba(242, 214, 138, 0.55);
+  border-radius: 6px;
+  background: rgba(242, 214, 138, 0.1);
+  color: #ffe9ad;
+}
 .loop-shortcut-action {
   display: inline-grid;
   place-items: center;

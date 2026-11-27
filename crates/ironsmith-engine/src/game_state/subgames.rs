@@ -857,7 +857,11 @@ impl GameState {
             archenemies,
             ..
         } = *frame;
+        // CR 708.9 and 730.1a: finish the child's public reveals as the main
+        // game resumes, before the child cards are shuffled into libraries.
+        let reveals = self.face_down_reveals(None);
         *self = *parent;
+        self.publish_face_down_reveals(reveals);
         self.subgame_just_resumed = true;
 
         let mut returned_ids = Vec::with_capacity(returned.len());

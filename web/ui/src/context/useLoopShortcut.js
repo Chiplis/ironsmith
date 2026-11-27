@@ -308,7 +308,13 @@ export default function useLoopShortcut({ state, stateRef, dispatch, multiplayer
     // A declined loop stays declined for the turn, so the button goes back to
     // plain recording even while the player keeps repeating it by hand.
     if (key === declinedLoopKey) return null;
-    return { steps, summary, key, responders: state.loop_offer.responders || [] };
+    return {
+      steps, summary, key,
+      perLap: state.loop_offer.per_lap || [],
+      responders: state.loop_offer.responders || [],
+      drawsCards: Boolean(state.loop_offer.draws_cards),
+      maxRepetitions: state.loop_offer.max_repetitions ?? null,
+    };
     // historyVersion re-runs this when the log changes without a new snapshot.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [declinedLoopKey, historyVersion, proposalDraft, recording, state]);
@@ -319,7 +325,8 @@ export default function useLoopShortcut({ state, stateRef, dispatch, multiplayer
     recordingRef.current = null;
     pendingRecordRef.current = null;
     setRecording(null);
-    setProposalDraft({ steps: detectedLoop.steps, summary: detectedLoop.summary, detected: true, key: detectedLoop.key });
+    setProposalDraft({ steps: detectedLoop.steps, summary: detectedLoop.summary, perLap: detectedLoop.perLap, detected: true, key: detectedLoop.key,
+      drawsCards: detectedLoop.drawsCards, maxRepetitions: detectedLoop.maxRepetitions });
   }, [detectedLoop]);
 
   // Advance the rendered cursor past an accepted action before effects run,

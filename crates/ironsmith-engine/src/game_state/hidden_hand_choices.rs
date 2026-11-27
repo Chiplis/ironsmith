@@ -1072,7 +1072,7 @@ impl GameState {
         let known_name = object
             .card
             .as_ref()
-            .map(|_| object.identity_name().to_string());
+            .map(|_| object.revealed_identity_name().to_string());
         let anchor = HiddenLibraryAnchor {
             owner: info.owner,
             object_id: new_id,
@@ -1532,11 +1532,28 @@ pub struct EndOfMatchDisclosureCard {
 }
 
 impl GameState {
-    fn must_disclose_at_match_end(&self, object: &crate::object::Object, face_down: bool) -> bool {
-        object.zone == Zone::Hand
-            || (face_down
-                && (matches!(object.zone, Zone::Battlefield | Zone::Stack)
-                    || (object.zone == Zone::Exile && self.is_prepared_face_down(object.id))))
+    /// The visible permanent and the tracked physical card can have different
+    /// face statuses after mutation. An incoming component's id is historical.
+    fn disclosure_object(&self, id: ObjectId) -> Option<(&crate::object::Object, Zone, bool)> {
+        let component = if let Some(object) = self.object(id) {
+            let merged = (object.zone == Zone::Battlefield)
+                .then(|| self.merged_permanent(object.stable_id)).flatten();
+            if let Some(merged) = merged {
+                merged.components.iter().find(|component| component.object.id == id)?
+            } else {
+                let face_down = self.is_face_down(id) || self.is_face_down_conspiracy(id);
+                return (object.zone == Zone::Hand
+                    || (face_down && (matches!(object.zone, Zone::Battlefield | Zone::Stack)
+                        || self.is_face_down_conspiracy(id)
+                        || (object.zone == Zone::Exile && self.is_prepared_face_down(id)))))
+                    .then_some((object, object.zone, face_down));
+            }
+        } else {
+            self.commander_tracking.merged_permanents.values()
+                .flat_map(|group| &group.components)
+                .find(|component| component.object.id == id)?
+        };
+        component.face_down.then_some((&component.destination_object, Zone::Battlefield, true))
     }
 
     /// Snapshot the cards `player` must disclose at the end of the match
@@ -1549,13 +1566,10 @@ impl GameState {
             .iter()
             .filter(|(_, info)| info.owner == player)
             .filter_map(|(id, info)| {
-                let object = self.object(*id)?;
-                let face_down = self.is_face_down(*id);
-                self.must_disclose_at_match_end(object, face_down).then(|| DepartedHiddenCard {
-                    object: object.clone(),
-                    info: info.clone(),
-                    face_down,
-                })
+                let (object, zone, face_down) = self.disclosure_object(*id)?;
+                let mut object = object.clone();
+                object.zone = zone;
+                Some(DepartedHiddenCard { object, info: info.clone(), face_down })
             })
             .collect();
         if departing.is_empty() {
@@ -1576,7 +1590,7 @@ impl GameState {
             object
                 .card
                 .as_ref()
-                .map(|_| object.identity_name().to_string())
+                .map(|_| object.revealed_identity_name().to_string())
         };
         let mut cards: Vec<EndOfMatchDisclosureCard> = self
             .auxiliary_tracking
@@ -1584,18 +1598,15 @@ impl GameState {
             .iter()
             .filter(|(_, info)| info.owner == player)
             .filter_map(|(id, info)| {
-                let object = self.object(*id)?;
-                let face_down = self.is_face_down(*id);
-                self.must_disclose_at_match_end(object, face_down).then(|| {
-                    EndOfMatchDisclosureCard {
-                        object_id: *id,
-                        info: info.clone(),
-                        zone: object.zone,
-                        face_down,
-                        known_name: known_name(object),
-                        library_anchor: None,
-                        anchor_only: false,
-                    }
+                let (object, zone, face_down) = self.disclosure_object(*id)?;
+                Some(EndOfMatchDisclosureCard {
+                    object_id: *id,
+                    info: info.clone(),
+                    zone,
+                    face_down,
+                    known_name: known_name(object),
+                    library_anchor: None,
+                    anchor_only: false,
                 })
             })
             .collect();

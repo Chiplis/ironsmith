@@ -46,6 +46,7 @@ mod link_permanents;
 mod suspect;
 mod tap;
 mod transform;
+pub(crate) mod face_down_form;
 mod turn_face_down;
 mod turn_face_up;
 pub(crate) use face_up_transition::{FaceUpChoiceController, turn_face_up_with_choices};

@@ -1360,6 +1360,9 @@ pub struct ApplyContinuousEffect<
     pub set_quantifier_surface: Option<SetQuantifierSurface>,
     pub type_retention_surface: Option<TypeRetentionSurface>,
     pub animation_pt_surface: Option<AnimationPtSurface>,
+    /// The producing face-down instruction already installed these copiable values.
+    #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "std::ops::Not::not"))]
+    pub defines_face_down_form: bool,
     pub animation_duration_surface: Option<AnimationDurationSurface>,
     pub lock_filter_at_resolution: bool,
     pub resolve_set_pt_values_at_resolution: bool,
@@ -1393,6 +1396,7 @@ impl<Target, Modification, RuntimeModification, Condition, SourceType>
             set_quantifier_surface: None,
             type_retention_surface: None,
             animation_pt_surface: None,
+            defines_face_down_form: false,
             animation_duration_surface: None,
             lock_filter_at_resolution: false,
             resolve_set_pt_values_at_resolution: false,
@@ -1416,6 +1420,7 @@ impl<Target, Modification, RuntimeModification, Condition, SourceType>
             set_quantifier_surface: None,
             type_retention_surface: None,
             animation_pt_surface: None,
+            defines_face_down_form: false,
             animation_duration_surface: None,
             lock_filter_at_resolution: false,
             resolve_set_pt_values_at_resolution: false,
@@ -1442,6 +1447,7 @@ impl<Target, Modification, RuntimeModification, Condition, SourceType>
             set_quantifier_surface: None,
             type_retention_surface: None,
             animation_pt_surface: None,
+            defines_face_down_form: false,
             animation_duration_surface: None,
             lock_filter_at_resolution: false,
             resolve_set_pt_values_at_resolution: false,
@@ -1472,6 +1478,7 @@ impl<Target, Modification, RuntimeModification, Condition, SourceType>
             set_quantifier_surface: None,
             type_retention_surface: None,
             animation_pt_surface: None,
+            defines_face_down_form: false,
             animation_duration_surface: None,
             lock_filter_at_resolution: false,
             resolve_set_pt_values_at_resolution: false,
@@ -3886,6 +3893,16 @@ pub enum BattlefieldEntryColorChange {
     Set(crate::color::ColorSet),
 }
 
+/// Copiable characteristics specified by an instruction that turns an object
+/// face down or puts it onto the battlefield face down (CR 708.2a).
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug, Clone, PartialEq, TagKeyWalk)]
+pub struct FaceDownForm {
+    pub card_types: Vec<CardType>,
+    pub subtypes: Vec<Subtype>,
+    pub power_toughness: Option<(i32, i32)>,
+}
+
 /// Type changes that apply while a permanent enters, before other entry
 /// replacements inspect its characteristics. They persist for that incarnation.
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -3962,6 +3979,10 @@ pub struct MoveToZoneEffect<M = ()> {
     pub enters_attacking: bool,
     pub attack_target_mode: Option<MoveToZoneAttackTargetMode>,
     pub enters_face_down: bool,
+    #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "Option::is_none"))]
+    pub face_down_form: Option<FaceDownForm>,
+    #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "Vec::is_empty"))]
+    pub face_down_ability_grants: Vec<M>,
     /// Whether a transforming double-faced card enters with its back face up.
     /// This is part of the zone-change instruction, not a later transform action.
     pub enters_transformed: bool,
@@ -4035,6 +4056,8 @@ impl<M> MoveToZoneEffect<M> {
             enters_attacking: self.enters_attacking,
             attack_target_mode: self.attack_target_mode,
             enters_face_down: self.enters_face_down,
+            face_down_form: self.face_down_form,
+            face_down_ability_grants: self.face_down_ability_grants.into_iter().map(&mut map).collect::<Result<Vec<_>, _>>()?,
             enters_transformed: self.enters_transformed,
             transfer_exiled_with_source_links: self.transfer_exiled_with_source_links,
             tagged_destinations: self.tagged_destinations,
@@ -4071,6 +4094,8 @@ impl<M> MoveToZoneEffect<M> {
             enters_attacking: false,
             attack_target_mode: None,
             enters_face_down: false,
+            face_down_form: None,
+            face_down_ability_grants: Vec::new(),
             enters_transformed: false,
             transfer_exiled_with_source_links: false,
             enters_blocking: None,
@@ -4227,6 +4252,8 @@ pub struct ReturnAllToBattlefieldEffect {
     pub filter: ObjectFilter,
     pub tapped: bool,
     pub face_down: bool,
+    #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "Option::is_none"))]
+    pub face_down_form: Option<FaceDownForm>,
     pub battlefield_controller: BattlefieldController,
     /// Whether the oracle text explicitly named the battlefield controller.
     /// This affects presentation only; `battlefield_controller` remains the
@@ -4246,6 +4273,7 @@ impl ReturnAllToBattlefieldEffect {
             filter,
             tapped,
             face_down: false,
+            face_down_form: None,
             battlefield_controller: BattlefieldController::Owner,
             controller_surface_explicit: false,
             verb_surface: MoveToZoneVerbSurface::Return,
@@ -4341,11 +4369,13 @@ impl TurnFaceUpEffect {
 #[derive(Debug, Clone, PartialEq, TagKeyWalk)]
 pub struct TurnFaceDownEffect {
     pub target: ChooseSpec,
+    #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "Option::is_none"))]
+    pub face_down_form: Option<FaceDownForm>,
 }
 
 impl TurnFaceDownEffect {
     pub fn new(target: ChooseSpec) -> Self {
-        Self { target }
+        Self { target, face_down_form: None }
     }
 }
 

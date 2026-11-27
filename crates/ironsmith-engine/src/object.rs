@@ -2772,6 +2772,22 @@ impl Object {
         self.face_down_cast_state.as_mut().expect("face-down restore state").custom_copiable_values = Some(Box::new(values));
     }
 
+    pub(crate) fn apply_face_down_form(&mut self, form: &ironsmith_core::effect::FaceDownForm, abilities: &[crate::ability::Ability]) {
+        self.apply_face_down_cast_overlay();
+        let mut values = crate::snapshot::CopiableValues::from_object(self);
+        for ability in abilities {
+            crate::static_abilities::add_copy_exception_ability(
+                &mut values.abilities, &mut values.ability_labels, &mut values.compiled_card_text,
+                ability.clone(), None,
+            );
+        }
+        values.card_types = form.card_types.clone();
+        values.subtypes = form.subtypes.clone();
+        values.power = form.power_toughness.map(|(power, _)| power);
+        values.toughness = form.power_toughness.map(|(_, toughness)| toughness);
+        self.apply_custom_face_down_overlay(values);
+    }
+
     /// Begin a splice modification, preserving any earlier stack program snapshot.
     pub fn begin_splice_cast_overlay(&mut self) -> bool {
         self.begin_stack_program_overlay()
@@ -2894,10 +2910,10 @@ impl Object {
         def: &crate::cards::CardDefinition,
         handles: &CardSharedHandles,
     ) -> bool {
-        let Some(disguise_ward) = self
+        let Some((disguise_ward, custom_copiable_values)) = self
             .face_down_cast_state
             .as_ref()
-            .map(|state| state.disguise_ward)
+            .map(|state| (state.disguise_ward, state.custom_copiable_values.clone()))
         else {
             return false;
         };
@@ -2905,6 +2921,16 @@ impl Object {
         face_up.face_down_cast_state = None;
         face_up.apply_card_definition_with_shared(def, handles);
 
+        // If the unknown card entered as a copy, opening it identifies the
+        // physical card. The face-up characteristics still come from the copy.
+        if self.copied_face_values.is_some() && self.enters_as_copy_restore_state.is_some() {
+            self.card = face_up.card;
+            self.kind = face_up.kind;
+            face_up.enters_as_copy_restore_state = None;
+            face_up.capture_enters_as_copy_restore_state();
+            self.enters_as_copy_restore_state = face_up.enters_as_copy_restore_state;
+            return true;
+        }
         self.kind = face_up.kind;
         self.card = face_up.card;
         // Card-level data consulted only once the card is face up again.
@@ -2916,7 +2942,7 @@ impl Object {
         self.optional_costs = Vec::new().into();
         self.additional_cost = TotalCost::free().into();
         self.face_down_cast_state = Some(Box::new(FaceDownCastState {
-            custom_copiable_values: None,
+            custom_copiable_values,
             name: face_up.name,
             first_printed_set_name: face_up.first_printed_set_name,
             mana_cost: face_up.mana_cost,
@@ -2949,6 +2975,22 @@ impl Object {
             .as_ref()
             .map(|state| &state.name)
             .unwrap_or(&self.name)
+    }
+
+    /// The card to show when paying the printed cost of a manifest or cloak.
+    /// A permanent entry-copy effect can supply a different face-up creature.
+    pub(crate) fn physical_card_under_face_down(&self) -> Option<&FaceDownCastState> {
+        let underlying = self.face_down_cast_state.as_deref()?;
+        Some(self.enters_as_copy_restore_state.as_deref()
+            .map_or(underlying, |entry| &entry.printed))
+    }
+
+    /// Identity shown when the physical card is revealed, including a card
+    /// turned face down after it entered as a copy (CR 708.9, 708.12).
+    pub fn revealed_identity_name(&self) -> &SharedStr {
+        self.enters_as_copy_restore_state
+            .as_ref()
+            .map_or_else(|| self.identity_name(), |restore| &restore.printed.name)
     }
 
     /// End the shared face-down cast overlay and restore printed characteristics.

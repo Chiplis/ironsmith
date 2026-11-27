@@ -44,6 +44,9 @@ impl GameState {
         random_count_before: u64,
         mut expected_inputs: Option<Vec<String>>,
     ) -> Result<(), String> {
+        // This game's libraries are hidden from the engine: see
+        // `LoopShortcutTracker::block_draw_loops`.
+        self.loop_shortcut.block_draw_loops();
         if self.player(player).is_none() {
             return Err("verified hidden shuffle owner is not present".into());
         }

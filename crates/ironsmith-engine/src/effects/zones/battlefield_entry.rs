@@ -99,6 +99,8 @@ pub(crate) struct BattlefieldEntryOptions {
     pub tapped: bool,
     pub transformed: bool,
     pub face_down: bool,
+    pub face_down_form: Option<ironsmith_core::effect::FaceDownForm>,
+    pub face_down_abilities: Vec<crate::ability::Ability>,
     /// Authored prospective characteristics, independent of the physical cards.
     pub entry_definition: Option<crate::cards::CardDefinition>,
     pub linked_face_mana_cost: Option<crate::mana::ManaCost>,
@@ -131,6 +133,8 @@ impl BattlefieldEntryOptions {
             tapped,
             transformed: false,
             face_down: false,
+            face_down_form: None,
+            face_down_abilities: Vec::new(),
             entry_definition: None,
             linked_face_mana_cost: None,
             physical_components: Vec::new(),
@@ -152,6 +156,8 @@ impl BattlefieldEntryOptions {
             tapped,
             transformed: false,
             face_down: false,
+            face_down_form: None,
+            face_down_abilities: Vec::new(),
             entry_definition: None,
             linked_face_mana_cost: None,
             physical_components: Vec::new(),
@@ -173,6 +179,8 @@ impl BattlefieldEntryOptions {
             tapped,
             transformed: false,
             face_down: false,
+            face_down_form: None,
+            face_down_abilities: Vec::new(),
             entry_definition: None,
             linked_face_mana_cost: None,
             physical_components: Vec::new(),
@@ -759,10 +767,12 @@ fn prepare_battlefield_entry_batch_inner(
             continue;
         }
         if options.face_down {
-            working
-                .object_mut(*object)
-                .expect("original")
-                .apply_face_down_cast_overlay();
+            let card = working.object_mut(*object).expect("original");
+            if let Some(form) = &options.face_down_form {
+                card.apply_face_down_form(form, &options.face_down_abilities);
+            } else {
+                card.apply_face_down_cast_overlay();
+            }
         }
         // CR 702.145b/614.12: at night a daybound permanent enters
         // transformed, so its back face's entry replacements apply.

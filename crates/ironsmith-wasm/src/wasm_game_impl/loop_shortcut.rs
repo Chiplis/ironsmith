@@ -63,6 +63,11 @@ pub(super) struct LoopOfferView {
     responders: Vec<u8>,
     /// `loop_serial` of the snapshot the loop's first command was sent against.
     start_serial: u64,
+    /// Each repetition draws cards the proposer cannot act on until the
+    /// accepted repetitions have finished.
+    draws_cards: bool,
+    /// The most repetitions a draw loop can run before a library is empty.
+    max_repetitions: Option<u32>,
 }
 
 impl WasmGame {
@@ -115,6 +120,8 @@ impl WasmGame {
             summary: offer.describe_per_lap(&self.game),
             responders: offer.responders.iter().map(|player| player.0).collect(),
             start_serial: offer.start_serial,
+            draws_cards: offer.draws_cards,
+            max_repetitions: offer.max_laps,
         })
     }
 

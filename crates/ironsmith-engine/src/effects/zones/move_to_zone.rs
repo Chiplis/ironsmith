@@ -589,6 +589,16 @@ fn move_entry_options(
         .with_entry_attachment(None)
         .transformed(effect.enters_transformed)
         .face_down(effect.enters_face_down);
+    options.face_down_form = effect.face_down_form.clone();
+    for grant in &effect.face_down_ability_grants {
+        let mut ability = match grant {
+            crate::continuous::Modification::AddAbility(ability) => crate::ability::Ability::static_ability(ability.clone()),
+            crate::continuous::Modification::AddAbilityGeneric(ability) => ability.clone(),
+            _ => continue,
+        };
+        crate::effects::continuous::capture_ability_object_references(&mut ability, ctx);
+        options.face_down_abilities.push(ability);
+    }
     options.entry_attachment_candidates = attachment_destinations;
     options.entry_attachment_specified |= ctx.pending_entry_attachment.is_some();
     let mut modifications = effect.entry_modifications.clone();

@@ -429,6 +429,9 @@ impl GameState {
         // procedure (mulligans, opening-hand actions) and restarts the turn
         // structure at turn 1's untap step once the effect finishes resolving.
         restarted.restart_starting_procedure_pending = true;
+        // CR 728.1 ends the old game. Publish its disclosures before players
+        // can interact with the new libraries.
+        restarted.publish_face_down_reveals(self.face_down_reveals(None));
         *self = restarted;
         exempt_new_ids
     }

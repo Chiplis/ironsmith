@@ -690,6 +690,7 @@ where
             set_quantifier_surface: payload.set_quantifier_surface,
             type_retention_surface: payload.type_retention_surface,
             animation_pt_surface: payload.animation_pt_surface,
+            defines_face_down_form: payload.defines_face_down_form,
             animation_duration_surface: payload.animation_duration_surface,
             lock_filter_at_resolution: payload.lock_filter_at_resolution,
             resolve_set_pt_values_at_resolution: payload.resolve_set_pt_values_at_resolution,
@@ -2424,6 +2425,14 @@ pub fn prune_redundant_target_only_effects_in_program(
             }
         }
         index += 1;
+    }
+    crate::effects::permanents::face_down_form::bind(
+        segments.iter_mut().flat_map(|segment| segment.default_effects.iter_mut()),
+    );
+    for segment in &mut segments {
+        for branch in &mut segment.self_replacements {
+            crate::effects::permanents::face_down_form::bind(branch.replacement_effects.iter_mut());
+        }
     }
     crate::effects::cards::search_group::bind_target_library_shuffles(
         segments.iter_mut().flat_map(|segment| segment.default_effects.iter_mut()),

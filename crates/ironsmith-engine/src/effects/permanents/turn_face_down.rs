@@ -34,6 +34,9 @@ impl EffectExecutor for TurnFaceDownEffect {
             let mut turned = Vec::new();
             for id in targets {
                 if game.set_face_down(id) {
+                    if let Some(form) = &self.face_down_form {
+                        game.set_face_down_form(id, form);
+                    }
                     turned.push(id);
                 }
             }

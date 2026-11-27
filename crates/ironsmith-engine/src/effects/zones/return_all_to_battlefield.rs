@@ -96,7 +96,7 @@ fn commit_return_all(
         |game, ctx| {
             let mut entries = Vec::new();
             for object_id in objects {
-                let options = match effect.battlefield_controller {
+                let mut options = match effect.battlefield_controller {
                     BattlefieldController::Preserve => {
                         BattlefieldEntryOptions::preserve(effect.tapped)
                     }
@@ -110,11 +110,8 @@ fn commit_return_all(
                     continue;
                 };
                 let memory = Clone::clone(&ObjectSnapshot::from_object(object, game));
-                if effect.face_down
-                    && let Some(card) = game.object_mut(object_id)
-                {
-                    card.apply_face_down_cast_overlay();
-                }
+                options.face_down = effect.face_down;
+                options.face_down_form = effect.face_down_form.clone();
                 entries.push((object_id, options, memory));
             }
 

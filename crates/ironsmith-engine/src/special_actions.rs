@@ -94,13 +94,15 @@ fn turn_face_up_specs(
     }
 
     if game.has_printed_cost_turn_face_up_permission(object.id)
-        && let Some(restore) = object.face_down_cast_state.as_ref()
+        && let Some(restore) = object.physical_card_under_face_down()
         && restore.card_types.contains(&CardType::Creature)
         && let Some(cost) = restore.mana_cost.as_ref().map(|cost| cost.to_owned_value())
     {
         specs.push(TurnFaceUpSpec {
             method: TurnFaceUpMethod::PrintedManaCost,
-            cost: crate::cost::TotalCost::mana(cost),
+            // CR 107.3g–h: pay the card’s mana cost off the stack with X = 0.
+            // An X in a morph or disguise ability is chosen separately.
+            cost: crate::cost::TotalCost::mana(expand_dynamic_mana_base(&cost, 0, 1)),
             description: TurnFaceUpMethod::PrintedManaCost.description(),
             megamorph: false,
         });

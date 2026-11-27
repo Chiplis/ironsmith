@@ -20,8 +20,14 @@
 //! order; for every card outside a library its zone, owner, controller,
 //! tapped / summoning-sick / face-down / flipped / phased status, marked
 //! damage, name and attachment; and the stack (source, controller, ability,
-//! targets). Hands and libraries are therefore part of the fixed state: a
-//! lap that draws, mills, shuffles or flips a coin is never a loop here.
+//! targets). Libraries and hands are compared exactly too, with one
+//! exception: a *draw loop*. A later state also matches when each library
+//! lost only cards from its top and exactly those cards joined its owner's
+//! hand. The cards drawn are then quantities ("cards in library", "cards in
+//! hand"), the offer is marked [`LoopShortcutOffer::draws_cards`], and the
+//! proposer is told up front that every accepted lap runs before they can
+//! act on what they drew. A lap that mills, shuffles, discards, reorders a
+//! library or flips a coin is never a loop here.
 //!
 //! *Quantities* (may differ; the difference is the per-lap delta): life,
 //! poison and other player counters, each colour of floating mana, restricted
@@ -57,7 +63,7 @@
 //! state reachable by performing whole laps by hand.
 
 use std::cell::{Cell, RefCell};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
 use std::sync::Arc;
@@ -590,13 +596,17 @@ enum Quantity {
     Toughness(StableId, String),
     /// Tokens, spell copies and emblems, by description hash and label.
     Other(u64, String),
+    /// Cards in a player's library. Changes only in a draw loop.
+    Library(PlayerId),
+    /// Cards in a player's hand. Changes only in a draw loop.
+    Hand(PlayerId),
 }
 
 /// The parts of the state that must repeat exactly, for diagnostics.
 const FIXED_SECTIONS: [&str; 6] = [
     "turn, step or priority",
     "random operations",
-    "libraries or players",
+    "players",
     "a card's zone or status",
     "a permanent's types",
     "the stack",
@@ -611,6 +621,10 @@ pub(crate) struct LoopStateSummary {
     /// One fingerprint per section named in `FIXED_SECTIONS`.
     fixed: [u64; 6],
     quantities: BTreeMap<Quantity, i64>,
+    /// Each player's library, bottom to top, and the cards in their hand.
+    /// Compared by [`Self::hidden_zones_follow`], not hashed into `fixed`.
+    libraries: Vec<Vec<StableId>>,
+    hands: Vec<BTreeSet<StableId>>,
 }
 
 type Delta = Vec<(Quantity, i64)>;
@@ -623,6 +637,8 @@ impl LoopStateSummary {
         let mut types = DefaultHasher::new();
         let mut stack = DefaultHasher::new();
         let mut quantities = BTreeMap::new();
+        let mut libraries = Vec::new();
+        let mut hands: Vec<BTreeSet<StableId>> = Vec::new();
         let mut add = |quantity: Quantity, amount: i64| {
             if amount != 0 {
                 *quantities.entry(quantity).or_insert(0) += amount;
@@ -636,10 +652,15 @@ impl LoopStateSummary {
         for player in game.players.iter() {
             player.id.hash(&mut players);
             (player.has_lost, player.has_won, player.has_left_game).hash(&mut players);
-            for id in player.library.iter() {
-                id.hash(&mut players);
-            }
-            0xFFu8.hash(&mut players);
+            let library: Vec<StableId> = player
+                .library
+                .iter()
+                .filter_map(|id| game.object(*id).map(|object| object.stable_id))
+                .collect();
+            add(Quantity::Library(player.id), library.len() as i64);
+            add(Quantity::Hand(player.id), player.hand.len() as i64);
+            libraries.push(library);
+            hands.push(BTreeSet::new());
             add(Quantity::Life(player.id), i64::from(player.life));
             add(Quantity::Poison(player.id), i64::from(player.poison_counters));
             add(Quantity::Energy(player.id), i64::from(player.energy_counters));
@@ -689,6 +710,20 @@ impl LoopStateSummary {
                 add(Quantity::Other(other_descriptor(game, object), label), 1);
                 continue;
             }
+            // A hand is compared as a set so that a draw loop can match.
+            if object.zone == Zone::Hand
+                && let Some(seat) = game.players.iter().position(|player| player.id == object.owner)
+            {
+                hands[seat].insert(object.stable_id);
+                let name = object.name.to_string();
+                for (kind, count) in object.counters.counts() {
+                    add(
+                        Quantity::Counter(object.stable_id, name.clone(), format!("{kind:?}")),
+                        i64::from(*count),
+                    );
+                }
+                continue;
+            }
             object.stable_id.hash(&mut cards);
             status_hash(game, object, &mut cards);
             let name = object.name.to_string();
@@ -736,22 +771,51 @@ impl LoopStateSummary {
                 stack.finish(),
             ],
             quantities,
+            libraries,
+            hands,
         }
+    }
+
+    /// Whether the libraries and hands of `later` are those of `self` after
+    /// each player drew zero or more cards and nothing else happened to them:
+    /// every library lost only cards from its top, in place, and exactly
+    /// those cards joined that player's hand. With no cards drawn this is
+    /// plain equality, which is what every loop but a draw loop needs.
+    fn hidden_zones_follow(&self, later: &Self) -> bool {
+        if self.libraries.len() != later.libraries.len() {
+            return false;
+        }
+        self.libraries
+            .iter()
+            .zip(&later.libraries)
+            .zip(self.hands.iter().zip(&later.hands))
+            .all(|((before, after), (hand_before, hand_after))| {
+                let Some(drawn) = before.strip_prefix(after.as_slice()) else {
+                    return false;
+                };
+                hand_after.len() == hand_before.len() + drawn.len()
+                    && hand_before.is_subset(hand_after)
+                    && drawn.iter().all(|card| hand_after.contains(card))
+            })
     }
 
     /// Names of the fixed sections in which `self` and `later` differ.
     fn fixed_differences(&self, later: &Self) -> Vec<&'static str> {
-        FIXED_SECTIONS
+        let mut differences: Vec<&'static str> = FIXED_SECTIONS
             .iter()
             .zip(self.fixed.iter().zip(later.fixed.iter()))
             .filter(|(_, (before, after))| before != after)
             .map(|(name, _)| *name)
-            .collect()
+            .collect();
+        if !self.hidden_zones_follow(later) {
+            differences.push("a library or hand, other than by drawing");
+        }
+        differences
     }
 
     /// The change from `self` to `later` when the fixed parts agree.
     fn delta_to(&self, later: &Self) -> Option<Delta> {
-        if self.fixed != later.fixed {
+        if self.fixed != later.fixed || !self.hidden_zones_follow(later) {
             return None;
         }
         let mut delta = Vec::new();
@@ -803,6 +867,13 @@ pub struct LoopShortcutOffer {
     /// commands, tagged with the serial they were submitted against, finds the
     /// lap as the commands tagged with this serial or a later one.
     pub start_serial: u64,
+    /// Each lap draws cards. The proposer cannot act on a drawn card until
+    /// the accepted laps have finished, so a driver says so before asking how
+    /// many to perform.
+    pub draws_cards: bool,
+    /// The most laps a draw loop can run before a library is empty. `None`
+    /// when no lap draws.
+    pub max_laps: Option<u32>,
     lap: Arc<[Step]>,
     delta: Delta,
 }
@@ -869,6 +940,8 @@ fn delta_entries(delta: &Delta) -> Vec<LoopDeltaEntry> {
                 Quantity::Power(_, name) => (None, format!("power of {name}")),
                 Quantity::Toughness(_, name) => (None, format!("toughness of {name}")),
                 Quantity::Other(_, label) => (None, label.clone()),
+                Quantity::Library(player) => (Some(*player), "cards in library".to_string()),
+                Quantity::Hand(player) => (Some(*player), "cards in hand".to_string()),
             };
             LoopDeltaEntry {
                 player,
@@ -901,6 +974,10 @@ pub(crate) struct LoopShortcutTracker {
     /// Why the last detection attempt made no offer.
     note: Option<String>,
     report: Option<LoopShortcutReport>,
+    /// Set once a library is hidden from the engine itself (a Verified
+    /// match). A draw loop is proved by drawing on a copy of the game, which
+    /// such a library cannot answer, so draw loops are not looked for.
+    draw_loops_blocked: Cell<bool>,
 }
 
 impl Default for LoopShortcutTracker {
@@ -915,11 +992,17 @@ impl Default for LoopShortcutTracker {
             checked_serial: None,
             note: None,
             report: None,
+            draw_loops_blocked: Cell::new(false),
         }
     }
 }
 
 impl LoopShortcutTracker {
+    /// Stop looking for draw loops in this game (see `draw_loops_blocked`).
+    pub(crate) fn block_draw_loops(&self) {
+        self.draw_loops_blocked.set(true);
+    }
+
     fn forget(&mut self) {
         self.steps.clear();
         self.offer = None;
@@ -1964,6 +2047,13 @@ fn try_detect(
             "the game is not in a state it was in before any of this player's {anchors} action(s), apart from countable resources (since the latest one, changed: {latest})"
         ));
     };
+    if tracker.draw_loops_blocked.get()
+        && delta
+            .iter()
+            .any(|(quantity, _)| matches!(quantity, Quantity::Library(_)))
+    {
+        return Err("the loop draws cards from a library the engine cannot see".to_string());
+    }
     let lap: Arc<[Step]> = tracker.steps[start..].to_vec().into();
     let Some(mut responders) = lap_shape(&lap, proposer) else {
         return Err(
@@ -1998,15 +2088,37 @@ fn try_detect(
         Ok(LapEnd::GameOver(_)) => {}
         Err(reason) => return Err(format!("the actions could not be repeated: {reason}")),
     }
+    let max_laps = draw_lap_limit(game, &delta);
+    if max_laps == Some(0) {
+        return Err("a library has too few cards left for another repetition".to_string());
+    }
     Ok(LoopShortcutOffer {
         proposer,
+        max_laps,
         per_lap: delta_entries(&delta),
         responders,
         steps: lap.len(),
         start_serial: lap[0].serial,
+        draws_cards: delta
+            .iter()
+            .any(|(quantity, _)| matches!(quantity, Quantity::Library(_))),
         lap,
         delta,
     })
+}
+
+/// How many more laps of a draw loop every library can pay for.
+fn draw_lap_limit(game: &GameState, delta: &Delta) -> Option<u32> {
+    delta
+        .iter()
+        .filter_map(|(quantity, amount)| match quantity {
+            Quantity::Library(player) if *amount < 0 => {
+                let cards = game.player(*player).map_or(0, |player| player.library.len());
+                Some(u32::try_from(cards as u64 / amount.unsigned_abs()).unwrap_or(u32::MAX))
+            }
+            _ => None,
+        })
+        .min()
 }
 
 /// Look for a loop at the current priority prompt.
@@ -2067,19 +2179,30 @@ pub(super) fn execute(
         .expect("offer presence was just checked");
     let per_lap = offer.describe_per_lap(game);
 
+    // A draw loop never runs a library out: that would lose the game on a
+    // number the player typed without seeing the cards.
+    let most = offer
+        .max_laps
+        .map_or(MAX_LOOP_SHORTCUT_LAPS, |limit| limit.min(MAX_LOOP_SHORTCUT_LAPS));
     let number = context::NumberContext::new(
         proposer,
         None,
         0,
-        MAX_LOOP_SHORTCUT_LAPS,
+        most,
         "Repeat this loop how many times? (0 to decline)",
     )
-    .with_context_text(format!("Each repetition: {per_lap}"));
+    .with_context_text(if offer.draws_cards {
+        format!(
+            "Each repetition: {per_lap}. This loop draws cards: every repetition you choose runs before you can act on what you drew."
+        )
+    } else {
+        format!("Each repetition: {per_lap}")
+    });
     let requested = decision_maker.decide_number(game, &number);
     if decision_maker.awaiting_choice() {
         return Ok(GameProgress::Continue);
     }
-    let requested = requested.min(MAX_LOOP_SHORTCUT_LAPS);
+    let requested = requested.min(most);
     let mut accepted = requested;
     let mut stop = LoopShortcutStop::Completed;
     if requested == 0 {

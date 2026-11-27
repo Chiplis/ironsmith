@@ -1260,6 +1260,19 @@ impl GameState {
         face_status_changed || overlay_changed
     }
 
+    pub(crate) fn set_face_down_form(&mut self, id: ObjectId, form: &ironsmith_core::effect::FaceDownForm) {
+        if let Some(object) = self.object_mut(id) {
+            object.apply_face_down_form(form, &[]);
+            let stable = object.stable_id;
+            if let Some(merged) = self.commander_tracking_mut().merged_permanents.get_mut(&stable)
+                && let Some(top) = merged.components.first_mut()
+            {
+                top.object.apply_face_down_form(form, &[]);
+            }
+            self.mark_face_down_state_changed(id);
+        }
+    }
+
     pub fn set_described_face_down(&mut self, id: ObjectId) {
         if self.battlefield_flags_mut().described_face_down.insert(id) {
             self.mark_object_changed_and_continuous_state_dirty(id);
@@ -1326,114 +1339,91 @@ impl GameState {
             return false;
         }
         let card_types = object
-            .face_down_cast_state
-            .as_deref()
+            .physical_card_under_face_down()
             .map(|state| &state.card_types)
             .unwrap_or(&object.card_types);
         object.kind == crate::object::ObjectKind::Card
             && (card_types.contains(&CardType::Instant) || card_types.contains(&CardType::Sorcery))
     }
 
-    /// Record the public reveal of a face-down object's real identity
-    /// (CR 708.9 / 708.10) for the owner.
-    pub(crate) fn record_face_down_reveal(&mut self, id: ObjectId, owner: PlayerId) {
-        let Some((stable_id, name)) = self
-            .object(id)
-            .map(|object| (object.stable_id, object.identity_name().to_string()))
-        else {
-            return;
+    fn known_reveal_identity(&self, object: &Object) -> Option<(StableId, String)> {
+        if object.kind == crate::object::ObjectKind::Card && object.card.is_none() {
+            return None;
+        }
+        Some((object.stable_id, object.revealed_identity_name().to_string()))
+    }
+
+    pub(crate) fn record_known_identity_reveal(&mut self, object: &Object, player: PlayerId) {
+        if let Some((stable, name)) = self.known_reveal_identity(object) {
+            self.record_ui_effect_event("reveal", Some(player), None, vec![stable], None, Some(name));
+        }
+    }
+
+    pub(crate) fn record_face_down_reveal(&mut self, id: ObjectId, player: PlayerId) {
+        if let Some((stable, name)) = self.object(id).and_then(|o| self.known_reveal_identity(o)) {
+            self.record_ui_effect_event("reveal", Some(player), None, vec![stable], None, Some(name));
+        }
+    }
+
+    /// CR 708.9 and 702.143f. Inspect the physical components even when the
+    /// merged permanent's top card is face up. Each identity is revealed once.
+    pub(super) fn face_down_reveals(&self, owner: Option<PlayerId>) -> Vec<(StableId, PlayerId, String)> {
+        let mut reveals = Vec::new();
+        let mut collect = |object: &Object| {
+            if owner.is_none_or(|p| p == object.owner)
+                && let Some((stable, name)) = self.known_reveal_identity(object)
+            {
+                reveals.push((stable, object.owner, name));
+            }
         };
-        self.record_ui_effect_event(
-            "reveal",
-            Some(owner),
-            None,
-            vec![stable_id],
-            None,
-            Some(name),
-        );
+        for id in &self.battlefield_flags.face_down {
+            let Some(object) = self.object(*id) else { continue };
+            if match object.zone {
+                Zone::Stack => true,
+                Zone::Battlefield => self.merged_permanent(object.stable_id).is_none(),
+                Zone::Exile => self.is_prepared_face_down(*id),
+                _ => false,
+            } {
+                collect(object);
+            }
+        }
+        for merged in self.commander_tracking.merged_permanents.values() {
+            for component in &merged.components {
+                if component.face_down {
+                    collect(&component.destination_object);
+                }
+            }
+        }
+        // CR 702.106e also reveals face-down conspiracies in the command zone.
+        for id in self.conspiracy_cards() {
+            if self.is_face_down_conspiracy(id)
+                && let Some(object) = self.object(id)
+            {
+                collect(object);
+            }
+        }
+        reveals.sort_unstable_by_key(|(stable, _, _)| *stable);
+        reveals
     }
 
-    /// CR 708.10: at the end of the game, every face-down permanent and spell
-    /// is revealed. Iterates in object-id order so every peer records the same
-    /// events. Identities this peer can't open are left to the hidden-card
-    /// end-of-match disclosure.
+    pub(crate) fn reveal_face_down_objects(&mut self, owner: Option<PlayerId>) {
+        self.publish_face_down_reveals(self.face_down_reveals(owner));
+    }
+
+    pub(super) fn publish_face_down_reveals(&mut self, reveals: Vec<(StableId, PlayerId, String)>) {
+        for (stable, player, name) in reveals {
+            self.record_ui_effect_event("reveal", Some(player), None, vec![stable], None, Some(name));
+        }
+    }
+
     pub(crate) fn reveal_face_down_objects_at_game_end(&mut self) {
-        let mut face_down: Vec<ObjectId> = self
-            .battlefield_flags
-            .face_down
-            .iter()
-            .copied()
-            .filter(|id| {
-                self.object(*id)
-                    .is_some_and(|object| matches!(object.zone, Zone::Battlefield | Zone::Stack))
-                    && !self.is_hidden_card_placeholder(*id)
-            })
-            .collect();
-        // CR 702.143f: face-down foretold cards are revealed at game end.
-        face_down.extend(
-            self.cast_permission_flags
-                .foretold_cards
-                .keys()
-                .copied()
-                .filter(|id| {
-                    self.is_face_down(*id)
-                        && self
-                            .object(*id)
-                            .is_some_and(|object| object.zone == Zone::Exile)
-                        && !self.is_hidden_card_placeholder(*id)
-                }),
-        );
-        face_down.sort_unstable();
-        face_down.dedup();
-        for id in face_down {
-            let Some(owner) = self.object(id).map(|object| object.owner) else {
-                continue;
-            };
-            self.record_face_down_reveal(id, owner);
-        }
-        // CR 702.106e: every face-down conspiracy is revealed at game end.
-        self.reveal_face_down_conspiracies(None);
-    }
-
-    /// CR 702.106e: face-down conspiracies are revealed when their owner
-    /// leaves the game or the game ends.
-    pub(crate) fn reveal_face_down_conspiracies(&mut self, owner: Option<PlayerId>) {
-        let mut hidden: Vec<ObjectId> = self
-            .conspiracy_cards()
-            .into_iter()
-            .filter(|id| {
-                self.is_face_down_conspiracy(*id)
-                    && !self.is_hidden_card_placeholder(*id)
-                    && self
-                        .object(*id)
-                        .is_some_and(|object| owner.is_none_or(|owner| object.owner == owner))
-            })
-            .collect();
-        hidden.sort_unstable();
-        for id in hidden {
-            let Some(card_owner) = self.object(id).map(|object| object.owner) else {
-                continue;
-            };
-            self.record_face_down_reveal(id, card_owner);
-        }
+        self.reveal_face_down_objects(None);
     }
 
     fn reveal_face_down_permanent_for_failed_turn_face_up(&mut self, id: ObjectId) {
-        let Some((stable_id, name)) = self
-            .object(id)
-            .map(|object| (object.stable_id, object.identity_name().to_string()))
-        else {
-            return;
-        };
-        let controller = self.current_controller(id);
-        self.record_ui_effect_event(
-            "reveal",
-            controller,
-            None,
-            vec![stable_id],
-            None,
-            Some(name),
-        );
+        if let Some(controller) = self.current_controller(id) {
+            self.record_face_down_reveal(id, controller);
+        }
     }
 
     fn merged_permanent_blocks_turn_face_up(&self, id: ObjectId) -> bool {
@@ -1445,14 +1435,7 @@ impl GameState {
             .get(&object.stable_id)
             .is_some_and(|merged| {
                 merged.components.iter().any(|component| {
-                    // A face-down component's own card types are beneath its
-                    // face-down overlay (CR 730.2g).
-                    let card_types = component
-                        .object
-                        .face_down_cast_state
-                        .as_deref()
-                        .map(|state| &state.card_types)
-                        .unwrap_or(&component.object.card_types);
+                    let card_types = &component.destination_object.card_types;
                     component.object.kind == crate::object::ObjectKind::Card
                         && (card_types.contains(&CardType::Instant)
                             || card_types.contains(&CardType::Sorcery))
@@ -1461,29 +1444,16 @@ impl GameState {
     }
 
     fn reveal_merged_permanent_for_failed_turn_face_up(&mut self, id: ObjectId) {
-        let Some((stable_id, component_names)) = self.object(id).and_then(|object| {
-            self.merged_permanent(object.stable_id).map(|merged| {
-                (
-                    object.stable_id,
-                    merged
-                        .components
-                        .iter()
-                        .map(|component| component.object.name.to_string())
-                        .collect::<Vec<_>>(),
-                )
-            })
-        }) else {
+        let Some(controller) = self.current_controller(id) else { return };
+        let Some(merged) = self.object(id).and_then(|o| self.merged_permanent(o.stable_id)) else {
             return;
         };
-        let controller = self.current_controller(id);
-        self.record_ui_effect_event(
-            "reveal",
-            controller,
-            None,
-            vec![stable_id],
-            None,
-            Some(component_names.join(" + ")),
-        );
+        let identities: Vec<_> = merged.components.iter()
+            .filter_map(|component| self.known_reveal_identity(&component.destination_object))
+            .collect();
+        for (stable, name) in identities {
+            self.record_ui_effect_event("reveal", Some(controller), None, vec![stable], None, Some(name));
+        }
     }
 
     /// Turn an object face up, including every face-down merged component.
@@ -4938,10 +4908,10 @@ impl GameState {
         // face-down card is turned face up (CR 708.9), and prototype/bestow
         // cast characteristics end (CR 718.4, 702.103). Same order as an
         // ordinary battlefield leave.
-        destination.end_enters_as_copy_overlay();
-        destination.end_bestow_cast_overlay();
         destination.end_face_down_cast_overlay();
+        destination.end_bestow_cast_overlay();
         destination.end_prototype_cast_overlay();
+        destination.end_enters_as_copy_overlay();
         if destination.kind != crate::object::ObjectKind::Card {
             return destination;
         }

@@ -1452,6 +1452,16 @@ fn acquire_continuous_action(
     {
         return Ok(AcquiredContinuousAction::Terminal(EffectOutcome::resolved()));
     }
+    // The face-down instruction installed its defining values before entry or
+    // the status change. Its companion clause reports the objects so later
+    // instructions can reference them without installing a lasting type effect.
+    if definition.defines_face_down_form && let Some(target) = &definition.target_spec {
+        let ids = resolve_objects_from_spec(game, target, ctx)?.into_iter()
+            .filter(|id| game.object(*id).is_some_and(|o| o.zone == crate::zone::Zone::Battlefield)
+                && game.is_face_down(*id))
+            .collect();
+        return Ok(AcquiredContinuousAction::Terminal(EffectOutcome::with_objects(ids)));
+    }
     let (target, spec_locked_targets, target_invalid) = resolve_target(definition, game, ctx)?;
     if target_invalid {
         return Ok(AcquiredContinuousAction::Terminal(

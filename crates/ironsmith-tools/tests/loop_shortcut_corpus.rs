@@ -64,6 +64,9 @@ const CARDS: &[&str] = &[
     "Diregraf Ghoul",
     "Treasonous Ogre",
     "Greed",
+    "Yawgmoth, Thran Physician",
+    "Young Wolf",
+    "Butcher Ghoul",
     "Island",
     "Forest",
 ];
@@ -1014,22 +1017,109 @@ fn a_shortcut_stops_when_the_resource_runs_out() {
     assert!(table.game.player(ALICE).unwrap().life >= 0);
 }
 
+// ---------------------------------------------------------------------------
+// Draw loops: offered, with the draw named up front
+// ---------------------------------------------------------------------------
+
+/// Yawgmoth, Thran Physician with two undying creatures: sacrifice the one
+/// without a counter, putting the -1/-1 counter on the other so that its
+/// +1/+1 counter is cancelled. Two activations return the board to where it
+/// was, two cards and two life later.
+const YAWGMOTH_UNDYING: Combo = Combo {
+    setup: |t| {
+        t.battlefield(&["Yawgmoth, Thran Physician", "Young Wolf", "Butcher Ghoul"]);
+        for _ in 0..30 {
+            t.put("Island", ALICE, Zone::Library);
+        }
+        // Give the Wolf its +1/+1 counter: sacrifice it with no target.
+        t.pilot.target_rules = vec![];
+        t.pilot.next_objects.push_back(vec!["Young Wolf"]);
+        t.activate("Yawgmoth, Thran Physician");
+        t.resolve_all();
+    },
+    lap: |t| {
+        t.pilot.target_rules = vec![("Yawgmoth", "Young Wolf")];
+        t.pilot.next_objects.push_back(vec!["Butcher Ghoul"]);
+        t.activate("Yawgmoth, Thran Physician");
+        t.resolve_all();
+        t.pilot.target_rules = vec![("Yawgmoth", "Butcher Ghoul")];
+        t.pilot.next_objects.push_back(vec!["Young Wolf"]);
+        t.activate("Yawgmoth, Thran Physician");
+        t.resolve_all();
+    },
+    // The Ghoul that started in play is not summoning sick until it returns.
+    manual_laps: 2,
+    per_lap: &[
+        ("cards in hand", Some(0), 2),
+        ("cards in library", Some(0), -2),
+        ("life", Some(0), -2),
+    ],
+};
+
 #[test]
-fn a_loop_that_draws_cards_is_not_offered() {
-    // Greed: "{B}, Pay 2 life: Draw a card." Repeatable, but each lap moves a
-    // hidden card, so the state never repeats.
+fn yawgmoth_undying_draw_loop() {
+    check(&YAWGMOTH_UNDYING, 3);
+}
+
+#[test]
+fn a_draw_loop_is_offered_and_says_that_it_draws() {
+    // Greed: "{B}, Pay 2 life: Draw a card."
+    let build = |shortcuts| {
+        let mut t = Table::new(shortcuts);
+        t.battlefield(&["Greed"]);
+        for _ in 0..10 {
+            t.put("Island", ALICE, Zone::Library);
+        }
+        t.mana(ManaSymbol::Black, 5);
+        t
+    };
+    let mut table = build(true);
+    table.activate("Greed");
+    table.resolve_all();
+    assert!(table.offered(), "a draw loop is offered");
+    let offer = table.game.loop_shortcut_offer().unwrap().clone();
+    assert!(offer.draws_cards, "the offer says it draws");
+    assert_eq!(offer.max_laps, Some(9), "nine cards are left in the library");
+    assert_eq!(
+        table.per_lap(),
+        vec![
+            ("black mana".to_string(), Some(0), -1),
+            ("cards in hand".to_string(), Some(0), 1),
+            ("cards in library".to_string(), Some(0), -1),
+            ("life".to_string(), Some(0), -2),
+        ]
+    );
+    table.shortcut(3);
+    let report = table.game.last_loop_shortcut_report().unwrap().clone();
+    assert_eq!((report.executed, &report.stop), (3, &LoopShortcutStop::Completed));
+    let mut manual = build(false);
+    for _ in 0..4 {
+        manual.activate("Greed");
+        manual.resolve_all();
+    }
+    assert_same(&table, &manual, "after three shortcut draws");
+    assert_eq!(table.game.player(ALICE).unwrap().hand.len(), 4);
+}
+
+#[test]
+fn a_draw_loop_never_empties_the_library() {
+    // Plenty of mana and life, but only three cards after the first draw.
     let mut table = Table::new(true);
     table.battlefield(&["Greed"]);
-    for _ in 0..10 {
+    for _ in 0..4 {
         table.put("Island", ALICE, Zone::Library);
     }
-    table.mana(ManaSymbol::Black, 5);
-    for _ in 0..3 {
-        table.activate("Greed");
-        table.resolve_all();
-        assert!(!table.offered(), "drawing is not a shortcut-able loop");
-    }
-    assert_eq!(table.game.player(ALICE).unwrap().hand.len(), 3);
+    table.mana(ManaSymbol::Black, 9);
+    table.activate("Greed");
+    table.resolve_all();
+    assert!(table.offered());
+    assert_eq!(table.game.loop_shortcut_offer().unwrap().max_laps, Some(3));
+    table.shortcut(50);
+    let report = table.game.last_loop_shortcut_report().unwrap().clone();
+    assert_eq!((report.requested, report.executed), (3, 3), "{report:?}");
+    assert_eq!(table.game.player(ALICE).unwrap().library.len(), 0);
+    assert!(!table.game_over(), "the last card is drawn, never one more");
+    assert!(!table.offered(), "no repetition is left to offer");
 }
 
 #[test]
