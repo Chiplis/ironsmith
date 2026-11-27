@@ -10,7 +10,7 @@ pub use x_payment::{XPaymentScope, XManaAllocation, ActualManaAllocation};
 
 /// Atomic mana payment options.
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, TagKeyWalk)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, TagKeyWalk)]
 pub enum ManaSymbol {
     /// White mana {W}
     White,
@@ -442,6 +442,29 @@ impl ManaCost {
     /// Returns the pips in this mana cost.
     pub fn pips(&self) -> &[Vec<ManaSymbol>] {
         &self.pips
+    }
+
+    /// The generic total and multiset of other printed symbols (CR 202.1,
+    /// 709.4b). A hybrid or Phyrexian pip is one symbol, including all of its
+    /// alternatives. Payment permissions and symbol order do not distinguish costs.
+    pub fn printed_symbol_key(&self) -> (u64, Vec<Vec<ManaSymbol>>) {
+        let mut generic = 0u64;
+        let mut symbols = Vec::new();
+        for pip in &self.pips {
+            if let [ManaSymbol::Generic(amount)] = pip.as_slice() {
+                generic += u64::from(*amount);
+            } else {
+                let mut alternatives = pip.clone();
+                alternatives.sort_unstable();
+                symbols.push(alternatives);
+            }
+        }
+        symbols.sort_unstable();
+        (generic, symbols)
+    }
+
+    pub fn has_same_printed_symbols(&self, other: &Self) -> bool {
+        self.pips == other.pips || self.printed_symbol_key() == other.printed_symbol_key()
     }
 
     /// Format the mana cost in oracle-style syntax (e.g., "{2}{W}{W}").

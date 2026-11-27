@@ -2457,7 +2457,9 @@ impl Object {
     /// A later copy of this Room must still receive both halves after a switch.
     pub(crate) fn opposite_copied_room_half(&self) -> Option<CopiableValues> {
         let values = self.copied_face_values.as_deref()?;
-        if !crate::continuous::copied_values_are_room(values) { return None; }
+        if !crate::continuous::copied_values_are_room(values) {
+            return None;
+        }
         let mut previous = values.clone();
         let mut next = *previous.other_copy_face.take()?;
         previous.copy_face_layout = LinkedFaceLayout::None;

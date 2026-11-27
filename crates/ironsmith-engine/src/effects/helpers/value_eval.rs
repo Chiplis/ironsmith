@@ -432,31 +432,7 @@ pub(crate) fn resolve_wide(
                 let Some(cost) = object.mana_cost() else {
                     return;
                 };
-                // Compare costs, not their spelling: combined halves such as
-                // {2}{U} + {1}{R} are the cost {3}{U}{R} (CR 202.1, 709.4b).
-                let generic: u32 = cost
-                    .pips()
-                    .iter()
-                    .filter_map(|pip| match pip.as_slice() {
-                        [crate::mana::ManaSymbol::Generic(amount)] => Some(u32::from(*amount)),
-                        _ => None,
-                    })
-                    .sum();
-                let mut key = cost
-                    .pips()
-                    .iter()
-                    .filter(|pip| !matches!(pip.as_slice(), [crate::mana::ManaSymbol::Generic(_)]))
-                    .map(|pip| {
-                        let mut symbols = pip.iter().map(|symbol| format!("{symbol:?}")).collect::<Vec<_>>();
-                        symbols.sort();
-                        symbols.join("/")
-                    })
-                    .collect::<Vec<_>>();
-                if generic > 0 {
-                    key.push(format!("Generic({generic})"));
-                }
-                key.sort();
-                seen.insert(key);
+                seen.insert(cost.printed_symbol_key());
             });
             Ok(i64::from(seen.len() as i64))
         }

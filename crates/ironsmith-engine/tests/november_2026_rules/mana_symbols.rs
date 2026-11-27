@@ -123,7 +123,7 @@ const DOLLMAKERS_SHOP: &str =
 const MIRROR_ROOM: &str =
     include_str!("../../../../web/ui/public/cards/mirror-room-fractured-realm.json");
 
-fn enter_room(g: &mut GameState, fixture: &str) -> ironsmith::ObjectId {
+fn put_split_card(g: &mut GameState, fixture: &str, zone: Zone) -> ironsmith::ObjectId {
     let json: serde_json::Value = serde_json::from_str(fixture).unwrap();
     let mut halves: Vec<_> = json["artifacts"]
         .as_array()
@@ -143,11 +143,25 @@ fn enter_room(g: &mut GameState, fixture: &str) -> ironsmith::ObjectId {
         half.card.other_face = Some(ids[1 - i]);
         g.register_linked_face_definition(half);
     }
-    let id = g.create_object_from_definition(&halves[0], A, Zone::Hand);
+    g.create_object_from_definition(&halves[0], A, zone)
+}
+
+fn put_onto_battlefield(g: &mut GameState, id: ironsmith::ObjectId) -> ironsmith::ObjectId {
+    use ironsmith::{
+        ChooseSpec, EffectContext, EffectExecutor, PlayerFilter, effects::PutOntoBattlefieldEffect,
+    };
     let stable = g.object(id).unwrap().stable_id;
-    g.move_object_with_etb_processing_with_dm(id, Zone::Battlefield, &mut SelectFirstDecisionMaker)
+    let effect =
+        PutOntoBattlefieldEffect::new(ChooseSpec::SpecificObject(id), false, PlayerFilter::You);
+    effect
+        .execute(g, &mut EffectContext::new_default(id, A))
         .unwrap();
-    let room = g.find_object_by_stable_id(stable).unwrap();
+    g.find_object_by_stable_id(stable).unwrap()
+}
+
+fn enter_room(g: &mut GameState, fixture: &str) -> ironsmith::ObjectId {
+    let id = put_split_card(g, fixture, Zone::Hand);
+    let room = put_onto_battlefield(g, id);
     assert!(g.room_has_no_unlocked_door(room));
     g.add_counters(room, ironsmith::CounterType::PlusOnePlusOne, 1);
     room
@@ -395,5 +409,69 @@ fn a_room_token_can_switch_doors_and_still_donate_both_halves() {
                 Some(closed)
             );
         }
+    }
+}
+
+#[test]
+fn fire_ice_and_rals_outburst_have_the_same_mana_cost_in_the_graveyard() {
+    use ironsmith::{CounterType, EffectContext, ObjectFilter, Value};
+    let mut g = game();
+    let fire = put_split_card(
+        &mut g,
+        include_str!("../../../../web/ui/public/cards/fire-ice.json"),
+        Zone::Graveyard,
+    );
+    let ral = put(&mut g, "ral-s-outburst", A, Zone::Graveyard);
+    let mut filter = ObjectFilter::specific(fire);
+    filter.zone = Some(Zone::Graveyard);
+    filter.exact_mana_cost = g.object(ral).unwrap().mana_cost_owned();
+    assert_eq!(
+        ironsmith::effects::resolve_value(
+            &g,
+            &Value::Count(filter),
+            &EffectContext::new_default(ral, A)
+        )
+        .unwrap(),
+        1
+    );
+    let demon = put(&mut g, "embodiment-of-agonies", A, Zone::Hand);
+    let demon = put_onto_battlefield(&mut g, demon);
+    assert_eq!(
+        g.object(demon)
+            .unwrap()
+            .counters
+            .get(&CounterType::PlusOnePlusOne),
+        Some(&1)
+    );
+}
+
+#[test]
+fn a_continuous_effects_x_filter_uses_the_current_layer_one_cost() {
+    use ironsmith::{CounterType, ObjectFilter, continuous::ContinuousEffect};
+    for (original, copied, bonus) in [
+        ("ornithopter", "endless-one", 3),
+        ("endless-one", "ornithopter", 0),
+    ] {
+        let mut g = game();
+        let recipient = put(&mut g, original, A, Zone::Battlefield);
+        let model = put(&mut g, copied, PlayerId(1), Zone::Battlefield);
+        let source = put(&mut g, "plains", A, Zone::Battlefield);
+        for id in [recipient, model] {
+            g.add_counters(id, CounterType::PlusOnePlusOne, 2);
+        }
+        resolve_spell(
+            &mut g,
+            "mirrorweave",
+            vec![Target::Object(model)],
+            &mut SelectFirstDecisionMaker,
+        );
+        let before = g.current_power(recipient).unwrap();
+        let mut filter = ObjectFilter::creature();
+        filter.has_x_in_cost = true;
+        g.effect_store
+            .continuous_effects
+            .add_effect(ContinuousEffect::anthem(source, A, filter, 3, 0));
+        g.refresh_continuous_state().unwrap();
+        assert_eq!(g.current_power(recipient), Some(before + bonus));
     }
 }

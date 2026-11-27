@@ -67,25 +67,20 @@ export function LoopShortcutButton() {
     );
   }
 
+  // A loop the engine detected is a recording that is already made: the same
+  // button glows and opens its proposal. Declining returns it to recording.
   const detected = loopShortcut.detectedLoop;
   return (
-    <span className="loop-shortcut-control">
-      {detected ? (
-        <button
-          type="button"
-          className="decision-phase-pass loop-shortcut-detected"
-          title={ui("You repeated a loop. Each repetition: {0}. Propose repeating it automatically.", { 0: detected.summary })}
-          onClick={loopShortcut.proposeDetectedLoop}
-        >
-          {ui("Repeat loop ({0})", { 0: detected.summary })}
-        </button>
-      ) : null}
+    <span className={`loop-shortcut-control${detected ? " loop-shortcut-control--available" : ""}`}>
       <button
         type="button"
         className="loop-shortcut-action loop-shortcut-record"
-        aria-label={ui("Record loop")}
-        title={ui("Record a loop: your next choices are saved so you can repeat them")}
-        onClick={loopShortcut.startRecording}
+        data-loop-available={detected ? "true" : undefined}
+        aria-label={detected ? ui("Repeat loop ({0})", { 0: detected.summary }) : ui("Record loop")}
+        title={detected
+          ? ui("You repeated a loop. Each repetition: {0}. Propose repeating it automatically.", { 0: detected.summary })
+          : ui("Record a loop: your next choices are saved so you can repeat them")}
+        onClick={detected ? loopShortcut.proposeDetectedLoop : loopShortcut.startRecording}
       >
         <Repeat2 size={18} aria-hidden="true" />
       </button>

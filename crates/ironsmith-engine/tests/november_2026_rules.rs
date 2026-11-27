@@ -1292,9 +1292,26 @@ fn card(route: &str) -> ironsmith::CardDefinition {
             "Colossal Dreadmaw",
             "Mana cost: {4}{G}{G}\nType: Creature — Dinosaur\nPower/Toughness: 6/6\nTrample (This creature can deal excess combat damage to the player or planeswalker it's attacking.)",
         ),
-        "endless-one" => ("Endless One", "Mana cost: {X}\nType: Creature — Eldrazi\nPower/Toughness: 0/0\nThis creature enters with X +1/+1 counters on it."),
-        "phyrexian-metamorph" => ("Phyrexian Metamorph", "Mana cost: {3}{U/P}\nType: Artifact Creature — Phyrexian Shapeshifter\nPower/Toughness: 0/0\nYou may have this creature enter as a copy of any artifact or creature on the battlefield, except it's an artifact in addition to its other types."),
-        "opalescence" => ("Opalescence", "Mana cost: {2}{W}{W}\nType: Enchantment\nEach other non-Aura enchantment is a creature in addition to its other types and has base power and base toughness each equal to its mana value."),
+        "ral-s-outburst" => (
+            "Ral's Outburst",
+            "Mana cost: {2}{U}{R}\nType: Instant\nRal's Outburst deals 3 damage to any target. Look at the top two cards of your library. Put one of them into your hand and the other into your graveyard.",
+        ),
+        "embodiment-of-agonies" => (
+            "Embodiment of Agonies",
+            "Mana cost: {1}{B}{B}\nType: Creature — Demon\nPower/Toughness: 0/0\nFlying, deathtouch\nThis creature enters with a +1/+1 counter on it for each different mana cost among nonland cards in your graveyard.",
+        ),
+        "endless-one" => (
+            "Endless One",
+            "Mana cost: {X}\nType: Creature — Eldrazi\nPower/Toughness: 0/0\nThis creature enters with X +1/+1 counters on it.",
+        ),
+        "phyrexian-metamorph" => (
+            "Phyrexian Metamorph",
+            "Mana cost: {3}{U/P}\nType: Artifact Creature — Phyrexian Shapeshifter\nPower/Toughness: 0/0\nYou may have this creature enter as a copy of any artifact or creature on the battlefield, except it's an artifact in addition to its other types.",
+        ),
+        "opalescence" => (
+            "Opalescence",
+            "Mana cost: {2}{W}{W}\nType: Enchantment\nEach other non-Aura enchantment is a creature in addition to its other types and has base power and base toughness each equal to its mana value.",
+        ),
         "light-from-within" => (
             "Light from Within",
             "Mana cost: {2}{W}{W}\nType: Enchantment\nChroma — Each creature you control gets +1/+1 for each white mana symbol in its mana cost.",

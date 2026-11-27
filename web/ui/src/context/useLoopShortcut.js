@@ -40,6 +40,7 @@ export default function useLoopShortcut({ state, stateRef, dispatch, multiplayer
   const recordingRef = useRef(null);
   const pendingRecordRef = useRef(null);
   const [proposalDraft, setProposalDraft] = useState(null);
+  const [declinedLoopKey, setDeclinedLoopKey] = useState(null);
   // Every accepted command of the local player this turn, tagged with the
   // engine's loop serial, so a loop the engine detects can be proposed.
   const historyRef = useRef([]);
@@ -75,8 +76,9 @@ export default function useLoopShortcut({ state, stateRef, dispatch, multiplayer
     recordingRef.current = null;
     pendingRecordRef.current = null;
     setRecording(null);
+    if (proposalDraft?.detected && proposalDraft.key) setDeclinedLoopKey(proposalDraft.key);
     setProposalDraft(null);
-  }, []);
+  }, [proposalDraft]);
 
   const appendStep = useCallback((step) => {
     if (!recordingRef.current) return;
@@ -300,10 +302,16 @@ export default function useLoopShortcut({ state, stateRef, dispatch, multiplayer
   const detectedLoop = useMemo(() => {
     if (recording || proposalDraft) return null;
     const steps = detectedLoopSteps(historyRef.current, state);
-    return steps ? { steps, summary: describeLoopOffer(state.loop_offer), responders: state.loop_offer.responders || [] } : null;
+    if (!steps) return null;
+    const summary = describeLoopOffer(state.loop_offer);
+    const key = `${state.turn_number}:${summary}`;
+    // A declined loop stays declined for the turn, so the button goes back to
+    // plain recording even while the player keeps repeating it by hand.
+    if (key === declinedLoopKey) return null;
+    return { steps, summary, key, responders: state.loop_offer.responders || [] };
     // historyVersion re-runs this when the log changes without a new snapshot.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [historyVersion, proposalDraft, recording, state]);
+  }, [declinedLoopKey, historyVersion, proposalDraft, recording, state]);
 
   /** Open the proposal for the detected loop. */
   const proposeDetectedLoop = useCallback(() => {
@@ -311,7 +319,7 @@ export default function useLoopShortcut({ state, stateRef, dispatch, multiplayer
     recordingRef.current = null;
     pendingRecordRef.current = null;
     setRecording(null);
-    setProposalDraft({ steps: detectedLoop.steps, summary: detectedLoop.summary, detected: true });
+    setProposalDraft({ steps: detectedLoop.steps, summary: detectedLoop.summary, detected: true, key: detectedLoop.key });
   }, [detectedLoop]);
 
   // Advance the rendered cursor past an accepted action before effects run,

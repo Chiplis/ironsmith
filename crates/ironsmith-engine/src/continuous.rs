@@ -3687,12 +3687,18 @@ fn apply_copied_room_door_layer(
     game: &crate::game_state::GameState,
     envelope: &CopiableValues,
 ) {
-    let Some(second) = envelope.other_copy_face.as_deref() else { return };
+    let Some(second) = envelope.other_copy_face.as_deref() else {
+        return;
+    };
     let origin = chars.abilities.current_effect_origin();
     let first_name = room_half_name(&envelope.name);
     let second_name = room_half_name(&second.name);
     let (left, right) = game.copied_room_unlocked_halves(object.id);
-    let unlocked = if envelope.room_half_is_right { (right, left) } else { (left, right) };
+    let unlocked = if envelope.room_half_is_right {
+        (right, left)
+    } else {
+        (left, right)
+    };
     match unlocked {
         (false, false) => clear_locked_room_text(chars),
         (true, false) => {
@@ -3718,15 +3724,31 @@ fn apply_copied_room_door_layer(
             } else {
                 (envelope, second)
             };
-            chars.name = format!("{} // {}", room_half_name(&left.name), room_half_name(&right.name)).into();
+            chars.name = format!(
+                "{} // {}",
+                room_half_name(&left.name),
+                room_half_name(&right.name)
+            )
+            .into();
             chars.alternate_name = None;
-            let pips = left.mana_cost.iter().chain(right.mana_cost.iter())
-                .flat_map(|cost| cost.pips().iter().cloned()).collect::<Vec<_>>();
+            let pips = left
+                .mana_cost
+                .iter()
+                .chain(right.mana_cost.iter())
+                .flat_map(|cost| cost.pips().iter().cloned())
+                .collect::<Vec<_>>();
             chars.mana_cost = (!pips.is_empty()).then(|| ManaCost::from_pips(pips).into());
             chars.linked_face_mana_value = None;
             chars.colors = left.colors.union(right.colors);
-            chars.compiled_card_text = [left.compiled_card_text.as_str(), right.compiled_card_text.as_str()]
-                .into_iter().filter(|text| !text.is_empty()).collect::<Vec<_>>().join("\n").into();
+            chars.compiled_card_text = [
+                left.compiled_card_text.as_str(),
+                right.compiled_card_text.as_str(),
+            ]
+            .into_iter()
+            .filter(|text| !text.is_empty())
+            .collect::<Vec<_>>()
+            .join("\n")
+            .into();
             let mut labels = left.ability_labels.clone();
             labels.extend(right.ability_labels.iter().cloned());
             chars.ability_labels = labels.into();
@@ -7210,27 +7232,7 @@ fn filter_matches_layered_fast(
             return Some(false);
         }
     }
-    if let Some(budget) = &filter.mana_cost_payable_with
-        && chars.mana_cost.as_ref().is_none_or(|cost| !budget.can_pay(cost))
-    { return Some(false); }
-    if let Some(required_cost) = &filter.exact_mana_cost
-        && chars.mana_cost.as_deref() != Some(required_cost)
-    {
-        return Some(false);
-    }
-    if filter.has_mana_cost {
-        match &object.mana_cost {
-            Some(cost) if !cost.is_empty() => {}
-            _ => return Some(false),
-        }
-    }
-    if filter.no_x_in_cost
-        && let Some(cost) = &object.mana_cost
-        && cost.has_x()
-    {
-        return Some(false);
-    }
-    if filter.has_x_in_cost && !object.mana_cost.as_ref().is_some_and(|cost| cost.has_x()) {
+    if !crate::filter::mana_cost_matches_filter(filter, chars.mana_cost.as_deref(), true) {
         return Some(false);
     }
     if let Some(sticker) = filter.sticker
@@ -7374,9 +7376,6 @@ fn filter_requires_layered_clone_fallback(filter: &ObjectFilter) -> bool {
         || filter.text_added_from_stable.is_some()
         || filter.has_basic_land_type
         || filter.has_nonbasic_land_type
-        || filter.has_phyrexian_mana_symbol
-        || filter.mana_symbol_count.is_some()
-        || filter.colored_mana_symbol_count.is_some()
         || filter.linked_from_source.is_some()
         || filter.created_with_source
         || filter.put_onto_battlefield_with_source

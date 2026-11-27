@@ -1611,6 +1611,64 @@ pub(crate) fn object_current_mana_value(game: &GameState, id: ObjectId) -> u32 {
     })
 }
 
+/// Evaluate the cost predicates against the caller's view of the object
+/// (layer frame, live permanent, alternate face or last-known information).
+pub(crate) fn mana_cost_matches_filter(
+    filter: &ObjectFilter,
+    cost: Option<&crate::mana::ManaCost>,
+    check_has_mana_cost: bool,
+) -> bool {
+    use crate::mana::ManaSymbol;
+    if let Some(budget) = &filter.mana_cost_payable_with
+        && cost.is_none_or(|cost| !budget.can_pay(cost))
+    {
+        return false;
+    }
+    if let Some(required) = &filter.exact_mana_cost
+        && cost.is_none_or(|cost| !cost.has_same_printed_symbols(required))
+    {
+        return false;
+    }
+    if check_has_mana_cost && filter.has_mana_cost && cost.is_none_or(|cost| cost.is_empty()) {
+        return false;
+    }
+    let pips = cost.map_or(&[][..], |cost| cost.pips());
+    let within = |actual: usize, count: crate::effect::ChoiceCount| {
+        actual >= count.min && count.max.is_none_or(|max| actual <= max)
+    };
+    if let Some((color, count)) = filter.mana_symbol_count {
+        let symbol = ManaSymbol::from_color(color);
+        if !within(
+            pips.iter().filter(|pip| pip.contains(&symbol)).count(),
+            count,
+        ) {
+            return false;
+        }
+    }
+    if let Some(count) = filter.colored_mana_symbol_count {
+        let colored = pips
+            .iter()
+            .filter(|pip| pip.iter().any(|symbol| symbol.unit_color().is_some()))
+            .count();
+        if !within(colored, count) {
+            return false;
+        }
+    }
+    if filter.has_phyrexian_mana_symbol
+        && !pips
+            .iter()
+            .flatten()
+            .any(|symbol| matches!(symbol, ManaSymbol::Life(_)))
+    {
+        return false;
+    }
+    if filter.has_x_in_cost || filter.no_x_in_cost {
+        let has_x = cost.is_some_and(|cost| cost.has_x());
+        return (!filter.has_x_in_cost || has_x) && (!filter.no_x_in_cost || !has_x);
+    }
+    true
+}
+
 /// An object's current mana cost, reading layer-1 copy effects.
 pub(crate) fn object_current_mana_cost(
     game: &GameState,

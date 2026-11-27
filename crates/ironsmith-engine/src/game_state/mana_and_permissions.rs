@@ -2274,8 +2274,12 @@ impl GameState {
             && object.linked_face_layout == LinkedFaceLayout::Split
             && object.subtypes.contains(&crate::types::Subtype::Room)
         {
-            if self.room_has_no_unlocked_door(object_id) { return (false, false); }
-            if self.is_room_fully_unlocked(object_id) { return (true, true); }
+            if self.room_has_no_unlocked_door(object_id) {
+                return (false, false);
+            }
+            if self.is_room_fully_unlocked(object_id) {
+                return (true, true);
+            }
             let right = object.room_current_half_is_right();
             return (!right, right);
         }

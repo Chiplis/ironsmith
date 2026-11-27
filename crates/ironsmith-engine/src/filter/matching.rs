@@ -1701,14 +1701,6 @@ pub(super) fn matches_subject(
             return false;
         }
     }
-    if let Some(budget) = &filter.mana_cost_payable_with
-        && subject.mana_cost(game).is_none_or(|cost| !budget.can_pay(&cost))
-    { return false; }
-    if let Some(required_cost) = &filter.exact_mana_cost
-        && subject.mana_cost(game).as_deref() != Some(required_cost)
-    {
-        return false;
-    }
     if let Some(total_counters_parity) = filter.total_counters_parity {
         let total_counters = subject.counters().values().copied().sum::<u32>() as i32;
         if !total_counters_parity.matches(total_counters, game, ctx) {
@@ -1716,68 +1708,16 @@ pub(super) fn matches_subject(
         }
     }
 
-    // Has mana cost check (must have a non-empty mana cost)
-    if filter.has_mana_cost
-        && !(subject.zone() == Zone::Stack
-            && (filter.zone == Some(Zone::Stack)
-                || filter.stack_kind == Some(StackObjectKind::Spell)))
+    if filter.mana_cost_payable_with.is_some() || filter.exact_mana_cost.is_some()
+        || filter.has_mana_cost || filter.has_x_in_cost || filter.no_x_in_cost
+        || filter.has_phyrexian_mana_symbol || filter.mana_symbol_count.is_some()
+        || filter.colored_mana_symbol_count.is_some()
     {
-        match subject.mana_cost(game) {
-            Some(mc) if !mc.is_empty() => {} // Has a mana cost, OK
-            _ => return false,               // No mana cost or empty
-        }
-    }
-    if let Some((color, count)) = filter.mana_symbol_count {
-        let symbol = crate::mana::ManaSymbol::from_color(color);
-        let actual = subject.mana_cost(game).map_or(0, |cost| {
-            cost.pips().iter().filter(|pip| pip.contains(&symbol)).count()
-        });
-        if actual < count.min || count.max.is_some_and(|maximum| actual > maximum) {
+        let stack_spell = subject.zone() == Zone::Stack && (filter.zone == Some(Zone::Stack)
+            || filter.stack_kind == Some(StackObjectKind::Spell));
+        if !mana_cost_matches_filter(filter, subject.mana_cost(game).as_deref(), !stack_spell) {
             return false;
         }
-    }
-    if let Some(count) = filter.colored_mana_symbol_count {
-        let actual = subject.mana_cost(game).map_or(0, |cost| {
-            cost.pips()
-                .iter()
-                .filter(|pip| {
-                    pip.iter().any(|symbol| {
-                        matches!(
-                            symbol,
-                            crate::mana::ManaSymbol::White
-                                | crate::mana::ManaSymbol::Blue
-                                | crate::mana::ManaSymbol::Black
-                                | crate::mana::ManaSymbol::Red
-                                | crate::mana::ManaSymbol::Green
-                        )
-                    })
-                })
-                .count()
-        });
-        if actual < count.min || count.max.is_some_and(|maximum| actual > maximum) {
-            return false;
-        }
-    }
-    if filter.has_phyrexian_mana_symbol
-        && !subject.mana_cost(game).is_some_and(|cost| {
-            cost.pips().iter().any(|pip| {
-                pip.iter()
-                    .any(|symbol| matches!(symbol, crate::mana::ManaSymbol::Life(_)))
-            })
-        })
-    {
-        return false;
-    }
-
-    // No X in cost check
-    if filter.no_x_in_cost
-        && let Some(mc) = subject.mana_cost(game)
-        && mc.has_x()
-    {
-        return false;
-    }
-    if filter.has_x_in_cost && !subject.mana_cost(game).is_some_and(|cost| cost.has_x()) {
-        return false;
     }
 
     if let Some(sticker) = filter.sticker

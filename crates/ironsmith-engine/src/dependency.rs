@@ -1299,35 +1299,13 @@ fn object_matches_filter_with_chars(
     }
 
     if let Some(mv_cmp) = &filter.mana_value {
-        let mv = crate::filter::object_mana_value_for_filter(object);
+        let mv = crate::filter::calculated_mana_value_for_filter(object, chars);
         if !mv_cmp.satisfies(mv) {
             return false;
         }
     }
 
-    if let Some(budget) = &filter.mana_cost_payable_with
-        && object.mana_cost.as_deref().is_none_or(|cost| !budget.can_pay(cost))
-    { return false; }
-    if let Some(required_cost) = &filter.exact_mana_cost
-        && object.mana_cost.as_deref() != Some(required_cost)
-    {
-        return false;
-    }
-
-    if filter.has_mana_cost {
-        match &object.mana_cost {
-            Some(mc) if !mc.is_empty() => {}
-            _ => return false,
-        }
-    }
-
-    if filter.no_x_in_cost
-        && let Some(mc) = &object.mana_cost
-        && mc.has_x()
-    {
-        return false;
-    }
-    if filter.has_x_in_cost && !object.mana_cost.as_ref().is_some_and(|cost| cost.has_x()) {
+    if !crate::filter::mana_cost_matches_filter(filter, chars.mana_cost.as_deref(), true) {
         return false;
     }
 

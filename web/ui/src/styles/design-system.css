@@ -7802,6 +7802,19 @@ html[data-hand-pointer-suspended="true"] * {
   background: #5c202b;
   color: #ffb6bc;
 }
+.loop-shortcut-control--available {
+  border-color: #f2d68a;
+  color: #ffe9ad;
+  box-shadow: 0 0 6px rgba(242, 214, 138, 0.55), inset 0 0 6px rgba(242, 214, 138, 0.25);
+  animation: loop-shortcut-available-glow 1.6s ease-in-out infinite;
+}
+@keyframes loop-shortcut-available-glow {
+  0%, 100% { box-shadow: 0 0 4px rgba(242, 214, 138, 0.35), inset 0 0 4px rgba(242, 214, 138, 0.15); }
+  50% { box-shadow: 0 0 14px rgba(242, 214, 138, 0.95), inset 0 0 9px rgba(242, 214, 138, 0.4); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .loop-shortcut-control--available { animation: none; }
+}
 .loop-shortcut-action {
   display: inline-grid;
   place-items: center;

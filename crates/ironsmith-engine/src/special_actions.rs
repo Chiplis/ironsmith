@@ -199,7 +199,10 @@ pub fn room_door_is_right(game: &GameState, room_id: ObjectId, door: RoomDoor) -
     if game.copied_room_halves(room_id).is_some() {
         linked
     } else {
-        linked ^ game.object(room_id).is_some_and(|object| object.room_current_half_is_right())
+        linked
+            ^ game
+                .object(room_id)
+                .is_some_and(|object| object.room_current_half_is_right())
     }
 }
 
@@ -2537,18 +2540,24 @@ fn can_unlock_room_door(
 /// A printed Room keeps its own designations when it copies another Room.
 /// Convert the copy's left/right choice into the underlying current/linked
 /// representation so the designation survives the end of the copy effect.
-fn printed_door_for_copied_half(game: &GameState, room_id: ObjectId, door: RoomDoor) -> Option<RoomDoor> {
+fn printed_door_for_copied_half(
+    game: &GameState,
+    room_id: ObjectId,
+    door: RoomDoor,
+) -> Option<RoomDoor> {
     let object = game.object(room_id)?;
     if object.linked_face_layout != crate::card::LinkedFaceLayout::Split
         || !object.subtypes.contains(&crate::types::Subtype::Room)
     {
         return None;
     }
-    Some(if (door == RoomDoor::Linked) == object.room_current_half_is_right() {
-        RoomDoor::Current
-    } else {
-        RoomDoor::Linked
-    })
+    Some(
+        if (door == RoomDoor::Linked) == object.room_current_half_is_right() {
+            RoomDoor::Current
+        } else {
+            RoomDoor::Linked
+        },
+    )
 }
 
 /// Apply the Room state transition shared by the paid special action and

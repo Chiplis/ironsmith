@@ -97,6 +97,22 @@ test("a loop the engine detects is offered, proposed from the logged commands, a
     // Replayed commands joined the log, so the loop is offered again.
     await page.waitForFunction(()=>window.context.loopShortcut.detectedLoop);
     assert.equal(await page.evaluate(()=>window.context.loopShortcut.detectedLoop.steps.length), 1);
+    // The same button glows instead of growing a label, and declining the
+    // proposal turns it back into plain recording for this loop.
+    const glowing = page.getByRole('button',{name:'Repeat loop (+1 red mana (Alice))',exact:true});
+    assert.equal(await glowing.getAttribute('data-loop-available'), 'true');
+    assert.equal((await glowing.innerText()).trim(), '', "the button carries no text");
+    assert.equal(await page.getByRole('button',{name:'Record loop',exact:true}).count(), 0);
+    await glowing.click();
+    await page.getByRole('button',{name:'Discard',exact:true}).click();
+    const record = page.getByRole('button',{name:'Record loop',exact:true});
+    await record.waitFor();
+    assert.equal(await record.getAttribute('data-loop-available'), null);
+    await page.evaluate((action)=>window.context.dispatch({type:'priority_action',action_index:1,action_ref:action.action_ref}), activate);
+    await page.waitForTimeout(400);
+    assert.equal(await page.evaluate(()=>window.context.loopShortcut.detectedLoop), null, "a declined loop is not offered again this turn");
+    await record.click();
+    assert.equal(await page.evaluate(()=>window.context.loopShortcut.recording), true);
   });
 });
 
