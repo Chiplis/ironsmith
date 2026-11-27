@@ -1207,6 +1207,7 @@ impl TurnHistory {
     }
 
     pub fn total_life_gained_for_players(&self, players: &[PlayerId]) -> u32 {
+        crate::incremental::note_life_read();
         self.projected_records()
             .filter_map(|record| record.event.downcast::<LifeGainEvent>())
             .filter(|event| players.contains(&event.player))
@@ -1215,6 +1216,7 @@ impl TurnHistory {
     }
 
     pub fn total_life_lost_for_players(&self, players: &[PlayerId]) -> u32 {
+        crate::incremental::note_life_read();
         self.projected_records()
             .filter_map(|record| record.event.downcast::<LifeLossEvent>())
             .filter(|event| players.contains(&event.player))
@@ -1223,6 +1225,7 @@ impl TurnHistory {
     }
 
     pub fn total_noncombat_damage_to_players(&self, players: &[PlayerId]) -> u32 {
+        crate::incremental::note_life_read();
         self.projected_records()
             .filter_map(|record| record.event.downcast::<DamageEvent>())
             .filter(|event| !event.is_combat)
@@ -1261,6 +1264,7 @@ impl TurnHistory {
     }
 
     pub fn total_combat_damage_to_player(&self, player: PlayerId) -> u32 {
+        crate::incremental::note_life_read();
         self.projected_records()
             .filter_map(|record| record.event.downcast::<DamageEvent>())
             .filter(|event| event.is_combat)
@@ -1272,6 +1276,7 @@ impl TurnHistory {
     }
 
     pub fn total_damage_to_player(&self, player: PlayerId) -> u32 {
+        crate::incremental::note_life_read();
         self.projected_records()
             .filter_map(|record| record.event.downcast::<DamageEvent>())
             .filter_map(|event| match event.target {
@@ -1282,6 +1287,7 @@ impl TurnHistory {
     }
 
     pub fn total_damage_to_players(&self, players: &[PlayerId]) -> u32 {
+        crate::incremental::note_life_read();
         players
             .iter()
             .map(|player| self.total_damage_to_player(*player))
@@ -1289,6 +1295,7 @@ impl TurnHistory {
     }
 
     pub fn total_creature_damage_to_player(&self, player: PlayerId) -> u32 {
+        crate::incremental::note_life_read();
         self.projected_records()
             .filter_map(|record| {
                 let damage = record.event.downcast::<DamageEvent>()?;
@@ -1311,6 +1318,7 @@ impl TurnHistory {
     /// Inferno Trap). One creature dealing damage in both combat damage
     /// steps (first strike and double strike) counts once.
     pub fn distinct_creatures_that_dealt_damage_to_player(&self, player: PlayerId) -> u32 {
+        crate::incremental::note_life_read();
         let mut sources = HashSet::new();
         for record in self.projected_records() {
             let Some(damage) = record.event.downcast::<DamageEvent>() else {
@@ -1333,6 +1341,7 @@ impl TurnHistory {
     }
 
     pub fn player_was_dealt_damage_this_turn(&self, player: PlayerId) -> bool {
+        crate::incremental::note_life_read();
         self.total_damage_to_player(player) > 0
     }
 
@@ -1365,6 +1374,7 @@ impl TurnHistory {
     }
 
     pub fn player_lost_life_this_turn(&self, player: PlayerId) -> bool {
+        crate::incremental::note_life_read();
         self.projected_records()
             .filter_map(|record| record.event.downcast::<LifeLossEvent>())
             .any(|event| event.player == player && event.amount > 0)
@@ -1778,6 +1788,7 @@ impl TurnHistory {
     }
 
     pub fn player_was_dealt_damage_by_creature_this_turn(&self, player: PlayerId) -> bool {
+        crate::incremental::note_life_read();
         self.total_creature_damage_to_player(player) > 0
     }
 
@@ -1805,6 +1816,7 @@ impl TurnHistory {
         source: ObjectId,
         _source_stable_id: Option<StableId>,
     ) -> bool {
+        crate::incremental::note_life_read();
         self.projected_records().any(|record| {
             record
                 .event
@@ -1819,6 +1831,7 @@ impl TurnHistory {
         source_stable_id: Option<StableId>,
         player: PlayerId,
     ) -> bool {
+        crate::incremental::note_life_read();
         self.source_dealt_damage_to_player_this_turn_matching(
             source,
             source_stable_id,
@@ -1834,6 +1847,7 @@ impl TurnHistory {
         player: PlayerId,
         combat_only: bool,
     ) -> bool {
+        crate::incremental::note_life_read();
         self.projected_records().any(|record| {
             record.event.downcast::<DamageEvent>().is_some_and(|event| {
                 event.amount > 0

@@ -2056,7 +2056,7 @@ fn player_life_compares_to_half_starting(
     inclusive: bool,
 ) -> bool {
     game.player(player).is_some_and(|state| {
-        let doubled_life = i64::from(state.life) * 2;
+        let doubled_life = i64::from(state.life_for_rules()) * 2;
         if inclusive {
             doubled_life <= i64::from(state.starting_life)
         } else {
@@ -2412,13 +2412,13 @@ fn player_controls_more_than_each_other_player(
 }
 
 fn player_has_more_life_than_each_other_player(game: &GameState, player_id: PlayerId) -> bool {
-    let Some(life) = game.player(player_id).map(|p| p.life) else {
+    let Some(life) = game.player(player_id).map(|p| p.life_for_rules()) else {
         return false;
     };
     game.players
         .iter()
         .filter(|candidate| candidate.is_in_game())
-        .all(|candidate| candidate.id == player_id || life > candidate.life)
+        .all(|candidate| candidate.id == player_id || life > candidate.life_for_rules())
 }
 
 fn player_poison_counters_or_more(game: &GameState, player_id: PlayerId, count: u32) -> bool {
@@ -2436,14 +2436,14 @@ fn player_has_no_opponent_with_more_life_than(
     controller: PlayerId,
     player_id: PlayerId,
 ) -> bool {
-    let Some(life) = game.player(player_id).map(|p| p.life) else {
+    let Some(life) = game.player(player_id).map(|p| p.life_for_rules()) else {
         return false;
     };
     game.players
         .iter()
         .filter(|candidate| candidate.is_in_game())
         .filter(|candidate| game.are_opponents(controller, candidate.id))
-        .all(|candidate| candidate.id == player_id || life >= candidate.life)
+        .all(|candidate| candidate.id == player_id || life >= candidate.life_for_rules())
 }
 
 /// "<player> has more life than another of your opponents": some in-game
@@ -2453,14 +2453,14 @@ fn player_has_more_life_than_another_opponent(
     controller: PlayerId,
     player_id: PlayerId,
 ) -> bool {
-    let Some(life) = game.player(player_id).map(|p| p.life) else {
+    let Some(life) = game.player(player_id).map(|p| p.life_for_rules()) else {
         return false;
     };
     game.players
         .iter()
         .filter(|candidate| candidate.is_in_game() && candidate.id != player_id)
         .filter(|candidate| game.are_opponents(controller, candidate.id))
-        .any(|candidate| life > candidate.life)
+        .any(|candidate| life > candidate.life_for_rules())
 }
 
 fn triggering_event_object_matches(
@@ -3633,7 +3633,7 @@ fn evaluate_turn_history_condition(
             .players
             .iter()
             .filter(|player| player.is_in_game())
-            .all(|player| player.life <= *amount),
+            .all(|player| player.life_for_rules() <= *amount),
         TurnHistoryCondition::AnotherOpponentControlsPotentialTarget { filter } => {
             let Some(cast) = ctx
                 .triggering_event
@@ -4214,10 +4214,10 @@ fn resolve_condition_player_simple(
                 .players
                 .iter()
                 .filter(|player| player.is_in_game())
-                .map(|player| player.life)
+                .map(|player| player.life_for_rules())
                 .max()?;
             game.players.iter().find_map(|player| {
-                (player.is_in_game() && player.life == max_life).then_some(player.id)
+                (player.is_in_game() && player.life_for_rules() == max_life).then_some(player.id)
             })
         }
         PlayerFilter::LowestLifeTied => {
@@ -4225,10 +4225,10 @@ fn resolve_condition_player_simple(
                 .players
                 .iter()
                 .filter(|player| player.is_in_game())
-                .map(|player| player.life)
+                .map(|player| player.life_for_rules())
                 .min()?;
             game.players.iter().find_map(|player| {
-                (player.is_in_game() && player.life == min_life).then_some(player.id)
+                (player.is_in_game() && player.life_for_rules() == min_life).then_some(player.id)
             })
         }
         PlayerFilter::MostCardsInHand => {
@@ -4763,7 +4763,7 @@ fn evaluate_condition_in_context(
             .into_iter()
             .any(|player_id| player_life_compares_to_half_starting(game, player_id, false))),
         Condition::PlayerHasLessLifeThanYou { player } => {
-            let life = game.player(ctx.controller).map(|p| p.life);
+            let life = game.player(ctx.controller).map(|p| p.life_for_rules());
             if ctx.is_cast_time() && life.is_none() {
                 return Ok(false);
             }
@@ -4772,12 +4772,12 @@ fn evaluate_condition_in_context(
                 .matching_players(game, player)?
                 .into_iter()
                 .any(|player_id| {
-                    let other = game.player(player_id).map(|p| p.life);
+                    let other = game.player(player_id).map(|p| p.life_for_rules());
                     (!ctx.is_cast_time() || other.is_some()) && other.unwrap_or(0) < you_life
                 }))
         }
         Condition::PlayerHasMoreLifeThanYou { player } => {
-            let life = game.player(ctx.controller).map(|p| p.life);
+            let life = game.player(ctx.controller).map(|p| p.life_for_rules());
             if ctx.is_cast_time() && life.is_none() {
                 return Ok(false);
             }
@@ -4786,7 +4786,7 @@ fn evaluate_condition_in_context(
                 .matching_players(game, player)?
                 .into_iter()
                 .any(|player_id| {
-                    let other = game.player(player_id).map(|p| p.life);
+                    let other = game.player(player_id).map(|p| p.life_for_rules());
                     (!ctx.is_cast_time() || other.is_some()) && other.unwrap_or(0) > you_life
                 }))
         }
@@ -6844,11 +6844,11 @@ fn evaluate_condition_in_context(
         Condition::Custom(_) => Ok(false),
         Condition::LifeTotalOrLess(threshold) => Ok(game
             .player(shared.controller)
-            .map(|p| p.life <= *threshold)
+            .map(|p| p.life_for_rules() <= *threshold)
             .unwrap_or(false)),
         Condition::LifeTotalOrGreater(threshold) => Ok(game
             .player(shared.controller)
-            .map(|p| p.life >= *threshold)
+            .map(|p| p.life_for_rules() >= *threshold)
             .unwrap_or(false)),
         Condition::CardsInHandOrMore(threshold) => Ok(game
             .player(shared.controller)

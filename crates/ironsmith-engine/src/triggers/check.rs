@@ -4984,21 +4984,21 @@ pub fn player_filter_matches_with_context(
             .players
             .iter()
             .filter(|candidate| candidate.is_in_game())
-            .map(|candidate| candidate.life)
+            .map(|candidate| candidate.life_for_rules())
             .max()
             .is_some_and(|max_life| {
                 game.player(player)
-                    .is_some_and(|candidate| candidate.is_in_game() && candidate.life == max_life)
+                    .is_some_and(|candidate| candidate.is_in_game() && candidate.life_for_rules() == max_life)
             }),
         PlayerFilter::LowestLifeTied => game
             .players
             .iter()
             .filter(|candidate| candidate.is_in_game())
-            .map(|candidate| candidate.life)
+            .map(|candidate| candidate.life_for_rules())
             .min()
             .is_some_and(|min_life| {
                 game.player(player)
-                    .is_some_and(|candidate| candidate.is_in_game() && candidate.life == min_life)
+                    .is_some_and(|candidate| candidate.is_in_game() && candidate.life_for_rules() == min_life)
             }),
         PlayerFilter::MostCardsInHand => game
             .players
@@ -5031,7 +5031,7 @@ pub fn player_filter_matches_with_context(
                 && game
                     .player(player)
                     .zip(game.player(controller))
-                    .is_some_and(|(candidate, you)| candidate.life > you.life)
+                    .is_some_and(|(candidate, you)| candidate.life_for_rules() > you.life_for_rules())
         }
         PlayerFilter::OpponentWithMoreControlledObjectsThan { .. }
         | PlayerFilter::ControlsMost { .. }

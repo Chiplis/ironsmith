@@ -202,7 +202,31 @@ pub(crate) fn enter_derived_reads() {
 }
 
 pub(crate) fn exit_derived_reads() {
-    DERIVED_READ_DEPTH.with(|depth| depth.set(depth.get().saturating_sub(1)));
+    DERIVED_READ_DEPTH.with(|depth| {
+        depth.set(depth.get().saturating_sub(1));
+        if depth.get() == 0 {
+            DERIVED_LIFE_READ.with(|read| read.set(false));
+        }
+    });
+}
+
+thread_local! {
+    /// Set while a derivation that read a life total, or this turn's life
+    /// and damage records, is in progress. Each game whose derivation scope
+    /// ends while it is set records the read (`GameState::exit_derived_tap_reads`).
+    static DERIVED_LIFE_READ: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+}
+
+/// A rules expression read a player's life total or this turn's life/damage
+/// history. Recorded only inside a derivation whose result is cached.
+pub(crate) fn note_life_read() {
+    if derived_read_in_progress() {
+        DERIVED_LIFE_READ.with(|read| read.set(true));
+    }
+}
+
+pub(crate) fn derived_life_read_in_progress() -> bool {
+    DERIVED_LIFE_READ.with(std::cell::Cell::get)
 }
 
 fn derived_read_in_progress() -> bool {

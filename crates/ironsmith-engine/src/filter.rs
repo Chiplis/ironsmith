@@ -4058,8 +4058,8 @@ pub(crate) fn player_filter_matches_game(
             let Some(you) = ctx.you else {
                 return false;
             };
-            let candidate_life = game.player(player).map(|p| p.life).unwrap_or(0);
-            let your_life = game.player(you).map(|p| p.life).unwrap_or(0);
+            let candidate_life = game.player(player).map(|p| p.life_for_rules()).unwrap_or(0);
+            let your_life = game.player(you).map(|p| p.life_for_rules()).unwrap_or(0);
             candidate_life > your_life
         }
         PlayerFilter::MostLifeTiedAmong { base } => {
@@ -4069,7 +4069,7 @@ pub(crate) fn player_filter_matches_game(
             let Some(candidate_life) = game
                 .player(player)
                 .filter(|candidate| candidate.is_in_game())
-                .map(|candidate| candidate.life)
+                .map(|candidate| candidate.life_for_rules())
             else {
                 return false;
             };
@@ -4077,7 +4077,7 @@ pub(crate) fn player_filter_matches_game(
                 .iter()
                 .filter(|other| other.is_in_game() && other.id != player)
                 .filter(|other| player_filter_matches_game(base, other.id, game, ctx))
-                .all(|other| other.life <= candidate_life)
+                .all(|other| other.life_for_rules() <= candidate_life)
         }
         PlayerFilter::QuantityGreaterThanPlayer {
             base,
@@ -4089,7 +4089,7 @@ pub(crate) fn player_filter_matches_game(
             }
             let quantity_of = |id: PlayerId| {
                 game.player(id).map(|p| match quantity {
-                    ironsmith_core::PlayerQuantity::Life => i64::from(p.life),
+                    ironsmith_core::PlayerQuantity::Life => i64::from(p.life_for_rules()),
                     ironsmith_core::PlayerQuantity::CardsInHand => p.hand.len() as i64,
                 })
             };

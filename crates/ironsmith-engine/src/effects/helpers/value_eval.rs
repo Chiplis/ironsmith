@@ -931,7 +931,7 @@ pub(crate) fn resolve_wide(
             .filter_map(|id| {
                 game.player(id)
                     .filter(|player| player.is_in_game())
-                    .map(|player| i64::from(player.life))
+                    .map(|player| i64::from(player.life_for_rules()))
             })
             .max()
             .unwrap_or(0)),
@@ -941,18 +941,18 @@ pub(crate) fn resolve_wide(
             .filter(|id| {
                 game.player(*id).is_some_and(|player| {
                     player.is_in_game()
-                        && 2 * i64::from(player.life) < i64::from(player.starting_life)
+                        && 2 * i64::from(player.life_for_rules()) < i64::from(player.starting_life)
                 })
             })
             .count() as i64),
         Value::LifeTotal(player_spec) => {
             let player = context.single_player(value, player_spec)?;
-            Ok(i64::from(player.life))
+            Ok(i64::from(player.life_for_rules()))
         }
         Value::LifeTotalAsTurnBegan(player_spec) => {
             let player = context.single_player(value, player_spec)?;
             let history = &game.turn_store.turn_history;
-            Ok(i64::from(player.life)
+            Ok(i64::from(player.life_for_rules())
                 .saturating_add(i64::from(history.total_life_lost_for_players(&[player.id])))
                 .saturating_sub(i64::from(history.total_life_gained_for_players(&[player.id]))))
         }
@@ -971,7 +971,7 @@ pub(crate) fn resolve_wide(
                 let life = game
                     .player(id)
                     .ok_or(ExecutionError::PlayerNotFound(id))?
-                    .life;
+                    .life_for_rules();
                 minimum = minimum.min(life);
                 maximum = maximum.max(life);
             }
@@ -1008,11 +1008,11 @@ pub(crate) fn resolve_wide(
         }
         Value::HalfLifeTotalRoundedUp(player_spec) => {
             let player = context.single_player(value, player_spec)?;
-            Ok((i64::from(player.life) + 1).div_euclid(2))
+            Ok((i64::from(player.life_for_rules()) + 1).div_euclid(2))
         }
         Value::HalfLifeTotalRoundedDown(player_spec) => {
             let player = context.single_player(value, player_spec)?;
-            Ok(i64::from(player.life.div_euclid(2)))
+            Ok(i64::from(player.life_for_rules().div_euclid(2)))
         }
         Value::HalfStartingLifeTotalRoundedUp(player_spec) => {
             let player = context.single_player(value, player_spec)?;

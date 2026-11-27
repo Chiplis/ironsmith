@@ -142,3 +142,74 @@ impl Clone for CloneCounter {
         CloneCounter
     }
 }
+
+thread_local! {
+    static TIERS: std::cell::RefCell<std::collections::BTreeMap<(&'static str, &'static str), (u64, u64)>> =
+        const { std::cell::RefCell::new(std::collections::BTreeMap::new()) };
+}
+
+/// `IRONSMITH_PAY_TIERS=1`: count which payment tier answers each query and
+/// why the cheaper tiers declined. Never set on wasm (no environment), so the
+/// clock below is never read there.
+pub(crate) fn tiers_enabled() -> bool {
+    static ENABLED: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    *ENABLED.get_or_init(|| std::env::var_os("IRONSMITH_PAY_TIERS").is_some())
+}
+
+#[inline]
+pub(crate) fn tier(group: &'static str, name: &'static str) {
+    tier_n(group, name, 1);
+}
+
+pub(crate) fn tier_n(group: &'static str, name: &'static str, n: u64) {
+    if tiers_enabled() {
+        TIERS.with(|tiers| tiers.borrow_mut().entry((group, name)).or_default().0 += n);
+    }
+}
+
+pub(crate) fn tier_clock() -> Option<std::time::Instant> {
+    tiers_enabled().then(std::time::Instant::now)
+}
+
+pub(crate) fn tier_time(group: &'static str, name: &'static str, started: Option<std::time::Instant>) {
+    if let Some(started) = started {
+        let nanos = started.elapsed().as_nanos() as u64;
+        TIERS.with(|tiers| {
+            let mut tiers = tiers.borrow_mut();
+            let entry = tiers.entry((group, name)).or_default();
+            entry.0 += 1;
+            entry.1 += nanos;
+        });
+    }
+}
+
+/// Payment tier counts since the last call: (group, name, count, nanoseconds).
+pub fn take_tier_counts() -> Vec<(&'static str, &'static str, u64, u64)> {
+    TIERS.with(|tiers| {
+        std::mem::take(&mut *tiers.borrow_mut())
+            .into_iter()
+            .map(|((group, name), (count, nanos))| (group, name, count, nanos))
+            .collect()
+    })
+}
+
+thread_local! {
+    static NOTES: std::cell::RefCell<std::collections::BTreeMap<(&'static str, String), u64>> =
+        const { std::cell::RefCell::new(std::collections::BTreeMap::new()) };
+}
+
+/// Free-form diagnostic detail for one tier decision (which card, which rule).
+pub(crate) fn tier_note(group: &'static str, detail: impl FnOnce() -> String) {
+    if tiers_enabled() {
+        NOTES.with(|notes| *notes.borrow_mut().entry((group, detail())).or_default() += 1);
+    }
+}
+
+pub fn take_tier_notes() -> Vec<(&'static str, String, u64)> {
+    NOTES.with(|notes| {
+        std::mem::take(&mut *notes.borrow_mut())
+            .into_iter()
+            .map(|((group, detail), count)| (group, detail, count))
+            .collect()
+    })
+}

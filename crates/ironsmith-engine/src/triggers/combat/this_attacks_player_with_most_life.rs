@@ -30,7 +30,7 @@ impl TriggerMatcher for ThisAttacksPlayerWithMostLifeTrigger {
             .game
             .player(defending_player)
             .filter(|player| player.is_in_game())
-            .map(|p| p.life)
+            .map(|p| p.life_for_rules())
         else {
             return false;
         };
@@ -41,7 +41,7 @@ impl TriggerMatcher for ThisAttacksPlayerWithMostLifeTrigger {
             .players
             .iter()
             .filter(|player| player.is_in_game())
-            .map(|player| player.life)
+            .map(|player| player.life_for_rules())
             .max();
         max_life.is_some_and(|max_life| defending_life == max_life)
     }

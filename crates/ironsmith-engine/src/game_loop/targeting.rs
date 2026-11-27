@@ -4778,21 +4778,21 @@ pub fn player_matches_filter_with_combat(
             .players
             .iter()
             .filter(|player| player.is_in_game())
-            .map(|player| player.life)
+            .map(|player| player.life_for_rules())
             .max()
             .is_some_and(|max_life| {
                 game.player(player_id)
-                    .is_some_and(|player| player.is_in_game() && player.life == max_life)
+                    .is_some_and(|player| player.is_in_game() && player.life_for_rules() == max_life)
             }),
         PlayerFilter::LowestLifeTied => game
             .players
             .iter()
             .filter(|player| player.is_in_game())
-            .map(|player| player.life)
+            .map(|player| player.life_for_rules())
             .min()
             .is_some_and(|min_life| {
                 game.player(player_id)
-                    .is_some_and(|player| player.is_in_game() && player.life == min_life)
+                    .is_some_and(|player| player.is_in_game() && player.life_for_rules() == min_life)
             }),
         PlayerFilter::MostCardsInHand => game
             .players
@@ -4853,7 +4853,7 @@ pub fn player_matches_filter_with_combat(
                 && game
                     .player(player_id)
                     .zip(game.player(controller))
-                    .is_some_and(|(candidate, you)| candidate.life > you.life)
+                    .is_some_and(|(candidate, you)| candidate.life_for_rules() > you.life_for_rules())
         }
         PlayerFilter::OpponentWithMoreControlledObjectsThan { .. }
         | PlayerFilter::ControlsMost { .. }

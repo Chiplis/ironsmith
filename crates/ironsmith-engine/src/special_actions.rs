@@ -3496,7 +3496,7 @@ pub(crate) fn can_activate_mana_ability_check_for_payment_with_view(
 }
 
 /// Check if a mana ability's activation condition is met.
-fn check_mana_ability_condition(
+pub(crate) fn check_mana_ability_condition(
     game: &GameState,
     player: PlayerId,
     source: ObjectId,

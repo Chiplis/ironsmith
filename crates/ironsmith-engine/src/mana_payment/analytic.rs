@@ -69,11 +69,13 @@ fn try_candidates_inner(
     projection_only: bool,
 ) -> Option<Vec<(GameState, Vec<PlannedManaActivation>)>> {
     if !request_shape_is_supported(request) {
+        crate::perf::tier("analytic", "none:shape");
         return None;
     }
 
     let slots = crate::mana::unit_payment_pips(&request.cost, request.x_value, false);
     if slots.is_empty() {
+        crate::perf::tier("analytic", "none:no-slots");
         return None;
     }
 
@@ -87,11 +89,18 @@ fn try_candidates_inner(
         });
     }
     if measured.is_empty() {
+        crate::perf::tier("analytic", "none:no-sources");
         return None;
     }
 
-    let sequence = solve_assignment(&slots, &measured)?;
-    replay(game, request, &sequence).map(|candidate| vec![candidate])
+    let Some(sequence) = solve_assignment(&slots, &measured) else {
+        crate::perf::tier("analytic", "none:no-assignment");
+        return None;
+    };
+    crate::perf::tier_n("analytic", "replayed-activations", sequence.len() as u64);
+    let replayed = replay(game, request, &sequence);
+    crate::perf::tier("analytic", if replayed.is_some() { "ok" } else { "none:replay-failed" });
+    replayed.map(|candidate| vec![candidate])
 }
 
 /// Reject requests whose payment rules the assignment model does not encode.
@@ -162,7 +171,9 @@ fn measure_choices_inner(
             || request.activation_excluded_sources.contains(&choice.source) {
             continue;
         }
-        let produced = if let Some(projected) = analysis.project(&choice) {
+        let projection = analysis.project(&choice);
+        crate::perf::tier("analytic", if projection.is_some() { "choice:projected" } else { "choice:unprojected" });
+        let produced = if let Some(projected) = projection {
             projected.credits.iter().flat_map(|credit| credit.spendable_units(game, request)).collect()
         } else {
             if projection_only {

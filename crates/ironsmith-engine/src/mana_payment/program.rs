@@ -150,7 +150,10 @@ impl ManaProduction<'_> {
             | Self::DraftChosenColors { amount, .. }
             | Self::DeckChosenColors { amount, .. }
             | Self::NotedType { amount, .. } => Some(amount),
-            Self::ImprintedColors => None,
+            // The colors among permanents (Mox Amber) are derived state. The
+            // callers project only while no mana activation can change any
+            // derivation, and every projected plan is replayed before use.
+            Self::ImprintedColors | Self::ColorsAmong { .. } => None,
             _ => return None,
         };
         // A stable color source does not make its quantity expression stable.

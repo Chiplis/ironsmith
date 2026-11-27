@@ -162,7 +162,7 @@ thread_local! {
         (std::sync::Weak<crate::object::Object>, u64)>> = Default::default();
 }
 
-fn object_control_fingerprint(object: &std::sync::Arc<crate::object::Object>) -> u64 {
+pub(crate) fn object_control_fingerprint(object: &std::sync::Arc<crate::object::Object>) -> u64 {
     let key = std::sync::Arc::as_ptr(object) as usize;
     if let Some(fingerprint) = OBJECT_FINGERPRINTS.with(|cache| {
         cache.borrow().get(&key).and_then(|(weak, fingerprint)| {

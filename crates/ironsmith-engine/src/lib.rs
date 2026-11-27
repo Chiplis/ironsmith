@@ -91,7 +91,7 @@ pub(crate) mod object_query;
 pub(crate) mod party;
 pub(crate) mod perf;
 pub mod cow;
-pub use perf::{cow_copy_report, take_work_counts};
+pub use perf::{cow_copy_report, take_tier_counts, take_tier_notes, take_work_counts};
 pub mod player;
 pub mod prevention;
 pub mod provenance;

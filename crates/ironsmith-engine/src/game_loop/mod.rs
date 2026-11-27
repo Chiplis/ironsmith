@@ -74,6 +74,7 @@ mod combat_decisions;
 mod exile_face_down;
 mod exile_play;
 mod mandatory_loop;
+pub(crate) use mandatory_loop::object_control_fingerprint;
 mod priority_apply;
 mod priority_cast;
 mod retained_occurrence;

@@ -88,9 +88,58 @@ fn production_units(production: ManaProduction<'_>, units: &mut Vec<u8>) -> Opti
                 units.push(ANY_COLOR);
             }
         }
+        // "One mana of any color among ..." (Mox Amber) and the imprinted
+        // card's colors (Chrome Mox): at most one unit, of some color.
+        ManaProduction::ColorsAmong { choose_one: true, .. } | ManaProduction::ImprintedColors => {
+            units.push(ANY);
+        }
+        // One mana of each such type: at most one unit per type.
+        ManaProduction::ColorsAmong { choose_one: false, .. } => {
+            units.extend([ANY; 6]);
+        }
         _ => return None,
     }
     Some(())
+}
+
+/// Whether paying for any of `payer`'s mana abilities puts a counter on
+/// something, which could later pay a counter-removal cost.
+fn a_mana_ability_cost_puts_counters(
+    game: &GameState,
+    view: &DerivedGameView<'_>,
+    payer: crate::ids::PlayerId,
+) -> bool {
+    game.objects_map().values().any(|object| {
+        game.controller_of(object) == payer
+            && view.abilities_rc(object.id).is_none_or(|abilities| {
+                abilities.iter().any(|ability| {
+                    let AbilityKind::Activated(activated) = &ability.kind else {
+                        return false;
+                    };
+                    activated.is_runtime_mana_ability(game, object.id, payer)
+                        && activated.mana_cost.as_all().is_none_or(|costs| {
+                            costs.iter().any(|cost| {
+                                cost.effect_ref().is_some_and(|effect| {
+                                    effect.downcast_ref::<crate::effects::PutCountersEffect>().is_some()
+                                })
+                            })
+                        })
+                })
+            })
+    })
+}
+
+/// Whether paying this ability's cost exiles the card it is printed on.
+fn costs_exile_their_source(activated: &crate::ability::ActivatedAbility) -> bool {
+    activated.mana_cost.as_all().is_some_and(|costs| {
+        costs.iter().any(|cost| {
+            cost.effect_ref().is_some_and(|effect| {
+                effect
+                    .downcast_ref::<crate::effects::ExileEffect>()
+                    .is_some_and(|exile| matches!(exile.spec.base(), crate::target::ChooseSpec::Source))
+            })
+        })
+    })
 }
 
 /// Side effects of a mana ability that cannot make or untap a mana source,
@@ -100,6 +149,26 @@ fn is_reviewed_side_effect(effect: &crate::effect::Effect) -> bool {
     effect.downcast_ref::<crate::effects::ExileEffect>().is_some()
         || effect.downcast_ref::<crate::effects::LoseLifeEffect>().is_some()
         || effect.downcast_ref::<crate::effects::DealDamageEffect>().is_some()
+}
+
+/// Life loss, or damage, to the player activating the ability and to nothing
+/// else.
+fn changes_only_its_controllers_life(effect: &crate::effect::Effect) -> bool {
+    use crate::target::{ChooseSpec, PlayerFilter};
+    if let Some(lose) = effect.downcast_ref::<crate::effects::LoseLifeEffect>() {
+        return matches!(
+            lose.player.base(),
+            ChooseSpec::SourceController | ChooseSpec::Player(PlayerFilter::You)
+        );
+    }
+    effect
+        .downcast_ref::<crate::effects::DealDamageEffect>()
+        .is_some_and(|damage| {
+            matches!(
+                damage.target.base(),
+                ChooseSpec::SourceController | ChooseSpec::Player(PlayerFilter::You)
+            ) && damage.excess_to_controller.is_none()
+        })
 }
 
 /// Max matching of pips (acceptable-symbol masks) against supply units.
@@ -213,7 +282,27 @@ fn debug_enabled() -> bool {
     *ENABLED.get_or_init(|| std::env::var_os("IRONSMITH_TALLY_DEBUG").is_some())
 }
 
-fn bail<T>(reason: &str) -> Option<T> {
+thread_local! {
+    static LAST_BAIL: std::cell::Cell<&'static str> = const { std::cell::Cell::new("") };
+}
+
+thread_local! {
+    static LAST_COUNTED: std::cell::RefCell<String> = const { std::cell::RefCell::new(String::new()) };
+}
+
+/// Diagnostics: the sources the bound last counted, with their unit counts.
+pub(super) fn last_counted() -> String {
+    LAST_COUNTED.with(|last| last.borrow().clone())
+}
+
+/// Diagnostics: why the bound last declined on this thread.
+pub(super) fn last_bail() -> &'static str {
+    LAST_BAIL.with(std::cell::Cell::get)
+}
+
+fn bail<T>(reason: &'static str) -> Option<T> {
+    crate::perf::tier("tally.bail", reason);
+    LAST_BAIL.with(|last| last.set(reason));
     if debug_enabled() {
         eprintln!("TALLY bail {reason}");
     }
@@ -233,6 +322,7 @@ fn rules_out_payment_inner(
     request: &ManaPaymentRequest,
     view: &DerivedGameView<'_>,
 ) -> Option<bool> {
+    LAST_BAIL.with(|last| last.set(""));
     if request.spend_policy != crate::player::ManaSpendPolicy::default()
         || request.allow_black_life
         || !request.cost.spending_restrictions().is_empty()
@@ -292,14 +382,21 @@ fn rules_out_payment_inner(
             ("pending-mana", &|| effects.pending_trigger_entries.iter().any(|entry| {
                 entry.ability.effects.all_effects().iter().any(|effect| effect.contains_mana_production())
             })),
-            ("tap-sensitive", &|| game.continuous_effects_are_tap_sensitive()),
+            ("tap-sensitive", &|| game.mana_activation_may_change_derived_state()),
         ];
         for (reason, check) in checks {
             if check() {
                 return bail(reason);
             }
         }
+        // What a counted activation changes besides tapped state and mana:
+        // only its controller's life total (a life payment, or life loss and
+        // damage dealt to that player), or something else.
         let mut stateful = false;
+        let mut changes_only_life = true;
+        let mut counted: Vec<String> = Vec::new();
+        let mut skipped_object_count_condition = false;
+        let mut skipped_other_condition = false;
         for object in game.objects_map().values() {
             let Some(abilities) = view.abilities_rc(object.id) else { return bail("abilities"); };
             let controller = game.controller_of(object);
@@ -310,6 +407,15 @@ fn rules_out_payment_inner(
             let mut once_units: Vec<u8> = Vec::new();
             let mut once_activation_mana = 0usize;
             let mut has_tap_ability = false;
+            // A tapped, reserved or summoning-sick source cannot pay {T}, and
+            // nothing counted here untaps it: its tap abilities add nothing
+            // and change nothing.
+            let cannot_tap = object.zone == Zone::Battlefield
+                && (game.is_tapped(object.id)
+                    || request.reserved_tap_sources.contains(&object.id)
+                    || (game.is_summoning_sick(object.id)
+                        && view.object_has_card_type(object.id, crate::types::CardType::Creature)
+                        && !view.object_has_haste_for_activation(object.id)));
             for ability in abilities.iter().filter(|ability| ability.functions_in(&object.zone)) {
                 let AbilityKind::Activated(activated) = &ability.kind else {
                     continue;
@@ -317,7 +423,26 @@ fn rules_out_payment_inner(
                 if !activated.is_runtime_mana_ability(game, object.id, controller) {
                     continue;
                 }
-                if object.zone != Zone::Battlefield {
+                // Never offered during this payment, whatever else happens:
+                // a source the request excludes, and an ability usable only
+                // when an instant could be cast (Lion's Eye Diamond), which
+                // paying a cost never is.
+                if controller == request.payer
+                    && (request.preferences.excluded_sources.contains(&object.id)
+                        || request.activation_excluded_sources.contains(&object.id)
+                        || crate::special_actions::activation_restricted_to_instant_timing(activated))
+                {
+                    continue;
+                }
+                // A card that pays for its own mana ability by exiling itself
+                // from its owner's hand (Elvish Spirit Guide) is one more
+                // activation by that player, counted below. Any other mana
+                // ability outside the battlefield is not modelled.
+                let exiles_itself = costs_exile_their_source(activated);
+                if object.zone != Zone::Battlefield
+                    && !(object.zone == Zone::Hand && object.owner == controller && exiles_itself)
+                {
+                    crate::perf::tier_note("tally off-battlefield", || format!("{} [{:?}]", object.name, object.zone));
                     return bail("site4");
                 }
                 if controller != request.payer {
@@ -328,15 +453,55 @@ fn rules_out_payment_inner(
                     }
                     continue;
                 }
+                // A condition that is false now (Mox Opal without metalcraft)
+                // and reads nothing a mana activation writes stays false.
+                // A sacrifice moves an object and a life payment changes a
+                // life total, so which other sources are present decides
+                // whether the skip stands (checked below).
+                if controller == request.payer
+                    && let Some(condition) = &activated.activation_condition
+                    && !GameState::condition_can_change_with_mana_activations(condition)
+                    && let Some(index) = abilities.iter().position(|candidate| std::ptr::eq(candidate, ability))
+                    && !crate::special_actions::check_mana_ability_condition(
+                        game, controller, object.id, index, condition,
+                    )
+                {
+                    if GameState::condition_only_counts_objects(condition) {
+                        skipped_object_count_condition = true;
+                    } else {
+                        skipped_other_condition = true;
+                    }
+                    continue;
+                }
                 let Some(costs) = activated.mana_cost.as_all() else { return bail("costs"); };
+                // A counter this cost removes that is not there now (Hickory
+                // Woodlot out of depletion counters) will not be there later
+                // in the payment either: no counted activation puts one.
+                if costs.iter().any(|cost| {
+                    cost.is_remove_counters() && {
+                        let mut chooser = crate::decision::SelectFirstDecisionMaker;
+                        cost.can_pay(
+                            game,
+                            &crate::costs::CostContext::new(object.id, controller, &mut chooser),
+                        )
+                        .is_err()
+                    }
+                }) && !a_mana_ability_cost_puts_counters(game, view, request.payer)
+                {
+                    continue;
+                }
                 let taps = costs.iter().any(|cost| cost.requires_tap());
+                if taps && cannot_tap && controller == request.payer {
+                    continue;
+                }
                 // "Activate only once each turn" (Shire Scarecrow) also caps
                 // the ability at one activation during this payment; counting
                 // one even if it was already used this turn overestimates.
                 let once = taps
                     || activated.is_exhaust_ability()
                     || activated.max_activations_per_turn().is_some_and(|cap| cap <= 1)
-                    || costs.iter().any(|cost| cost.is_sacrifice_self());
+                    || costs.iter().any(|cost| cost.is_sacrifice_self())
+                    || exiles_itself;
                 if !once
                     || activated
                         .effects
@@ -344,11 +509,25 @@ fn rules_out_payment_inner(
                         .iter()
                         .any(|segment| !segment.self_replacements.is_empty())
                 {
+                    crate::perf::tier_note("tally repeatable", || object.name.to_string());
                     return bail("site6");
+                }
+                if !activated.choices.is_empty()
+                    || costs.iter().any(|cost| {
+                        !cost.requires_tap() && !cost.is_mana_cost() && !cost.is_life_cost()
+                    })
+                {
+                    changes_only_life = false;
                 }
                 if !activated.choices.is_empty()
                     || costs.iter().any(|cost| !cost.requires_tap() && !cost.is_mana_cost())
                 {
+                    crate::perf::tier_note("tally stateful source", || format!(
+                        "{}: choices={} costs=[{}]",
+                        object.name,
+                        activated.choices.len(),
+                        costs.iter().map(|c| c.display()).collect::<Vec<_>>().join(","),
+                    ));
                     stateful = true;
                 }
                 let mut produced = Vec::new();
@@ -362,10 +541,47 @@ fn rules_out_payment_inner(
                         continue;
                     }
                     if let Some(production) = effect.mana_production() {
-                        if production_units(production, &mut produced).is_none() { return bail("production"); }
+                        // "Any color among ..." and the imprinted card's
+                        // colors are read from the board as it stands.
+                        // Nothing enters or changes color while mana
+                        // abilities are activated, so the current set is
+                        // the most the ability can offer; an empty set (Mox
+                        // Amber with no legend, Chrome Mox with no imprint)
+                        // makes no mana at all.
+                        let read_now = match production {
+                            ManaProduction::ColorsAmong { filter, choose_one, .. }
+                                if !GameState::filter_reads_tapped_state_or_activation_history(filter, true) =>
+                            {
+                                Some(choose_one)
+                            }
+                            ManaProduction::ImprintedColors => Some(true),
+                            _ => None,
+                        };
+                        if let Some(choose_one) = read_now {
+                            let masks: Vec<u8> = effect
+                                .producible_mana_symbols(game, object.id, controller)
+                                .unwrap_or_default()
+                                .into_iter()
+                                .map(|symbol| symbol_mask(symbol).unwrap_or(ANY))
+                                .collect();
+                            if choose_one {
+                                let union = masks.iter().fold(0u8, |mask, unit| mask | unit);
+                                if union != 0 {
+                                    produced.push(union);
+                                }
+                            } else {
+                                produced.extend(masks);
+                            }
+                        } else if production_units(production, &mut produced).is_none() {
+                            crate::perf::tier_note("tally production", || object.name.to_string());
+                            return bail("production");
+                        }
                     } else if is_reviewed_side_effect(effect) {
+                        crate::perf::tier_note("tally stateful source", || format!("{}: side effect", object.name));
                         stateful = true;
+                        changes_only_life &= changes_only_its_controllers_life(effect);
                     } else {
+                        crate::perf::tier_note("tally side-effect", || object.name.to_string());
                         return bail("site7");
                     }
                 }
@@ -385,20 +601,57 @@ fn rules_out_payment_inner(
                 }
             }
             if has_tap_ability {
-                let unusable = game.is_tapped(object.id)
-                    || request.reserved_tap_sources.contains(&object.id)
-                    || (game.is_summoning_sick(object.id)
-                        && view.object_has_card_type(object.id, crate::types::CardType::Creature)
-                        && !view.object_has_haste_for_activation(object.id));
-                if !unusable {
+                if !cannot_tap {
                     activation_mana += tap_group.len() - tap_net;
+                    if crate::perf::tiers_enabled() {
+                        counted.push(format!("{}:{}", object.name, tap_group.len()));
+                    }
                     units.extend(tap_group);
                 }
             }
             activation_mana += once_activation_mana;
+            if crate::perf::tiers_enabled() && !once_units.is_empty() {
+                counted.push(format!("{}:{}(once)", object.name, once_units.len()));
+            }
             units.extend(once_units);
         }
-        if stateful && !super::color_reachability::stable_characteristics(game, view) {
+        // Life is the one such change whose readers are known exactly: a
+        // derivation that reads a life total, or this turn's life and damage
+        // records, records the read. With every object derived and no such
+        // read, no characteristic, restriction or cost can differ at a lower
+        // life total. A replacement could turn the life loss or damage into
+        // something else, so none may apply to those events.
+        let life_cannot_matter = || {
+            changes_only_life
+                && game.derive_every_object_once()
+                && !game.derived_state_read_life()
+                && !super::sources::has_replacements_for_events(
+                    game,
+                    &[
+                        crate::events::EventKind::Damage,
+                        crate::events::EventKind::LifeLoss,
+                    ],
+                )
+        };
+        if crate::perf::tiers_enabled() {
+            LAST_COUNTED.with(|last| *last.borrow_mut() = counted.join(", "));
+        }
+        // A life total cannot change how many objects a filter matches.
+        if stateful
+            && (skipped_other_condition || (skipped_object_count_condition && !changes_only_life))
+        {
+            return bail("unmet-condition");
+        }
+        if stateful
+            && !super::color_reachability::stable_characteristics(game, view)
+            && !life_cannot_matter()
+        {
+            crate::perf::tier_note("tally stateful", || format!(
+                "only-life={} life-read={} clean={}",
+                changes_only_life,
+                game.derived_state_read_life(),
+                game.continuous_state_is_clean(),
+            ));
             return bail("site8");
         }
     }

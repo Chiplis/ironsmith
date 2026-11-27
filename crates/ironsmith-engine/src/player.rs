@@ -702,6 +702,14 @@ pub struct Player {
 }
 
 impl Player {
+    /// The life total as a rules expression reads it. Conditions, values and
+    /// player filters use this instead of the field, so a cached derivation
+    /// that depends on a life total is known to (`incremental::note_life_read`).
+    pub(crate) fn life_for_rules(&self) -> i32 {
+        crate::incremental::note_life_read();
+        self.life
+    }
+
     pub fn new(id: PlayerId, name: impl Into<String>, starting_life: i32) -> Self {
         Self {
             id,

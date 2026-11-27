@@ -1544,14 +1544,14 @@ pub(super) fn continuous_value_players(
             .players
             .iter()
             .filter(|player| player.is_in_game() && ctx.game.player_is_within_source_range(controller, player.id, Some(source)))
-            .map(|player| player.life)
+            .map(|player| player.life_for_rules())
             .max(),
         PlayerFilter::LowestLifeTied => ctx
             .game
             .players
             .iter()
             .filter(|player| player.is_in_game() && ctx.game.player_is_within_source_range(controller, player.id, Some(source)))
-            .map(|player| player.life)
+            .map(|player| player.life_for_rules())
             .min(),
         _ => None,
     };
@@ -1573,7 +1573,7 @@ pub(super) fn continuous_value_players(
         .filter(|player| match player_filter {
             PlayerFilter::EffectController => player.id == controller,
             PlayerFilter::MostLifeTied | PlayerFilter::LowestLifeTied => {
-                extreme.is_some_and(|life| player.life == life)
+                extreme.is_some_and(|life| player.life_for_rules() == life)
             }
             PlayerFilter::MostCardsInHand => {
                 most_cards.is_some_and(|cards| player.hand.len() == cards)

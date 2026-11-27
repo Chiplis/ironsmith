@@ -56,7 +56,7 @@ impl<'a> ManaSourceAnalysis<'a> {
         let projection_safe = (!has_mana_triggers
             || tap_mana_triggers_are_projectable(game, &view))
             && !view.has_activated_ability_cost_modifiers()
-            && !game.continuous_effects_are_tap_sensitive()
+            && !game.mana_activation_may_change_derived_state()
             && replacements.is_some();
         Self {
             view,
@@ -257,6 +257,37 @@ impl<'a> ManaSourceAnalysis<'a> {
     }
 
     fn project_inner(&self, choice: &ActivationChoice) -> Option<ProjectedMana> {
+        let projected = self.project_reviewed(choice);
+        if projected.is_none() && crate::perf::tiers_enabled() {
+            let name = self.game.object(choice.source).map(|o| o.name.to_string()).unwrap_or_default();
+            let reason = if !self.projection_safe {
+                format!(
+                    "board: triggers={} cost-mods={} sensitive={} replacements-unknown={}",
+                    self.has_mana_triggers && !tap_mana_triggers_are_projectable(self.game, &self.view),
+                    self.view.has_activated_ability_cost_modifiers(),
+                    self.game.mana_activation_may_change_derived_state(),
+                    self.replacements.is_none(),
+                )
+            } else {
+                let costs = self.view.abilities_rc(choice.source).and_then(|abilities| {
+                    abilities.get(choice.ability_index).and_then(|ability| match &ability.kind {
+                        AbilityKind::Activated(activated) => Some(format!(
+                            "costs=[{}] choices={} effects={}",
+                            activated.mana_cost.as_all().map(|costs| costs.iter().map(|c| c.display()).collect::<Vec<_>>().join(",")).unwrap_or_default(),
+                            activated.choices.len(),
+                            activated.effects.iter().filter(|effect| effect.mana_production().is_none()).count(),
+                        )),
+                        _ => None,
+                    })
+                });
+                format!("{name}: {}", costs.unwrap_or_default())
+            };
+            crate::perf::tier_note("unprojected", || reason);
+        }
+        projected
+    }
+
+    fn project_reviewed(&self, choice: &ActivationChoice) -> Option<ProjectedMana> {
         if !self.projection_safe || has_live_activation_alternatives(self.game,Some(choice.source)) {
             return None;
         }
@@ -895,6 +926,11 @@ mod tests {
         ));
         game.refresh_continuous_state().unwrap();
         assert!(game.continuous_effects_are_tap_sensitive());
+        // The derivation that applies the effect reads this turn's
+        // activation records; retaining it across an activation would keep a
+        // stale answer.
+        assert!(game.current_characteristics(request.source).is_some());
+        assert!(game.mana_activation_may_change_derived_state());
         assert!(!game.retain_continuous_state_after_mana_activation());
     }
 

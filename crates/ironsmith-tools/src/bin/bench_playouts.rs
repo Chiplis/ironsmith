@@ -179,6 +179,12 @@ impl DecisionMaker for RandomAgent<'_> {
                 ctx.player.index(),
                 ctx.actions.len()
             );
+            if std::env::var_os("BENCH_TRACE_ACTIONS").is_some() {
+                for action in &ctx.actions {
+                    let text = format!("{action:?}");
+                    eprintln!("        {}", text.chars().take(200).collect::<String>());
+                }
+            }
         }
         self.stats.overhead += overhead.elapsed();
         if game.turn.turn_number != self.turn_seen {
@@ -722,6 +728,18 @@ fn run() {
         eprintln!("work over {decisions} decisions:");
         for (name, count) in ironsmith::take_work_counts() {
             eprintln!("  {count:>10}  {:>9.2}/decision  {name}", count as f64 / decisions as f64);
+        }
+    }
+    if std::env::var_os("IRONSMITH_PAY_TIERS").is_some() {
+        eprintln!("payment tiers:");
+        for (group, name, count, nanos) in ironsmith::take_tier_counts() {
+            eprintln!("  {group:>12} {name:<28} {count:>9} {:>10.1} ms", nanos as f64 / 1e6);
+        }
+    }
+    if std::env::var_os("IRONSMITH_PAY_TIERS").is_some() {
+        eprintln!("payment tier notes:");
+        for (group, detail, count) in ironsmith::take_tier_notes() {
+            eprintln!("  {count:>7} {group}: {detail}");
         }
     }
     if std::env::var_os("IRONSMITH_COW_PROBE").is_some() {

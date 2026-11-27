@@ -2357,7 +2357,7 @@ impl ReplacementMatcher for ThisWouldEnterTappedUnlessAPlayerHas13OrLessLifeMatc
         !ctx.game
             .players
             .iter()
-            .any(|player| player.is_in_game() && ctx.game.player_is_within_source_range(ctx.controller, player.id, ctx.source) && player.life <= 13)
+            .any(|player| player.is_in_game() && ctx.game.player_is_within_source_range(ctx.controller, player.id, ctx.source) && player.life_for_rules() <= 13)
     }
 
     fn priority(&self) -> ReplacementPriority {

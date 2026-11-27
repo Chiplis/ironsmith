@@ -316,7 +316,7 @@ impl ReplacementMatcher for ReplacedEventMatcher {
                     return false;
                 }
                 ctx.game.player(loss.player).is_some_and(|state| {
-                    i64::from(state.life) - i64::from(loss.amount) <= 0
+                    i64::from(state.life_for_rules()) - i64::from(loss.amount) <= 0
                 })
             }
             ReplacedEventSpec::LifeLoss { .. }

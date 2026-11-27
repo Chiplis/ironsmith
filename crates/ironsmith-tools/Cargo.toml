@@ -110,6 +110,11 @@ path = "src/bin/bench_playouts.rs"
 test = false
 
 [[bin]]
+name = "probe_mana_ability_shapes"
+path = "src/bin/probe_mana_ability_shapes.rs"
+test = false
+
+[[bin]]
 name = "sync_card_status_db"
 path = "src/bin/sync_card_status_db.rs"
 test = false

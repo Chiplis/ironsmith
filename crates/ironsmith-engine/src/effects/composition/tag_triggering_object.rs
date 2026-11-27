@@ -816,7 +816,7 @@ mod tests {
                 Zone::Graveyard,
                 crate::events::cause::EventCause::from_sba(),
                 Some(ObjectSnapshot {
-                    custom_statuses: Vec::new(), named_action_history:None,
+                    discard_characteristics_undefined: false, custom_statuses: Vec::new(), named_action_history:None,
         text_addition_sources: Vec::new(),
         entry_action_objects: Default::default(),
         cast_controlled_objects: None,

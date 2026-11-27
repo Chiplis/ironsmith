@@ -1798,11 +1798,19 @@ struct RuntimeCacheState {
     /// mutation cannot affect them when this is false. Do not use this for
     /// a whole activation, which can also change tapping and event history.
     derived_state_read_mana: Cell<bool>,
+    /// The continuous context revision at which every object was derived
+    /// (`derive_every_object_once`).
+    mana_sensitivity_prewarmed: Cell<Option<u64>>,
     /// Reads recorded before the global invalidations since the last
     /// regeneration. Restored if the state is marked clean without one
     /// (`retain_continuous_state_after_mana_activation`).
     derived_tap_reads_before_dirty: Cell<bool>,
     derived_mana_reads_before_dirty: Cell<bool>,
+    /// A retained derivation read a life total or this turn's life/damage
+    /// records (`incremental::note_life_read`), and the same before the last
+    /// invalidation; same life cycle as the mana read flags.
+    derived_state_read_life: Cell<bool>,
+    derived_life_reads_before_dirty: Cell<bool>,
     /// Set while the payment planner simulates a mana activation it has
     /// proven changes nothing a continuous effect can observe
     /// (`hold_continuous_state_for_mana_activation`). Invalidations are
@@ -1882,8 +1890,11 @@ impl Clone for RuntimeCacheState {
             derived_tap_read_depth: Cell::new(0),
             derived_state_read_tapped: Cell::new(self.derived_state_read_tapped.get()),
             derived_state_read_mana: Cell::new(self.derived_state_read_mana.get()),
+            mana_sensitivity_prewarmed: Cell::new(self.mana_sensitivity_prewarmed.get()),
             derived_tap_reads_before_dirty: Cell::new(self.derived_tap_reads_before_dirty.get()),
             derived_mana_reads_before_dirty: Cell::new(self.derived_mana_reads_before_dirty.get()),
+            derived_state_read_life: Cell::new(self.derived_state_read_life.get()),
+            derived_life_reads_before_dirty: Cell::new(self.derived_life_reads_before_dirty.get()),
             // A hold belongs to the activation running on the original.
             continuous_state_hold: Cell::new(false),
             derived_stack_reads_before_dirty: Cell::new(self.derived_stack_reads_before_dirty.get()),
@@ -1954,8 +1965,11 @@ impl RuntimeCacheState {
             derived_tap_read_depth: Cell::new(0),
             derived_state_read_tapped: Cell::new(false),
             derived_state_read_mana: Cell::new(false),
+            mana_sensitivity_prewarmed: Cell::new(None),
             derived_tap_reads_before_dirty: Cell::new(false),
             derived_mana_reads_before_dirty: Cell::new(false),
+            derived_state_read_life: Cell::new(false),
+            derived_life_reads_before_dirty: Cell::new(false),
             continuous_state_hold: Cell::new(false),
             derived_stack_reads_before_dirty: Cell::new(false),
             continuous_state_active_player: Cell::new(active_player),
@@ -2428,10 +2442,14 @@ impl ControllerCache {
 /// Scope of a derivation tracked by `GameState::derived_tap_read_scope`.
 pub(crate) struct DerivedTapReadScope<'a> {
     depth: &'a Cell<u32>,
+    read_life: &'a Cell<bool>,
 }
 
 impl Drop for DerivedTapReadScope<'_> {
     fn drop(&mut self) {
+        if crate::incremental::derived_life_read_in_progress() {
+            self.read_life.set(true);
+        }
         crate::incremental::exit_derived_reads();
         self.depth.set(self.depth.get().saturating_sub(1));
     }
@@ -7821,7 +7839,7 @@ impl GameState {
         let depth = &self.runtime_cache.derived_tap_read_depth;
         depth.set(depth.get().saturating_add(1));
         crate::incremental::enter_derived_reads();
-        DerivedTapReadScope { depth }
+        DerivedTapReadScope { depth, read_life: &self.runtime_cache.derived_state_read_life }
     }
 
     /// `derived_tap_read_scope` for derivations that need `&mut self`; pair
@@ -7835,6 +7853,9 @@ impl GameState {
     pub(crate) fn exit_derived_tap_reads(&self) {
         let depth = &self.runtime_cache.derived_tap_read_depth;
         depth.set(depth.get().saturating_sub(1));
+        if crate::incremental::derived_life_read_in_progress() {
+            self.runtime_cache.derived_state_read_life.set(true);
+        }
         crate::incremental::exit_derived_reads();
     }
 
@@ -7902,6 +7923,8 @@ impl GameState {
             before.set(before.get() | self.runtime_cache.derived_state_read_tapped.replace(false));
             let before = &self.runtime_cache.derived_mana_reads_before_dirty;
             before.set(before.get() | self.runtime_cache.derived_state_read_mana.replace(false));
+            let before = &self.runtime_cache.derived_life_reads_before_dirty;
+            before.set(before.get() | self.runtime_cache.derived_state_read_life.replace(false));
             let before = &self.runtime_cache.derived_stack_reads_before_dirty;
             before.set(before.get() | self.stack.take_derived_read());
         }
@@ -8199,6 +8222,7 @@ impl GameState {
         // was cleared by the invalidation, so earlier reads are gone.
         self.runtime_cache.derived_tap_reads_before_dirty.set(false);
         self.runtime_cache.derived_mana_reads_before_dirty.set(false);
+        self.runtime_cache.derived_life_reads_before_dirty.set(false);
         self.runtime_cache.derived_stack_reads_before_dirty.set(false);
         self.runtime_cache
             .continuous_state_revision
@@ -8288,6 +8312,53 @@ impl GameState {
                     chars.static_abilities.iter().any(Self::static_ability_is_mana_sensitive)
                 })
             });
+        if sensitive && crate::perf::tiers_enabled() {
+            fn short(text: String) -> String {
+                text.chars().take(110).collect()
+            }
+            for effect in self.cached_continuous_effects_snapshot_arc().iter() {
+                if Self::continuous_effect_is_tap_sensitive(effect) {
+                    crate::perf::tier_note("tap-sensitive effect", || {
+                        short(format!(
+                            "{:?} | {:?}",
+                            self.object(effect.source).map(|o| o.name.to_string()),
+                            effect.modification
+                        ))
+                    });
+                }
+            }
+            for object in self.objects_map().values() {
+                for ability in object.abilities.iter().filter(|a| a.functions_in(&object.zone)) {
+                    if let crate::ability::AbilityKind::Static(ability) = &ability.kind
+                        && Self::static_ability_is_mana_sensitive(ability)
+                    {
+                        crate::perf::tier_note("tap-sensitive printed", || {
+                            short(format!(
+                                "{} [{:?}] {:?}",
+                                object.name,
+                                object.zone,
+                                ability.compiled_model().map(|m| &m.payload)
+                            ))
+                        });
+                    }
+                }
+            }
+            for &id in self.battlefield.iter() {
+                if let Some(chars) = self.current_characteristics(id) {
+                    for ability in chars.static_abilities.iter() {
+                        if Self::static_ability_is_mana_sensitive(ability) {
+                            crate::perf::tier_note("tap-sensitive derived", || {
+                                short(format!(
+                                    "{:?} {:?}",
+                                    self.object(id).map(|o| o.name.to_string()),
+                                    ability.compiled_model().map(|m| &m.payload)
+                                ))
+                            });
+                        }
+                    }
+                }
+            }
+        }
         self.runtime_cache
             .tap_sensitivity
             .set(Some((revision, sensitive)));
@@ -8426,9 +8497,55 @@ impl GameState {
             || Self::modification_is_tap_sensitive(&effect.modification)
     }
 
+    /// Whether an activation condition that is false now could become true
+    /// through taps, mana and activation records alone.
+    pub(crate) fn condition_can_change_with_mana_activations(condition: &crate::ConditionExpr) -> bool {
+        Self::condition_is_mana_sensitive(condition)
+    }
+
+    /// Whether the condition only counts or tests objects by a filter that
+    /// ignores tapped state and activation history. Such a condition changes
+    /// only when an object moves or changes, never with a life total.
+    pub(crate) fn condition_only_counts_objects(condition: &crate::ConditionExpr) -> bool {
+        use crate::ConditionExpr;
+        match condition {
+            ConditionExpr::And(left, right) | ConditionExpr::Or(left, right) => {
+                Self::condition_only_counts_objects(left) && Self::condition_only_counts_objects(right)
+            }
+            ConditionExpr::Not(inner) => Self::condition_only_counts_objects(inner),
+            ConditionExpr::CountComparison {
+                count: ironsmith_core::AnthemCountExpression::MatchingFilter(filter),
+                ..
+            }
+            | ConditionExpr::YouControl(filter)
+            | ConditionExpr::OpponentControls(filter)
+            | ConditionExpr::PlayerControls { filter, .. }
+            | ConditionExpr::PlayerHasAtLeast { filter, .. }
+            | ConditionExpr::PlayerControlsExactly { filter, .. } => {
+                !Self::object_filter_is_tap_sensitive(filter)
+            }
+            _ => false,
+        }
+    }
+
     fn condition_is_mana_sensitive(condition: &crate::ConditionExpr) -> bool {
         use crate::ConditionExpr;
         match condition {
+            // Counts over what is on the battlefield or in a zone now
+            // (metalcraft, "if you control a Mountain"): a mana activation
+            // moves nothing, so only a filter on tapped state or activation
+            // history can change the count.
+            ConditionExpr::CountComparison {
+                count: ironsmith_core::AnthemCountExpression::MatchingFilter(filter),
+                ..
+            }
+            | ConditionExpr::YouControl(filter)
+            | ConditionExpr::OpponentControls(filter)
+            | ConditionExpr::PlayerControls { filter, .. }
+            | ConditionExpr::PlayerHasAtLeast { filter, .. }
+            | ConditionExpr::PlayerControlsExactly { filter, .. } => {
+                Self::object_filter_is_tap_sensitive(filter)
+            }
             ConditionExpr::And(left, right) | ConditionExpr::Or(left, right) => {
                 Self::condition_is_mana_sensitive(left) || Self::condition_is_mana_sensitive(right)
             }
@@ -8533,12 +8650,86 @@ impl GameState {
         if !self.continuous_state_is_clean()
             || self.derived_state_read_tapped()
             || self.runtime_cache.derived_state_read_mana.get()
-            || self.continuous_effects_are_tap_sensitive()
+            || self.mana_activation_may_change_derived_state()
         {
             return false;
         }
         self.runtime_cache.continuous_state_hold.set(true);
         true
+    }
+
+    /// Whether tapping a permanent for mana (tapped flag, a mana pool, the
+    /// activation's history records) could change anything this state
+    /// derives: characteristics, restrictions, replacement or cost effects.
+    ///
+    /// The static classifier answers first; it proves most plain boards
+    /// insensitive without deriving anything, but it fails safe on every
+    /// static ability it does not recognize. The exact answer is the one the
+    /// game itself runs on: each retained derivation records whether it read
+    /// tapped state or a pool (`derived_tap_read_scope`). The activation's
+    /// own records in the turn history have no such read path, so every
+    /// effect in force is read statically for them
+    /// (`effects_in_force_may_read_activation_records`). With every object
+    /// derived, neither read recorded and no such effect, no derivation has
+    /// an input a mana activation writes.
+    /// The battlefield flags (tapped, summoning-sick, damage, phasing and the
+    /// rest) as `digest` reads their `Debug` form.
+    pub(crate) fn battlefield_flags_digest(&self, digest: impl FnOnce(&dyn std::fmt::Debug) -> u64) -> u64 {
+        digest(self.battlefield_flags.as_ref())
+    }
+
+    /// Whether a retained derivation read a life total or this turn's life
+    /// and damage records. Complete only once every object has been derived
+    /// (`derive_every_object_once`).
+    pub(crate) fn derived_state_read_life(&self) -> bool {
+        self.runtime_cache.derived_state_read_life.get()
+            || crate::incremental::derived_life_read_in_progress()
+    }
+
+    /// Derive every object once per clean state, so the recorded reads cover
+    /// every derivation a later query could make. False when the state is
+    /// not clean: nothing can be concluded from its flags then.
+    /// Whether an effect now in force may read what a mana activation records
+    /// in this turn's history: its activation and production records, as a
+    /// filter ("an ability of which was activated this turn"), a condition
+    /// or a value. Unlike tapped state, pools and life totals, the turn
+    /// records have no single read path to observe, so this is the static
+    /// reading of every generated effect, where an unrecognized condition or
+    /// value counts as a reader.
+    fn effects_in_force_may_read_activation_records(&self) -> bool {
+        self.cached_continuous_effects_snapshot_arc()
+            .iter()
+            .any(Self::continuous_effect_is_tap_sensitive)
+            || self.derived_state_may_read_turn_history()
+    }
+
+    pub(crate) fn derive_every_object_once(&self) -> bool {
+        if !self.continuous_state_is_clean() {
+            return false;
+        }
+        let context = self.runtime_cache.continuous_context_revision.get();
+        if self.runtime_cache.mana_sensitivity_prewarmed.get() != Some(context) {
+            let ids: Vec<_> = self.objects_map().keys().copied().collect();
+            self.prewarm_calculated_characteristics(&ids);
+            if !self.continuous_state_is_clean() {
+                return false;
+            }
+            self.runtime_cache.mana_sensitivity_prewarmed.set(Some(context));
+        }
+        true
+    }
+
+    pub(crate) fn mana_activation_may_change_derived_state(&self) -> bool {
+        if !self.continuous_effects_are_tap_sensitive() {
+            return false;
+        }
+        // A derivation not made yet has recorded nothing.
+        if exact_mana_sensitivity_disabled() || !self.derive_every_object_once() {
+            return true;
+        }
+        self.derived_state_read_tapped()
+            || self.runtime_cache.derived_state_read_mana.get()
+            || self.effects_in_force_may_read_activation_records()
     }
 
     /// Ends a hold. The state stays clean only if the activation added or
@@ -8551,6 +8742,9 @@ impl GameState {
         if self.runtime_cache.continuous_state_revision.get()
             != self.effect_store.continuous_effects.revision()
             || !self.cached_continuous_turn_state_matches_current()
+            // A derivation made during the hold saw the activation half done.
+            || self.derived_state_read_tapped()
+            || self.runtime_cache.derived_state_read_mana.get()
         {
             self.mark_continuous_state_dirty();
             return;
@@ -8571,7 +8765,11 @@ impl GameState {
         // whose threshold has not yet been met). Do not erase that invalidation.
         if self.derived_state_read_tapped()
             || self.runtime_cache.derived_tap_reads_before_dirty.get()
-            || self.continuous_effects_are_tap_sensitive()
+            || (self.continuous_effects_are_tap_sensitive()
+                && (exact_mana_sensitivity_disabled()
+                    || self.runtime_cache.derived_state_read_mana.get()
+                    || self.runtime_cache.derived_mana_reads_before_dirty.get()
+                    || self.effects_in_force_may_read_activation_records()))
         {
             return false;
         }
@@ -8592,6 +8790,9 @@ impl GameState {
         read.set(read.get() | before);
         let before = self.runtime_cache.derived_mana_reads_before_dirty.replace(false);
         let read = &self.runtime_cache.derived_state_read_mana;
+        read.set(read.get() | before);
+        let before = self.runtime_cache.derived_life_reads_before_dirty.replace(false);
+        let read = &self.runtime_cache.derived_state_read_life;
         read.set(read.get() | before);
         if self.runtime_cache.derived_stack_reads_before_dirty.replace(false) {
             self.stack.note_derived_read();
@@ -8632,7 +8833,16 @@ impl GameState {
             return;
         }
         if !self.runtime_cache.continuous_state_dirty.get()
-            && (self
+            && self.derived_state_may_read_turn_history()
+        {
+            self.mark_continuous_state_dirty();
+        }
+    }
+
+    /// Whether any retained derivation may read turn history: the rule a
+    /// published history record itself is invalidated by.
+    fn derived_state_may_read_turn_history(&self) -> bool {
+        self
                 .cached_continuous_effects_snapshot_arc()
                 .iter()
                 .any(|effect| effect
@@ -8656,10 +8866,7 @@ impl GameState {
                             ) if !history_requirements.is_empty())
                         })
                     })
-                })))
-        {
-            self.mark_continuous_state_dirty();
-        }
+                }))
     }
 
     pub(crate) fn static_is_history_designation(ability: &crate::static_abilities::StaticAbility) -> bool {
@@ -13146,4 +13353,11 @@ impl GameState {
         };
         crate::effects::tokens::resources::reserve_repetition_work(meter, count)
     }
+}
+
+/// `IRONSMITH_STATIC_MANA_SENSITIVITY=1`: answer from the static classifier
+/// alone, for A/B measurements and bisecting a suspected stale derivation.
+fn exact_mana_sensitivity_disabled() -> bool {
+    static DISABLED: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    *DISABLED.get_or_init(|| std::env::var_os("IRONSMITH_STATIC_MANA_SENSITIVITY").is_some())
 }

@@ -3494,7 +3494,7 @@ pub fn this_spell_cost_condition_is_active_for_player_with_optional_costs_paid(
         ThisSpellCostCondition::NotYourTurn => !game.is_active_player(controller),
         ThisSpellCostCondition::YouLifeTotalOrLess(n) => game
             .player(controller)
-            .is_some_and(|player| player.life <= *n),
+            .is_some_and(|player| player.life_for_rules() <= *n),
         ThisSpellCostCondition::OpponentHasNoCardsInHand => game
             .opponents_in_source_range(controller, Some(source))
             .any(|player| player.hand.is_empty()),
@@ -3658,7 +3658,7 @@ pub fn this_spell_cost_condition_is_active_for_player_with_optional_costs_paid(
             .any(|player| player.graveyard.len() >= *n as usize),
         ThisSpellCostCondition::LifeTotalLessThanStarting => game
             .player(controller)
-            .is_some_and(|player| player.life < player.starting_life),
+            .is_some_and(|player| player.life_for_rules() < player.starting_life),
         ThisSpellCostCondition::IsNight => game.is_night,
         ThisSpellCostCondition::YouSacrificedArtifactThisTurn => game
             .turn_store
